@@ -1,0 +1,36 @@
+// Bundle multiple rendered PNGs into a single .zip download.
+//
+// The actual per-page rendering (html-to-image on the live card node) stays in
+// App, because it needs the mounted DOM node and React state. This module only
+// takes already-rendered data URLs and packages them.
+
+import JSZip from 'jszip'
+
+/** Strip the `data:image/png;base64,` prefix and return the raw base64 body. */
+function base64Body(dataUrl: string): string {
+  const comma = dataUrl.indexOf(',')
+  return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+}
+
+/**
+ * Package a list of PNG data URLs into a zip and trigger a download.
+ * Files are named card-01.png, card-02.png … zero-padded so they sort right.
+ */
+export async function downloadZip(dataUrls: string[], zipName = 'cards.zip'): Promise<void> {
+  const zip = new JSZip()
+  const pad = String(dataUrls.length).length
+
+  dataUrls.forEach((url, i) => {
+    const name = `card-${String(i + 1).padStart(pad, '0')}.png`
+    zip.file(name, base64Body(url), { base64: true })
+  })
+
+  const blob = await zip.generateAsync({ type: 'blob' })
+  const objectUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = objectUrl
+  a.download = zipName
+  a.click()
+  // Give the browser a tick to start the download before revoking.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
