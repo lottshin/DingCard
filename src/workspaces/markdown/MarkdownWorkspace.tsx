@@ -324,11 +324,15 @@ export function MarkdownWorkspace() {
     }
     const saved = saveDraft(user.id, {
       id: draftId ?? undefined,
-      source,
-      platformId,
-      themeId,
-      fontFamily,
-      profile,
+      mode: 'markdown-card',
+      document: {
+        source,
+        platformId,
+        themeId,
+        fontFamily,
+        profile,
+        radius,
+      },
     })
     setDraftId(saved.id)
     setSavedAt(saved.updatedAt)
@@ -336,13 +340,16 @@ export function MarkdownWorkspace() {
   }
 
   function openDraft(d: Draft) {
+    if (d.mode !== 'markdown-card') return
+    const document = d.document
     // Re-register the draft's embedded images so `img:` refs resolve again.
-    if (d.images) for (const [ref, url] of Object.entries(d.images)) registerImage(ref, url)
-    setSource(d.source)
-    setPlatformId(d.platformId)
-    setThemeId(d.themeId)
-    setFontFamily(d.fontFamily)
-    setProfile(d.profile)
+    if (document.images) for (const [ref, url] of Object.entries(document.images)) registerImage(ref, url)
+    setSource(document.source)
+    setPlatformId(document.platformId)
+    setThemeId(document.themeId)
+    setFontFamily(document.fontFamily)
+    setProfile(document.profile)
+    setRadius(document.radius)
     setDraftId(d.id)
     setActive(0)
     setShowDrafts(false)
