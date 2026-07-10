@@ -203,6 +203,10 @@ export function parseBlocks(source: string): Block[] {
   const lines = source.replace(/\r\n/g, '\n').split('\n')
   const blocks: Block[] = []
   let buffer: string[] = []
+  // Track fenced code blocks so a `---` INSIDE ``` / ~~~ is kept as code, not
+  // mistaken for a manual page break (which would split the fence in two and
+  // leave an unclosed block that swallows the rest of the document).
+  let fence: string | null = null
 
   const flush = () => {
     blocks.push(...lexSegment(buffer.join('\n')))
@@ -210,7 +214,14 @@ export function parseBlocks(source: string): Block[] {
   }
 
   for (const line of lines) {
-    if (isPageBreakLine(line)) {
+    const fenceMatch = line.trim().match(/^(`{3,}|~{3,})/)
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0]
+      if (fence === null) fence = marker
+      else if (fence === marker) fence = null
+    }
+
+    if (fence === null && isPageBreakLine(line)) {
       flush()
       blocks.push({ html: '', raw: line.trim(), isBreak: true })
     } else {

@@ -351,6 +351,7 @@ export function MarkdownEditor({ value, onChange, fontFamily }: Props) {
   return (
     <CodeMirror
       className="cm-host"
+      theme="none"
       value={value}
       height="100%"
       extensions={extensions}

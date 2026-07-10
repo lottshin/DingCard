@@ -776,6 +776,24 @@ html.theme-anim * {
   border-color: var(--text-3);
 }
 
+.primary {
+  height: 40px;
+  padding: 0 20px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--accent-text);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.primary:hover {
+  background: var(--accent-weak);
+}
+
 /* =====================================================================
    Card (exported box) — driven by --card-* vars, app-theme independent
    ===================================================================== */

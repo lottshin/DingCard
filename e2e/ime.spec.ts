@@ -97,4 +97,15 @@ test.describe('IME input in Markdown editor', () => {
     const pageDots = await page.locator('.page-dot').count()
     expect(pageDots, 'a bare --- under text should still page-break').toBe(2)
   })
+
+  test('`---` INSIDE a fenced code block is NOT a page break', async ({ page }) => {
+    // A code fence containing a `---` line must stay one code block on one page —
+    // splitting on it would break the fence open and swallow the rest as code.
+    await setDoc(page, '前文\n\n```\n---\n```\n\n后文')
+    await page.waitForTimeout(120)
+    const pageDots = await page.locator('.page-dot').count()
+    expect(pageDots, 'a --- inside a code fence must not page-break').toBe(1)
+    // The following paragraph must still render (not be swallowed by the fence).
+    await expect(page.locator('.card-content', { hasText: '后文' }).first()).toBeVisible()
+  })
 })
