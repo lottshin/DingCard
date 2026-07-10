@@ -31,6 +31,12 @@ async function setDoc(page: import('@playwright/test').Page, text: string) {
   }, text)
 }
 
+test('Markdown workspace is the default workspace', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText('Markdown')).toBeVisible()
+  await expect(page.locator('.cm-content')).toBeVisible()
+})
+
 test.describe('IME input in Markdown editor', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
