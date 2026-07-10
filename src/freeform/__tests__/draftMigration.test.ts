@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeDraftForRead } from '../../drafts'
+import { draftSubtitle, draftTitle, normalizeDraftForRead } from '../../drafts'
 
 const profile = {
   nickname: 'A',
@@ -62,5 +62,47 @@ describe('draft migration', () => {
   it('returns null for invalid draft data', () => {
     expect(normalizeDraftForRead({ id: 'broken' })).toBeNull()
     expect(normalizeDraftForRead(null)).toBeNull()
+  })
+
+  it('formats draft titles and subtitles for markdown and freeform drafts', () => {
+    const markdownDraft = normalizeDraftForRead({
+      id: 'old-1',
+      title: 'Old',
+      source: '# hello',
+      platformId: 'rednote',
+      themeId: 'light',
+      fontFamily: 'system-ui, sans-serif',
+      profile,
+      updatedAt: 1,
+    })
+
+    const freeformDraft = normalizeDraftForRead({
+      id: 'free-1',
+      title: 'Free',
+      schemaVersion: 2,
+      mode: 'freeform-slide',
+      updatedAt: 2,
+      document: {
+        documentVersion: 1,
+        activeSlideId: 's1',
+        slides: [
+          {
+            id: 's1',
+            name: 'Page 1',
+            width: 1080,
+            height: 1440,
+            background: { type: 'solid', color: '#ffffff' },
+            elements: [],
+          },
+        ],
+      },
+    })
+
+    if (!markdownDraft || !freeformDraft) throw new Error('Expected valid drafts')
+
+    expect(draftTitle(markdownDraft)).toBe('Old')
+    expect(draftSubtitle(markdownDraft)).toContain('Markdown')
+    expect(draftSubtitle(freeformDraft)).toContain('自由编辑')
+    expect(draftSubtitle(freeformDraft)).toContain('1 页')
   })
 })

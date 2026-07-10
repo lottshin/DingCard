@@ -280,6 +280,17 @@ export function deleteDraft(userId: string, id: string) {
   )
 }
 
+export function draftTitle(draft: Draft): string {
+  return draft.title
+}
+
+export function draftSubtitle(draft: Draft): string {
+  if (draft.mode === 'markdown-card') {
+    return `Markdown · ${draft.document.source.length} 字`
+  }
+  return `自由编辑 · ${draft.document.slides.length} 页`
+}
+
 export function draftWorkspaceMode(draft: Draft): WorkspaceMode {
   return draft.mode
 }
