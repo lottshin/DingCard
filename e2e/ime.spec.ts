@@ -88,4 +88,13 @@ test.describe('IME input in Markdown editor', () => {
     const afterEnter = await getDoc(page)
     expect(afterEnter, 'plain char must survive Enter').toContain('a')
   })
+
+  test('`---` directly under text (no blank lines) still splits into pages', async ({ page }) => {
+    // Markdown would treat `段落一\n---` as a Setext heading; we force it to be a
+    // page break instead, so this must yield 2 pages.
+    await setDoc(page, '段落一\n---\n段落二')
+    await page.waitForTimeout(120) // pagination runs on the next animation frame
+    const pageDots = await page.locator('.page-dot').count()
+    expect(pageDots, 'a bare --- under text should still page-break').toBe(2)
+  })
 })

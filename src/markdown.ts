@@ -127,15 +127,27 @@ function listItemLines(raw: string): string[] {
  * line first, then by long sentence chunks, so long articles can flow across
  * cards instead of being clipped at the bottom.
  */
-export function parseBlocks(source: string): Block[] {
-  const tokens = marked.lexer(source)
-  const blocks: Block[] = []
+/**
+ * A standalone thematic-break line — `---`, `***` or `___` (3+ identical chars,
+ * possibly spaced) alone on a line. In this app it is ALWAYS a manual page break.
+ * We detect it ourselves (not via marked) because Markdown turns `text` directly
+ * followed by `---` into a Setext heading — so marked would never emit an `hr`
+ * there and the page break would be silently lost.
+ */
+function isPageBreakLine(line: string): boolean {
+  const compact = line.trim().replace(/[ \t]/g, '')
+  return /^(-{3,}|\*{3,}|_{3,})$/.test(compact)
+}
 
-  for (const token of tokens) {
-    // `space` tokens are blank lines between blocks — skip them.
+/** Lex + render one segment (no page-break lines inside) into content blocks. */
+function lexSegment(segment: string): Block[] {
+  const blocks: Block[] = []
+  if (!segment.trim()) return blocks
+
+  for (const token of marked.lexer(segment)) {
     if (token.type === 'space') continue
 
-    // `hr` (`---`) is repurposed as an explicit page break.
+    // A stray hr can still appear (e.g. from `***`); treat as a break too.
     if (token.type === 'hr') {
       blocks.push({ html: '', raw: token.raw ?? '---', isBreak: true })
       continue
@@ -176,6 +188,36 @@ export function parseBlocks(source: string): Block[] {
     const html = marked.parser([token as never])
     if (html.trim()) blocks.push({ html, raw })
   }
+
+  return blocks
+}
+
+/**
+ * Split markdown source into top-level content blocks plus manual page-break
+ * markers. We first cut the source on standalone `---`/`***`/`___` lines so a
+ * page break works even when it sits directly under text (which Markdown would
+ * otherwise parse as a Setext heading). Each segment between breaks is then
+ * lexed independently.
+ */
+export function parseBlocks(source: string): Block[] {
+  const lines = source.replace(/\r\n/g, '\n').split('\n')
+  const blocks: Block[] = []
+  let buffer: string[] = []
+
+  const flush = () => {
+    blocks.push(...lexSegment(buffer.join('\n')))
+    buffer = []
+  }
+
+  for (const line of lines) {
+    if (isPageBreakLine(line)) {
+      flush()
+      blocks.push({ html: '', raw: line.trim(), isBreak: true })
+    } else {
+      buffer.push(line)
+    }
+  }
+  flush()
 
   return blocks
 }
