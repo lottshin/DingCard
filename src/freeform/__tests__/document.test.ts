@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createFreeformDocument, createSlide, pageSizePresets, validatePageSize } from '../document'
+import {
+  createFreeformDocument,
+  createSlide,
+  freeformReducer,
+  pageSizePresets,
+  validatePageSize,
+} from '../document'
 
 describe('freeform document', () => {
   it('creates a default 3:4 document', () => {
@@ -28,5 +34,38 @@ describe('freeform document', () => {
 
   it('exposes required presets', () => {
     expect(pageSizePresets.map((p) => p.ratio)).toEqual(['1:1', '3:4', '4:3', '9:16', '16:9'])
+  })
+
+  it('adds a slide that inherits active slide size', () => {
+    const doc = createFreeformDocument()
+    const resized = freeformReducer(doc, {
+      type: 'slide/resize',
+      slideId: doc.activeSlideId,
+      width: 1920,
+      height: 1080,
+    })
+
+    const next = freeformReducer(resized, { type: 'slide/add-after-active' })
+
+    expect(next.slides).toHaveLength(2)
+    expect(next.slides[1].width).toBe(1920)
+    expect(next.slides[1].height).toBe(1080)
+    expect(next.activeSlideId).toBe(next.slides[1].id)
+  })
+
+  it('changes only the requested slide size', () => {
+    const doc = freeformReducer(createFreeformDocument(), { type: 'slide/add-after-active' })
+    const firstSlideId = doc.slides[0].id
+    const secondSlideId = doc.slides[1].id
+
+    const next = freeformReducer(doc, {
+      type: 'slide/resize',
+      slideId: secondSlideId,
+      width: 1080,
+      height: 1920,
+    })
+
+    expect(next.slides.find((slide) => slide.id === firstSlideId)?.height).toBe(1440)
+    expect(next.slides.find((slide) => slide.id === secondSlideId)?.height).toBe(1920)
   })
 })
