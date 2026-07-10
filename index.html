@@ -3,8 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>卡片工坊 · Markdown 图文排版</title>
-    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>叮卡</title>
+    <script>
+      // Apply the saved (or OS-preferred) theme before first paint, so the app
+      // never flashes the wrong background before the external CSS loads. Must
+      // stay in sync with useAppTheme.ts (key + logic).
+      (function () {
+        var mode = 'light'
+        try {
+          var saved = localStorage.getItem('slicer.mode.v1')
+          mode =
+            saved === 'light' || saved === 'dark'
+              ? saved
+              : window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+        } catch (e) {}
+        var root = document.documentElement
+        root.setAttribute('data-theme', mode)
+        // Match the UA canvas / scrollbars to the theme so they don't flash on
+        // load or when toggling.
+        root.style.colorScheme = mode
+      })()
+    </script>
+    <!-- Critical first-paint background. Inlined so the correct color is up
+         before the external stylesheet (loaded via the JS module) arrives,
+         which is what caused the light-mode flash-to-black on reload. Keep the
+         values in sync with :root in styles.css. -->
+    <style>
+      html { background: #f4f4f5; }
+      html[data-theme='dark'] { background: #0b0b0d; }
+      html { transition: background 0.3s ease; }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

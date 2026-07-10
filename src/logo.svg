@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="叮卡">
+  <title>叮卡</title>
+  <defs>
+    <linearGradient id="ltile" x1="6" y1="2" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e2570f"/>
+      <stop offset="1" stop-color="#9a3208"/>
+    </linearGradient>
+    <linearGradient id="lsheen" x1="0" y1="0" x2="0" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="lglass" x1="24" y1="18" x2="44" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.66"/>
+    </linearGradient>
+    <radialGradient id="lspark" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#fff7ed"/>
+      <stop offset="1" stop-color="#fcd9b6"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#ltile)"/>
+  <rect width="64" height="64" rx="15" fill="url(#lsheen)"/>
+  <rect x="22" y="17" width="20" height="29" rx="4.5"
+        fill="#fdefdd" opacity="0.42" transform="rotate(-13 32 44)"/>
+  <g transform="rotate(10 32 44)">
+    <rect x="24" y="18" width="20" height="29" rx="4.5" fill="url(#lglass)"/>
+    <rect x="24" y="18" width="20" height="29" rx="4.5"
+          fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1"/>
+    <circle cx="44" cy="18" r="6.5" fill="url(#ltile)"/>
+    <circle cx="44" cy="18" r="4.5" fill="url(#lspark)"/>
+  </g>
+</svg>

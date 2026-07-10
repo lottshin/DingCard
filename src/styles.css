@@ -1,5 +1,5 @@
 /* =====================================================================
-   卡片工坊 — refined monochrome UI
+   叮卡 — refined monochrome UI
    ---------------------------------------------------------------------
    Modern, minimal, "quiet luxury" chrome. Near-monochrome neutral palette
    with a single restrained accent, hairline borders, soft diffused shadows,
@@ -91,7 +91,16 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Theme-switch easing. We DON'T leave a transition on every element (it would
+   drag out hovers and other interactions). Instead the toggle briefly adds
+   `.theme-anim` to <html>, we ease colors for that window, then it's removed.
+   `!important` beats element-level transitions that would otherwise win. */
+html.theme-anim,
+html.theme-anim * {
+  transition: background-color 0.28s ease, color 0.28s ease,
+    border-color 0.28s ease, box-shadow 0.28s ease, fill 0.28s ease !important;
 }
 
 .app {
@@ -128,16 +137,10 @@ body {
 }
 
 .brand-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 26px;
   height: 26px;
   border-radius: 8px;
-  background: var(--text);
-  color: var(--surface);
-  font-size: 15px;
-  line-height: 1;
+  display: block;
 }
 
 .brand-name {
@@ -442,245 +445,47 @@ body {
   font-size: 11px;
 }
 
-.pane-title-tabs {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.mini-seg {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-2);
-}
-
-.mini-seg-btn {
-  height: 24px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-3);
-  font-family: var(--sans);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.mini-seg-btn.on {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
-}
-
-.editor {
-  flex: 1 1 auto;
-  border: 0;
-  padding: 26px 28px;
-  resize: none;
-  outline: none;
-  font-family: var(--mono);
-  font-size: 15px;
-  line-height: 1.9;
-  letter-spacing: 0.005em;
-  color: var(--text);
-  background: transparent;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-2) transparent;
-}
-
-.editor::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.editor::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.editor::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background: var(--line-2);
-  background-clip: content-box;
-}
-
-.editor::-webkit-scrollbar-thumb:hover {
-  background: var(--text-3);
-  background-clip: content-box;
-}
-
-.editor::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
-.editor::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-.editor::placeholder {
-  color: var(--text-3);
-}
-
-.rendered-editor {
+/* CodeMirror 6 Live-Preview editor host — fills the editor pane. */
+.cm-host {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  padding: 22px 24px 28px;
-  background: transparent;
-  color: var(--text);
-  cursor: text;
-  outline: none;
-  caret-color: var(--accent);
+  overflow: hidden;
+}
+
+.cm-host .cm-scroller {
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;
 }
 
-.rendered-editor::-webkit-scrollbar {
+.cm-host .cm-scroller::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-.rendered-editor::-webkit-scrollbar-track {
+.cm-host .cm-scroller::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.rendered-editor::-webkit-scrollbar-thumb {
+.cm-host .cm-scroller::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 999px;
   background: var(--line-2);
   background-clip: content-box;
 }
 
-.rendered-editor::-webkit-scrollbar-thumb:hover {
+.cm-host .cm-scroller::-webkit-scrollbar-thumb:hover {
   background: var(--text-3);
   background-clip: content-box;
 }
 
-.rendered-editor::-webkit-scrollbar-button {
+.cm-host .cm-scroller::-webkit-scrollbar-button {
   display: none;
   width: 0;
   height: 0;
 }
 
-.rendered-editor::-webkit-scrollbar-corner {
+.cm-host .cm-scroller::-webkit-scrollbar-corner {
   background: transparent;
-}
-
-.rendered-page {
-  padding: 14px 0 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.rendered-page:first-child {
-  padding-top: 0;
-}
-
-.rendered-page:last-child {
-  border-bottom: 0;
-}
-
-.rendered-page-head {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  margin-bottom: 14px;
-  padding: 0 9px;
-  border-radius: 7px;
-  background: var(--accent-weak);
-  color: var(--accent-text);
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.rendered-page-body > * {
-  margin: 0 0 var(--card-gap) 0;
-}
-
-.rendered-page-body > *:last-child {
-  margin-bottom: 0;
-}
-
-.rendered-block {
-  margin: 0 0 var(--card-gap) 0;
-  cursor: text;
-}
-
-.rendered-block:hover {
-  color: var(--text);
-}
-
-.rendered-block > * {
-  margin: 0;
-}
-
-.live-markdown-edit {
-  display: block;
-  width: 100%;
-  min-height: 1.9em;
-  margin: 0 0 var(--card-gap) 0;
-  padding: 0;
-  border: 0;
-  outline: none;
-  resize: none;
-  background: transparent;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 15px;
-  line-height: 1.9;
-  caret-color: var(--accent);
-}
-
-.live-markdown-edit:focus {
-  box-shadow: inset 3px 0 0 var(--accent);
-  padding-left: 10px;
-}
-
-.rendered-add {
-  display: block;
-  width: 100%;
-  margin: 8px 0 0;
-  padding: 11px 0;
-  border: 1px dashed var(--line-2);
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-3);
-  font-family: var(--sans);
-  font-size: 13px;
-  cursor: text;
-}
-
-.rendered-add:hover {
-  border-color: var(--accent);
-  color: var(--accent-text);
-  background: var(--accent-weak);
-}
-
-.rendered-page-body > *:last-child,
-.rendered-block:last-child,
-.live-markdown-edit:last-child {
-  margin-bottom: 0;
-}
-
-.rendered-page-body code {
-  font-family: var(--mono);
-  font-size: 0.86em;
-  background: rgba(127, 127, 127, 0.15);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-.rendered-page-body pre {
-  background: rgba(127, 127, 127, 0.12);
-  padding: 12px 14px;
-  border-radius: 8px;
-  overflow: auto;
 }
 
 .pane-preview {

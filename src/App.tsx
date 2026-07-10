@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toPng } from 'html-to-image'
 import { buildFontEmbedCSS } from './fontEmbed'
 import { parseBlocks, setImageWidth } from './markdown'
-import { putImage, registerImage, downscaleDataUrl } from './imageStore'
-import { paginate } from './paginate'
+import { registerImage } from './imageStore'
+import { paginate, type Page } from './paginate'
 import { PLATFORMS, THEMES, FONTS, buildConfig, DEFAULT_PROFILE } from './theme'
 import type { CardConfig, Profile } from './theme'
 import { Card } from './Card'
+import { MarkdownEditor } from './MarkdownEditor'
+import logoUrl from './logo.svg'
 import { ProfileModal } from './ProfileModal'
 import { AuthModal } from './AuthModal'
 import { DraftsPanel } from './DraftsPanel'
@@ -57,10 +59,6 @@ export default function App() {
   const [fontFamily, setFontFamily] = useState(FONTS[0].id)
   const [radius, setRadius] = useState(18)
   const [previewScale, setPreviewScale] = useState(1)
-  const [editorMode, setEditorMode] = useState<'source' | 'rendered'>('source')
-  const [activeRenderedBlock, setActiveRenderedBlock] = useState<number | 'new' | null>(null)
-  const [activeRenderedOccurrence, setActiveRenderedOccurrence] = useState(0)
-  const [renderedDraft, setRenderedDraft] = useState('')
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE)
 
   const [showProfile, setShowProfile] = useState(false)
@@ -77,7 +75,6 @@ export default function App() {
   const [savedAt, setSavedAt] = useState<number | null>(null)
 
   const cardRef = useRef<HTMLDivElement>(null)
-  const editorRef = useRef<HTMLTextAreaElement>(null)
 
   const platform = PLATFORMS.find((p) => p.id === platformId)!
   const theme = THEMES.find((t) => t.id === themeId)!
@@ -88,10 +85,28 @@ export default function App() {
   )
 
   const blocks = useMemo(() => parseBlocks(source), [source])
-  const pages = useMemo(
-    () => paginate(blocks, config, profile.headerFirstPageOnly),
-    [blocks, config, profile.headerFirstPageOnly],
-  )
+  const [pages, setPages] = useState<Page[]>([{ blocks: [] }])
+
+  // paginate() measures real DOM nodes. Running it inside render/useMemo mutates
+  // document.body and forces layout while React (and CodeMirror) are processing
+  // an input event, which corrupts the browser selection/Enter transaction.
+  // Measure after the current input + React commit have finished, then publish
+  // the result as state. Multiple source changes in one frame collapse naturally.
+  // paginate() measures real DOM nodes, so run it after React commits (not during
+  // render) via rAF. @uiw/react-codemirror handles the editor's own IME sync, so
+  // this no longer interferes with typing.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setPages(paginate(blocks, config, profile.headerFirstPageOnly))
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [blocks, config, profile.headerFirstPageOnly])
+
+  // Stable identity so the memoized MarkdownEditor never re-renders on typing.
+  const handleEditorChange = useCallback((next: string) => {
+    setSource(next)
+    setSavedAt(null)
+  }, [])
 
   const refreshDrafts = useCallback(() => {
     setDrafts(user ? listDrafts(user.id) : [])
@@ -223,51 +238,6 @@ export default function App() {
     setCtx({ x: e.clientX, y: e.clientY, index: active })
   }
 
-  // Insert text at the textarea caret (used by image paste).
-  function insertAtCaret(snippet: string) {
-    const ta = editorRef.current
-    if (!ta) {
-      setSource((s) => s + snippet)
-      return
-    }
-    const start = ta.selectionStart ?? source.length
-    const end = ta.selectionEnd ?? source.length
-    const next = source.slice(0, start) + snippet + source.slice(end)
-    setSource(next)
-    setSavedAt(null)
-    // Restore caret just after the inserted snippet on the next tick.
-    requestAnimationFrame(() => {
-      ta.focus()
-      const pos = start + snippet.length
-      ta.setSelectionRange(pos, pos)
-    })
-  }
-
-  // Paste an image straight from the clipboard (e.g. a screenshot tool) into
-  // the editor as a markdown image with an inline data URL.
-  function onEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith('image/'))
-    if (!item) return // let normal text paste proceed
-    e.preventDefault()
-    const file = item.getAsFile()
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = async () => {
-      const raw = reader.result as string
-      // Downscale before storing: a screenshot tool hands us the full-res image
-      // (often 2000px+ / several MB), but the card content box is ~304px wide
-      // (~900px at 3x export). Shrinking to <=1200px keeps it crisp while cutting
-      // the data URL by an order of magnitude — the real fix for slow export.
-      const url = await downscaleDataUrl(raw)
-      // Stash the (now small) data URL in the image store; keep only a short ref
-      // in the markdown so the editor/paginator never handle the huge string.
-      const ref = putImage(url)
-      const nl = source.length && !source.endsWith('\n') ? '\n' : ''
-      insertAtCaret(`${nl}![](${ref})\n`)
-    }
-    reader.readAsDataURL(file)
-  }
-
   // Drag an image's handle in the preview to resize it. During the drag we
   // mutate the wrapper's width directly (live feedback, no re-pagination); on
   // release we write the final width back into the markdown source.
@@ -295,6 +265,7 @@ export default function App() {
       window.removeEventListener('pointerup', onUp)
       wrap.classList.remove('resizing')
       if (href) {
+        // Editor is controlled by `source`; updating state syncs it into CM.
         setSource((s) => setImageWidth(s, href, Math.round(finalW)))
         setSavedAt(null)
       }
@@ -343,74 +314,6 @@ export default function App() {
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
-  }
-
-  // ---- Obsidian-like rendered Markdown editing ---------------------------
-  function replaceNthOccurrence(text: string, needle: string, replacement: string, occurrence: number) {
-    if (!needle) return text
-    let from = -1
-    let searchFrom = 0
-    for (let seen = 0; seen <= occurrence; seen++) {
-      from = text.indexOf(needle, searchFrom)
-      if (from < 0) return text
-      searchFrom = from + needle.length
-    }
-    return text.slice(0, from) + replacement + text.slice(from + needle.length)
-  }
-
-  // Grow a rendered-block editor to fit its content so it never leaves a bare
-  // focus bar with the text scrolled out of view.
-  function fitTextarea(el: HTMLTextAreaElement | null) {
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }
-
-  // Callback ref: size once when the editor mounts (block just became active).
-  const autoSizeTextarea = useCallback((el: HTMLTextAreaElement | null) => {
-    fitTextarea(el)
-  }, [])
-
-  function beginRenderedEdit(index: number, raw: string) {
-    setActiveRenderedBlock(index)
-    setActiveRenderedOccurrence(blocks.slice(0, index).filter((b) => b.raw === raw).length)
-    setRenderedDraft(raw)
-  }
-
-  function beginNewRenderedBlock() {
-    setActiveRenderedBlock('new')
-    setActiveRenderedOccurrence(0)
-    setRenderedDraft('')
-  }
-
-  function updateRenderedDraft(next: string) {
-    const prev = renderedDraft
-    setRenderedDraft(next)
-    setSavedAt(null)
-
-    if (activeRenderedBlock === 'new') {
-      setSource((s) => {
-        if (!prev) {
-          const sep = s.endsWith('\n') ? '' : '\n\n'
-          return s + sep + next
-        }
-        const from = s.lastIndexOf(prev)
-        return from >= 0 ? s.slice(0, from) + next + s.slice(from + prev.length) : s
-      })
-      return
-    }
-
-    if (typeof activeRenderedBlock === 'number') {
-      setSource((s) => replaceNthOccurrence(s, prev, next, activeRenderedOccurrence))
-    }
-  }
-
-  function endRenderedEdit() {
-    if (activeRenderedBlock === 'new' && !renderedDraft.trim()) {
-      setActiveRenderedBlock(null)
-      return
-    }
-    setActiveRenderedBlock(null)
   }
 
   // ---- Drafts -----------------------------------------------------------
@@ -464,8 +367,8 @@ export default function App() {
       {/* ---------- Top bar ---------- */}
       <header className="topbar">
         <div className="brand">
-          <span className="brand-logo">◑</span>
-          <span className="brand-name">卡片工坊</span>
+          <img className="brand-logo" src={logoUrl} alt="" width="26" height="26" />
+          <span className="brand-name">叮卡</span>
         </div>
 
         <div className="seg" role="tablist" aria-label="平台">
@@ -539,117 +442,16 @@ export default function App() {
       <div className="body">
         <section className="pane pane-editor">
           <div className="pane-head">
-            <div className="pane-title-tabs">
-              <span>Markdown</span>
-              <div className="mini-seg" role="tablist" aria-label="编辑模式">
-                <button
-                  className={editorMode === 'source' ? 'mini-seg-btn on' : 'mini-seg-btn'}
-                  onClick={() => {
-                    endRenderedEdit()
-                    setEditorMode('source')
-                  }}
-                >
-                  源码
-                </button>
-                <button
-                  className={editorMode === 'rendered' ? 'mini-seg-btn on' : 'mini-seg-btn'}
-                  onClick={() => setEditorMode('rendered')}
-                >
-                  渲染
-                </button>
-              </div>
-            </div>
+            <span>Markdown</span>
             <span className="pane-sub">
               {source.length} 字 · {pages.length} 页{savedAt ? ' · 已保存' : ''}
             </span>
           </div>
-          {editorMode === 'source' ? (
-            <textarea
-              ref={editorRef}
-              className="editor"
-              style={{ fontFamily: config.fontFamily }}
-              value={source}
-              onChange={(e) => {
-                setSource(e.target.value)
-                setSavedAt(null)
-              }}
-              onPaste={onEditorPaste}
-              spellCheck={false}
-              placeholder="在这里输入 Markdown…（单独一行 --- 可强制分页，可直接粘贴截图）"
-            />
-          ) : (
-            <div
-              className="rendered-editor card-content live-editor"
-              style={
-                {
-                  fontFamily: config.fontFamily,
-                  '--card-font': config.fontFamily,
-                  '--card-fs': `${config.fontSize}px`,
-                  '--card-lh': String(config.lineHeight),
-                  '--card-gap': `${config.blockGap}px`,
-                  '--card-accent': config.accent,
-                } as React.CSSProperties
-              }
-              onDoubleClick={beginNewRenderedBlock}
-            >
-              {pages.map((page, pageIndex) => (
-                <section key={pageIndex} className="rendered-page">
-                  <div className="rendered-page-head">第 {pageIndex + 1} 页</div>
-                  <div className="rendered-page-body">
-                    {page.blocks.map((block) => {
-                      const blockIndex = blocks.indexOf(block)
-                      return activeRenderedBlock === blockIndex ? (
-                        <textarea
-                          key={blockIndex}
-                          ref={autoSizeTextarea}
-                          className="live-markdown-edit"
-                          value={renderedDraft}
-                          autoFocus
-                          onChange={(e) => {
-                            fitTextarea(e.target)
-                            updateRenderedDraft(e.target.value)
-                          }}
-                          onBlur={endRenderedEdit}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Escape') {
-                              e.preventDefault()
-                              endRenderedEdit()
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div
-                          key={blockIndex}
-                          className="rendered-block"
-                          onClick={() => beginRenderedEdit(blockIndex, block.raw)}
-                          dangerouslySetInnerHTML={{ __html: block.html }}
-                        />
-                      )
-                    })}
-                    {activeRenderedBlock === 'new' && (
-                      <textarea
-                        ref={autoSizeTextarea}
-                        className="live-markdown-edit"
-                        value={renderedDraft}
-                        autoFocus
-                        placeholder="继续输入 Markdown…"
-                        onChange={(e) => {
-                          fitTextarea(e.target)
-                          updateRenderedDraft(e.target.value)
-                        }}
-                        onBlur={endRenderedEdit}
-                      />
-                    )}
-                  </div>
-                </section>
-              ))}
-              {activeRenderedBlock !== 'new' && (
-                <button className="rendered-add" onClick={beginNewRenderedBlock}>
-                  + 继续写
-                </button>
-              )}
-            </div>
-          )}
+          <MarkdownEditor
+            value={source}
+            onChange={handleEditorChange}
+            fontFamily={config.fontFamily}
+          />
         </section>
 
         <section className="pane pane-preview" style={cssVars}>
