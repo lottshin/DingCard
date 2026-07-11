@@ -21,7 +21,7 @@ export function getElementsInMarquee(elements: FreeformElement[], rect: Rect): s
 }
 
 export function moveElementsWithinSlide(
-  slide: FreeformSlide,
+  slide: Pick<FreeformSlide, 'width' | 'height'>,
   elements: FreeformElement[],
   selectedIds: string[],
   dx: number,
@@ -91,7 +91,7 @@ function getGroupBounds(elements: FreeformElement[]): Bounds | undefined {
 
 function clampDelta(delta: number, min: number, max: number): number {
   if (min > max) {
-    return 0
+    return min
   }
 
   return Math.min(Math.max(delta, min), max)
