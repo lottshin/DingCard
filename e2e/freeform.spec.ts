@@ -240,6 +240,37 @@ test('multi-selects elements and aligns them left', async ({ page }) => {
   ])
 })
 
+test('drags selected elements together', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+
+  const insertTools = page.getByLabel('插入工具')
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 100, 100, 100, 100)
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 320, 120, 100, 100)
+
+  await page.locator('.freeform-element').first().click({ modifiers: ['Shift'] })
+  await expect(page.locator('.freeform-element.selected')).toHaveCount(2)
+
+  const firstElementBox = await page.locator('.freeform-element').first().boundingBox()
+  expect(firstElementBox).toBeTruthy()
+  const start = {
+    x: firstElementBox!.x + firstElementBox!.width / 2,
+    y: firstElementBox!.y + firstElementBox!.height / 2,
+  }
+
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + 50, start.y + 20)
+  await page.mouse.up()
+
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 200, y: 140 },
+    { x: 420, y: 160 },
+  ])
+})
+
 test('marquee selects elements by dragging empty canvas', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()

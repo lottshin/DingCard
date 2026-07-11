@@ -18,7 +18,7 @@ import {
   validatePageSize,
 } from './document'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
-import { getElementsInMarquee, type Rect } from './selection'
+import { getElementsInMarquee, moveElementsWithinSlide, type Rect } from './selection'
 import type {
   FreeformAction,
   FreeformDocument,
@@ -481,27 +481,37 @@ export function FreeformWorkspace() {
     }
     event.preventDefault()
     event.stopPropagation()
-    setSelection([element.id])
+    const currentSelection = selectedElementIds.current
+    const draggingIds = currentSelection.includes(element.id) ? currentSelection : [element.id]
+    if (!currentSelection.includes(element.id)) {
+      setSelection([element.id])
+    }
 
     const startDocument = doc
+    const startElements = activeSlide.elements
     const startX = event.clientX
     const startY = event.clientY
-    const originX = element.x
-    const originY = element.y
-    const maxX = Math.max(0, activeSlide.width - element.width)
-    const maxY = Math.max(0, activeSlide.height - element.height)
 
     const onMove = (moveEvent: PointerEvent) => {
-      const dx = (moveEvent.clientX - startX) / previewScale
-      const dy = (moveEvent.clientY - startY) / previewScale
-      replaceCurrent({
-        type: 'element/update',
-        slideId: activeSlide.id,
-        elementId: element.id,
-        patch: {
-          x: Math.round(clamp(originX + dx, 0, maxX)),
-          y: Math.round(clamp(originY + dy, 0, maxY)),
-        },
+      const dx = Math.round((moveEvent.clientX - startX) / previewScale)
+      const dy = Math.round((moveEvent.clientY - startY) / previewScale)
+      const patches = moveElementsWithinSlide(activeSlide, startElements, draggingIds, dx, dy)
+      setHistory((current) => {
+        const next = patches.reduce(
+          (docSoFar, { elementId, patch }) =>
+            freeformReducer(docSoFar, {
+              type: 'element/update',
+              slideId: activeSlide.id,
+              elementId,
+              patch,
+            }),
+          current.current,
+        )
+
+        return {
+          ...current,
+          current: next,
+        }
       })
     }
 
