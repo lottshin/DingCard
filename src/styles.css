@@ -471,6 +471,15 @@ html.theme-anim * {
   pointer-events: none;
 }
 
+.freeform-marquee {
+  position: absolute;
+  z-index: 20;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent-weak);
+  pointer-events: none;
+}
+
 .element-resize {
   position: absolute;
   right: -8px;

@@ -18,6 +18,7 @@ import {
   validatePageSize,
 } from './document'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
+import { getElementsInMarquee, type Rect } from './selection'
 import type {
   FreeformAction,
   FreeformDocument,
@@ -91,6 +92,16 @@ function cloneElementForPaste(element: FreeformElement, slide: FreeformSlide): F
 
 type Alignment = 'left' | 'h-center' | 'right' | 'top' | 'v-center' | 'bottom'
 type Distribution = 'horizontal' | 'vertical'
+type MarqueeState = { startX: number; startY: number; currentX: number; currentY: number }
+
+function toRect(marquee: MarqueeState): Rect {
+  return {
+    x: marquee.startX,
+    y: marquee.startY,
+    width: marquee.currentX - marquee.startX,
+    height: marquee.currentY - marquee.startY,
+  }
+}
 
 function isShapeElement(element: FreeformElement | undefined): element is FreeformShapeElement {
   return element?.type === 'shape'
@@ -128,6 +139,7 @@ export function FreeformWorkspace() {
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [appTheme, toggleAppTheme] = useAppTheme()
   const [user, setUser] = useState<User | null>(() => currentUser())
 
@@ -144,6 +156,7 @@ export function FreeformWorkspace() {
 
   const canUndo = history.past.length > 0
   const canRedo = history.future.length > 0
+  const marqueeRect = marquee ? toRect(marquee) : null
 
   const refreshDrafts = useCallback(() => {
     setDrafts(user ? listDrafts(user.id) : [])
@@ -502,6 +515,64 @@ export function FreeformWorkspace() {
     window.addEventListener('pointerup', onUp)
   }
 
+  function artboardPointFromClient(clientX: number, clientY: number) {
+    const artboard = artboardRef.current
+    if (!artboard) return null
+    const bounds = artboard.getBoundingClientRect()
+    return {
+      x: Math.round(clamp((clientX - bounds.left) / previewScale, 0, activeSlide.width)),
+      y: Math.round(clamp((clientY - bounds.top) / previewScale, 0, activeSlide.height)),
+    }
+  }
+
+  function onArtboardPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget) return
+    const start = artboardPointFromClient(event.clientX, event.clientY)
+    if (!start) return
+
+    event.preventDefault()
+    setSelection([])
+    setMarquee({
+      startX: start.x,
+      startY: start.y,
+      currentX: start.x,
+      currentY: start.y,
+    })
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const current = artboardPointFromClient(moveEvent.clientX, moveEvent.clientY)
+      if (!current) return
+      setMarquee((value) =>
+        value ? { ...value, currentX: current.x, currentY: current.y } : value,
+      )
+    }
+
+    const onUp = (upEvent: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+
+      const current = artboardPointFromClient(upEvent.clientX, upEvent.clientY) ?? start
+      const finalMarquee = {
+        startX: start.x,
+        startY: start.y,
+        currentX: current.x,
+        currentY: current.y,
+      }
+      const rect = toRect(finalMarquee)
+      setMarquee(null)
+
+      if (Math.hypot(rect.width, rect.height) < 4) {
+        setSelection([])
+        return
+      }
+
+      setSelection(getElementsInMarquee(activeSlide.elements, rect))
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   function onResizePointerDown(event: React.PointerEvent, element: FreeformElement) {
     event.preventDefault()
     event.stopPropagation()
@@ -849,7 +920,7 @@ export function FreeformWorkspace() {
                 ref={artboardRef}
                 className="freeform-artboard"
                 data-testid="freeform-canvas"
-                onPointerDown={() => setSelection([])}
+                onPointerDown={onArtboardPointerDown}
                 style={{
                   width: activeSlide.width,
                   height: activeSlide.height,
@@ -898,6 +969,17 @@ export function FreeformWorkspace() {
                     )}
                   </div>
                 ))}
+                {marqueeRect && (
+                  <div
+                    className="freeform-ui-only freeform-marquee"
+                    style={{
+                      left: Math.min(marqueeRect.x, marqueeRect.x + marqueeRect.width),
+                      top: Math.min(marqueeRect.y, marqueeRect.y + marqueeRect.height),
+                      width: Math.abs(marqueeRect.width),
+                      height: Math.abs(marqueeRect.height),
+                    }}
+                  />
+                )}
               </div>
             </div>
           </div>
