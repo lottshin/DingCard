@@ -78,6 +78,15 @@ function hasMixedSlideSizes(slides: FreeformSlide[]): boolean {
   return slides.some((slide) => slide.width !== first.width || slide.height !== first.height)
 }
 
+function cloneElementForPaste(element: FreeformElement, slide: FreeformSlide): FreeformElement {
+  return {
+    ...element,
+    id: crypto.randomUUID(),
+    x: Math.min(Math.max(0, element.x + 16), Math.max(0, slide.width - element.width)),
+    y: Math.min(Math.max(0, element.y + 16), Math.max(0, slide.height - element.height)),
+  }
+}
+
 function isShapeElement(element: FreeformElement | undefined): element is FreeformShapeElement {
   return element?.type === 'shape'
 }
@@ -98,6 +107,7 @@ export function FreeformWorkspace() {
   const activeSlide = activeSlideOf(doc)
   const selectedElementIds = useRef<string[]>([])
   const [selection, setSelection] = useState<string[]>([])
+  const [clipboard, setClipboard] = useState<FreeformElement[]>([])
   const [previewScale, setPreviewScale] = useState(0.5)
   const [widthDraft, setWidthDraft] = useState(String(activeSlide.width))
   const [heightDraft, setHeightDraft] = useState(String(activeSlide.height))
@@ -254,6 +264,31 @@ export function FreeformWorkspace() {
     setSelection([])
   }
 
+  function copySelection() {
+    if (selection.length === 0) return
+    const selected = activeSlide.elements.filter((element) => selection.includes(element.id))
+    setClipboard(selected.map((element) => ({ ...element })))
+  }
+
+  function pasteClipboard() {
+    if (clipboard.length === 0) return
+    const pasted = clipboard.map((element) => cloneElementForPaste(element, activeSlide))
+    setHistory((current) => {
+      const next = pasted.reduce(
+        (docSoFar, element) =>
+          freeformReducer(docSoFar, {
+            type: 'element/add',
+            slideId: activeSlide.id,
+            element,
+          }),
+        current.current,
+      )
+      return pushHistory(current, next)
+    })
+    setSelection(pasted.map((element) => element.id))
+    setSavedAt(null)
+  }
+
   function reorderSelection(direction: 'forward' | 'backward' | 'front' | 'back') {
     if (selection.length === 0) return
     applyAction({
@@ -301,6 +336,16 @@ export function FreeformWorkspace() {
       if ((event.ctrlKey || event.metaKey) && key === 'y') {
         event.preventDefault()
         redoDocument()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && key === 'c') {
+        event.preventDefault()
+        copySelection()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && key === 'v') {
+        event.preventDefault()
+        pasteClipboard()
         return
       }
       if (event.key === 'Delete' || event.key === 'Backspace') {

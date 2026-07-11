@@ -10,6 +10,18 @@ function readPngSize(buffer: Buffer) {
   }
 }
 
+async function freeformElementPositions(page: import('@playwright/test').Page) {
+  return page.locator('.freeform-element').evaluateAll((elements) =>
+    elements.map((element) => {
+      const el = element as HTMLElement
+      return {
+        x: Number.parseFloat(el.style.left),
+        y: Number.parseFloat(el.style.top),
+      }
+    }),
+  )
+}
+
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()
@@ -119,4 +131,24 @@ test('exports mixed-size slides as a zip after warning', async ({ page }) => {
   const second = await zip.file('slide-02.png')!.async('uint8array')
   expect(readPngSize(Buffer.from(first))).toEqual({ width: 1080, height: 1920 })
   expect(readPngSize(Buffer.from(second))).toEqual({ width: 1920, height: 1080 })
+})
+
+test('copies, pastes, and deletes the selected element', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByRole('button', { name: '文本框' }).click()
+
+  await expect(page.locator('.freeform-element')).toHaveCount(1)
+  const before = await freeformElementPositions(page)
+
+  await page.keyboard.press('ControlOrMeta+C')
+  await page.keyboard.press('ControlOrMeta+V')
+  await expect(page.locator('.freeform-element')).toHaveCount(2)
+
+  const after = await freeformElementPositions(page)
+  expect(after[1].x - before[0].x).toBe(16)
+  expect(after[1].y - before[0].y).toBe(16)
+
+  await page.keyboard.press('Delete')
+  await expect(page.locator('.freeform-element')).toHaveCount(1)
 })
