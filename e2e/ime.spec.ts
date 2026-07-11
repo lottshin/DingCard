@@ -51,6 +51,11 @@ test.describe('IME input in Markdown editor', () => {
     await page.locator('.cm-content').click()
   })
 
+  test('Markdown workspace is the default workspace', async ({ page }) => {
+    await expect(page.getByText('Markdown')).toBeVisible()
+    await expect(page.locator('.cm-content')).toBeVisible()
+  })
+
   test('typing Chinese on a lazy list-continuation line, then Enter, keeps the character', async ({
     page,
   }) => {
