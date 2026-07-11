@@ -89,6 +89,9 @@ function cloneElementForPaste(element: FreeformElement, slide: FreeformSlide): F
   }
 }
 
+type Alignment = 'left' | 'h-center' | 'right' | 'top' | 'v-center' | 'bottom'
+type Distribution = 'horizontal' | 'vertical'
+
 function isShapeElement(element: FreeformElement | undefined): element is FreeformShapeElement {
   return element?.type === 'shape'
 }
@@ -311,6 +314,84 @@ export function FreeformWorkspace() {
     })
   }
 
+  function alignSelection(alignment: Alignment) {
+    const selectedElements = activeSlide.elements.filter((element) => selection.includes(element.id))
+    if (selectedElements.length < 2) return
+
+    const left = Math.min(...selectedElements.map((element) => element.x))
+    const right = Math.max(...selectedElements.map((element) => element.x + element.width))
+    const top = Math.min(...selectedElements.map((element) => element.y))
+    const bottom = Math.max(...selectedElements.map((element) => element.y + element.height))
+    const horizontalCenter = Math.round((left + right) / 2)
+    const verticalCenter = Math.round((top + bottom) / 2)
+
+    setHistory((current) => {
+      const next = selectedElements.reduce((docSoFar, element) => {
+        const patch: Partial<FreeformElement> =
+          alignment === 'left'
+            ? { x: left }
+            : alignment === 'h-center'
+              ? { x: horizontalCenter - Math.round(element.width / 2) }
+              : alignment === 'right'
+                ? { x: right - element.width }
+                : alignment === 'top'
+                  ? { y: top }
+                  : alignment === 'v-center'
+                    ? { y: verticalCenter - Math.round(element.height / 2) }
+                    : { y: bottom - element.height }
+
+        return freeformReducer(docSoFar, {
+          type: 'element/update',
+          slideId: activeSlide.id,
+          elementId: element.id,
+          patch,
+        })
+      }, current.current)
+
+      return pushHistory(current, next)
+    })
+    setSavedAt(null)
+  }
+
+  function distributeSelection(distribution: Distribution) {
+    const selectedElements = activeSlide.elements.filter((element) => selection.includes(element.id))
+    if (selectedElements.length < 3) return
+
+    const sorted = [...selectedElements].sort((a, b) =>
+      distribution === 'horizontal' ? a.x - b.x : a.y - b.y,
+    )
+    const first = sorted[0]
+    const last = sorted[sorted.length - 1]
+
+    const start = distribution === 'horizontal' ? first.x : first.y
+    const end =
+      distribution === 'horizontal' ? last.x + last.width : last.y + last.height
+    const totalSize = sorted.reduce(
+      (sum, element) => sum + (distribution === 'horizontal' ? element.width : element.height),
+      0,
+    )
+    const gap = (end - start - totalSize) / (sorted.length - 1)
+
+    setHistory((current) => {
+      let cursor = start
+      const next = sorted.reduce((docSoFar, element) => {
+        const patch: Partial<FreeformElement> =
+          distribution === 'horizontal' ? { x: Math.round(cursor) } : { y: Math.round(cursor) }
+        cursor += (distribution === 'horizontal' ? element.width : element.height) + gap
+
+        return freeformReducer(docSoFar, {
+          type: 'element/update',
+          slideId: activeSlide.id,
+          elementId: element.id,
+          patch,
+        })
+      }, current.current)
+
+      return pushHistory(current, next)
+    })
+    setSavedAt(null)
+  }
+
   function applySlideSize(width: number, height: number) {
     const validation = validatePageSize(width, height)
     if (!validation.ok) {
@@ -373,6 +454,14 @@ export function FreeformWorkspace() {
   })
 
   function onElementPointerDown(event: React.PointerEvent, element: FreeformElement) {
+    if (event.shiftKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      setSelection((ids) =>
+        ids.includes(element.id) ? ids.filter((id) => id !== element.id) : [...ids, element.id],
+      )
+      return
+    }
     if (isTypingTarget(event.target)) {
       setSelection([element.id])
       return
@@ -1101,6 +1190,38 @@ export function FreeformWorkspace() {
                         }
                       />
                     </label>
+                  </div>
+                </div>
+              )}
+
+              {selection.length > 1 && (
+                <div className="inspector-section">
+                  <div className="field-label">对齐</div>
+                  <div className="inspector-actions">
+                    <button className="ghost" type="button" onClick={() => alignSelection('left')}>
+                      左对齐
+                    </button>
+                    <button className="ghost" type="button" onClick={() => alignSelection('h-center')}>
+                      水平居中
+                    </button>
+                    <button className="ghost" type="button" onClick={() => alignSelection('right')}>
+                      右对齐
+                    </button>
+                    <button className="ghost" type="button" onClick={() => alignSelection('top')}>
+                      顶对齐
+                    </button>
+                    <button className="ghost" type="button" onClick={() => alignSelection('v-center')}>
+                      垂直居中
+                    </button>
+                    <button className="ghost" type="button" onClick={() => alignSelection('bottom')}>
+                      底对齐
+                    </button>
+                    <button className="ghost" type="button" onClick={() => distributeSelection('horizontal')}>
+                      水平均分
+                    </button>
+                    <button className="ghost" type="button" onClick={() => distributeSelection('vertical')}>
+                      垂直均分
+                    </button>
                   </div>
                 </div>
               )}

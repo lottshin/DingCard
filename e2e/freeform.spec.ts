@@ -33,6 +33,30 @@ async function freeformElementKinds(page: import('@playwright/test').Page) {
   )
 }
 
+async function setSelectedElementPosition(
+  page: import('@playwright/test').Page,
+  x: number,
+  y: number,
+) {
+  const positionInputs = page.locator('.freeform-inspector .field-grid').first().locator('input')
+  await positionInputs.nth(0).fill(String(x))
+  await positionInputs.nth(1).fill(String(y))
+}
+
+async function setSelectedElementBox(
+  page: import('@playwright/test').Page,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const positionInputs = page.locator('.freeform-inspector .field-grid').first().locator('input')
+  await positionInputs.nth(0).fill(String(x))
+  await positionInputs.nth(1).fill(String(y))
+  await positionInputs.nth(2).fill(String(width))
+  await positionInputs.nth(3).fill(String(height))
+}
+
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()
@@ -191,4 +215,50 @@ test('inserts line and arrow elements', async ({ page }) => {
 
   await insertTools.getByRole('button', { name: '箭头' }).click()
   await expect(page.getByTestId('freeform-arrow')).toBeVisible()
+})
+
+test('multi-selects elements and aligns them left', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+
+  await page.getByRole('button', { name: '文本框' }).click()
+  await setSelectedElementPosition(page, 100, 120)
+  await page.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementPosition(page, 400, 240)
+
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 100, y: 120 },
+    { x: 400, y: 240 },
+  ])
+
+  await page.locator('.freeform-element').first().click({ modifiers: ['Shift'] })
+  await page.getByRole('button', { name: '左对齐' }).click()
+
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 100, y: 120 },
+    { x: 100, y: 240 },
+  ])
+})
+
+test('distributes selected elements horizontally', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+
+  const insertTools = page.getByLabel('插入工具')
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 100, 160, 100, 100)
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 400, 160, 100, 100)
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 800, 160, 100, 100)
+
+  await page.locator('.freeform-element').nth(0).click({ modifiers: ['Shift'] })
+  await page.locator('.freeform-element').nth(1).click({ modifiers: ['Shift'] })
+  await page.getByRole('button', { name: '水平均分' }).click()
+
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 100, y: 160 },
+    { x: 450, y: 160 },
+    { x: 800, y: 160 },
+  ])
 })
