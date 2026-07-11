@@ -72,6 +72,12 @@ function slidePngName(index: number): string {
   return `slide-${String(index + 1).padStart(2, '0')}.png`
 }
 
+function hasMixedSlideSizes(slides: FreeformSlide[]): boolean {
+  const first = slides[0]
+  if (!first) return false
+  return slides.some((slide) => slide.width !== first.width || slide.height !== first.height)
+}
+
 function isShapeElement(element: FreeformElement | undefined): element is FreeformShapeElement {
   return element?.type === 'shape'
 }
@@ -97,6 +103,7 @@ export function FreeformWorkspace() {
   const [heightDraft, setHeightDraft] = useState(String(activeSlide.height))
   const [sizeError, setSizeError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
   const [drafts, setDrafts] = useState<Draft[]>([])
@@ -431,12 +438,27 @@ export function FreeformWorkspace() {
       }
       if (urls.length > 0) {
         const stamp = new Date().toISOString().slice(0, 10)
-        await downloadZip(urls, `freeform-${stamp}.zip`)
+        await downloadZip(urls, `freeform-slides-${stamp}.zip`, {
+          fileNameForIndex: (index) => slidePngName(index),
+        })
       }
     } finally {
       replaceCurrent({ type: 'slide/select', slideId: originalSlideId })
       setExporting(false)
     }
+  }
+
+  function requestExportAllSlides() {
+    if (hasMixedSlideSizes(doc.slides)) {
+      setShowMixedSizeWarning(true)
+      return
+    }
+    void exportAllSlides()
+  }
+
+  function continueMixedSizeExport() {
+    setShowMixedSizeWarning(false)
+    void exportAllSlides()
   }
 
   function handleSaveDraft() {
@@ -541,7 +563,7 @@ export function FreeformWorkspace() {
         >
           草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
         </button>
-        <button className="bar-btn" type="button" onClick={exportAllSlides} disabled={exporting}>
+        <button className="bar-btn" type="button" onClick={requestExportAllSlides} disabled={exporting}>
           打包导出
         </button>
         <button className="bar-primary" type="button" onClick={exportCurrentSlide} disabled={exporting}>
@@ -1023,6 +1045,27 @@ export function FreeformWorkspace() {
           onDelete={removeDraft}
           onClose={() => setShowDrafts(false)}
         />
+      )}
+
+      {showMixedSizeWarning && (
+        <div className="sheet-backdrop" onClick={() => setShowMixedSizeWarning(false)}>
+          <div className="sheet freeform-warning-sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-body">
+              <h2>包含不同尺寸页面</h2>
+              <p className="form-note">
+                当前作品包含不同尺寸页面。ZIP 中的图片会保留各自页面尺寸，不会统一拉伸或裁剪。
+              </p>
+              <div className="sheet-foot">
+                <button type="button" className="ghost" onClick={() => setShowMixedSizeWarning(false)}>
+                  取消
+                </button>
+                <button type="button" className="accent" onClick={continueMixedSizeExport}>
+                  继续导出
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

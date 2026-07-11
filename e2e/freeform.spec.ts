@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
+import JSZip from 'jszip'
 
 function readPngSize(buffer: Buffer) {
   expect(buffer.subarray(1, 4).toString('ascii')).toBe('PNG')
@@ -92,4 +93,30 @@ test('saves and restores a freeform draft', async ({ page }) => {
   await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Page 1' }).click()
   await expect(page.getByLabel('文本内容')).toHaveValue('保存恢复测试')
+})
+
+test('exports mixed-size slides as a zip after warning', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByRole('button', { name: '9:16' }).click()
+  await page.getByRole('button', { name: '新增页面' }).click()
+  await page.getByRole('button', { name: '16:9' }).click()
+
+  await page.getByRole('button', { name: '打包导出' }).click()
+  await expect(page.getByRole('heading', { name: '包含不同尺寸页面' })).toBeVisible()
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '继续导出' }).click()
+  const download = await downloadPromise
+
+  expect(download.suggestedFilename()).toMatch(/^freeform-slides-\d{4}-\d{2}-\d{2}\.zip$/)
+  const path = await download.path()
+  expect(path).toBeTruthy()
+  const zip = await JSZip.loadAsync(await readFile(path!))
+  const names = Object.keys(zip.files).filter((name) => !zip.files[name].dir).sort()
+  expect(names).toEqual(['slide-01.png', 'slide-02.png'])
+
+  const first = await zip.file('slide-01.png')!.async('uint8array')
+  const second = await zip.file('slide-02.png')!.async('uint8array')
+  expect(readPngSize(Buffer.from(first))).toEqual({ width: 1080, height: 1920 })
+  expect(readPngSize(Buffer.from(second))).toEqual({ width: 1920, height: 1080 })
 })
