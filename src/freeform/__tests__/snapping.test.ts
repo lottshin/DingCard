@@ -91,7 +91,7 @@ it('snaps a multi-selection group by its bounding box', () => {
 
 it('does not use selected elements as external snap references', () => {
   const slide = { width: 1000, height: 800 }
-  const elements = [rect('a', 100, 100), rect('b', 300, 100), rect('c', 700, 100)]
+  const elements = [rect('a', 100, 100), rect('b', 300, 100), rect('c', 700, 700)]
 
   expect(snapDrag(slide, elements, ['a', 'b'], 196, 0)).toEqual({
     dx: 196,
@@ -129,7 +129,10 @@ it('keeps snapped movement inside slide bounds', () => {
   expect(snapDrag(slide, elements, ['a'], 49, 0)).toEqual({
     dx: 50,
     dy: 0,
-    lines: [{ axis: 'x', position: 500, source: 'page' }],
+    lines: [
+      { axis: 'x', position: 500, source: 'page' },
+      { axis: 'y', position: 200, source: 'page' },
+    ],
   })
 })
 

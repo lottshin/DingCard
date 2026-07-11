@@ -116,10 +116,6 @@ function snapAxis(
   delta: number,
   threshold: number,
 ): { delta: number; line?: SnapLine } {
-  if (delta === 0) {
-    return { delta }
-  }
-
   const anchors = getAxisAnchors(bounds, axis).map((anchor) => ({
     ...anchor,
     position: anchor.position + delta,
