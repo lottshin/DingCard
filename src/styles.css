@@ -110,6 +110,530 @@ html.theme-anim * {
   height: 100vh;
 }
 
+.app-shell {
+  height: 100vh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.app-shell > .app {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.workspace-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-panel[hidden] {
+  display: none;
+}
+
+.workspace-panel > .app,
+.workspace-panel > .freeform-workspace {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.workspace-switch {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-self: center;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  z-index: 20;
+}
+
+.workspace-tab {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workspace-tab:hover {
+  color: var(--text);
+}
+
+.workspace-tab.on {
+  background: var(--btn);
+  color: var(--on-btn);
+}
+
+/* =====================================================================
+   Freeform workspace
+   ===================================================================== */
+.freeform-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.freeform-topbar {
+  flex: 0 0 auto;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bar-bg);
+  -webkit-backdrop-filter: var(--bar-blur);
+  backdrop-filter: var(--bar-blur);
+}
+
+.freeform-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 128px;
+}
+
+.freeform-title strong {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.freeform-title span {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.freeform-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.freeform-spacer {
+  flex: 1 1 auto;
+}
+
+.freeform-file {
+  display: none;
+}
+
+.freeform-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr) 286px;
+  gap: 14px;
+  overflow: auto;
+  padding: 14px;
+  background: var(--bg-sink);
+}
+
+.freeform-rail,
+.freeform-stage-pane,
+.freeform-inspector {
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.freeform-rail,
+.freeform-inspector {
+  display: flex;
+  flex-direction: column;
+}
+
+.freeform-panel-head,
+.freeform-stage-head {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mini-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mini-btn:hover:not(:disabled) {
+  border-color: var(--line-2);
+  background: var(--surface-2);
+}
+
+.mini-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mini-btn.danger {
+  color: #e5484d;
+}
+
+.freeform-slide-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.freeform-thumb {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.freeform-thumb:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.freeform-thumb.on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--text);
+}
+
+.freeform-thumb-art {
+  width: 100%;
+  min-height: 62px;
+  max-height: 108px;
+  display: block;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: var(--shadow-sm);
+}
+
+.freeform-thumb-title {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.freeform-rail-actions {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.freeform-stage-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.freeform-stage-head {
+  background: var(--surface);
+}
+
+.freeform-size-bar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.size-preset {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.size-preset:hover,
+.size-preset.on {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-weak);
+}
+
+.size-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.size-input input {
+  width: 72px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 0 7px;
+}
+
+.freeform-error {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(229, 72, 77, 0.18);
+  background: rgba(229, 72, 77, 0.08);
+  color: #e5484d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.freeform-stage-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 34px;
+  background:
+    radial-gradient(circle, rgba(161, 161, 170, 0.22) 1px, transparent 1px) 0 0 / 18px 18px,
+    var(--bg-sink);
+}
+
+.freeform-stage-box {
+  flex: 0 0 auto;
+}
+
+.freeform-artboard {
+  position: relative;
+  overflow: hidden;
+  transform-origin: top left;
+  box-shadow: var(--shadow-card);
+}
+
+.freeform-element {
+  position: absolute;
+  touch-action: none;
+  user-select: none;
+}
+
+.freeform-element.selected {
+  z-index: 5;
+}
+
+.element-outline {
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.element-resize {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--shadow-sm);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.element-drag {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  width: 28px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: var(--shadow-sm);
+  cursor: move;
+  transform: translateX(-50%);
+  touch-action: none;
+}
+
+.freeform-textbox {
+  width: 100%;
+  height: 100%;
+  display: block;
+  resize: none;
+  border: 0;
+  outline: none;
+  overflow: hidden;
+  background: transparent;
+  line-height: 1.18;
+  padding: 8px;
+}
+
+.freeform-image,
+.freeform-shape {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.freeform-shape {
+  border-style: solid;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.shape-rect {
+  border-radius: 16px;
+}
+
+.shape-ellipse {
+  border-radius: 999px;
+}
+
+.shape-triangle {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.freeform-inspector {
+  overflow-y: auto;
+}
+
+.inspector-section {
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.inspector-empty {
+  padding: 18px 14px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.color-field {
+  width: 100%;
+  height: 38px;
+  padding: 3px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.field-grid.with-gap {
+  margin-top: 12px;
+}
+
+.field-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.field-grid input {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.freeform-inspector-text {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px;
+  outline: none;
+}
+
+.freeform-inspector-text:focus,
+.field-grid input:focus,
+.size-input input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.seg.stretch {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.seg.stretch .seg-btn {
+  flex: 1 1 0;
+}
+
+.inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 /* =====================================================================
    Top bar — glass, hairline underline, generous breathing room
    ===================================================================== */

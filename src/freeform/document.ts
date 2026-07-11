@@ -1,5 +1,13 @@
 import { PAGE_SIZE_MAX, PAGE_SIZE_MIN, pageSizePresets } from './constants'
-import type { FreeformAction, FreeformDocument, FreeformElement, FreeformSlide } from './types'
+import type {
+  FreeformAction,
+  FreeformDocument,
+  FreeformElement,
+  FreeformImageElement,
+  FreeformShapeElement,
+  FreeformSlide,
+  FreeformTextElement,
+} from './types'
 
 export { pageSizePresets }
 
@@ -49,6 +57,62 @@ export function createFreeformDocument(): FreeformDocument {
   }
 }
 
+function centerBox(slide: FreeformSlide, width: number, height: number) {
+  return {
+    x: Math.round((slide.width - width) / 2),
+    y: Math.round((slide.height - height) / 2),
+    width,
+    height,
+  }
+}
+
+export function createTextElement(slide: FreeformSlide): FreeformTextElement {
+  return {
+    id: crypto.randomUUID(),
+    type: 'text',
+    ...centerBox(slide, Math.min(520, Math.round(slide.width * 0.55)), 150),
+    rotation: 0,
+    text: '双击编辑文本',
+    fontSize: 48,
+    fontFamily: 'PingFang SC, Microsoft YaHei, system-ui, sans-serif',
+    color: '#18181b',
+    align: 'left',
+    fontWeight: 'bold',
+  }
+}
+
+export function createImageElement(
+  slide: FreeformSlide,
+  src: string,
+  alt = '图片',
+): FreeformImageElement {
+  return {
+    id: crypto.randomUUID(),
+    type: 'image',
+    ...centerBox(slide, Math.min(560, Math.round(slide.width * 0.58)), 360),
+    rotation: 0,
+    src,
+    alt,
+    fit: 'cover',
+  }
+}
+
+export function createShapeElement(
+  slide: FreeformSlide,
+  shape: FreeformShapeElement['shape'],
+): FreeformShapeElement {
+  return {
+    id: crypto.randomUUID(),
+    type: 'shape',
+    ...centerBox(slide, 360, 240),
+    rotation: 0,
+    shape,
+    fill: { type: 'solid', color: '#fed7aa' },
+    stroke: '#c2410c',
+    strokeWidth: 0,
+  }
+}
+
 function withSlide(
   document: FreeformDocument,
   slideId: string,
@@ -65,7 +129,8 @@ function cloneSlide(slide: FreeformSlide): FreeformSlide {
     ...slide,
     id: crypto.randomUUID(),
     name: `${slide.name} copy`,
-    elements: [...slide.elements],
+    background: { ...slide.background },
+    elements: slide.elements.map((element) => ({ ...element })),
   }
 }
 
@@ -106,7 +171,10 @@ export function freeformReducer(document: FreeformDocument, action: FreeformActi
     case 'slide/add-after-active': {
       const activeIndex = document.slides.findIndex((slide) => slide.id === document.activeSlideId)
       const activeSlide = document.slides[activeIndex] ?? document.slides[0]
-      const slide = createSlide({ inheritFrom: activeSlide })
+      const slide = {
+        ...createSlide({ inheritFrom: activeSlide }),
+        name: `Page ${document.slides.length + 1}`,
+      }
       const insertAt = activeIndex >= 0 ? activeIndex + 1 : document.slides.length
       return {
         ...document,
@@ -149,6 +217,11 @@ export function freeformReducer(document: FreeformDocument, action: FreeformActi
       return document.slides.some((slide) => slide.id === action.slideId)
         ? { ...document, activeSlideId: action.slideId }
         : document
+    case 'slide/update':
+      return withSlide(document, action.slideId, (slide) => ({
+        ...slide,
+        ...action.patch,
+      }))
     case 'slide/resize':
       if (!validatePageSize(action.width, action.height).ok) return document
       return withSlide(document, action.slideId, (slide) => ({

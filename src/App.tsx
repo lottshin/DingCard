@@ -1,9 +1,5 @@
-import { MarkdownWorkspace } from './workspaces/markdown/MarkdownWorkspace'
+import { AppShell } from './workspaces/AppShell'
 
 export default function App() {
-  return (
-    <div className="app-shell" data-workspace="markdown-card">
-      <MarkdownWorkspace />
-    </div>
-  )
+  return <AppShell />
 }

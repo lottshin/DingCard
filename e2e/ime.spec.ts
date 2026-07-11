@@ -33,7 +33,10 @@ async function setDoc(page: import('@playwright/test').Page, text: string) {
 
 test('Markdown workspace is the default workspace', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Markdown')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Markdown 卡片' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
   await expect(page.locator('.cm-content')).toBeVisible()
 })
 
