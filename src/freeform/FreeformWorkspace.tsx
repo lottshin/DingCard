@@ -60,6 +60,13 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable
 }
 
+function blurActiveTypingTarget() {
+  const activeElement = globalThis.document?.activeElement
+  if (activeElement instanceof HTMLElement && isTypingTarget(activeElement)) {
+    activeElement.blur()
+  }
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
@@ -520,6 +527,7 @@ export function FreeformWorkspace() {
     if (event.shiftKey) {
       event.preventDefault()
       event.stopPropagation()
+      blurActiveTypingTarget()
       setSelection((ids) =>
         ids.includes(element.id) ? ids.filter((id) => id !== element.id) : [...ids, element.id],
       )
@@ -531,10 +539,7 @@ export function FreeformWorkspace() {
     }
     event.preventDefault()
     event.stopPropagation()
-    const activeElement = document.activeElement
-    if (activeElement instanceof HTMLElement && isTypingTarget(activeElement)) {
-      activeElement.blur()
-    }
+    blurActiveTypingTarget()
     const currentSelection = selectedElementIds.current
     const draggingIds = currentSelection.includes(element.id) ? currentSelection : [element.id]
     if (!currentSelection.includes(element.id)) {
@@ -595,6 +600,7 @@ export function FreeformWorkspace() {
     if (!start) return
 
     event.preventDefault()
+    blurActiveTypingTarget()
     setSelection([])
     setMarquee({
       startX: start.x,
