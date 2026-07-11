@@ -480,6 +480,28 @@ html.theme-anim * {
   pointer-events: none;
 }
 
+.freeform-snap-line {
+  position: absolute;
+  z-index: 19;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: 0.82;
+}
+
+.freeform-snap-line-x {
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+}
+
+.freeform-snap-line-y {
+  left: 0;
+  right: 0;
+  height: 2px;
+  transform: translateY(-1px);
+}
+
 .element-resize {
   position: absolute;
   right: -8px;

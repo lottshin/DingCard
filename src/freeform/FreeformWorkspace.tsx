@@ -19,6 +19,7 @@ import {
 } from './document'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
 import { getElementsInMarquee, moveElementsWithinSlide, type Rect } from './selection'
+import { snapDrag, type SnapLine } from './snapping'
 import type {
   FreeformAction,
   FreeformDocument,
@@ -147,6 +148,7 @@ export function FreeformWorkspace() {
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
+  const [snapLines, setSnapLines] = useState<SnapLine[]>([])
   const [appTheme, toggleAppTheme] = useAppTheme()
   const [user, setUser] = useState<User | null>(() => currentUser())
 
@@ -552,9 +554,11 @@ export function FreeformWorkspace() {
     const startY = event.clientY
 
     const onMove = (moveEvent: PointerEvent) => {
-      const dx = Math.round((moveEvent.clientX - startX) / previewScale)
-      const dy = Math.round((moveEvent.clientY - startY) / previewScale)
-      const patches = moveElementsWithinSlide(activeSlide, startElements, draggingIds, dx, dy)
+      const rawDx = Math.round((moveEvent.clientX - startX) / previewScale)
+      const rawDy = Math.round((moveEvent.clientY - startY) / previewScale)
+      const snap = snapDrag(activeSlide, startElements, draggingIds, rawDx, rawDy)
+      const patches = moveElementsWithinSlide(activeSlide, startElements, draggingIds, snap.dx, snap.dy)
+      setSnapLines(snap.lines)
       setHistory((current) => {
         const next = patches.reduce(
           (docSoFar, { elementId, patch }) =>
@@ -577,6 +581,7 @@ export function FreeformWorkspace() {
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      setSnapLines([])
       commitLiveEdit(startDocument)
     }
 
@@ -1052,6 +1057,14 @@ export function FreeformWorkspace() {
                     }}
                   />
                 )}
+                {snapLines.map((line) => (
+                  <div
+                    key={`${line.axis}-${line.position}-${line.source}`}
+                    className={`freeform-ui-only freeform-snap-line freeform-snap-line-${line.axis}`}
+                    data-testid="freeform-snap-line"
+                    style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
+                  />
+                ))}
               </div>
             </div>
           </div>
