@@ -180,3 +180,15 @@ test('moves the selected element through layer order', async ({ page }) => {
 
   await expect.poll(() => freeformElementKinds(page)).toEqual(['text', 'shape'])
 })
+
+test('inserts line and arrow elements', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+
+  const insertTools = page.getByLabel('插入工具')
+  await insertTools.getByRole('button', { name: '直线' }).click()
+  await expect(page.getByTestId('freeform-line')).toBeVisible()
+
+  await insertTools.getByRole('button', { name: '箭头' }).click()
+  await expect(page.getByTestId('freeform-arrow')).toBeVisible()
+})

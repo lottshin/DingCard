@@ -10,6 +10,7 @@ import { useAppTheme } from '../useAppTheme'
 import {
   createFreeformDocument,
   createImageElement,
+  createLineElement,
   createShapeElement,
   createTextElement,
   freeformReducer,
@@ -22,6 +23,7 @@ import type {
   FreeformDocument,
   FreeformElement,
   FreeformImageElement,
+  FreeformLineElement,
   FreeformShapeElement,
   FreeformSlide,
   FreeformTextElement,
@@ -97,6 +99,10 @@ function isImageElement(element: FreeformElement | undefined): element is Freefo
 
 function isTextElement(element: FreeformElement | undefined): element is FreeformTextElement {
   return element?.type === 'text'
+}
+
+function isLineElement(element: FreeformElement | undefined): element is FreeformLineElement {
+  return element?.type === 'line'
 }
 
 export function FreeformWorkspace() {
@@ -211,6 +217,12 @@ export function FreeformWorkspace() {
 
   function addShape(shape: FreeformShapeElement['shape']) {
     const element = createShapeElement(activeSlide, shape)
+    applyAction({ type: 'element/add', slideId: activeSlide.id, element })
+    setSelection([element.id])
+  }
+
+  function addLine(lineKind: FreeformLineElement['lineKind']) {
+    const element = createLineElement(activeSlide, lineKind)
     applyAction({ type: 'element/add', slideId: activeSlide.id, element })
     setSelection([element.id])
   }
@@ -579,6 +591,12 @@ export function FreeformWorkspace() {
               {shape.label}
             </button>
           ))}
+          <button className="bar-btn" type="button" onClick={() => addLine('line')}>
+            直线
+          </button>
+          <button className="bar-btn" type="button" onClick={() => addLine('arrow')}>
+            箭头
+          </button>
         </div>
 
         <div className="freeform-spacer" />
@@ -1047,6 +1065,46 @@ export function FreeformWorkspace() {
                 </div>
               )}
 
+              {isLineElement(selectedElement) && (
+                <div className="inspector-section">
+                  <div className="field-label">线条</div>
+                  <div className="seg stretch">
+                    {(['line', 'arrow'] as const).map((lineKind) => (
+                      <button
+                        key={lineKind}
+                        type="button"
+                        className={selectedElement.lineKind === lineKind ? 'seg-btn on' : 'seg-btn'}
+                        onClick={() => updateElement(selectedElement.id, { lineKind })}
+                      >
+                        {lineKind === 'line' ? '直线' : '箭头'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="field-grid with-gap">
+                    <label>
+                      颜色
+                      <input
+                        type="color"
+                        value={selectedElement.stroke}
+                        onChange={(event) => updateElement(selectedElement.id, { stroke: event.currentTarget.value })}
+                      />
+                    </label>
+                    <label>
+                      粗细
+                      <input
+                        type="number"
+                        min="1"
+                        max="40"
+                        value={selectedElement.strokeWidth}
+                        onChange={(event) =>
+                          updateElement(selectedElement.id, { strokeWidth: Number(event.currentTarget.value) })
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+
               <div className="inspector-section">
                 <div className="inspector-actions">
                   <button className="ghost" type="button" onClick={() => reorderSelection('backward')}>
@@ -1151,6 +1209,45 @@ function FreeformElementContent({ element, onTextChange, onTextFocus }: Freeform
         draggable={false}
         style={{ objectFit: element.fit }}
       />
+    )
+  }
+
+  if (element.type === 'line') {
+    const markerId = `arrow-${element.id}`
+    return (
+      <svg
+        className="freeform-line"
+        data-testid={element.lineKind === 'arrow' ? 'freeform-arrow' : 'freeform-line'}
+        viewBox={`0 0 ${element.width} ${element.height}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        {element.lineKind === 'arrow' && (
+          <defs>
+            <marker
+              id={markerId}
+              markerWidth="12"
+              markerHeight="12"
+              refX="10"
+              refY="6"
+              orient="auto"
+              markerUnits="strokeWidth"
+            >
+              <path d="M 0 0 L 12 6 L 0 12 z" fill={element.stroke} />
+            </marker>
+          </defs>
+        )}
+        <line
+          x1={element.strokeWidth}
+          y1={element.height / 2}
+          x2={element.width - element.strokeWidth * 2}
+          y2={element.height / 2}
+          stroke={element.stroke}
+          strokeWidth={element.strokeWidth}
+          strokeLinecap="round"
+          markerEnd={element.lineKind === 'arrow' ? `url(#${markerId})` : undefined}
+        />
+      </svg>
     )
   }
 

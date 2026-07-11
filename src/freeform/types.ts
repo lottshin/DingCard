@@ -19,7 +19,7 @@ export type SlideBackground =
 
 export interface FreeformElementBase {
   id: string
-  type: 'text' | 'image' | 'shape'
+  type: 'text' | 'image' | 'shape' | 'line'
   x: number
   y: number
   width: number
@@ -52,7 +52,18 @@ export interface FreeformShapeElement extends FreeformElementBase {
   strokeWidth: number
 }
 
-export type FreeformElement = FreeformTextElement | FreeformImageElement | FreeformShapeElement
+export interface FreeformLineElement extends FreeformElementBase {
+  type: 'line'
+  lineKind: 'line' | 'arrow'
+  stroke: string
+  strokeWidth: number
+}
+
+export type FreeformElement =
+  | FreeformTextElement
+  | FreeformImageElement
+  | FreeformShapeElement
+  | FreeformLineElement
 
 export type ShapeFill =
   | { type: 'solid'; color: string }

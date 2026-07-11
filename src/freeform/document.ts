@@ -4,6 +4,7 @@ import type {
   FreeformDocument,
   FreeformElement,
   FreeformImageElement,
+  FreeformLineElement,
   FreeformShapeElement,
   FreeformSlide,
   FreeformTextElement,
@@ -110,6 +111,21 @@ export function createShapeElement(
     fill: { type: 'solid', color: '#fed7aa' },
     stroke: '#c2410c',
     strokeWidth: 0,
+  }
+}
+
+export function createLineElement(
+  slide: FreeformSlide,
+  lineKind: FreeformLineElement['lineKind'],
+): FreeformLineElement {
+  return {
+    id: crypto.randomUUID(),
+    type: 'line',
+    lineKind,
+    ...centerBox(slide, Math.min(520, Math.round(slide.width * 0.55)), 80),
+    rotation: 0,
+    stroke: '#18181b',
+    strokeWidth: 6,
   }
 }
 
