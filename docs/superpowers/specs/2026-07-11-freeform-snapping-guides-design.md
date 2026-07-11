@@ -83,7 +83,8 @@
 
 1. 选择距离最小的目标。
 2. 距离相同，则页面参考优先于其他元素参考。
-3. 仍相同，则按参考线位置从小到大选择，保证结果稳定。
+3. 仍相同，则拖动对象锚点按 `center`、`start`、`end` 优先级选择；横向的 `start/end` 对应左/右，纵向的 `start/end` 对应上/下。
+4. 仍相同，则按参考线位置从小到大选择，保证结果稳定。
 
 横向和纵向分别计算，可以同时吸附 x 和 y。
 
@@ -94,9 +95,10 @@
 处理顺序：
 
 1. 根据原始 pointer delta 计算基础移动。
-2. 对基础移动应用页面边界 clamp。
-3. 在 clamp 后位置附近寻找吸附目标。
-4. 再次通过同一边界规则校正吸附后的 delta，避免吸附把元素推出页面。
+2. `snapDrag(...)` 内部先复用与 `moveElementsWithinSlide(...)` 一致的整体边界 clamp，得到 clamped delta。
+3. `snapDrag(...)` 基于 clamped delta 后的位置寻找吸附目标。
+4. `snapDrag(...)` 对吸附后的 delta 再执行同一套边界 clamp，避免吸附把元素推出页面。
+5. 调用方再使用返回的 dx/dy 调 `moveElementsWithinSlide(...)`，作为最终安全兜底。
 
 ### 4.6 参考线显示
 
@@ -109,7 +111,8 @@
 参考线视觉规则：
 
 - 使用现有 accent 颜色或相近高可见度颜色。
-- 线条在画布内显示。
+- 垂直参考线显示为页面内全高线，从 `top=0` 到 `bottom=slide.height`。
+- 水平参考线显示为页面内全宽线，从 `left=0` 到 `right=slide.width`。
 - 线条带 `freeform-ui-only`，导出过滤掉。
 - 线条不响应 pointer 事件。
 - 线条只在拖动过程中存在；pointer up 后清空。
@@ -165,6 +168,8 @@ export function snapDrag(
 
 默认 `threshold` 为 `6`。
 
+`snapDrag` 返回的 `dx/dy` 必须已经完成边界 clamp 和吸附修正。调用方仍会把该结果传给 `moveElementsWithinSlide(...)`，但这只是第二道安全兜底，不应改变正常吸附结果。
+
 ### 5.3 与现有拖动逻辑集成
 
 当前 `FreeformWorkspace.onElementPointerDown` 在 pointer move 中：
@@ -177,7 +182,7 @@ export function snapDrag(
 新增吸附后，流程变为：
 
 1. 计算原始 dx/dy。
-2. 调用 `snapDrag(...)` 得到修正 dx/dy 和参考线。
+2. 调用 `snapDrag(...)` 得到已完成边界 clamp 和吸附修正的 dx/dy，以及参考线。
 3. 用修正后的 dx/dy 调用 `moveElementsWithinSlide(...)`。
 4. 设置 `snapLines` UI 状态。
 5. pointer up 时清空 `snapLines` 并提交历史。
@@ -236,6 +241,8 @@ src/freeform/__tests__/snapping.test.ts
 - 多选组按整体外接框吸附。
 - selectedIds 内的元素不作为其他元素参考。
 - 多个目标命中时选择距离最近；距离相同页面参考优先。
+- 同距离、同来源、同位置时按拖动对象锚点 `center`、`start`、`end` 稳定排序。
+- 吸附候选接近页面边缘时，最终 delta 不会把拖动组推出页面。
 - invalid selection 返回原始 delta 和空 lines。
 
 ### 7.2 E2E 测试
@@ -266,7 +273,11 @@ git diff --check
 
 ## 8. 版本与文档
 
-该能力属于自由编辑模式的 minor 功能增强。当前分支版本已是 `0.3.0`；如果本批作为同一个 `0.3.0` 迭代继续开发，则不再次 bump。若后续把 `0.3.0` 视为已发布基线，再合并本批时应 bump 到 `0.4.0`。
+该能力属于自由编辑模式的 minor 功能增强。当前分支版本已是 `0.3.0`，但该版本号已经用于上一批选择控制功能。本批实现完成时按 AGENTS.md 规则 bump 到 `0.4.0`，并同步：
+
+- `package.json`
+- `package-lock.json` 顶层版本
+- `package-lock.json` packages 根版本
 
 本批至少新增：
 
@@ -287,4 +298,3 @@ git diff --check
 - Markdown 工作区 E2E 继续通过。
 - 单元测试覆盖吸附计算边界。
 - 完整 build/unit/e2e 通过。
-
