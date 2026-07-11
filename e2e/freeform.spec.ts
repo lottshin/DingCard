@@ -32,3 +32,16 @@ test('sets custom page size and new pages inherit it', async ({ page }) => {
   await page.getByRole('button', { name: '新增页面' }).click()
   await expect(page.getByTestId('freeform-slide-size')).toHaveText(/2 页 · 1200×1600px/)
 })
+
+test('fills a shape with an image', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByRole('button', { name: '矩形' }).click()
+
+  const fileChooserPromise = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: '插入图片填充' }).click()
+  const fileChooser = await fileChooserPromise
+  await fileChooser.setFiles('public/favicon.svg')
+
+  await expect(page.getByTestId('freeform-shape-image-fill')).toBeVisible()
+})

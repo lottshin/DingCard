@@ -1066,6 +1066,7 @@ function FreeformElementContent({ element, onTextChange, onTextFocus }: Freeform
   return (
     <div
       className={`freeform-shape shape-${element.shape}`}
+      data-testid={element.fill.type === 'image' ? 'freeform-shape-image-fill' : undefined}
       style={{
         ...fillStyle,
         borderColor: element.stroke,
