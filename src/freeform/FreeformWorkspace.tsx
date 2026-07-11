@@ -429,6 +429,38 @@ export function FreeformWorkspace() {
     setSavedAt(null)
   }
 
+  function nudgeSelection(dx: number, dy: number) {
+    const selectedIds = selectedElementIds.current
+    if (selectedIds.length === 0) return
+
+    const elementById = new Map(activeSlide.elements.map((element) => [element.id, element]))
+    const patches = moveElementsWithinSlide(activeSlide, activeSlide.elements, selectedIds, dx, dy).filter(
+      ({ elementId, patch }) => {
+        const element = elementById.get(elementId)
+        return element && (element.x !== patch.x || element.y !== patch.y)
+      },
+    )
+
+    if (patches.length === 0) return
+
+    setHistory((current) => {
+      const next = patches.reduce(
+        (docSoFar, { elementId, patch }) =>
+          freeformReducer(docSoFar, {
+            type: 'element/update',
+            slideId: activeSlide.id,
+            elementId,
+            patch,
+          }),
+        current.current,
+      )
+
+      if (Object.is(next, current.current)) return current
+      return pushHistory(current, next)
+    })
+    setSavedAt(null)
+  }
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return
@@ -452,6 +484,24 @@ export function FreeformWorkspace() {
       if ((event.ctrlKey || event.metaKey) && key === 'v') {
         event.preventDefault()
         pasteClipboard()
+        return
+      }
+      const nudgeStep = event.shiftKey ? 10 : 1
+      const nudgeDelta =
+        event.key === 'ArrowLeft'
+          ? { dx: -nudgeStep, dy: 0 }
+          : event.key === 'ArrowRight'
+            ? { dx: nudgeStep, dy: 0 }
+            : event.key === 'ArrowUp'
+              ? { dx: 0, dy: -nudgeStep }
+              : event.key === 'ArrowDown'
+                ? { dx: 0, dy: nudgeStep }
+                : null
+      if (nudgeDelta) {
+        if (selectedElementIds.current.length > 0) {
+          event.preventDefault()
+          nudgeSelection(nudgeDelta.dx, nudgeDelta.dy)
+        }
         return
       }
       if (event.key === 'Delete' || event.key === 'Backspace') {

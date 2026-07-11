@@ -61,6 +61,24 @@ async function setSelectedElementBox(
   await positionInputs.nth(3).fill(String(height))
 }
 
+async function insertTwoSelectedRectangles(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+
+  const insertTools = page.getByLabel('插入工具')
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 100, 100, 100, 100)
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 320, 120, 100, 100)
+
+  const elements = page.getByTestId('freeform-element')
+  await expect(elements).toHaveCount(2)
+  await elements.first().click({ modifiers: ['Shift'] })
+  await expect(selectedFreeformElements(page)).toHaveCount(2)
+  await elements.first().click()
+  await expect(selectedFreeformElements(page)).toHaveCount(2)
+}
+
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()
@@ -281,6 +299,52 @@ test('drags selected elements together', async ({ page }) => {
     { x: 100, y: 100 },
     { x: 320, y: 120 },
   ])
+})
+
+test('keyboard nudges all selected elements by arrow key', async ({ page }) => {
+  await insertTwoSelectedRectangles(page)
+
+  await page.keyboard.press('ArrowRight')
+
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 101, y: 100 },
+    { x: 321, y: 120 },
+  ])
+})
+
+test('keyboard nudges all selected elements by 10 px with shift arrow', async ({ page }) => {
+  await insertTwoSelectedRectangles(page)
+
+  await page.keyboard.press('Shift+ArrowDown')
+
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 100, y: 110 },
+    { x: 320, y: 130 },
+  ])
+})
+
+test('batch copies two selected elements and keeps pasted elements selected', async ({ page }) => {
+  await insertTwoSelectedRectangles(page)
+
+  await page.keyboard.press('ControlOrMeta+C')
+  await page.keyboard.press('ControlOrMeta+V')
+
+  await expect(page.getByTestId('freeform-element')).toHaveCount(4)
+  await expect(selectedFreeformElements(page)).toHaveCount(2)
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 100, y: 100 },
+    { x: 320, y: 120 },
+    { x: 116, y: 116 },
+    { x: 336, y: 136 },
+  ])
+})
+
+test('batch deletes all selected elements', async ({ page }) => {
+  await insertTwoSelectedRectangles(page)
+
+  await page.keyboard.press('Delete')
+
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
 })
 
 test('marquee selects elements by dragging empty canvas', async ({ page }) => {
