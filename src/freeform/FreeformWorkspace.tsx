@@ -68,6 +68,10 @@ function downloadDataUrl(url: string, filename: string) {
   a.click()
 }
 
+function slidePngName(index: number): string {
+  return `slide-${String(index + 1).padStart(2, '0')}.png`
+}
+
 function isShapeElement(element: FreeformElement | undefined): element is FreeformShapeElement {
   return element?.type === 'shape'
 }
@@ -383,9 +387,12 @@ export function FreeformWorkspace() {
     const node = artboardRef.current
     if (!node) return null
     return toPng(node, {
-      pixelRatio: 3,
+      pixelRatio: 1,
       width: slide.width,
       height: slide.height,
+      style: {
+        transform: 'none',
+      },
       filter: (element) =>
         !(element instanceof HTMLElement && element.classList.contains('freeform-ui-only')),
     })
@@ -397,7 +404,13 @@ export function FreeformWorkspace() {
       setSelection([])
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       const url = await renderSlideNode(activeSlide)
-      if (url) downloadDataUrl(url, `${activeSlide.name || 'page'}.png`)
+      if (url) {
+        const activeIndex = Math.max(
+          0,
+          doc.slides.findIndex((slide) => slide.id === activeSlide.id),
+        )
+        downloadDataUrl(url, slidePngName(activeIndex))
+      }
     } finally {
       setExporting(false)
     }

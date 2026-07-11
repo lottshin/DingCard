@@ -1,4 +1,13 @@
 import { expect, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+
+function readPngSize(buffer: Buffer) {
+  expect(buffer.subarray(1, 4).toString('ascii')).toBe('PNG')
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  }
+}
 
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await page.goto('/')
@@ -44,4 +53,20 @@ test('fills a shape with an image', async ({ page }) => {
   await fileChooser.setFiles('public/favicon.svg')
 
   await expect(page.getByTestId('freeform-shape-image-fill')).toBeVisible()
+})
+
+test('exports the current slide as a PNG at slide dimensions', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByRole('button', { name: '9:16' }).click()
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出当前页' }).click()
+  const download = await downloadPromise
+
+  expect(download.suggestedFilename()).toBe('slide-01.png')
+  const path = await download.path()
+  expect(path).toBeTruthy()
+  const size = readPngSize(await readFile(path!))
+  expect(size).toEqual({ width: 1080, height: 1920 })
 })
