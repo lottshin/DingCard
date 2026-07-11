@@ -22,6 +22,17 @@ async function freeformElementPositions(page: import('@playwright/test').Page) {
   )
 }
 
+async function freeformElementKinds(page: import('@playwright/test').Page) {
+  return page.locator('.freeform-element').evaluateAll((elements) =>
+    elements.map((element) => {
+      if (element.querySelector('.freeform-textbox')) return 'text'
+      if (element.querySelector('.freeform-shape')) return 'shape'
+      if (element.querySelector('.freeform-image')) return 'image'
+      return 'unknown'
+    }),
+  )
+}
+
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()
@@ -151,4 +162,21 @@ test('copies, pastes, and deletes the selected element', async ({ page }) => {
 
   await page.keyboard.press('Delete')
   await expect(page.locator('.freeform-element')).toHaveCount(1)
+})
+
+test('moves the selected element through layer order', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByRole('button', { name: '文本框' }).click()
+  await page.getByRole('button', { name: '矩形' }).click()
+
+  await expect(page.locator('.freeform-element')).toHaveCount(2)
+  await expect.poll(() => freeformElementKinds(page)).toEqual(['text', 'shape'])
+
+  await page.getByRole('button', { name: '置底' }).click()
+  await expect.poll(() => freeformElementKinds(page)).toEqual(['shape', 'text'])
+
+  await page.getByRole('button', { name: '置顶' }).click()
+
+  await expect.poll(() => freeformElementKinds(page)).toEqual(['text', 'shape'])
 })
