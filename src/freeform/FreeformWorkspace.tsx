@@ -578,15 +578,26 @@ export function FreeformWorkspace() {
       })
     }
 
-    const onUp = () => {
+    const cleanupDrag = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onCancel)
       setSnapLines([])
+    }
+
+    const finishDrag = () => {
+      cleanupDrag()
       commitLiveEdit(startDocument)
     }
 
+    const onUp = () => finishDrag()
+    const onCancel = () => finishDrag()
+
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onCancel)
   }
 
   function artboardPointFromClient(clientX: number, clientY: number) {

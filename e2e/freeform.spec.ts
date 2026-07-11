@@ -384,15 +384,41 @@ test('snapping aligns a selected group by its bounding box', async ({ page }) =>
   ])
 })
 
-test('snapping does not apply to keyboard nudges', async ({ page }) => {
-  await insertTwoSelectedRectangles(page)
+test('snapping hides guides when pointer drag is canceled', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
 
+  const insertTools = page.getByLabel('插入工具')
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 100, 100, 100, 100)
+
+  const element = page.getByTestId('freeform-element').first()
+  const box = await element.boundingBox()
+  expect(box).toBeTruthy()
+  const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + 192, start.y)
+  await expect(page.getByTestId('freeform-snap-line')).toHaveCount(1)
+
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel')))
+  await expect(page.getByTestId('freeform-snap-line')).toHaveCount(0)
+  await page.mouse.up()
+})
+
+test('snapping does not apply to keyboard nudges', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+
+  const insertTools = page.getByLabel('插入工具')
+  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 485, 100, 100, 100)
+  await page.getByTestId('freeform-element').first().click()
   await page.keyboard.press('ArrowRight')
 
-  await expect.poll(() => freeformElementPositions(page)).toEqual([
-    { x: 101, y: 100 },
-    { x: 321, y: 120 },
-  ])
+  await expect.poll(() => freeformElementPositions(page)).toEqual([{ x: 486, y: 100 }])
+  await expect(page.getByTestId('freeform-snap-line')).toHaveCount(0)
 })
 
 test('keyboard nudges all selected elements by arrow key', async ({ page }) => {
