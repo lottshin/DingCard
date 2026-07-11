@@ -11,7 +11,7 @@ function readPngSize(buffer: Buffer) {
 }
 
 async function freeformElementPositions(page: import('@playwright/test').Page) {
-  return page.locator('.freeform-element').evaluateAll((elements) =>
+  return page.getByTestId('freeform-element').evaluateAll((elements) =>
     elements.map((element) => {
       const el = element as HTMLElement
       return {
@@ -20,6 +20,10 @@ async function freeformElementPositions(page: import('@playwright/test').Page) {
       }
     }),
   )
+}
+
+function selectedFreeformElements(page: import('@playwright/test').Page) {
+  return page.locator('[data-testid="freeform-element"][data-selected="true"]')
 }
 
 async function freeformElementKinds(page: import('@playwright/test').Page) {
@@ -250,10 +254,12 @@ test('drags selected elements together', async ({ page }) => {
   await insertTools.getByRole('button', { name: '矩形' }).click()
   await setSelectedElementBox(page, 320, 120, 100, 100)
 
-  await page.locator('.freeform-element').first().click({ modifiers: ['Shift'] })
-  await expect(page.locator('.freeform-element.selected')).toHaveCount(2)
+  const elements = page.getByTestId('freeform-element')
+  await expect(elements).toHaveCount(2)
+  await elements.first().click({ modifiers: ['Shift'] })
+  await expect(selectedFreeformElements(page)).toHaveCount(2)
 
-  const firstElementBox = await page.locator('.freeform-element').first().boundingBox()
+  const firstElementBox = await elements.first().boundingBox()
   expect(firstElementBox).toBeTruthy()
   const start = {
     x: firstElementBox!.x + firstElementBox!.width / 2,
@@ -268,6 +274,12 @@ test('drags selected elements together', async ({ page }) => {
   await expect.poll(() => freeformElementPositions(page)).toEqual([
     { x: 200, y: 140 },
     { x: 420, y: 160 },
+  ])
+
+  await page.keyboard.press('ControlOrMeta+Z')
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 100, y: 100 },
+    { x: 320, y: 120 },
   ])
 })
 
@@ -296,7 +308,7 @@ test('marquee selects elements by dragging empty canvas', async ({ page }) => {
   await page.mouse.move(end.x, end.y)
   await page.mouse.up()
 
-  await expect(page.locator('.freeform-element.selected')).toHaveCount(2)
+  await expect(selectedFreeformElements(page)).toHaveCount(2)
 
   await page.getByRole('button', { name: '左对齐' }).click()
 

@@ -481,6 +481,10 @@ export function FreeformWorkspace() {
     }
     event.preventDefault()
     event.stopPropagation()
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement && isTypingTarget(activeElement)) {
+      activeElement.blur()
+    }
     const currentSelection = selectedElementIds.current
     const draggingIds = currentSelection.includes(element.id) ? currentSelection : [element.id]
     if (!currentSelection.includes(element.id)) {
@@ -945,6 +949,8 @@ export function FreeformWorkspace() {
                   <div
                     key={element.id}
                     className={selection.includes(element.id) ? 'freeform-element selected' : 'freeform-element'}
+                    data-testid="freeform-element"
+                    data-selected={selection.includes(element.id) ? 'true' : 'false'}
                     onPointerDown={(event) => onElementPointerDown(event, element)}
                     style={{
                       left: element.x,
