@@ -150,6 +150,35 @@ test('applies page, shape, and text gradients from the inspector', async ({ page
   await expect(page.getByTestId('freeform-textbox').last()).toHaveCSS('background-image', /linear-gradient/)
 })
 
+test('edits Chinese text in the freeform contenteditable textbox without losing text', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  const textbox = page.getByTestId('freeform-textbox').last()
+  await expect(textbox).toHaveAttribute('contenteditable', 'true')
+  await textbox.fill('中文渐变测试')
+
+  await expect(textbox).toContainText('中文渐变测试')
+})
+
+test('pastes plain text into the freeform contenteditable textbox', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  const textbox = page.getByTestId('freeform-textbox').last()
+  await textbox.evaluate((node) => {
+    const data = new DataTransfer()
+    data.setData('text/html', '<b>bold</b>')
+    data.setData('text/plain', 'plain text')
+    node.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }))
+  })
+
+  await expect(textbox).toContainText('plain text')
+  await expect(textbox.locator('b')).toHaveCount(0)
+})
+
 test('sets custom page size and new pages inherit it', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()

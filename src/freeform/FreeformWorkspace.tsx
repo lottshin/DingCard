@@ -21,6 +21,7 @@ import {
 } from './document'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
 import { PaintField } from './PaintField'
+import { PlainTextEditable } from './PlainTextEditable'
 import {
   DEFAULT_PAGE_PAINT,
   DEFAULT_SHAPE_PAINT,
@@ -1474,13 +1475,12 @@ interface FreeformElementContentProps {
 function FreeformElementContent({ element, onTextChange, onTextFocus }: FreeformElementContentProps) {
   if (element.type === 'text') {
     return (
-      <textarea
+      <PlainTextEditable
         className="freeform-textbox"
-        data-testid="freeform-textbox"
-        aria-label="文本内容"
+        ariaLabel="文本内容"
         value={element.text}
         onFocus={onTextFocus}
-        onChange={(event) => onTextChange(event.currentTarget.value)}
+        onChange={onTextChange}
         style={{
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
