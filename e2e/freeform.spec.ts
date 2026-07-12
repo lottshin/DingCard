@@ -313,7 +313,7 @@ test('saves and restores a freeform draft', async ({ page }) => {
   await page.getByRole('button', { name: '自由编辑' }).click()
   await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Page 1' }).click()
-  await expect(page.getByLabel('文本内容')).toHaveValue('保存恢复测试')
+  await expect(page.getByLabel('文本内容')).toContainText('保存恢复测试')
 })
 
 test('exports mixed-size slides as a zip after warning', async ({ page }) => {

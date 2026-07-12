@@ -115,6 +115,7 @@ export function PaintField({
             type="button"
             className={activeMode === mode ? 'seg-btn on' : 'seg-btn'}
             data-testid={`paint-mode-${mode}`}
+            aria-label={mode === 'image' ? '插入图片填充' : undefined}
             onClick={() => changeMode(mode)}
           >
             {mode === 'solid' ? '纯色' : mode === 'linear-gradient' ? '渐变' : mode === 'transparent' ? '透明' : '图片'}
