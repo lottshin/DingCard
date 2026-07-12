@@ -726,7 +726,7 @@ export function FreeformWorkspace() {
     window.addEventListener('pointerup', onUp)
   }
 
-  async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS?: string): Promise<Blob | null> {
+  async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS: string): Promise<Blob | null> {
     const node = artboardRef.current
     if (!node) return null
     return toBlob(node, {
@@ -742,13 +742,13 @@ export function FreeformWorkspace() {
     })
   }
 
-  async function freeformFontEmbedOnce(slides: FreeformSlide[]): Promise<string | undefined> {
+  async function freeformFontEmbedOnce(slides: FreeformSlide[]): Promise<string> {
     const fontFamily = firstFreeformFontFamily(slides)
-    if (!fontFamily) return undefined
+    if (!fontFamily) return ''
     try {
       return await buildFontEmbedCSS(freeformTextForFonts(slides), fontFamily)
     } catch {
-      return undefined
+      return ''
     }
   }
 
