@@ -6,8 +6,15 @@
 
 import JSZip from 'jszip'
 
+export type ZipInput =
+  | string
+  | { name: string; blob: Blob }
+
+export type ZipDownloader = (blob: Blob, zipName: string) => void
+
 interface DownloadZipOptions {
   fileNameForIndex?: (index: number, total: number) => string
+  downloader?: ZipDownloader
 }
 
 /** Strip the `data:image/png;base64,` prefix and return the raw base64 body. */
@@ -17,26 +24,38 @@ function base64Body(dataUrl: string): string {
 }
 
 /**
- * Package a list of PNG data URLs into a zip and trigger a download.
- * Defaults to card-01.png, card-02.png so the existing Markdown export keeps
- * its file naming.
+ * Package PNGs into a zip and trigger a download.
+ *
+ * String inputs are legacy PNG data URLs and keep the existing Markdown card
+ * file naming. Blob inputs carry their own file names and avoid base64
+ * conversion for freeform exports.
  */
 export async function downloadZip(
-  dataUrls: string[],
+  inputs: ZipInput[],
   zipName = 'cards.zip',
   options: DownloadZipOptions = {},
 ): Promise<void> {
   const zip = new JSZip()
-  const pad = String(dataUrls.length).length
+  const pad = String(inputs.length).length
 
-  dataUrls.forEach((url, i) => {
-    const name =
-      options.fileNameForIndex?.(i, dataUrls.length) ??
-      `card-${String(i + 1).padStart(pad, '0')}.png`
-    zip.file(name, base64Body(url), { base64: true })
-  })
+  await Promise.all(inputs.map(async (input, i) => {
+    if (typeof input === 'string') {
+      const name =
+        options.fileNameForIndex?.(i, inputs.length) ??
+        `card-${String(i + 1).padStart(pad, '0')}.png`
+      zip.file(name, base64Body(input), { base64: true })
+      return
+    }
+
+    zip.file(input.name, await input.blob.arrayBuffer())
+  }))
 
   const blob = await zip.generateAsync({ type: 'blob' })
+  const downloader = options.downloader ?? downloadBlob
+  downloader(blob, zipName)
+}
+
+function downloadBlob(blob: Blob, zipName: string) {
   const objectUrl = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = objectUrl
