@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createFreeformDocument,
   createSlide,
+  createTextElement,
   freeformReducer,
   pageSizePresets,
   validatePageSize,
@@ -15,6 +16,18 @@ describe('freeform document', () => {
     expect(doc.slides[0].width).toBe(1080)
     expect(doc.slides[0].height).toBe(1440)
     expect(doc.activeSlideId).toBe(doc.slides[0].id)
+  })
+
+  it('creates v2 documents with shared paint defaults', () => {
+    const doc = createFreeformDocument()
+
+    expect(doc.documentVersion).toBe(2)
+    expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
+
+    const text = createTextElement(doc.slides[0])
+
+    expect(text.textFill).toEqual({ type: 'solid', color: '#18181b' })
+    expect('color' in text).toBe(false)
   })
 
   it('creates new slides by inheriting current size', () => {

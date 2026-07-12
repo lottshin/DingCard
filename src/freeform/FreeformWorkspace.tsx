@@ -18,6 +18,7 @@ import {
   validatePageSize,
 } from './document'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
+import { paintFallbackColor, shapeFillToStyle, slideBackgroundToCss, textFillToStyle } from './paint'
 import { getElementsInMarquee, moveElementsWithinSlide, type Rect } from './selection'
 import { snapDrag, type SnapLine } from './snapping'
 import type {
@@ -909,8 +910,7 @@ export function FreeformWorkspace() {
                   className="freeform-thumb-art"
                   style={{
                     aspectRatio: `${slide.width} / ${slide.height}`,
-                    background:
-                      slide.background.type === 'solid' ? slide.background.color : 'transparent',
+                    background: slideBackgroundToCss(slide.background),
                   }}
                 />
                 <span className="freeform-thumb-title">
@@ -1011,10 +1011,7 @@ export function FreeformWorkspace() {
                   width: activeSlide.width,
                   height: activeSlide.height,
                   transform: `scale(${previewScale})`,
-                  background:
-                    activeSlide.background.type === 'solid'
-                      ? activeSlide.background.color
-                      : 'transparent',
+                  background: slideBackgroundToCss(activeSlide.background),
                 }}
               >
                 {activeSlide.elements.map((element) => (
@@ -1199,8 +1196,12 @@ export function FreeformWorkspace() {
                       颜色
                       <input
                         type="color"
-                        value={selectedElement.color}
-                        onChange={(event) => updateElement(selectedElement.id, { color: event.currentTarget.value })}
+                        value={paintFallbackColor(selectedElement.textFill)}
+                        onChange={(event) =>
+                          updateElement(selectedElement.id, {
+                            textFill: { type: 'solid', color: event.currentTarget.value },
+                          })
+                        }
                       />
                     </label>
                   </div>
@@ -1491,7 +1492,7 @@ function FreeformElementContent({ element, onTextChange, onTextFocus }: Freeform
         style={{
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
-          color: element.color,
+          ...textFillToStyle(element.textFill),
           textAlign: element.align,
           fontWeight: element.fontWeight,
         }}
@@ -1550,22 +1551,12 @@ function FreeformElementContent({ element, onTextChange, onTextFocus }: Freeform
     )
   }
 
-  const fillStyle =
-    element.fill.type === 'solid'
-      ? { background: element.fill.color }
-      : {
-          backgroundImage: `url("${element.fill.src}")`,
-          backgroundSize: element.fill.fit,
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-        }
-
   return (
     <div
       className={`freeform-shape shape-${element.shape}`}
       data-testid={element.fill.type === 'image' ? 'freeform-shape-image-fill' : undefined}
       style={{
-        ...fillStyle,
+        ...shapeFillToStyle(element.fill),
         borderColor: element.stroke,
         borderWidth: element.strokeWidth,
       }}

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 1
+  documentVersion: 2
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -18,7 +18,7 @@ export type ColorPaint =
   | { type: 'linear-gradient'; from: string; to: string; angle: number }
 
 export type SlideBackground =
-  | { type: 'solid'; color: string }
+  | ColorPaint
   | { type: 'transparent' }
 
 export interface FreeformElementBase {
@@ -36,7 +36,7 @@ export interface FreeformTextElement extends FreeformElementBase {
   text: string
   fontSize: number
   fontFamily: string
-  color: string
+  textFill: ColorPaint
   align: 'left' | 'center' | 'right'
   fontWeight: 'normal' | 'bold'
 }
@@ -70,7 +70,7 @@ export type FreeformElement =
   | FreeformLineElement
 
 export type ShapeFill =
-  | { type: 'solid'; color: string }
+  | ColorPaint
   | { type: 'image'; src: string; fit: 'cover' | 'contain' }
 
 export type FreeformAction =

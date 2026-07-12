@@ -1,4 +1,5 @@
 import { PAGE_SIZE_MAX, PAGE_SIZE_MIN, pageSizePresets } from './constants'
+import { DEFAULT_PAGE_PAINT, DEFAULT_SHAPE_PAINT, DEFAULT_TEXT_PAINT } from './paint'
 import type {
   FreeformAction,
   FreeformDocument,
@@ -44,7 +45,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
     name: 'Page 1',
     width,
     height,
-    background: { type: 'solid', color: '#ffffff' },
+    background: { ...DEFAULT_PAGE_PAINT },
     elements: [],
   }
 }
@@ -52,7 +53,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 1,
+    documentVersion: 2,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -76,7 +77,7 @@ export function createTextElement(slide: FreeformSlide): FreeformTextElement {
     text: '双击编辑文本',
     fontSize: 48,
     fontFamily: 'PingFang SC, Microsoft YaHei, system-ui, sans-serif',
-    color: '#18181b',
+    textFill: { ...DEFAULT_TEXT_PAINT },
     align: 'left',
     fontWeight: 'bold',
   }
@@ -108,7 +109,7 @@ export function createShapeElement(
     ...centerBox(slide, 360, 240),
     rotation: 0,
     shape,
-    fill: { type: 'solid', color: '#fed7aa' },
+    fill: { ...DEFAULT_SHAPE_PAINT },
     stroke: '#c2410c',
     strokeWidth: 0,
   }

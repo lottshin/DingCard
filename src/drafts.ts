@@ -3,7 +3,24 @@
 // Drafts are namespaced by user id so two accounts in the same browser don't
 // see each other's work. This is client-only and does not sync across devices.
 
-import type { FreeformDocument } from './freeform/types'
+import {
+  DEFAULT_PAGE_PAINT,
+  DEFAULT_SHAPE_PAINT,
+  DEFAULT_TEXT_PAINT,
+  normalizeColorPaint,
+} from './freeform/paint'
+import type {
+  ColorPaint,
+  FreeformDocument,
+  FreeformElement,
+  FreeformImageElement,
+  FreeformLineElement,
+  FreeformShapeElement,
+  FreeformSlide,
+  FreeformTextElement,
+  ShapeFill,
+  SlideBackground,
+} from './freeform/types'
 import { collectImages } from './imageStore'
 import type { Profile } from './theme'
 import type { WorkspaceMode } from './workspaces/types'
@@ -110,28 +127,170 @@ function isMarkdownDocument(value: unknown): value is MarkdownCardDocument {
   )
 }
 
-function isSlideBackground(value: unknown): value is FreeformDocument['slides'][number]['background'] {
-  if (!isRecord(value) || !isString(value.type)) return false
-  if (value.type === 'transparent') return true
-  return value.type === 'solid' && isString(value.color)
+function isAlign(value: unknown): value is FreeformTextElement['align'] {
+  return value === 'left' || value === 'center' || value === 'right'
 }
 
-function isFreeformDocument(value: unknown): value is FreeformDocument {
-  if (!isRecord(value)) return false
-  if (value.documentVersion !== 1 || !Array.isArray(value.slides) || !isString(value.activeSlideId)) {
-    return false
+function isFontWeight(value: unknown): value is FreeformTextElement['fontWeight'] {
+  return value === 'normal' || value === 'bold'
+}
+
+function isFit(value: unknown): value is FreeformImageElement['fit'] {
+  return value === 'cover' || value === 'contain'
+}
+
+function isShapeKind(value: unknown): value is FreeformShapeElement['shape'] {
+  return value === 'rect' || value === 'ellipse' || value === 'triangle'
+}
+
+function isLineKind(value: unknown): value is FreeformLineElement['lineKind'] {
+  return value === 'line' || value === 'arrow'
+}
+
+function normalizeSlideBackground(value: unknown): SlideBackground {
+  if (isRecord(value) && value.type === 'transparent') return { type: 'transparent' }
+  return normalizeColorPaint(value, DEFAULT_PAGE_PAINT)
+}
+
+function normalizeShapeFill(value: unknown): ShapeFill {
+  if (isRecord(value) && value.type === 'image' && isString(value.src) && isFit(value.fit)) {
+    return { type: 'image', src: value.src, fit: value.fit }
   }
-  return value.slides.every((slide) => {
-    if (!isRecord(slide)) return false
-    return (
-      isString(slide.id) &&
-      isString(slide.name) &&
-      isNumber(slide.width) &&
-      isNumber(slide.height) &&
-      isSlideBackground(slide.background) &&
-      Array.isArray(slide.elements)
-    )
-  })
+  return normalizeColorPaint(value, DEFAULT_SHAPE_PAINT)
+}
+
+function normalizeTextFill(element: Record<string, unknown>): ColorPaint {
+  const rawFill = isRecord(element.textFill)
+    ? element.textFill
+    : isString(element.color)
+      ? { type: 'solid', color: element.color }
+      : undefined
+  return normalizeColorPaint(rawFill, DEFAULT_TEXT_PAINT)
+}
+
+function normalizeFreeformElement(value: unknown): FreeformElement | null {
+  if (!isRecord(value)) return null
+  if (
+    !isString(value.id) ||
+    !isString(value.type) ||
+    !isNumber(value.x) ||
+    !isNumber(value.y) ||
+    !isNumber(value.width) ||
+    !isNumber(value.height) ||
+    !isNumber(value.rotation)
+  ) {
+    return null
+  }
+
+  const base = {
+    id: value.id,
+    x: value.x,
+    y: value.y,
+    width: value.width,
+    height: value.height,
+    rotation: value.rotation,
+  }
+
+  if (value.type === 'text') {
+    if (!isString(value.text) || !isNumber(value.fontSize) || !isString(value.fontFamily)) return null
+    return {
+      ...base,
+      type: 'text',
+      text: value.text,
+      fontSize: value.fontSize,
+      fontFamily: value.fontFamily,
+      textFill: normalizeTextFill(value),
+      align: isAlign(value.align) ? value.align : 'left',
+      fontWeight: isFontWeight(value.fontWeight) ? value.fontWeight : 'normal',
+    }
+  }
+
+  if (value.type === 'image') {
+    if (!isString(value.src)) return null
+    return {
+      ...base,
+      type: 'image',
+      src: value.src,
+      alt: isString(value.alt) ? value.alt : 'Image',
+      fit: isFit(value.fit) ? value.fit : 'cover',
+    }
+  }
+
+  if (value.type === 'shape') {
+    if (!isShapeKind(value.shape) || !isString(value.stroke) || !isNumber(value.strokeWidth)) return null
+    return {
+      ...base,
+      type: 'shape',
+      shape: value.shape,
+      fill: normalizeShapeFill(value.fill),
+      stroke: value.stroke,
+      strokeWidth: value.strokeWidth,
+    }
+  }
+
+  if (value.type === 'line') {
+    if (!isLineKind(value.lineKind) || !isString(value.stroke) || !isNumber(value.strokeWidth)) return null
+    return {
+      ...base,
+      type: 'line',
+      lineKind: value.lineKind,
+      stroke: value.stroke,
+      strokeWidth: value.strokeWidth,
+    }
+  }
+
+  return null
+}
+
+function normalizeFreeformSlide(value: unknown): FreeformSlide | null {
+  if (!isRecord(value)) return null
+  if (
+    !isString(value.id) ||
+    !isString(value.name) ||
+    !isNumber(value.width) ||
+    !isNumber(value.height) ||
+    !Array.isArray(value.elements)
+  ) {
+    return null
+  }
+
+  return {
+    id: value.id,
+    name: value.name,
+    width: value.width,
+    height: value.height,
+    background: normalizeSlideBackground(value.background),
+    elements: value.elements
+      .map(normalizeFreeformElement)
+      .filter((element): element is FreeformElement => element !== null),
+  }
+}
+
+function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
+  if (!isRecord(value)) return null
+  if (
+    (value.documentVersion !== 1 && value.documentVersion !== 2) ||
+    !Array.isArray(value.slides) ||
+    !isString(value.activeSlideId)
+  ) {
+    return null
+  }
+
+  const slides = value.slides
+    .map(normalizeFreeformSlide)
+    .filter((slide): slide is FreeformSlide => slide !== null)
+
+  if (slides.length === 0) return null
+
+  const activeSlideId = slides.some((slide) => slide.id === value.activeSlideId)
+    ? value.activeSlideId
+    : slides[0].id
+
+  return {
+    documentVersion: 2,
+    activeSlideId,
+    slides,
+  }
 }
 
 function normalizeMarkdownDocument(raw: Record<string, unknown>): MarkdownCardDocument | null {
@@ -168,13 +327,15 @@ export function normalizeDraftForRead(raw: unknown): Draft | null {
         updatedAt: raw.updatedAt,
       }
     }
-    if (raw.mode === 'freeform-slide' && isFreeformDocument(raw.document)) {
+    if (raw.mode === 'freeform-slide') {
+      const document = normalizeFreeformDocument(raw.document)
+      if (!document) return null
       return {
         id: raw.id,
         title: raw.title,
         schemaVersion: 2,
         mode: 'freeform-slide',
-        document: raw.document,
+        document,
         updatedAt: raw.updatedAt,
       }
     }
