@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toPng } from 'html-to-image'
+import { toBlob, toPng } from 'html-to-image'
 import { AuthModal } from '../AuthModal'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
 import { current as currentUser, logout as authLogout, type User } from '../auth'
 import { deleteDraft, listDrafts, saveDraft, type Draft } from '../drafts'
 import { downloadZip } from '../exportZip'
+import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
 import { FONTS } from '../theme'
 import { useAppTheme } from '../useAppTheme'
@@ -87,11 +88,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
-function downloadDataUrl(url: string, filename: string) {
+function downloadBlob(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob)
   const a = globalThis.document.createElement('a')
-  a.href = url
+  a.href = objectUrl
   a.download = filename
   a.click()
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
 function slidePngName(index: number): string {
@@ -102,6 +105,20 @@ function hasMixedSlideSizes(slides: FreeformSlide[]): boolean {
   const first = slides[0]
   if (!first) return false
   return slides.some((slide) => slide.width !== first.width || slide.height !== first.height)
+}
+
+function textElementsOf(slides: FreeformSlide[]): FreeformTextElement[] {
+  return slides.flatMap((slide) =>
+    slide.elements.filter((element): element is FreeformTextElement => element.type === 'text'),
+  )
+}
+
+function freeformTextForFonts(slides: FreeformSlide[]): string {
+  return textElementsOf(slides).map((element) => element.text).join('\n')
+}
+
+function firstFreeformFontFamily(slides: FreeformSlide[]): string | null {
+  return textElementsOf(slides).find((element) => element.fontFamily.trim().length > 0)?.fontFamily ?? null
 }
 
 function cloneElementForPaste(element: FreeformElement, slide: FreeformSlide): FreeformElement {
@@ -723,18 +740,45 @@ export function FreeformWorkspace() {
     })
   }
 
+  async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS?: string): Promise<Blob | null> {
+    const node = artboardRef.current
+    if (!node) return null
+    return toBlob(node, {
+      pixelRatio: 1,
+      width: slide.width,
+      height: slide.height,
+      style: {
+        transform: 'none',
+      },
+      fontEmbedCSS,
+      filter: (element) =>
+        !(element instanceof HTMLElement && element.classList.contains('freeform-ui-only')),
+    })
+  }
+
+  async function freeformFontEmbedOnce(slides: FreeformSlide[]): Promise<string | undefined> {
+    const fontFamily = firstFreeformFontFamily(slides)
+    if (!fontFamily) return undefined
+    try {
+      return await buildFontEmbedCSS(freeformTextForFonts(slides), fontFamily)
+    } catch {
+      return undefined
+    }
+  }
+
   async function exportCurrentSlide() {
     setExporting(true)
     try {
       setSelection([])
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-      const url = await renderSlideNode(activeSlide)
-      if (url) {
+      const fontCSS = await freeformFontEmbedOnce(doc.slides)
+      const blob = await renderSlideBlob(activeSlide, fontCSS)
+      if (blob) {
         const activeIndex = Math.max(
           0,
           doc.slides.findIndex((slide) => slide.id === activeSlide.id),
         )
-        downloadDataUrl(url, slidePngName(activeIndex))
+        downloadBlob(blob, slidePngName(activeIndex))
       }
     } finally {
       setExporting(false)

@@ -312,6 +312,7 @@ test('exports the current slide as a PNG at slide dimensions', async ({ page }) 
   expect(path).toBeTruthy()
   const size = readPngSize(await readFile(path!))
   expect(size).toEqual({ width: 1080, height: 1920 })
+  await expect(page.getByRole('button', { name: '导出当前页' })).toBeEnabled()
 })
 
 test('exports current freeform slide with gradient pixels and without editor ui', async ({ page }) => {
