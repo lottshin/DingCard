@@ -36,11 +36,13 @@
 
 - [ ] **Step 1: Write failing unit tests**
 
-Create `src/__tests__/exportZip.test.ts`:
+Create `src/__tests__/exportZip.test.ts`.
+
+Vitest runs in Node, so do not depend on `document` or `HTMLAnchorElement`. Test through an injected downloader:
 
 ```ts
 import { describe, expect, it, vi } from 'vitest'
-import { downloadZip } from '../exportZip'
+import { downloadZip, type ZipDownloader } from '../exportZip'
 
 async function readZipEntries(blob: Blob) {
   const JSZip = (await import('jszip')).default
@@ -56,24 +58,34 @@ async function readZipEntries(blob: Blob) {
 
 describe('downloadZip', () => {
   it('keeps data URL inputs compatible with card file names', async () => {
-    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const downloader = vi.fn<ZipDownloader>()
 
-    await downloadZip(['data:image/png;base64,YQ=='], 'cards.zip')
+    await downloadZip(['data:image/png;base64,YQ=='], 'cards.zip', { downloader })
 
-    const blob = createObjectURL.mock.calls[0][0] as Blob
+    const [blob, zipName] = downloader.mock.calls[0]
+    expect(zipName).toBe('cards.zip')
     await expect(readZipEntries(blob)).resolves.toEqual({ 'card-1.png': 'a' })
   })
 
+  it('preserves custom fileNameForIndex for data URL inputs', async () => {
+    const downloader = vi.fn<ZipDownloader>()
+
+    await downloadZip(['data:image/png;base64,YQ=='], 'custom.zip', {
+      downloader,
+      fileNameForIndex: (index) => `slide-${index + 1}.png`,
+    })
+
+    const [blob] = downloader.mock.calls[0]
+    await expect(readZipEntries(blob)).resolves.toEqual({ 'slide-1.png': 'a' })
+  })
+
   it('writes named Blob entries without base64 conversion', async () => {
-    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const downloader = vi.fn<ZipDownloader>()
 
     await downloadZip([{ name: 'slide-01.png', blob: new Blob(['png-bytes'], { type: 'image/png' }) }], 'slides.zip')
 
-    const blob = createObjectURL.mock.calls[0][0] as Blob
+    const [blob, zipName] = downloader.mock.calls[0]
+    expect(zipName).toBe('slides.zip')
     await expect(readZipEntries(blob)).resolves.toEqual({ 'slide-01.png': 'png-bytes' })
   })
 })
@@ -87,7 +99,7 @@ Run:
 npm run test:unit -- src/__tests__/exportZip.test.ts
 ```
 
-Expected: FAIL because `downloadZip` does not accept `{ name, blob }[]`.
+Expected: FAIL because `downloadZip` does not accept injected downloader or `{ name, blob }[]`.
 
 - [ ] **Step 3: Implement Blob-compatible zip entries**
 
@@ -171,6 +183,8 @@ function downloadBlob(blob: Blob, filename: string) {
 - Rename `renderSlideNode(slide)` to `renderSlideBlob(slide, fontEmbedCSS?)`.
 - Use `toBlob(node, { pixelRatio: 1, width, height, style, filter, fontEmbedCSS })`.
 - In `exportCurrentSlide`, call `downloadBlob(blob, slidePngName(activeIndex))`.
+- If `toBlob()` returns `null`, do not call `downloadBlob()` and do not throw.
+- Wrap font embed CSS generation in `try/catch`; on error return `undefined`.
 
 - [ ] **Step 4: Run targeted E2E**
 
@@ -197,23 +211,26 @@ git commit -m "feat: export freeform slide as blob"
 
 - [ ] **Step 1: Write failing E2E progress test**
 
-Add to `e2e/freeform.spec.ts`:
+Add to `e2e/freeform.spec.ts`.
+
+To avoid flake from fast exports, make this test observe deterministic UI state by creating several slides and asserting that the zip button reaches a progress label before the download completes:
 
 ```ts
 test('shows progress while exporting multiple freeform slides', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()
   await page.getByRole('button', { name: '新增页面' }).click()
+  await page.getByRole('button', { name: '新增页面' }).click()
+  await page.getByRole('button', { name: '新增页面' }).click()
 
-  await page.route('**/*', async (route) => route.continue())
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: '打包导出' }).click()
-  await expect(page.getByRole('button', { name: /导出 \d+\/2/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /导出 \d+\/4/ })).toBeVisible()
   await downloadPromise
 })
 ```
 
-If this flakes because export is too fast, use `expect.poll()` to read the button text immediately after clicking.
+If this is still too fast, add a small test-only delay through an internal `waitForExportPaint()` helper that awaits two animation frames; do not use arbitrary sleeps in production.
 
 - [ ] **Step 2: Run test and verify RED**
 
@@ -245,7 +262,7 @@ function freeformTextForFonts(slides: FreeformSlide[]): string {
 }
 ```
 
-- Import `buildFontEmbedCSS` and use the selected text element font or first text element font as the family for this phase.
+- Import `buildFontEmbedCSS` and use the first text element font found across all freeform slides as the family for this phase; do not depend on current selection.
 - In `exportAllSlides()`, build `entries: { name: string; blob: Blob }[]`.
 - Before rendering each page, set `exportProgress({ current: index + 1, total: slides.length })`.
 - Pass entries to `downloadZip(entries, zipName)`.
@@ -286,7 +303,7 @@ git commit -m "feat: show freeform export progress"
 Run:
 
 ```bash
-npm version 0.5.3 --no-git-tag-version
+npm version 0.6.0 --no-git-tag-version
 ```
 
 - [ ] **Step 2: Full verification**
@@ -320,5 +337,5 @@ git commit -m "chore: bump version for export optimization"
 - Naming: grep `ZipInput`, `exportProgress`, `renderSlideBlob`, `downloadBlob`.
 - Error/status codes: none added.
 - Docs: this spec and plan document the export behavior.
-- Version: patch bump to `0.5.3`.
+- Version: minor bump to `0.6.0`, because this adds user-visible export progress and extends the export pipeline capability.
 - Multi-environment tests: unit plus E2E current slide, zip, progress, and existing export tests.
