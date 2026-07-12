@@ -79,6 +79,19 @@ function googleFontHrefs(): string[] {
   return Array.from(links).map((l) => l.href)
 }
 
+function googleFontHrefIncludesFamily(href: string, family: string): boolean {
+  try {
+    const url = new URL(href)
+    return url.searchParams.getAll('family').some((spec) => {
+      const advertisedFamily = spec.split(':')[0]?.trim()
+      return advertisedFamily?.toLowerCase() === family.toLowerCase()
+    })
+  } catch {
+    // Preserve the existing fetch-and-inspect fallback for unusual link URLs.
+    return true
+  }
+}
+
 async function stylesheetText(href: string): Promise<string> {
   const cached = cssTextCache.get(href)
   if (cached != null) return cached
@@ -126,7 +139,8 @@ export async function buildFontEmbedCSS(text: string, fontFamily: string): Promi
   const cached = builtCache.get(sig)
   if (cached != null) return cached
 
-  const hrefs = googleFontHrefs()
+  const hrefs = googleFontHrefs().filter((href) => googleFontHrefIncludesFamily(href, family))
+  if (hrefs.length === 0) return ''
   const texts = await Promise.all(hrefs.map(stylesheetText))
   const allCss = texts.join('\n')
 
