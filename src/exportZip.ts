@@ -1,8 +1,8 @@
 // Bundle multiple rendered PNGs into a single .zip download.
 //
 // The actual per-page rendering stays in the caller, because it needs mounted
-// DOM nodes and React state. This module only takes already-rendered data URLs
-// and packages them.
+// DOM nodes and React state. This module packages either legacy data URLs or
+// named Blob entries.
 
 import JSZip from 'jszip'
 
