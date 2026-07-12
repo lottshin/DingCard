@@ -13,6 +13,10 @@ export interface FreeformSlide {
   elements: FreeformElement[]
 }
 
+export type ColorPaint =
+  | { type: 'solid'; color: string }
+  | { type: 'linear-gradient'; from: string; to: string; angle: number }
+
 export type SlideBackground =
   | { type: 'solid'; color: string }
   | { type: 'transparent' }
