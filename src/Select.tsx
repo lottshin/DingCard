@@ -12,6 +12,7 @@ interface SelectProps {
   options: SelectOption[]
   onChange: (id: string) => void
   title?: string
+  testId?: string
   /** preview each option's label in its own font (used by the font picker) */
   previewFonts?: boolean
 }
@@ -23,7 +24,7 @@ interface SelectProps {
  * Keyboard: Enter/Space/ArrowDown opens; Arrows move; Enter picks; Esc closes.
  * Closes on outside click. The open panel is positioned under the trigger.
  */
-export function Select({ value, options, onChange, title, previewFonts }: SelectProps) {
+export function Select({ value, options, onChange, title, testId, previewFonts }: SelectProps) {
   const [open, setOpen] = useState(false)
   const [hover, setHover] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -83,6 +84,7 @@ export function Select({ value, options, onChange, title, previewFonts }: Select
         onKeyDown={onKeyDown}
         aria-haspopup="listbox"
         aria-expanded={open}
+        data-testid={testId}
       >
         <span
           className="sel-value"

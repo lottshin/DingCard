@@ -111,6 +111,45 @@ test('switches to the freeform workspace and edits a slide', async ({ page }) =>
   await expect(page.getByText('形状')).toBeVisible()
 })
 
+test('freeform inspector exposes styled paint controls instead of visible native color inputs', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  await expect(page.getByTestId('freeform-paint-field').first()).toBeVisible()
+  await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
+  await expect(page.getByTestId('paint-color-button').first()).toBeVisible()
+})
+
+test('changes a selected text element font family', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  await page.getByTestId('freeform-element').first().click()
+  await page.getByTestId('freeform-font-select').click()
+  await page.locator('[role="option"]').nth(2).click()
+
+  await expect(page.getByTestId('freeform-textbox').first()).toHaveCSS('font-family', /Noto Serif|serif/i)
+})
+
+test('applies page, shape, and text gradients from the inspector', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
+  await expect(page.getByTestId('freeform-canvas')).toHaveCSS('background-image', /linear-gradient/)
+
+  await page.locator('.freeform-toolbar .bar-btn').nth(2).click()
+  await page.getByTestId('freeform-element').last().click()
+  await page.getByTestId('shape-fill-paint').getByTestId('paint-mode-linear-gradient').click()
+  await expect(page.getByTestId('freeform-shape').last()).toHaveCSS('background-image', /linear-gradient/)
+
+  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  await page.getByTestId('freeform-element').last().click()
+  await page.getByTestId('text-fill-paint').getByTestId('paint-mode-linear-gradient').click()
+  await expect(page.getByTestId('freeform-textbox').last()).toHaveCSS('background-image', /linear-gradient/)
+})
+
 test('sets custom page size and new pages inherit it', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()

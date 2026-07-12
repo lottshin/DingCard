@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toPng } from 'html-to-image'
 import { AuthModal } from '../AuthModal'
 import { DraftsPanel } from '../DraftsPanel'
+import { Select } from '../Select'
 import { current as currentUser, logout as authLogout, type User } from '../auth'
 import { deleteDraft, listDrafts, saveDraft, type Draft } from '../drafts'
 import { downloadZip } from '../exportZip'
 import { downscaleDataUrl } from '../imageStore'
+import { FONTS } from '../theme'
 import { useAppTheme } from '../useAppTheme'
 import {
   createFreeformDocument,
@@ -18,11 +20,20 @@ import {
   validatePageSize,
 } from './document'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
-import { paintFallbackColor, shapeFillToStyle, slideBackgroundToCss, textFillToStyle } from './paint'
+import { PaintField } from './PaintField'
+import {
+  DEFAULT_PAGE_PAINT,
+  DEFAULT_SHAPE_PAINT,
+  DEFAULT_TEXT_PAINT,
+  shapeFillToStyle,
+  slideBackgroundToCss,
+  textFillToStyle,
+} from './paint'
 import { getElementsInMarquee, moveElementsWithinSlide, type Rect } from './selection'
 import { snapDrag, type SnapLine } from './snapping'
 import type {
   FreeformAction,
+  ColorPaint,
   FreeformDocument,
   FreeformElement,
   FreeformImageElement,
@@ -30,6 +41,8 @@ import type {
   FreeformShapeElement,
   FreeformSlide,
   FreeformTextElement,
+  ShapeFill,
+  SlideBackground,
 } from './types'
 
 const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
@@ -1103,21 +1116,21 @@ export function FreeformWorkspace() {
                 }
               />
             </label>
-            <label className="field">
-              <span className="field-label">背景色</span>
-              <input
-                className="color-field"
-                type="color"
-                value={activeSlide.background.type === 'solid' ? activeSlide.background.color : '#ffffff'}
-                onChange={(event) =>
+            <div data-testid="page-background-paint">
+              <PaintField
+                label="背景"
+                value={activeSlide.background}
+                modes={['solid', 'linear-gradient', 'transparent']}
+                fallbackPaint={DEFAULT_PAGE_PAINT}
+                onChange={(background) =>
                   applyAction({
                     type: 'slide/update',
                     slideId: activeSlide.id,
-                    patch: { background: { type: 'solid', color: event.currentTarget.value } },
+                    patch: { background: background as SlideBackground },
                   })
                 }
               />
-            </label>
+            </div>
           </div>
 
           {selectedElement ? (
@@ -1179,6 +1192,17 @@ export function FreeformWorkspace() {
                       onChange={(event) => updateElement(selectedElement.id, { text: event.currentTarget.value })}
                     />
                   </label>
+                  <label className="field">
+                    <span className="field-label">字体</span>
+                    <Select
+                      value={selectedElement.fontFamily}
+                      onChange={(fontFamily) => updateElement(selectedElement.id, { fontFamily })}
+                      title="字体"
+                      testId="freeform-font-select"
+                      previewFonts
+                      options={FONTS.map((font) => ({ id: font.id, label: font.label }))}
+                    />
+                  </label>
                   <div className="field-grid">
                     <label>
                       字号
@@ -1192,18 +1216,17 @@ export function FreeformWorkspace() {
                         }
                       />
                     </label>
-                    <label>
-                      颜色
-                      <input
-                        type="color"
-                        value={paintFallbackColor(selectedElement.textFill)}
-                        onChange={(event) =>
-                          updateElement(selectedElement.id, {
-                            textFill: { type: 'solid', color: event.currentTarget.value },
-                          })
-                        }
-                      />
-                    </label>
+                  </div>
+                  <div className="field with-gap" data-testid="text-fill-paint">
+                    <PaintField
+                      label="文字颜色"
+                      value={selectedElement.textFill}
+                      modes={['solid', 'linear-gradient']}
+                      fallbackPaint={DEFAULT_TEXT_PAINT}
+                      onChange={(textFill) =>
+                        updateElement(selectedElement.id, { textFill: textFill as ColorPaint })
+                      }
+                    />
                   </div>
                   <div className="seg stretch">
                     {(['left', 'center', 'right'] as const).map((align) => (
@@ -1253,19 +1276,24 @@ export function FreeformWorkspace() {
                       </button>
                     ))}
                   </div>
+                  <div className="field with-gap" data-testid="shape-fill-paint">
+                    <PaintField
+                      label="填充"
+                      value={selectedElement.fill}
+                      modes={['solid', 'linear-gradient', 'image']}
+                      fallbackPaint={DEFAULT_SHAPE_PAINT}
+                      onChange={(fill) => updateElement(selectedElement.id, { fill: fill as ShapeFill })}
+                      onChooseImage={() => shapeFillInputRef.current?.click()}
+                      onClearImage={() =>
+                        updateElement(selectedElement.id, { fill: { ...DEFAULT_SHAPE_PAINT } })
+                      }
+                      onImageFitChange={(fit) => {
+                        if (selectedElement.fill.type !== 'image') return
+                        updateElement(selectedElement.id, { fill: { ...selectedElement.fill, fit } })
+                      }}
+                    />
+                  </div>
                   <div className="field-grid with-gap">
-                    <label>
-                      填充
-                      <input
-                        type="color"
-                        value={selectedElement.fill.type === 'solid' ? selectedElement.fill.color : '#fed7aa'}
-                        onChange={(event) =>
-                          updateElement(selectedElement.id, {
-                            fill: { type: 'solid', color: event.currentTarget.value },
-                          })
-                        }
-                      />
-                    </label>
                     <label>
                       描边
                       <input
@@ -1286,43 +1314,6 @@ export function FreeformWorkspace() {
                       />
                     </label>
                   </div>
-                  <div className="inspector-actions">
-                    <button className="ghost" type="button" onClick={() => shapeFillInputRef.current?.click()}>
-                      插入图片填充
-                    </button>
-                    {selectedElement.fill.type === 'image' && (
-                      <button
-                        className="ghost"
-                        type="button"
-                        onClick={() =>
-                          updateElement(selectedElement.id, { fill: { type: 'solid', color: '#fed7aa' } })
-                        }
-                      >
-                        清除图片
-                      </button>
-                    )}
-                  </div>
-                  {selectedElement.fill.type === 'image' && (
-                    <div className="seg stretch">
-                      {FITS.map((fit) => (
-                        <button
-                          key={fit.id}
-                          type="button"
-                          className={selectedElement.fill.type === 'image' && selectedElement.fill.fit === fit.id ? 'seg-btn on' : 'seg-btn'}
-                          onClick={() =>
-                            updateElement(selectedElement.id, {
-                              fill:
-                                selectedElement.fill.type === 'image'
-                                  ? { ...selectedElement.fill, fit: fit.id }
-                                  : selectedElement.fill,
-                            })
-                          }
-                        >
-                          {fit.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                   <input
                     ref={shapeFillInputRef}
                     className="freeform-file"
@@ -1485,6 +1476,7 @@ function FreeformElementContent({ element, onTextChange, onTextFocus }: Freeform
     return (
       <textarea
         className="freeform-textbox"
+        data-testid="freeform-textbox"
         aria-label="文本内容"
         value={element.text}
         onFocus={onTextFocus}
@@ -1554,7 +1546,7 @@ function FreeformElementContent({ element, onTextChange, onTextFocus }: Freeform
   return (
     <div
       className={`freeform-shape shape-${element.shape}`}
-      data-testid={element.fill.type === 'image' ? 'freeform-shape-image-fill' : undefined}
+      data-testid={element.fill.type === 'image' ? 'freeform-shape-image-fill' : 'freeform-shape'}
       style={{
         ...shapeFillToStyle(element.fill),
         borderColor: element.stroke,
