@@ -81,6 +81,16 @@ If font CSS generation fails, fallback should be `undefined` so `html-to-image` 
 - `string[]` data URLs, preserving Markdown behavior.
 - `{ name: string; blob: Blob }[]` entries for freeform.
 
+The existing call shape must remain valid:
+
+```ts
+downloadZip(dataUrls, zipName, { fileNameForIndex })
+```
+
+The new Blob entry shape should not require `fileNameForIndex`, because each entry carries its own output name.
+
+Single-file Blob downloads must use `URL.createObjectURL(blob)` and revoke the object URL after the browser has had a chance to start the download.
+
 No public API or CLI exists; no error/status codes are added.
 
 ## Testing
@@ -88,6 +98,7 @@ No public API or CLI exists; no error/status codes are added.
 - Unit test `downloadZip` behavior for Blob entries and data URL entries.
 - E2E test freeform zip export still downloads PNG files with correct names and sizes.
 - E2E test freeform multi-page export shows progress text while exporting.
+- Fallback checks: `toBlob()` returning `null` should not throw, and font embed failure should still allow export via html-to-image fallback.
 - Existing export tests for current page PNG and mixed-size zip must remain passing.
 
 ## Risks
