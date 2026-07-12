@@ -10,6 +10,39 @@ function readPngSize(buffer: Buffer) {
   }
 }
 
+async function samplePngPixel(
+  page: import('@playwright/test').Page,
+  filePath: string,
+  x: number,
+  y: number,
+) {
+  const buffer = await readFile(filePath)
+  const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`
+  return page.evaluate(
+    async ({ dataUrl, x, y }) => {
+      const img = new Image()
+      img.src = dataUrl
+      await img.decode()
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('no canvas context')
+      context.drawImage(img, 0, 0)
+      return Array.from(context.getImageData(x, y, 1, 1).data)
+    },
+    { dataUrl, x, y },
+  )
+}
+
+function rgbDistance(a: number[], b: number[]) {
+  return Math.sqrt(
+    (a[0] - b[0]) ** 2 +
+      (a[1] - b[1]) ** 2 +
+      (a[2] - b[2]) ** 2,
+  )
+}
+
 async function freeformElementPositions(page: import('@playwright/test').Page) {
   return page.getByTestId('freeform-element').evaluateAll((elements) =>
     elements.map((element) => {
@@ -222,6 +255,42 @@ test('exports the current slide as a PNG at slide dimensions', async ({ page }) 
   expect(path).toBeTruthy()
   const size = readPngSize(await readFile(path!))
   expect(size).toEqual({ width: 1080, height: 1920 })
+})
+
+test('exports current freeform slide with gradient pixels and without editor ui', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+
+  await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
+  await page.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementBox(page, 100, 100, 100, 100)
+  await expect(page.getByTestId('freeform-element')).toHaveAttribute('data-selected', 'true')
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出当前页' }).click()
+  const download = await downloadPromise
+  const path = await download.path()
+  expect(path).toBeTruthy()
+
+  const size = readPngSize(await readFile(path!))
+  expect(size).toEqual({ width: 1080, height: 1440 })
+
+  const topLeft = await samplePngPixel(page, path!, 10, 10)
+  const bottomRight = await samplePngPixel(page, path!, 1000, 1300)
+  expect(topLeft.slice(0, 3)).not.toEqual(bottomRight.slice(0, 3))
+
+  const accentRgb = await page.evaluate(() => {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+    const match = accent.match(/^#([0-9a-f]{6})$/i)
+    if (!match) throw new Error(`unexpected accent color: ${accent}`)
+    return [
+      Number.parseInt(match[1].slice(0, 2), 16),
+      Number.parseInt(match[1].slice(2, 4), 16),
+      Number.parseInt(match[1].slice(4, 6), 16),
+    ]
+  })
+  const resizeHandleProbe = await samplePngPixel(page, path!, 203, 203)
+  expect(rgbDistance(resizeHandleProbe, accentRgb)).toBeGreaterThan(30)
 })
 
 test('saves and restores a freeform draft', async ({ page }) => {
