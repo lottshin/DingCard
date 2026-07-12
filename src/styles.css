@@ -614,7 +614,8 @@ html.theme-anim * {
   margin-top: 12px;
 }
 
-.field-grid label {
+.field-grid label,
+.field-grid .color-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -696,6 +697,7 @@ html.theme-anim * {
 .paint-color {
   position: relative;
   flex: 0 0 auto;
+  z-index: 3;
 }
 
 .paint-color-button {
@@ -716,12 +718,10 @@ html.theme-anim * {
   outline: none;
 }
 
-.paint-native-input {
-  display: none;
-}
-
 .paint-hex,
-.paint-angle {
+.paint-angle,
+.paint-popover-hex,
+.paint-channel-number {
   min-width: 0;
   height: 34px;
   border: 1px solid var(--line-2);
@@ -741,6 +741,85 @@ html.theme-anim * {
   width: 64px;
 }
 
+.paint-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: min(246px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.paint-popover-head {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.paint-popover-sample {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-sm);
+}
+
+.paint-popover-hex {
+  width: 100%;
+  text-transform: lowercase;
+}
+
+.paint-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.paint-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--line-2) 76%, transparent);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    var(--shadow-sm);
+  cursor: pointer;
+}
+
+.paint-swatch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.paint-channel-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.paint-channel {
+  display: grid;
+  grid-template-columns: 18px 1fr 48px;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.paint-channel-number {
+  width: 48px;
+  height: 28px;
+  padding: 0 6px;
+}
+
 .paint-gradient {
   display: grid;
   gap: 8px;
@@ -749,10 +828,69 @@ html.theme-anim * {
 .paint-range {
   flex: 1 1 auto;
   min-width: 0;
-  accent-color: var(--accent);
+  height: 8px;
+  border-radius: 999px;
+  background-color: var(--surface-2);
+  background-image: linear-gradient(90deg, var(--line-2), var(--accent));
+  cursor: pointer;
 }
 
-.paint-range::-webkit-slider-thumb {
+.paint-range,
+.paint-channel-range {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+.paint-channel-range {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background-color: var(--surface-2);
+  cursor: pointer;
+}
+
+.paint-range::-webkit-slider-runnable-track,
+.paint-channel-range::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.paint-range::-webkit-slider-thumb,
+.paint-channel-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -5px;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(24, 24, 27, 0.24);
+  cursor: pointer;
+}
+
+.paint-channel-range::-webkit-slider-thumb {
+  background: var(--text);
+}
+
+.paint-range::-moz-range-track,
+.paint-channel-range::-moz-range-track {
+  height: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.paint-range::-moz-range-thumb,
+.paint-channel-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(24, 24, 27, 0.24);
   cursor: pointer;
 }
 
@@ -771,7 +909,9 @@ html.theme-anim * {
 .field-grid input[type='number']::-webkit-outer-spin-button,
 .field-grid input[type='number']::-webkit-inner-spin-button,
 .paint-angle::-webkit-outer-spin-button,
-.paint-angle::-webkit-inner-spin-button {
+.paint-angle::-webkit-inner-spin-button,
+.paint-channel-number::-webkit-outer-spin-button,
+.paint-channel-number::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }

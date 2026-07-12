@@ -20,7 +20,7 @@ import {
   validatePageSize,
 } from './document'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
-import { PaintField } from './PaintField'
+import { ColorPickerButton, PaintField } from './PaintField'
 import { PlainTextEditable } from './PlainTextEditable'
 import {
   DEFAULT_PAGE_PAINT,
@@ -1295,14 +1295,14 @@ export function FreeformWorkspace() {
                     />
                   </div>
                   <div className="field-grid with-gap">
-                    <label>
-                      描边
-                      <input
-                        type="color"
-                        value={selectedElement.stroke}
-                        onChange={(event) => updateElement(selectedElement.id, { stroke: event.currentTarget.value })}
+                    <div className="color-field" data-testid="shape-stroke-color">
+                      <span>描边</span>
+                      <ColorPickerButton
+                        label="形状描边颜色"
+                        color={selectedElement.stroke}
+                        onChange={(stroke) => updateElement(selectedElement.id, { stroke })}
                       />
-                    </label>
+                    </div>
                     <label>
                       描边宽
                       <input
@@ -1341,14 +1341,14 @@ export function FreeformWorkspace() {
                     ))}
                   </div>
                   <div className="field-grid with-gap">
-                    <label>
-                      颜色
-                      <input
-                        type="color"
-                        value={selectedElement.stroke}
-                        onChange={(event) => updateElement(selectedElement.id, { stroke: event.currentTarget.value })}
+                    <div className="color-field" data-testid="line-stroke-color">
+                      <span>颜色</span>
+                      <ColorPickerButton
+                        label="线条颜色"
+                        color={selectedElement.stroke}
+                        onChange={(stroke) => updateElement(selectedElement.id, { stroke })}
                       />
-                    </label>
+                    </div>
                     <label>
                       粗细
                       <input

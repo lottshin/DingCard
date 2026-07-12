@@ -153,6 +153,52 @@ test('freeform inspector exposes styled paint controls instead of visible native
   await expect(page.getByTestId('paint-color-button').first()).toBeVisible()
 })
 
+test('opens a custom color popover beside the inspector instead of the browser color picker', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  const inspector = page.locator('.freeform-inspector')
+  await page.getByTestId('page-background-paint').getByTestId('paint-color-button').click()
+
+  const popover = page.getByTestId('paint-popover')
+  await expect(popover).toBeVisible()
+  await expect(page.getByTestId('page-background-paint').locator('input[type="color"]')).toHaveCount(0)
+
+  const inspectorBox = await inspector.boundingBox()
+  const popoverBox = await popover.boundingBox()
+  expect(inspectorBox).toBeTruthy()
+  expect(popoverBox).toBeTruthy()
+  expect(popoverBox!.x).toBeGreaterThanOrEqual(inspectorBox!.x)
+  expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(inspectorBox!.x + inspectorBox!.width)
+})
+
+test('uses styled range sliders in the freeform paint controls', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
+  const range = page.getByTestId('paint-gradient-angle').first()
+
+  await expect(range).toHaveCSS('appearance', 'none')
+  await expect(range).toHaveCSS('background-image', /linear-gradient/)
+})
+
+test('uses custom color popovers for shape and line stroke colors', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  await page.locator('.freeform-toolbar .bar-btn').nth(2).click()
+  await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
+  await page.getByTestId('shape-stroke-color').getByTestId('paint-color-button').click()
+  await expect(page.getByTestId('paint-popover')).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  await page.getByLabel('插入工具').getByRole('button', { name: '直线' }).click()
+  await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
+  await page.getByTestId('line-stroke-color').getByTestId('paint-color-button').click()
+  await expect(page.getByTestId('paint-popover')).toBeVisible()
+})
+
 test('changes a selected text element font family', async ({ page }) => {
   await page.goto('/')
   await page.locator('.workspace-switch button').nth(1).click()
