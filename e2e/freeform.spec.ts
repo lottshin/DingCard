@@ -183,6 +183,17 @@ test('uses styled range sliders in the freeform paint controls', async ({ page }
   await expect(range).toHaveCSS('background-image', /linear-gradient/)
 })
 
+test('uses styled scrollbars in the freeform workspace', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+
+  for (const selector of ['.freeform-stage-scroll', '.freeform-rail', '.freeform-inspector']) {
+    const scroller = page.locator(selector)
+    await expect(scroller).toHaveCSS('scrollbar-width', 'thin')
+    await expect(scroller).not.toHaveCSS('scrollbar-color', 'auto')
+  }
+})
+
 test('uses custom color popovers for shape and line stroke colors', async ({ page }) => {
   await page.goto('/')
   await page.locator('.workspace-switch button').nth(1).click()

@@ -233,6 +233,71 @@ html.theme-anim * {
   display: none;
 }
 
+.freeform-main,
+.freeform-rail,
+.freeform-slide-list,
+.freeform-stage-scroll,
+.freeform-inspector {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+
+.freeform-main::-webkit-scrollbar,
+.freeform-rail::-webkit-scrollbar,
+.freeform-slide-list::-webkit-scrollbar,
+.freeform-stage-scroll::-webkit-scrollbar,
+.freeform-inspector::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.freeform-main::-webkit-scrollbar-track,
+.freeform-rail::-webkit-scrollbar-track,
+.freeform-slide-list::-webkit-scrollbar-track,
+.freeform-stage-scroll::-webkit-scrollbar-track,
+.freeform-inspector::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.freeform-main::-webkit-scrollbar-thumb,
+.freeform-rail::-webkit-scrollbar-thumb,
+.freeform-slide-list::-webkit-scrollbar-thumb,
+.freeform-stage-scroll::-webkit-scrollbar-thumb,
+.freeform-inspector::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-3) 68%, transparent);
+  background-clip: content-box;
+}
+
+.freeform-main::-webkit-scrollbar-thumb:hover,
+.freeform-rail::-webkit-scrollbar-thumb:hover,
+.freeform-slide-list::-webkit-scrollbar-thumb:hover,
+.freeform-stage-scroll::-webkit-scrollbar-thumb:hover,
+.freeform-inspector::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: content-box;
+}
+
+.freeform-main::-webkit-scrollbar-button,
+.freeform-rail::-webkit-scrollbar-button,
+.freeform-slide-list::-webkit-scrollbar-button,
+.freeform-stage-scroll::-webkit-scrollbar-button,
+.freeform-inspector::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.freeform-main::-webkit-scrollbar-corner,
+.freeform-rail::-webkit-scrollbar-corner,
+.freeform-slide-list::-webkit-scrollbar-corner,
+.freeform-stage-scroll::-webkit-scrollbar-corner,
+.freeform-inspector::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .freeform-main {
   flex: 1 1 auto;
   min-height: 0;
