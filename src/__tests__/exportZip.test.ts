@@ -25,6 +25,19 @@ describe('downloadZip', () => {
     await expect(readZipEntries(blob)).resolves.toEqual({ 'card-1.png': 'a' })
   })
 
+  it('preserves custom fileNameForIndex for data URL inputs', async () => {
+    const downloader = vi.fn<ZipDownloader>()
+
+    await downloadZip(['data:image/png;base64,YQ=='], 'custom.zip', {
+      downloader,
+      fileNameForIndex: (index) => `slide-${index + 1}.png`,
+    })
+
+    const [blob, zipName] = downloader.mock.calls[0]
+    expect(zipName).toBe('custom.zip')
+    await expect(readZipEntries(blob)).resolves.toEqual({ 'slide-1.png': 'a' })
+  })
+
   it('writes named Blob entries without base64 conversion', async () => {
     const downloader = vi.fn<ZipDownloader>()
 

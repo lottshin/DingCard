@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toBlob, toPng } from 'html-to-image'
+import { toBlob } from 'html-to-image'
 import { AuthModal } from '../AuthModal'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
@@ -173,6 +173,7 @@ export function FreeformWorkspace() {
   const [heightDraft, setHeightDraft] = useState(String(activeSlide.height))
   const [sizeError, setSizeError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
@@ -725,21 +726,6 @@ export function FreeformWorkspace() {
     window.addEventListener('pointerup', onUp)
   }
 
-  async function renderSlideNode(slide: FreeformSlide): Promise<string | null> {
-    const node = artboardRef.current
-    if (!node) return null
-    return toPng(node, {
-      pixelRatio: 1,
-      width: slide.width,
-      height: slide.height,
-      style: {
-        transform: 'none',
-      },
-      filter: (element) =>
-        !(element instanceof HTMLElement && element.classList.contains('freeform-ui-only')),
-    })
-  }
-
   async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS?: string): Promise<Blob | null> {
     const node = artboardRef.current
     if (!node) return null
@@ -788,24 +774,27 @@ export function FreeformWorkspace() {
   async function exportAllSlides() {
     if (doc.slides.length === 0) return
     setExporting(true)
+    setExportProgress(null)
     const originalSlideId = activeSlide.id
     try {
       setSelection([])
-      const urls: string[] = []
-      for (const slide of doc.slides) {
+      const fontCSS = await freeformFontEmbedOnce(doc.slides)
+      const entries: Array<{ name: string; blob: Blob }> = []
+      for (let index = 0; index < doc.slides.length; index++) {
+        const slide = doc.slides[index]
+        setExportProgress({ current: index + 1, total: doc.slides.length })
         replaceCurrent({ type: 'slide/select', slideId: slide.id })
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-        const url = await renderSlideNode(slide)
-        if (url) urls.push(url)
+        const blob = await renderSlideBlob(slide, fontCSS)
+        if (blob) entries.push({ name: slidePngName(index), blob })
       }
-      if (urls.length > 0) {
+      if (entries.length > 0) {
         const stamp = new Date().toISOString().slice(0, 10)
-        await downloadZip(urls, `freeform-slides-${stamp}.zip`, {
-          fileNameForIndex: (index) => slidePngName(index),
-        })
+        await downloadZip(entries, `freeform-slides-${stamp}.zip`)
       }
     } finally {
       replaceCurrent({ type: 'slide/select', slideId: originalSlideId })
+      setExportProgress(null)
       setExporting(false)
     }
   }
@@ -932,7 +921,7 @@ export function FreeformWorkspace() {
           草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
         </button>
         <button className="bar-btn" type="button" onClick={requestExportAllSlides} disabled={exporting}>
-          打包导出
+          {exportProgress ? `导出 ${exportProgress.current}/${exportProgress.total}` : '打包导出'}
         </button>
         <button className="bar-primary" type="button" onClick={exportCurrentSlide} disabled={exporting}>
           {exporting ? '导出中…' : '导出当前页'}

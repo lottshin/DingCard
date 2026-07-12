@@ -400,6 +400,19 @@ test('exports mixed-size slides as a zip after warning', async ({ page }) => {
   expect(readPngSize(Buffer.from(second))).toEqual({ width: 1920, height: 1080 })
 })
 
+test('shows progress while exporting multiple freeform slides', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByRole('button', { name: '新增页面' }).click()
+  await page.getByRole('button', { name: '新增页面' }).click()
+  await page.getByRole('button', { name: '新增页面' }).click()
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '打包导出' }).click()
+  await expect(page.getByRole('button', { name: /导出 \d+\/4/ })).toBeVisible()
+  await downloadPromise
+})
+
 test('copies, pastes, and deletes the selected element', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()
