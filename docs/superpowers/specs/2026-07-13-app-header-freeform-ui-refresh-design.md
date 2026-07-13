@@ -208,6 +208,7 @@ src/freeform/InspectorSection.tsx
 `useAppTheme` 与当前登录用户提升到 `AppShell`，通过 props 传给两个工作区：
 
 - 切换工作区后主题图标、登录态和头像必须立即一致。
+- 登录弹层的开关状态和登录/退出动作由 `AppShell` 持有；`AppHeader` 与工作区通过明确的 `requestAuth`/账户回调请求打开，不各自创建第二套登录 state。
 - 登录/退出弹层只保留一套全局实例。
 - 两个工作区继续独立管理自己的文档、草稿列表、保存、导出和工作区弹层。
 - 不新增全局事件总线，不使用 `window` 自定义事件同步 React 状态。
@@ -217,6 +218,8 @@ src/freeform/InspectorSection.tsx
 本轮保留两个工作区持续挂载、通过 `hidden` 切换的现有策略，以避免切换模式时丢失未保存编辑状态。
 
 全局主题和用户提升后，隐藏工作区收到相同 props，不再保留独立且可能过期的主题/登录 state。
+
+隐藏工作区必须继续使用原生 `hidden` 语义或等价的 `display: none` + `aria-hidden` 方案，确保其顶栏、菜单和表单控件不进入键盘顺序与可访问性树。
 
 ## 9. 响应式行为
 
@@ -277,6 +280,7 @@ src/freeform/InspectorSection.tsx
 - Markdown 编辑、分页、卡片预览和 ZIP 导出通过。
 - 自由编辑选择、拖拽、缩放、旋转、复制粘贴、对齐、分布和吸附通过。
 - 单页 PNG 与批量 ZIP 不包含顶栏、属性栏、选择框、参考线或菜单。
+- 导出回归测试直接检查导出根节点不包含应用主题 class/data 属性、顶栏、弹出菜单和编辑辅助层，避免仅凭肉眼判断截图。
 - 中文输入法、字体选择、渐变文字和图片填充通过现有风险用例。
 - `npm run build`、`npm run test:unit`、完整 Playwright E2E 通过。
 
