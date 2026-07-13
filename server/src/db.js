@@ -26,16 +26,18 @@ db.exec(`
     created_at  INTEGER NOT NULL
   );
 
+  -- Drafts are stored as opaque versioned envelopes. The backend is a dumb
+  -- store: it never interprets what's inside the document column (a JSON string
+  -- holding the whole workspace document — markdown-card OR freeform-slide).
+  -- This keeps the schema stable however the frontend document shapes evolve.
   CREATE TABLE IF NOT EXISTS drafts (
-    id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title       TEXT NOT NULL,
-    source      TEXT NOT NULL,
-    platform_id TEXT NOT NULL,
-    theme_id    TEXT NOT NULL,
-    font_family TEXT NOT NULL,
-    profile     TEXT NOT NULL,
-    updated_at  INTEGER NOT NULL
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title          TEXT NOT NULL,
+    mode           TEXT NOT NULL,        -- 'markdown-card' | 'freeform-slide'
+    schema_version INTEGER NOT NULL,
+    document       TEXT NOT NULL,        -- entire document, JSON string
+    updated_at     INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_drafts_user ON drafts(user_id, updated_at DESC);
 
@@ -60,15 +62,15 @@ export const stmts = {
   userByName: db.prepare(`SELECT * FROM users WHERE username = ? COLLATE NOCASE`),
   userById: db.prepare(`SELECT * FROM users WHERE id = ?`),
 
-  // drafts
+  // drafts (generic versioned envelope; `document` is opaque JSON to the server)
   listDrafts: db.prepare(`SELECT * FROM drafts WHERE user_id = ? ORDER BY updated_at DESC`),
   draftById: db.prepare(`SELECT * FROM drafts WHERE id = ? AND user_id = ?`),
   upsertDraft: db.prepare(`
-    INSERT INTO drafts (id, user_id, title, source, platform_id, theme_id, font_family, profile, updated_at)
-    VALUES (@id, @user_id, @title, @source, @platform_id, @theme_id, @font_family, @profile, @updated_at)
+    INSERT INTO drafts (id, user_id, title, mode, schema_version, document, updated_at)
+    VALUES (@id, @user_id, @title, @mode, @schema_version, @document, @updated_at)
     ON CONFLICT(id) DO UPDATE SET
-      title = @title, source = @source, platform_id = @platform_id, theme_id = @theme_id,
-      font_family = @font_family, profile = @profile, updated_at = @updated_at
+      title = @title, mode = @mode, schema_version = @schema_version,
+      document = @document, updated_at = @updated_at
   `),
   deleteDraft: db.prepare(`DELETE FROM drafts WHERE id = ? AND user_id = ?`),
 
