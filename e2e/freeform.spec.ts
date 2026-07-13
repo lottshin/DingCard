@@ -195,6 +195,42 @@ test('workspace tabs support arrow, Home, and End keyboard navigation', async ({
   await expect(freeformTab).toHaveAttribute('aria-selected', 'true')
 })
 
+test('workspace tab arrow navigation does not nudge selected freeform elements', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByRole('button', { name: '矩形' }).click()
+  await setSelectedElementPosition(page, 240, 180)
+
+  const positionInputs = page.locator('.freeform-inspector .field-grid').first().locator('input')
+  const readPosition = async () => ({
+    x: Number(await positionInputs.nth(0).inputValue()),
+    y: Number(await positionInputs.nth(1).inputValue()),
+  })
+  const before = await readPosition()
+
+  await page.evaluate(() => {
+    document.documentElement.dataset.workspaceTabArrowEvents = '0'
+    window.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key === 'ArrowLeft') {
+          document.documentElement.dataset.workspaceTabArrowEvents = '1'
+        }
+      },
+      { once: true },
+    )
+  })
+
+  const freeformTab = page.getByTestId('workspace-tab-freeform')
+  await freeformTab.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByTestId('workspace-tab-markdown')).toBeFocused()
+  await expect(page.locator('html')).toHaveAttribute('data-workspace-tab-arrow-events', '0')
+
+  await freeformTab.click()
+  await expect.poll(readPosition).toEqual(before)
+})
+
 test('account changes reset workspace draft identity', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

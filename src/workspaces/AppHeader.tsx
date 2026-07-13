@@ -51,6 +51,7 @@ export function AppHeader({
     }
 
     event.preventDefault()
+    event.stopPropagation()
     selectWorkspaceTab(nextMode)
   }
 
