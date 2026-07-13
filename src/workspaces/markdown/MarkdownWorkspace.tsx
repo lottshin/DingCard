@@ -8,15 +8,12 @@ import { PLATFORMS, THEMES, FONTS, buildConfig, DEFAULT_PROFILE } from '../../th
 import type { CardConfig, Profile } from '../../theme'
 import { Card } from '../../Card'
 import { MarkdownEditor } from '../../MarkdownEditor'
-import logoUrl from '../../logo.svg'
 import { ProfileModal } from '../../ProfileModal'
-import { AuthModal } from '../../AuthModal'
 import { DraftsPanel } from '../../DraftsPanel'
 import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
-import { useAppTheme } from '../../useAppTheme'
-import { current as currentUser, logout as authLogout, type User } from '../../auth'
 import { listDrafts, saveDraft, deleteDraft, type Draft } from '../../drafts'
+import type { WorkspaceShellProps } from '../types'
 
 const SAMPLE = `# 图文切片快速上手
 
@@ -52,11 +49,7 @@ interface Ctx {
   index: number
 }
 
-type MarkdownWorkspaceProps = {
-  isActive: boolean
-}
-
-export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
+export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShellProps) {
   const [source, setSource] = useState(SAMPLE)
   const [platformId, setPlatformId] = useState(PLATFORMS[0].id)
   const [themeId, setThemeId] = useState(THEMES[0].id)
@@ -66,19 +59,17 @@ export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE)
 
   const [showProfile, setShowProfile] = useState(false)
-  const [showAuth, setShowAuth] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [active, setActive] = useState(0)
   const [ctx, setCtx] = useState<Ctx | null>(null)
 
-  const [appTheme, toggleAppTheme] = useAppTheme()
-  const [user, setUser] = useState<User | null>(() => currentUser())
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
 
   const cardRef = useRef<HTMLDivElement>(null)
+  const previousUserId = useRef<string | null>(user?.id ?? null)
 
   const platform = PLATFORMS.find((p) => p.id === platformId)!
   const theme = THEMES.find((t) => t.id === themeId)!
@@ -117,8 +108,16 @@ export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
   }, [user])
 
   useEffect(() => {
-    refreshDrafts()
-  }, [refreshDrafts])
+    const nextUserId = user?.id ?? null
+    setDrafts(user ? listDrafts(user.id) : [])
+
+    if (previousUserId.current !== nextUserId) {
+      previousUserId.current = nextUserId
+      setDraftId(null)
+      setSavedAt(null)
+      setShowDrafts(false)
+    }
+  }, [user])
 
   useEffect(() => {
     if (active > pages.length - 1) setActive(Math.max(0, pages.length - 1))
@@ -327,7 +326,7 @@ export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
   // ---- Drafts -----------------------------------------------------------
   function handleSaveDraft() {
     if (!user) {
-      setShowAuth(true)
+      requestAuth()
       return
     }
     const saved = saveDraft(user.id, {
@@ -370,22 +369,10 @@ export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
     refreshDrafts()
   }
 
-  function handleLogout() {
-    authLogout()
-    setUser(null)
-    setDraftId(null)
-    setDrafts([])
-  }
-
   return (
     <div className="app">
       {/* ---------- Top bar ---------- */}
       <header className="topbar">
-        <div className="brand">
-          <img className="brand-logo" src={logoUrl} alt="" width="26" height="26" />
-          <span className="brand-name">叮卡</span>
-        </div>
-
         <div className="seg" role="tablist" aria-label="平台">
           {PLATFORMS.map((p) => (
             <button
@@ -419,21 +406,18 @@ export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
 
         <div className="bar-spacer" />
 
-        <button
-          className="bar-icon"
-          onClick={toggleAppTheme}
-          title={appTheme === 'dark' ? '切换到浅色' : '切换到深色'}
-          aria-label="切换深浅色"
-        >
-          {appTheme === 'dark' ? '☀' : '☾'}
-        </button>
-
         <button className="bar-btn" onClick={handleSaveDraft}>
           保存草稿
         </button>
         <button
           className="bar-btn"
-          onClick={() => (user ? setShowDrafts(true) : setShowAuth(true))}
+          onClick={() => {
+            if (!user) {
+              requestAuth()
+              return
+            }
+            setShowDrafts(true)
+          }}
         >
           草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
         </button>
@@ -441,16 +425,6 @@ export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
         <button className="bar-primary" onClick={exportAllZip} disabled={exporting}>
           {exporting ? '导出中…' : `打包下载 ${pages.length} 页`}
         </button>
-
-        {user ? (
-          <button className="bar-user" onClick={handleLogout} title="点击退出登录">
-            <span className="bar-user-dot">{user.username.slice(0, 1)}</span>
-          </button>
-        ) : (
-          <button className="bar-btn accent-outline" onClick={() => setShowAuth(true)}>
-            登录
-          </button>
-        )}
       </header>
 
       {/* ---------- Body: editor | preview ---------- */}
@@ -596,16 +570,6 @@ export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
           onSave={(next) => {
             setProfile(next)
             setShowProfile(false)
-          }}
-        />
-      )}
-
-      {showAuth && (
-        <AuthModal
-          onClose={() => setShowAuth(false)}
-          onAuthed={(u) => {
-            setUser(u)
-            setShowAuth(false)
           }}
         />
       )}

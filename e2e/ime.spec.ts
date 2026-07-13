@@ -33,11 +33,15 @@ async function setDoc(page: import('@playwright/test').Page, text: string) {
 
 test('Markdown workspace is the default workspace', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('button', { name: 'Markdown 卡片' })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
-  await expect(page.locator('.cm-content')).toBeVisible()
+  const markdownTab = page.getByRole('tab', { name: 'Markdown 卡片' })
+  await expect(markdownTab).toHaveAttribute('data-testid', 'workspace-tab-markdown')
+  await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
+  await expect(markdownTab).toHaveAttribute('aria-controls', 'workspace-panel-markdown')
+
+  const markdownPanel = page.getByRole('tabpanel', { name: 'Markdown 卡片' })
+  await expect(markdownPanel).toHaveAttribute('id', 'workspace-panel-markdown')
+  await expect(markdownPanel).toHaveAttribute('aria-labelledby', 'workspace-tab-markdown')
+  await expect(markdownPanel.locator('.cm-content')).toBeVisible()
 })
 
 test.describe('IME input in Markdown editor', () => {

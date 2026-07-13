@@ -118,10 +118,152 @@ html.theme-anim * {
   background: var(--bg);
 }
 
-.app-shell > .app {
-  height: auto;
+.app-header {
+  position: relative;
+  z-index: 30;
+  flex: 0 0 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bar-bg);
+  -webkit-backdrop-filter: var(--bar-blur);
+  backdrop-filter: var(--bar-blur);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 112px;
+  color: var(--text);
+}
+
+.app-brand-logo {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.app-brand strong {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.workspace-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.workspace-tab {
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.workspace-tab:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.workspace-tab[aria-selected='true'] {
+  border-color: var(--line-2);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.workspace-tab:focus-visible,
+.app-header-icon:focus-visible,
+.app-account:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-header-spacer {
   flex: 1 1 auto;
-  min-height: 0;
+}
+
+.app-header-icon,
+.app-account {
+  flex: 0 0 auto;
+  height: 34px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  font-family: var(--sans);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.app-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+}
+
+.app-header-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.app-header-icon:hover,
+.app-account-login:hover {
+  border-color: var(--line-2);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.app-account-login {
+  padding: 0 13px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-account-user {
+  width: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-sm);
+}
+
+.app-account-user:hover {
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-theme='dark'] .workspace-tab[aria-selected='true'] {
+  border-color: #45454f;
+  background: #2a2a30;
 }
 
 .workspace-panel {
@@ -140,41 +282,6 @@ html.theme-anim * {
   height: auto;
   flex: 1 1 auto;
   min-height: 0;
-}
-
-.workspace-switch {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-self: center;
-  gap: 4px;
-  margin: 10px 0 0;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  z-index: 20;
-}
-
-.workspace-tab {
-  border: 0;
-  border-radius: 999px;
-  padding: 7px 14px;
-  background: transparent;
-  color: var(--text-2);
-  font-family: var(--sans);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.workspace-tab:hover {
-  color: var(--text);
-}
-
-.workspace-tab.on {
-  background: var(--btn);
-  color: var(--on-btn);
 }
 
 /* =====================================================================
@@ -999,28 +1106,6 @@ html.theme-anim * {
   border-bottom: 1px solid var(--line);
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding-right: 16px;
-  margin-right: 2px;
-}
-
-.brand-logo {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  display: block;
-}
-
-.brand-name {
-  font-weight: 600;
-  font-size: 15px;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-
 /* Segmented platform switch — pill with sliding-feel active state. */
 .seg {
   display: inline-flex;
@@ -1169,58 +1254,19 @@ html.theme-anim * {
 /* Dark mode: lift secondary controls off the near-black background so they
    don't read as faint. Stronger fill + border than the shared tokens give. */
 [data-theme='dark'] .bar-btn,
-[data-theme='dark'] .sel-trigger,
-[data-theme='dark'] .bar-icon {
+[data-theme='dark'] .sel-trigger {
   background: #24242a;
   border-color: #3a3a44;
 }
 
 [data-theme='dark'] .bar-btn:hover,
-[data-theme='dark'] .sel-trigger:hover,
-[data-theme='dark'] .bar-icon:hover {
+[data-theme='dark'] .sel-trigger:hover {
   background: #2c2c34;
   border-color: #4a4a56;
 }
 
-.accent-outline {
-  border-color: var(--accent);
-  color: var(--accent-text);
-}
-
-.accent-outline:hover {
-  background: var(--accent-weak);
-  border-color: var(--accent);
-}
-
 .bar-spacer {
   flex: 1 1 auto;
-}
-
-/* Icon-only theme toggle. */
-.bar-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text-2);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-
-.bar-icon:hover {
-  border-color: var(--line-2);
-  color: var(--text);
-  background: var(--surface-2);
-}
-
-.bar-icon svg {
-  width: 17px;
-  height: 17px;
 }
 
 .bar-primary {
@@ -1247,28 +1293,6 @@ html.theme-anim * {
 .bar-primary:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-.bar-user {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-}
-
-.bar-user-dot {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: 14px;
-  font-weight: 600;
-  text-transform: uppercase;
-  box-shadow: var(--shadow-sm);
 }
 
 /* =====================================================================

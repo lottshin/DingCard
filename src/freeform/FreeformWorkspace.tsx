@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toBlob } from 'html-to-image'
-import { AuthModal } from '../AuthModal'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
-import { current as currentUser, logout as authLogout, type User } from '../auth'
 import { deleteDraft, listDrafts, saveDraft, type Draft } from '../drafts'
 import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
 import { FONTS } from '../theme'
-import { useAppTheme } from '../useAppTheme'
+import type { WorkspaceShellProps } from '../workspaces/types'
 import {
   createFreeformDocument,
   createImageElement,
@@ -149,11 +147,7 @@ function isLineElement(element: FreeformElement | undefined): element is Freefor
   return element?.type === 'line'
 }
 
-type FreeformWorkspaceProps = {
-  isActive: boolean
-}
-
-export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
+export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShellProps) {
   const [history, setHistory] = useState<HistoryState<FreeformDocument>>(() =>
     createHistory(createFreeformDocument()),
   )
@@ -169,19 +163,17 @@ export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
-  const [showAuth, setShowAuth] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
-  const [appTheme, toggleAppTheme] = useAppTheme()
-  const [user, setUser] = useState<User | null>(() => currentUser())
 
   const artboardRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
+  const previousUserId = useRef<string | null>(user?.id ?? null)
 
   selectedElementIds.current = selection
 
@@ -207,8 +199,16 @@ export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
   }, [user])
 
   useEffect(() => {
-    refreshDrafts()
-  }, [refreshDrafts])
+    const nextUserId = user?.id ?? null
+    setDrafts(user ? listDrafts(user.id) : [])
+
+    if (previousUserId.current !== nextUserId) {
+      previousUserId.current = nextUserId
+      setDraftId(null)
+      setSavedAt(null)
+      setShowDrafts(false)
+    }
+  }, [user])
 
   useEffect(() => {
     setWidthDraft(String(activeSlide.width))
@@ -831,7 +831,7 @@ export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
 
   function handleSaveDraft() {
     if (!user) {
-      setShowAuth(true)
+      requestAuth()
       return
     }
     const saved = saveDraft(user.id, {
@@ -858,13 +858,6 @@ export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
     deleteDraft(user.id, id)
     if (id === draftId) setDraftId(null)
     refreshDrafts()
-  }
-
-  function handleLogout() {
-    authLogout()
-    setUser(null)
-    setDraftId(null)
-    setDrafts([])
   }
 
   return (
@@ -918,22 +911,19 @@ export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
         <button className="bar-btn" type="button" onClick={redoDocument} disabled={!canRedo}>
           重做
         </button>
-        <button
-          className="bar-icon"
-          type="button"
-          onClick={toggleAppTheme}
-          title={appTheme === 'dark' ? '切换到浅色' : '切换到深色'}
-          aria-label="切换深浅色"
-        >
-          {appTheme === 'dark' ? '☀' : '☾'}
-        </button>
         <button className="bar-btn" type="button" onClick={handleSaveDraft}>
           保存草稿
         </button>
         <button
           className="bar-btn"
           type="button"
-          onClick={() => (user ? setShowDrafts(true) : setShowAuth(true))}
+          onClick={() => {
+            if (!user) {
+              requestAuth()
+              return
+            }
+            setShowDrafts(true)
+          }}
         >
           草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
         </button>
@@ -943,15 +933,6 @@ export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
         <button className="bar-primary" type="button" onClick={exportCurrentSlide} disabled={exporting}>
           {exporting ? '导出中…' : '导出当前页'}
         </button>
-        {user ? (
-          <button className="bar-user" type="button" onClick={handleLogout} title="点击退出登录">
-            <span className="bar-user-dot">{user.username.slice(0, 1)}</span>
-          </button>
-        ) : (
-          <button className="bar-btn accent-outline" type="button" onClick={() => setShowAuth(true)}>
-            登录
-          </button>
-        )}
       </header>
 
       <main className="freeform-main">
@@ -1478,16 +1459,6 @@ export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
           )}
         </aside>
       </main>
-
-      {showAuth && (
-        <AuthModal
-          onClose={() => setShowAuth(false)}
-          onAuthed={(nextUser) => {
-            setUser(nextUser)
-            setShowAuth(false)
-          }}
-        />
-      )}
 
       {showDrafts && (
         <DraftsPanel

@@ -96,7 +96,7 @@ async function setSelectedElementBox(
 
 async function insertTwoSelectedRectangles(page: import('@playwright/test').Page) {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '矩形' }).click()
@@ -114,7 +114,7 @@ async function insertTwoSelectedRectangles(page: import('@playwright/test').Page
 
 async function insertTwoRectanglesLeavingInspectorFocused(page: import('@playwright/test').Page) {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '矩形' }).click()
@@ -127,9 +127,98 @@ async function insertTwoRectanglesLeavingInspectorFocused(page: import('@playwri
   return elements
 }
 
+test('global header owns workspace tabs, theme, and account state', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await expect(page.getByTestId('app-header')).toHaveCount(1)
+  await expect(page.getByTestId('workspace-tab-markdown')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+
+  await page.getByTestId('theme-toggle').click()
+  const theme = await page.locator('html').getAttribute('data-theme')
+  expect(theme).toMatch(/^(light|dark)$/)
+
+  await page.getByTestId('workspace-tab-freeform').click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme!)
+
+  await page.getByTestId('account-login').click()
+  await page.getByRole('button', { name: '注册' }).click()
+  await page.getByLabel('用户名').fill(`header-${Date.now()}`)
+  await page.getByLabel('密码').fill('1234')
+  await page.getByRole('button', { name: '创建账号' }).click()
+
+  await expect(page.getByTestId('account-logout')).toBeVisible()
+  await page.getByTestId('workspace-tab-markdown').click()
+  await expect(page.getByTestId('account-logout')).toBeVisible()
+})
+
+test('account changes reset workspace draft identity', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const accountSuffix = Date.now()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByRole('button', { name: '文本框' }).click()
+  await page.getByLabel('文本内容').fill('跨账户草稿内容')
+
+  await page.getByRole('button', { name: '保存草稿' }).click()
+  await page.getByRole('button', { name: '注册' }).click()
+  await page.getByLabel('用户名').fill(`draft-${accountSuffix}-a`)
+  await page.getByLabel('密码').fill('1234')
+  await page.getByRole('button', { name: '创建账号' }).click()
+  await page.getByRole('button', { name: '保存草稿' }).click()
+
+  const slideStatus = page.getByTestId('freeform-slide-size')
+  await expect(slideStatus).toContainText('已保存')
+  const userADraftIds = await page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('slicer.drafts.'))
+      .flatMap((key) =>
+        (JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{ id: string }>).map(
+          (draft) => draft.id,
+        ),
+      ),
+  )
+  expect(userADraftIds).toHaveLength(1)
+
+  await page.getByTestId('account-logout').click()
+  await expect(slideStatus).not.toContainText('已保存')
+  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+  await expect(page.getByLabel('文本内容')).toContainText('跨账户草稿内容')
+
+  await page.getByTestId('account-login').click()
+  await page.getByRole('button', { name: '注册' }).click()
+  await page.getByLabel('用户名').fill(`draft-${accountSuffix}-b`)
+  await page.getByLabel('密码').fill('1234')
+  await page.getByRole('button', { name: '创建账号' }).click()
+  await page.getByRole('button', { name: '保存草稿' }).click()
+  await expect(slideStatus).toContainText('已保存')
+
+  const draftStores = await page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('slicer.drafts.'))
+      .map((key) => ({
+        key,
+        ids: (JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{ id: string }>).map(
+          (draft) => draft.id,
+        ),
+      })),
+  )
+  expect(draftStores).toHaveLength(2)
+  expect(draftStores.every((store) => store.ids.length === 1)).toBe(true)
+  const allDraftIds = draftStores.flatMap((store) => store.ids)
+  expect(allDraftIds).toContain(userADraftIds[0])
+  expect(new Set(allDraftIds).size).toBe(allDraftIds.length)
+})
+
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await expect(page.getByText('1 页 · 1080×1440px')).toBeVisible()
   await expect(page.getByTestId('freeform-canvas')).toBeVisible()
@@ -146,7 +235,7 @@ test('switches to the freeform workspace and edits a slide', async ({ page }) =>
 
 test('freeform inspector exposes styled paint controls instead of visible native color inputs', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await expect(page.getByTestId('freeform-paint-field').first()).toBeVisible()
   await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
@@ -155,7 +244,7 @@ test('freeform inspector exposes styled paint controls instead of visible native
 
 test('opens a custom color popover beside the inspector instead of the browser color picker', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const inspector = page.locator('.freeform-inspector')
   await page.getByTestId('page-background-paint').getByTestId('paint-color-button').click()
@@ -174,7 +263,7 @@ test('opens a custom color popover beside the inspector instead of the browser c
 
 test('uses styled range sliders in the freeform paint controls', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
   const range = page.getByTestId('paint-gradient-angle').first()
@@ -185,7 +274,7 @@ test('uses styled range sliders in the freeform paint controls', async ({ page }
 
 test('uses styled scrollbars in the freeform workspace', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   for (const selector of ['.freeform-stage-scroll', '.freeform-rail', '.freeform-inspector']) {
     const scroller = page.locator(selector)
@@ -196,7 +285,7 @@ test('uses styled scrollbars in the freeform workspace', async ({ page }) => {
 
 test('uses custom color popovers for shape and line stroke colors', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.locator('.freeform-toolbar .bar-btn').nth(2).click()
   await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
@@ -212,7 +301,7 @@ test('uses custom color popovers for shape and line stroke colors', async ({ pag
 
 test('changes a selected text element font family', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
   await page.getByTestId('freeform-element').first().click()
@@ -235,7 +324,7 @@ test('warms the selected web font before export is clicked', async ({ page }) =>
   })
 
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
   await page.getByTestId('freeform-element').first().click()
   await page.getByTestId('freeform-font-select').click()
@@ -247,7 +336,7 @@ test('warms the selected web font before export is clicked', async ({ page }) =>
 
 test('applies page, shape, and text gradients from the inspector', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
   await expect(page.getByTestId('freeform-canvas')).toHaveCSS('background-image', /linear-gradient/)
@@ -265,7 +354,7 @@ test('applies page, shape, and text gradients from the inspector', async ({ page
 
 test('edits Chinese text in the freeform contenteditable textbox without losing text', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
   const textbox = page.getByTestId('freeform-textbox').last()
@@ -277,7 +366,7 @@ test('edits Chinese text in the freeform contenteditable textbox without losing 
 
 test('pastes plain text into the freeform contenteditable textbox', async ({ page }) => {
   await page.goto('/')
-  await page.locator('.workspace-switch button').nth(1).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
   const textbox = page.getByTestId('freeform-textbox').last()
@@ -294,7 +383,7 @@ test('pastes plain text into the freeform contenteditable textbox', async ({ pag
 
 test('sets custom page size and new pages inherit it', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.getByRole('button', { name: '9:16' }).click()
   await expect(page.getByTestId('freeform-slide-size')).toHaveText(/1080×1920px/)
@@ -310,7 +399,7 @@ test('sets custom page size and new pages inherit it', async ({ page }) => {
 
 test('fills a shape with an image', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '矩形' }).click()
 
   const fileChooserPromise = page.waitForEvent('filechooser')
@@ -323,7 +412,7 @@ test('fills a shape with an image', async ({ page }) => {
 
 test('exports the current slide as a PNG at slide dimensions', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '9:16' }).click()
 
   const downloadPromise = page.waitForEvent('download')
@@ -340,7 +429,7 @@ test('exports the current slide as a PNG at slide dimensions', async ({ page }) 
 
 test('exports current freeform slide with gradient pixels and without editor ui', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
   await page.getByRole('button', { name: '矩形' }).click()
@@ -378,7 +467,7 @@ test('saves and restores a freeform draft', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '文本框' }).click()
   await page.getByLabel('文本内容').fill('保存恢复测试')
 
@@ -391,7 +480,7 @@ test('saves and restores a freeform draft', async ({ page }) => {
   await expect(page.getByTestId('freeform-slide-size')).toHaveText(/已保存/)
 
   await page.reload()
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Page 1' }).click()
   await expect(page.getByLabel('文本内容')).toContainText('保存恢复测试')
@@ -399,7 +488,7 @@ test('saves and restores a freeform draft', async ({ page }) => {
 
 test('exports mixed-size slides as a zip after warning', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '9:16' }).click()
   await page.getByRole('button', { name: '新增页面' }).click()
   await page.getByRole('button', { name: '16:9' }).click()
@@ -425,7 +514,7 @@ test('exports mixed-size slides as a zip after warning', async ({ page }) => {
 
 test('shows progress while exporting multiple freeform slides', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '新增页面' }).click()
   await page.getByRole('button', { name: '新增页面' }).click()
   await page.getByRole('button', { name: '新增页面' }).click()
@@ -438,7 +527,7 @@ test('shows progress while exporting multiple freeform slides', async ({ page })
 
 test('copies, pastes, and deletes the selected element', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '文本框' }).click()
 
   await expect(page.locator('.freeform-element')).toHaveCount(1)
@@ -458,32 +547,32 @@ test('copies, pastes, and deletes the selected element', async ({ page }) => {
 
 test('hidden freeform workspace does not handle Delete', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '矩形' }).click()
   const elements = page.getByTestId('freeform-element')
   await expect(elements).toHaveCount(1)
   await elements.first().click()
-  await page.getByRole('button', { name: 'Markdown 卡片' }).click()
+  await page.getByTestId('workspace-tab-markdown').click()
   await page.keyboard.press('Delete')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await expect(elements).toHaveCount(1)
 })
 
 test('hidden freeform workspace does not handle undo', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '矩形' }).click()
   const elements = page.getByTestId('freeform-element')
   await expect(elements).toHaveCount(1)
-  await page.getByRole('button', { name: 'Markdown 卡片' }).click()
+  await page.getByTestId('workspace-tab-markdown').click()
   await page.keyboard.press('Control+z')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await expect(elements).toHaveCount(1)
 })
 
 test('moves the selected element through layer order', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '文本框' }).click()
   await page.getByRole('button', { name: '矩形' }).click()
 
@@ -500,7 +589,7 @@ test('moves the selected element through layer order', async ({ page }) => {
 
 test('inserts line and arrow elements', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '直线' }).click()
@@ -512,7 +601,7 @@ test('inserts line and arrow elements', async ({ page }) => {
 
 test('multi-selects elements and aligns them left', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   await page.getByRole('button', { name: '文本框' }).click()
   await setSelectedElementPosition(page, 100, 120)
@@ -535,7 +624,7 @@ test('multi-selects elements and aligns them left', async ({ page }) => {
 
 test('drags selected elements together', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '矩形' }).click()
@@ -574,7 +663,7 @@ test('drags selected elements together', async ({ page }) => {
 
 test('snapping aligns a dragged element to the page center and hides guides after release', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '矩形' }).click()
@@ -597,7 +686,7 @@ test('snapping aligns a dragged element to the page center and hides guides afte
 
 test('snapping aligns a dragged element to another element left edge', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '矩形' }).click()
@@ -642,7 +731,7 @@ test('snapping aligns a selected group by its bounding box', async ({ page }) =>
 
 test('snapping hides guides when pointer drag is canceled', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '矩形' }).click()
@@ -665,7 +754,7 @@ test('snapping hides guides when pointer drag is canceled', async ({ page }) => 
 
 test('snapping does not apply to keyboard nudges', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '矩形' }).click()
@@ -762,7 +851,7 @@ test('keyboard shortcuts work after marquee from an inspector input', async ({ p
 
 test('marquee selects elements by dragging empty canvas', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
   await expect(page.getByTestId('freeform-canvas')).toBeVisible()
 
   const insertTools = page.getByLabel('插入工具')
@@ -798,7 +887,7 @@ test('marquee selects elements by dragging empty canvas', async ({ page }) => {
 
 test('distributes selected elements horizontally', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByTestId('workspace-tab-freeform').click()
 
   const insertTools = page.getByLabel('插入工具')
   await insertTools.getByRole('button', { name: '矩形' }).click()
