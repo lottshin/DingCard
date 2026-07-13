@@ -156,6 +156,30 @@ test('global header owns workspace tabs, theme, and account state', async ({ pag
   await expect(page.getByTestId('account-logout')).toBeVisible()
 })
 
+test('only the active workspace contextual toolbar is exposed', async ({ page }) => {
+  await page.goto('/')
+
+  const markdownToolbar = page.getByTestId('markdown-toolbar')
+  await expect(markdownToolbar).toBeVisible()
+  await expect(page.getByTestId('freeform-toolbar')).toBeHidden()
+  await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
+  await expect(markdownToolbar.locator('.bar-btn').first()).toHaveCSS('height', '32px')
+  await expect(markdownToolbar.locator('.sel-trigger').first()).toHaveCSS('height', '32px')
+  await expect(markdownToolbar.locator('.toolbar-primary')).toHaveCSS('height', '32px')
+  const segmentBox = await markdownToolbar.getByRole('tablist', { name: '平台' }).boundingBox()
+  expect(segmentBox).toBeTruthy()
+  expect(segmentBox!.height).toBeLessThanOrEqual(32)
+
+  await page.getByTestId('workspace-tab-freeform').click()
+  await expect(page.getByTestId('markdown-toolbar')).toBeHidden()
+  const freeformToolbar = page.getByTestId('freeform-toolbar')
+  await expect(freeformToolbar).toBeVisible()
+  await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
+  await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
+  await expect(freeformToolbar.locator('.bar-btn').first()).toHaveCSS('height', '32px')
+  await expect(freeformToolbar.locator('.toolbar-primary')).toHaveCSS('height', '32px')
+})
+
 test('workspace tabs support arrow, Home, and End keyboard navigation', async ({ page }) => {
   await page.goto('/')
 

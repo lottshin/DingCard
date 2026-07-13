@@ -13,6 +13,7 @@ import { DraftsPanel } from '../../DraftsPanel'
 import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
 import { listDrafts, saveDraft, deleteDraft, type Draft } from '../../drafts'
+import { ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../types'
 
 const SAMPLE = `# 图文切片快速上手
@@ -371,61 +372,62 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   return (
     <div className="app">
-      {/* ---------- Top bar ---------- */}
-      <header className="topbar">
-        <div className="seg" role="tablist" aria-label="平台">
-          {PLATFORMS.map((p) => (
-            <button
-              key={p.id}
-              className={p.id === platformId ? 'seg-btn on' : 'seg-btn'}
-              onClick={() => setPlatformId(p.id)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+      <WorkspaceToolbar testId="markdown-toolbar" label="Markdown 卡片工具栏">
+        <ToolbarGroup>
+          <div className="seg" role="tablist" aria-label="平台">
+            {PLATFORMS.map((p) => (
+              <button
+                key={p.id}
+                className={p.id === platformId ? 'seg-btn on' : 'seg-btn'}
+                onClick={() => setPlatformId(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
 
-        <Select
-          value={themeId}
-          onChange={setThemeId}
-          title="主题"
-          options={THEMES.map((t) => ({ id: t.id, label: t.label }))}
-        />
+          <Select
+            value={themeId}
+            onChange={setThemeId}
+            title="主题"
+            options={THEMES.map((t) => ({ id: t.id, label: t.label }))}
+          />
 
-        <Select
-          value={fontFamily}
-          onChange={setFontFamily}
-          title="字体"
-          previewFonts
-          options={FONTS.map((f) => ({ id: f.id, label: f.label }))}
-        />
+          <Select
+            value={fontFamily}
+            onChange={setFontFamily}
+            title="字体"
+            previewFonts
+            options={FONTS.map((f) => ({ id: f.id, label: f.label }))}
+          />
 
-        <button className="bar-btn" onClick={() => setShowProfile(true)}>
-          个人资料
-        </button>
+          <button className="bar-btn" onClick={() => setShowProfile(true)}>
+            个人资料
+          </button>
+        </ToolbarGroup>
 
-        <div className="bar-spacer" />
+        <ToolbarGroup side="right">
+          <button className="bar-btn" onClick={handleSaveDraft}>
+            保存草稿
+          </button>
+          <button
+            className="bar-btn"
+            onClick={() => {
+              if (!user) {
+                requestAuth()
+                return
+              }
+              setShowDrafts(true)
+            }}
+          >
+            草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
+          </button>
 
-        <button className="bar-btn" onClick={handleSaveDraft}>
-          保存草稿
-        </button>
-        <button
-          className="bar-btn"
-          onClick={() => {
-            if (!user) {
-              requestAuth()
-              return
-            }
-            setShowDrafts(true)
-          }}
-        >
-          草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
-        </button>
-
-        <button className="bar-primary" onClick={exportAllZip} disabled={exporting}>
-          {exporting ? '导出中…' : `打包下载 ${pages.length} 页`}
-        </button>
-      </header>
+          <button className="toolbar-primary" onClick={exportAllZip} disabled={exporting}>
+            {exporting ? '导出中…' : `打包下载 ${pages.length} 页`}
+          </button>
+        </ToolbarGroup>
+      </WorkspaceToolbar>
 
       {/* ---------- Body: editor | preview ---------- */}
       <div className="body">

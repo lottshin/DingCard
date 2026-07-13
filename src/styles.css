@@ -266,6 +266,63 @@ html.theme-anim * {
   background: #2a2a30;
 }
 
+.workspace-toolbar {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 50px;
+  min-width: 0;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bar-bg);
+  -webkit-backdrop-filter: var(--bar-blur);
+  backdrop-filter: var(--bar-blur);
+}
+
+.toolbar-group,
+.toolbar-insert-tools {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-group-left {
+  flex: 0 1 auto;
+}
+
+.toolbar-group-right {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.toolbar-divider {
+  flex: 0 0 1px;
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: var(--line-2);
+}
+
+.workspace-toolbar .bar-btn,
+.workspace-toolbar .sel-trigger,
+.workspace-toolbar .toolbar-primary {
+  height: 32px;
+}
+
+.workspace-toolbar .seg {
+  height: 32px;
+  padding: 2px;
+}
+
+.workspace-toolbar .seg-btn {
+  height: 26px;
+  padding-block: 0;
+}
+
 .workspace-panel {
   flex: 1 1 auto;
   min-height: 0;
@@ -295,19 +352,6 @@ html.theme-anim * {
   background: var(--bg);
 }
 
-.freeform-topbar {
-  flex: 0 0 auto;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bar-bg);
-  -webkit-backdrop-filter: var(--bar-blur);
-  backdrop-filter: var(--bar-blur);
-}
-
 .freeform-title {
   display: flex;
   flex-direction: column;
@@ -324,16 +368,6 @@ html.theme-anim * {
   color: var(--text-3);
   font-family: var(--mono);
   font-size: 11px;
-}
-
-.freeform-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.freeform-spacer {
-  flex: 1 1 auto;
 }
 
 .freeform-file {
@@ -1088,24 +1122,6 @@ html.theme-anim * {
   margin: 0;
 }
 
-/* =====================================================================
-   Top bar — glass, hairline underline, generous breathing room
-   ===================================================================== */
-.topbar {
-  position: relative;
-  z-index: 10;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 20px;
-  height: 60px;
-  background: var(--bar-bg);
-  -webkit-backdrop-filter: var(--bar-blur);
-  backdrop-filter: var(--bar-blur);
-  border-bottom: 1px solid var(--line);
-}
-
 /* Segmented platform switch — pill with sliding-feel active state. */
 .seg {
   display: inline-flex;
@@ -1265,17 +1281,13 @@ html.theme-anim * {
   border-color: #4a4a56;
 }
 
-.bar-spacer {
-  flex: 1 1 auto;
-}
-
-.bar-primary {
+.toolbar-primary {
   height: 34px;
   padding: 0 16px;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--btn);
-  color: var(--on-btn);
+  background: var(--accent);
+  color: var(--on-accent);
   font-family: var(--sans);
   font-size: 13px;
   font-weight: 600;
@@ -1285,12 +1297,12 @@ html.theme-anim * {
   transition: transform 0.12s, box-shadow 0.15s, opacity 0.15s;
 }
 
-.bar-primary:hover:not(:disabled) {
+.toolbar-primary:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
-.bar-primary:disabled {
+.toolbar-primary:disabled {
   opacity: 0.5;
   cursor: default;
 }

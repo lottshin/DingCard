@@ -7,6 +7,7 @@ import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
 import { FONTS } from '../theme'
+import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../workspaces/types'
 import {
   createFreeformDocument,
@@ -862,78 +863,93 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   return (
     <div className="freeform-workspace" aria-label="自由编辑工作区">
-      <header className="freeform-topbar">
-        <div className="freeform-title">
-          <strong>自由编辑</strong>
-          <span data-testid="freeform-slide-size">
-            {doc.slides.length} 页 · {activeSlide.width}×{activeSlide.height}px
-            {savedAt ? ' · 已保存' : ''}
-          </span>
-        </div>
+      <WorkspaceToolbar
+        testId="freeform-toolbar"
+        label="自由编辑工具栏"
+        className="freeform-toolbar"
+      >
+        <ToolbarGroup>
+          <div className="freeform-title">
+            <strong>自由编辑</strong>
+            <span data-testid="freeform-slide-size">
+              {doc.slides.length} 页 · {activeSlide.width}×{activeSlide.height}px
+              {savedAt ? ' · 已保存' : ''}
+            </span>
+          </div>
 
-        <div className="freeform-toolbar" aria-label="插入工具">
-          <button className="bar-btn" type="button" onClick={addText}>
-            文本框
-          </button>
-          <button className="bar-btn" type="button" onClick={() => imageInputRef.current?.click()}>
-            图片
-          </button>
-          <input
-            ref={imageInputRef}
-            className="freeform-file"
-            type="file"
-            accept="image/*"
-            onChange={(event) => handleImageInput(event.currentTarget.files)}
-          />
-          {SHAPES.map((shape) => (
-            <button
-              key={shape.id}
-              className="bar-btn"
-              type="button"
-              onClick={() => addShape(shape.id)}
-            >
-              {shape.label}
+          <div className="toolbar-insert-tools" role="group" aria-label="插入工具">
+            <button className="bar-btn" type="button" onClick={addText}>
+              文本框
             </button>
-          ))}
-          <button className="bar-btn" type="button" onClick={() => addLine('line')}>
-            直线
-          </button>
-          <button className="bar-btn" type="button" onClick={() => addLine('arrow')}>
-            箭头
-          </button>
-        </div>
+            <button className="bar-btn" type="button" onClick={() => imageInputRef.current?.click()}>
+              图片
+            </button>
+            <input
+              ref={imageInputRef}
+              className="freeform-file"
+              type="file"
+              accept="image/*"
+              onChange={(event) => handleImageInput(event.currentTarget.files)}
+            />
+            {SHAPES.map((shape) => (
+              <button
+                key={shape.id}
+                className="bar-btn"
+                type="button"
+                onClick={() => addShape(shape.id)}
+              >
+                {shape.label}
+              </button>
+            ))}
+            <button className="bar-btn" type="button" onClick={() => addLine('line')}>
+              直线
+            </button>
+            <button className="bar-btn" type="button" onClick={() => addLine('arrow')}>
+              箭头
+            </button>
+          </div>
 
-        <div className="freeform-spacer" />
+          <ToolbarDivider />
 
-        <button className="bar-btn" type="button" onClick={undoDocument} disabled={!canUndo}>
-          撤销
-        </button>
-        <button className="bar-btn" type="button" onClick={redoDocument} disabled={!canRedo}>
-          重做
-        </button>
-        <button className="bar-btn" type="button" onClick={handleSaveDraft}>
-          保存草稿
-        </button>
-        <button
-          className="bar-btn"
-          type="button"
-          onClick={() => {
-            if (!user) {
-              requestAuth()
-              return
-            }
-            setShowDrafts(true)
-          }}
-        >
-          草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
-        </button>
-        <button className="bar-btn" type="button" onClick={requestExportAllSlides} disabled={exporting}>
-          {exportProgress ? `导出 ${exportProgress.current}/${exportProgress.total}` : '打包导出'}
-        </button>
-        <button className="bar-primary" type="button" onClick={exportCurrentSlide} disabled={exporting}>
-          {exporting ? '导出中…' : '导出当前页'}
-        </button>
-      </header>
+          <button className="bar-btn" type="button" onClick={undoDocument} disabled={!canUndo}>
+            撤销
+          </button>
+          <button className="bar-btn" type="button" onClick={redoDocument} disabled={!canRedo}>
+            重做
+          </button>
+        </ToolbarGroup>
+
+        <ToolbarGroup side="right">
+          <button className="bar-btn" type="button" onClick={handleSaveDraft}>
+            保存草稿
+          </button>
+          <button
+            className="bar-btn"
+            type="button"
+            onClick={() => {
+              if (!user) {
+                requestAuth()
+                return
+              }
+              setShowDrafts(true)
+            }}
+          >
+            草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
+          </button>
+          <button className="bar-btn" type="button" onClick={requestExportAllSlides} disabled={exporting}>
+            {exportProgress ? `导出 ${exportProgress.current}/${exportProgress.total}` : '打包导出'}
+          </button>
+          <button
+            className="toolbar-primary"
+            type="button"
+            data-testid="freeform-primary-export"
+            onClick={exportCurrentSlide}
+            disabled={exporting}
+          >
+            {exporting ? '导出中…' : '导出当前页'}
+          </button>
+        </ToolbarGroup>
+      </WorkspaceToolbar>
 
       <main className="freeform-main">
         <aside className="freeform-rail" aria-label="页面列表">
