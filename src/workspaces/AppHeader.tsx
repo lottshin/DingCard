@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import logoUrl from '../logo.svg'
 import type { User } from '../auth'
 import type { Mode } from '../useAppTheme'
@@ -22,6 +23,37 @@ export function AppHeader({
   onRequestAuth,
   onLogout,
 }: AppHeaderProps) {
+  const markdownTabRef = useRef<HTMLButtonElement>(null)
+  const freeformTabRef = useRef<HTMLButtonElement>(null)
+
+  function selectWorkspaceTab(nextMode: WorkspaceMode) {
+    onModeChange(nextMode)
+    const nextTab = nextMode === 'markdown-card' ? markdownTabRef : freeformTabRef
+    nextTab.current?.focus()
+  }
+
+  function handleWorkspaceTabKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    let nextMode: WorkspaceMode
+
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        nextMode = mode === 'markdown-card' ? 'freeform-slide' : 'markdown-card'
+        break
+      case 'Home':
+        nextMode = 'markdown-card'
+        break
+      case 'End':
+        nextMode = 'freeform-slide'
+        break
+      default:
+        return
+    }
+
+    event.preventDefault()
+    selectWorkspaceTab(nextMode)
+  }
+
   return (
     <header className="app-header" data-testid="app-header">
       <div className="app-brand">
@@ -29,8 +61,14 @@ export function AppHeader({
         <strong>叮卡</strong>
       </div>
 
-      <div className="workspace-tabs" role="tablist" aria-label="工作区">
+      <div
+        className="workspace-tabs"
+        role="tablist"
+        aria-label="工作区"
+        onKeyDown={handleWorkspaceTabKeyDown}
+      >
         <button
+          ref={markdownTabRef}
           id="workspace-tab-markdown"
           className="workspace-tab"
           type="button"
@@ -38,11 +76,13 @@ export function AppHeader({
           data-testid="workspace-tab-markdown"
           aria-controls="workspace-panel-markdown"
           aria-selected={mode === 'markdown-card'}
+          tabIndex={mode === 'markdown-card' ? 0 : -1}
           onClick={() => onModeChange('markdown-card')}
         >
           Markdown 卡片
         </button>
         <button
+          ref={freeformTabRef}
           id="workspace-tab-freeform"
           className="workspace-tab"
           type="button"
@@ -50,6 +90,7 @@ export function AppHeader({
           data-testid="workspace-tab-freeform"
           aria-controls="workspace-panel-freeform"
           aria-selected={mode === 'freeform-slide'}
+          tabIndex={mode === 'freeform-slide' ? 0 : -1}
           onClick={() => onModeChange('freeform-slide')}
         >
           自由编辑

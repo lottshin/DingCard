@@ -156,6 +156,45 @@ test('global header owns workspace tabs, theme, and account state', async ({ pag
   await expect(page.getByTestId('account-logout')).toBeVisible()
 })
 
+test('workspace tabs support arrow, Home, and End keyboard navigation', async ({ page }) => {
+  await page.goto('/')
+
+  const markdownTab = page.getByTestId('workspace-tab-markdown')
+  const freeformTab = page.getByTestId('workspace-tab-freeform')
+  const markdownPanel = page.getByRole('tabpanel', { name: 'Markdown 卡片' })
+  const freeformPanel = page.getByRole('tabpanel', { name: '自由编辑' })
+
+  await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
+  await expect(markdownTab).toHaveAttribute('tabindex', '0')
+  await expect(freeformTab).toHaveAttribute('tabindex', '-1')
+
+  await markdownTab.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(freeformTab).toBeFocused()
+  await expect(freeformTab).toHaveAttribute('aria-selected', 'true')
+  await expect(freeformTab).toHaveAttribute('tabindex', '0')
+  await expect(markdownTab).toHaveAttribute('tabindex', '-1')
+  await expect(freeformPanel).toBeVisible()
+
+  await page.keyboard.press('Home')
+  await expect(markdownTab).toBeFocused()
+  await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
+  await expect(markdownPanel).toBeVisible()
+
+  await page.keyboard.press('End')
+  await expect(freeformTab).toBeFocused()
+  await expect(freeformTab).toHaveAttribute('aria-selected', 'true')
+  await expect(freeformPanel).toBeVisible()
+
+  await page.keyboard.press('ArrowRight')
+  await expect(markdownTab).toBeFocused()
+  await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
+
+  await page.keyboard.press('ArrowLeft')
+  await expect(freeformTab).toBeFocused()
+  await expect(freeformTab).toHaveAttribute('aria-selected', 'true')
+})
+
 test('account changes reset workspace draft identity', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
