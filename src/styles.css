@@ -323,6 +323,14 @@ html.theme-anim * {
   padding-block: 0;
 }
 
+.workspace-toolbar .seg-btn:focus-visible,
+.workspace-toolbar .sel-trigger:focus-visible,
+.workspace-toolbar .bar-btn:focus-visible,
+.workspace-toolbar .toolbar-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .workspace-panel {
   flex: 1 1 auto;
   min-height: 0;

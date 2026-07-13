@@ -170,6 +170,27 @@ test('only the active workspace contextual toolbar is exposed', async ({ page })
   expect(segmentBox).toBeTruthy()
   expect(segmentBox!.height).toBeLessThanOrEqual(32)
 
+  const accentColor = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.color = 'var(--accent)'
+    document.body.append(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  })
+  const focusableControls = [
+    markdownToolbar.locator('.seg-btn').first(),
+    markdownToolbar.locator('.sel-trigger').first(),
+    markdownToolbar.locator('.bar-btn').first(),
+    markdownToolbar.locator('.toolbar-primary'),
+  ]
+  for (const control of focusableControls) {
+    await control.focus()
+    await expect(control).toHaveCSS('outline-color', accentColor)
+    await expect(control).toHaveCSS('outline-style', 'solid')
+    await expect(control).toHaveCSS('outline-width', '2px')
+  }
+
   await page.getByTestId('workspace-tab-freeform').click()
   await expect(page.getByTestId('markdown-toolbar')).toBeHidden()
   const freeformToolbar = page.getByTestId('freeform-toolbar')
