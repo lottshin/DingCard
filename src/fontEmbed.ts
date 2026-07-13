@@ -16,8 +16,11 @@
 const cssTextCache = new Map<string, string>()
 // Cache fetched woff2 → data URL (subset files are reused across exports).
 const fontDataCache = new Map<string, string>()
+const fontDataInFlightCache = new Map<string, Promise<string>>()
 // Cache the final built CSS by family + character signature.
 const builtCache = new Map<string, string>()
+// Share active work so editor warmup and an immediate export never fetch twice.
+const builtInFlightCache = new Map<string, Promise<string>>()
 
 /** Extract the primary family name from a CSS font-family value. */
 export function primaryFamily(fontFamily: string): string {
@@ -29,16 +32,26 @@ export function primaryFamily(fontFamily: string): string {
 async function fetchAsDataUrl(url: string): Promise<string> {
   const cached = fontDataCache.get(url)
   if (cached) return cached
-  const res = await fetch(url)
-  const blob = await res.blob()
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const fr = new FileReader()
-    fr.onload = () => resolve(fr.result as string)
-    fr.onerror = reject
-    fr.readAsDataURL(blob)
+  const inFlight = fontDataInFlightCache.get(url)
+  if (inFlight) return inFlight
+
+  const load = (async () => {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`Failed to fetch font (${res.status}): ${url}`)
+    const blob = await res.blob()
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const fr = new FileReader()
+      fr.onload = () => resolve(fr.result as string)
+      fr.onerror = reject
+      fr.readAsDataURL(blob)
+    })
+    fontDataCache.set(url, dataUrl)
+    return dataUrl
+  })().finally(() => {
+    fontDataInFlightCache.delete(url)
   })
-  fontDataCache.set(url, dataUrl)
-  return dataUrl
+  fontDataInFlightCache.set(url, load)
+  return load
 }
 
 /** Parse a `unicode-range` value into a list of [lo, hi] codepoint ranges. */
@@ -92,18 +105,31 @@ function googleFontHrefIncludesFamily(href: string, family: string): boolean {
   }
 }
 
+function loadedStylesheetText(href: string): string | null {
+  for (const sheet of Array.from(document.styleSheets ?? [])) {
+    if (sheet.href !== href) continue
+    try {
+      return Array.from(sheet.cssRules).map((rule) => rule.cssText).join('\n')
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 async function stylesheetText(href: string): Promise<string> {
   const cached = cssTextCache.get(href)
   if (cached != null) return cached
-  try {
-    const res = await fetch(href)
-    const text = await res.text()
-    cssTextCache.set(href, text)
-    return text
-  } catch {
-    cssTextCache.set(href, '')
-    return ''
+  const loaded = loadedStylesheetText(href)
+  if (loaded != null) {
+    cssTextCache.set(href, loaded)
+    return loaded
   }
+  const res = await fetch(href)
+  if (!res.ok) throw new Error(`Failed to fetch font stylesheet (${res.status}): ${href}`)
+  const text = await res.text()
+  cssTextCache.set(href, text)
+  return text
 }
 
 /** Split a stylesheet into individual @font-face block bodies. */
@@ -120,25 +146,18 @@ function pick(prop: string, block: string): string | null {
   return m ? m[1].trim() : null
 }
 
-/**
- * Build a minimal @font-face CSS embedding only the subsets of `fontFamily`
- * needed to render `text`. Returns '' for system fonts (nothing to embed),
- * which makes html-to-image skip font work entirely.
- */
-export async function buildFontEmbedCSS(text: string, fontFamily: string): Promise<string> {
-  const family = primaryFamily(fontFamily)
-  if (!family) return ''
+function normalizeFontWeight(weight: string | number): string {
+  const normalized = String(weight).trim().toLowerCase()
+  if (normalized === 'normal') return '400'
+  if (normalized === 'bold') return '700'
+  return normalized
+}
 
-  // Unique codepoints used in the card.
-  const codepoints = new Set<number>()
-  for (const ch of text) codepoints.add(ch.codePointAt(0)!)
-  // Always include basic Latin + common CJK punctuation so headers/meta render.
-  for (let c = 0x20; c <= 0x7e; c++) codepoints.add(c)
-
-  const sig = family + '|' + [...codepoints].sort((a, b) => a - b).join(',')
-  const cached = builtCache.get(sig)
-  if (cached != null) return cached
-
+async function buildFontEmbedCSSUncached(
+  family: string,
+  codepoints: Set<number>,
+  fontWeights: Set<string> | null,
+): Promise<string> {
   const hrefs = googleFontHrefs().filter((href) => googleFontHrefIncludesFamily(href, family))
   if (hrefs.length === 0) return ''
   const texts = await Promise.all(hrefs.map(stylesheetText))
@@ -152,6 +171,9 @@ export async function buildFontEmbedCSS(text: string, fontFamily: string): Promi
     if (!famRaw) continue
     const fam = famRaw.replace(/^['"]|['"]$/g, '')
     if (fam.toLowerCase() !== family.toLowerCase()) continue // only the selected family
+
+    const blockWeight = pick('font-weight', block)
+    if (fontWeights && blockWeight && !fontWeights.has(normalizeFontWeight(blockWeight))) continue
 
     const range = pick('unicode-range', block)
     // Keep a face if it has no range (whole font) or its range covers used chars.
@@ -175,7 +197,46 @@ export async function buildFontEmbedCSS(text: string, fontFamily: string): Promi
   }
 
   await Promise.all(fetches)
-  const css = kept.filter((b) => b.startsWith('@font-face')).join('\n')
-  builtCache.set(sig, css)
-  return css
+  return kept.filter((b) => b.startsWith('@font-face')).join('\n')
+}
+
+/**
+ * Build a minimal @font-face CSS embedding only the subsets of `fontFamily`
+ * needed to render `text`. Returns '' for system fonts (nothing to embed),
+ * which makes html-to-image skip font work entirely.
+ */
+export async function buildFontEmbedCSS(
+  text: string,
+  fontFamily: string,
+  fontWeights?: Iterable<string | number>,
+): Promise<string> {
+  const family = primaryFamily(fontFamily)
+  if (!family) return ''
+
+  // Unique codepoints used in the card.
+  const codepoints = new Set<number>()
+  for (const ch of text) codepoints.add(ch.codePointAt(0)!)
+  // Always include basic Latin + common CJK punctuation so headers/meta render.
+  for (let c = 0x20; c <= 0x7e; c++) codepoints.add(c)
+
+  const normalizedWeights = fontWeights
+    ? new Set(Array.from(fontWeights, normalizeFontWeight))
+    : null
+  const weightSig = normalizedWeights ? [...normalizedWeights].sort().join(',') : '*'
+  const sig = family + '|w:' + weightSig + '|' + [...codepoints].sort((a, b) => a - b).join(',')
+  const cached = builtCache.get(sig)
+  if (cached != null) return cached
+  const inFlight = builtInFlightCache.get(sig)
+  if (inFlight) return inFlight
+
+  const build = buildFontEmbedCSSUncached(family, codepoints, normalizedWeights)
+    .then((css) => {
+      builtCache.set(sig, css)
+      return css
+    })
+    .finally(() => {
+      builtInFlightCache.delete(sig)
+    })
+  builtInFlightCache.set(sig, build)
+  return build
 }

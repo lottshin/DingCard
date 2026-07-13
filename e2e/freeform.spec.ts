@@ -222,6 +222,29 @@ test('changes a selected text element font family', async ({ page }) => {
   await expect(page.getByTestId('freeform-textbox').first()).toHaveCSS('font-family', /Noto Serif|serif/i)
 })
 
+test('warms the selected web font before export is clicked', async ({ page }) => {
+  const fontFetches: string[] = []
+  const stylesheetRefetches: string[] = []
+  page.on('request', (request) => {
+    if (request.resourceType() === 'fetch' && request.url().includes('fonts.gstatic.com')) {
+      fontFetches.push(request.url())
+    }
+    if (request.resourceType() === 'fetch' && request.url().includes('fonts.googleapis.com')) {
+      stylesheetRefetches.push(request.url())
+    }
+  })
+
+  await page.goto('/')
+  await page.locator('.workspace-switch button').nth(1).click()
+  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  await page.getByTestId('freeform-element').first().click()
+  await page.getByTestId('freeform-font-select').click()
+  await page.locator('[role="option"]').nth(2).click()
+
+  await expect.poll(() => fontFetches.length, { timeout: 5_000 }).toBeGreaterThan(0)
+  expect(stylesheetRefetches).toHaveLength(0)
+})
+
 test('applies page, shape, and text gradients from the inspector', async ({ page }) => {
   await page.goto('/')
   await page.locator('.workspace-switch button').nth(1).click()

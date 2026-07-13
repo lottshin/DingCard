@@ -106,3 +106,20 @@ No public API or CLI exists; no error/status codes are added.
 - `toBlob()` can theoretically return `null`; handle it by skipping that page, same as current `toPng()` null handling.
 - Progress text can be short-lived in fast exports; tests should create enough pages or observe button text during export carefully.
 - Font embedding helper currently targets one family at a time. This phase should not overbuild multi-family embedding; the fallback path preserves correctness.
+
+## 0.6.3 latency follow-up
+
+The first web-font export must not start all preparation from the export click.
+
+- The Google Fonts stylesheet is loaded with `crossorigin="anonymous"`, allowing the exporter to reuse its already-loaded CSSOM rules instead of fetching the stylesheet again.
+- Freeform text changes and font selection start a 250 ms debounced background warmup for the active slide.
+- After one second of editor idle time, the complete document is warmed so batch export does not start non-active-page font downloads from the export click.
+- An explicit font selection starts warmup immediately, before React finishes the following render.
+- Background warmup and export share the same in-flight build promise. Identical work must not issue duplicate requests.
+- Freeform export groups text by font family and passes only the weights actually used by matching elements. Markdown callers that omit weights retain the existing all-weight behavior.
+- Current-slide export prepares only the active slide. Batch export still prepares the complete document once and reuses the result across pages.
+- System fonts continue to return an explicit empty CSS string, so `html-to-image` never falls back to scanning every stylesheet.
+- Failed stylesheet/font requests are not stored as successful cache entries; a later warmup or export can retry them.
+- Font families degrade independently: one failed family must not discard CSS already built for other families.
+
+No API, CLI, output format, file naming, or status code changes are introduced.

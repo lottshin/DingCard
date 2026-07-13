@@ -21,6 +21,10 @@ import {
   validatePageSize,
 } from './document'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
+import {
+  buildFreeformFontCSS,
+  collectFreeformFontRequests,
+} from './fontRequests'
 import { ColorPickerButton, PaintField } from './PaintField'
 import { PlainTextEditable } from './PlainTextEditable'
 import {
@@ -107,20 +111,6 @@ function hasMixedSlideSizes(slides: FreeformSlide[]): boolean {
   return slides.some((slide) => slide.width !== first.width || slide.height !== first.height)
 }
 
-function textElementsOf(slides: FreeformSlide[]): FreeformTextElement[] {
-  return slides.flatMap((slide) =>
-    slide.elements.filter((element): element is FreeformTextElement => element.type === 'text'),
-  )
-}
-
-function freeformTextForFonts(slides: FreeformSlide[]): string {
-  return textElementsOf(slides).map((element) => element.text).join('\n')
-}
-
-function firstFreeformFontFamily(slides: FreeformSlide[]): string | null {
-  return textElementsOf(slides).find((element) => element.fontFamily.trim().length > 0)?.fontFamily ?? null
-}
-
 function cloneElementForPaste(element: FreeformElement, slide: FreeformSlide): FreeformElement {
   return {
     ...element,
@@ -199,6 +189,14 @@ export function FreeformWorkspace() {
   const canUndo = history.past.length > 0
   const canRedo = history.future.length > 0
   const marqueeRect = marquee ? toRect(marquee) : null
+  const activeFontRequests = useMemo(
+    () => collectFreeformFontRequests([activeSlide]),
+    [activeSlide],
+  )
+  const documentFontRequests = useMemo(
+    () => collectFreeformFontRequests(doc.slides),
+    [doc.slides],
+  )
 
   const refreshDrafts = useCallback(() => {
     setDrafts(user ? listDrafts(user.id) : [])
@@ -218,6 +216,22 @@ export function FreeformWorkspace() {
     const liveIds = new Set(activeSlide.elements.map((element) => element.id))
     setSelection((ids) => ids.filter((id) => liveIds.has(id)))
   }, [activeSlide.id, activeSlide.elements])
+
+  useEffect(() => {
+    if (activeFontRequests.length === 0) return
+    const timer = window.setTimeout(() => {
+      void buildFreeformFontCSS(activeFontRequests).catch(() => undefined)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [activeFontRequests])
+
+  useEffect(() => {
+    if (documentFontRequests.length === 0) return
+    const timer = window.setTimeout(() => {
+      void buildFreeformFontCSS(documentFontRequests).catch(() => undefined)
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [documentFontRequests])
 
   const applyAction = useCallback((action: FreeformAction) => {
     setHistory((current) => {
@@ -743,10 +757,8 @@ export function FreeformWorkspace() {
   }
 
   async function freeformFontEmbedOnce(slides: FreeformSlide[]): Promise<string> {
-    const fontFamily = firstFreeformFontFamily(slides)
-    if (!fontFamily) return ''
     try {
-      return await buildFontEmbedCSS(freeformTextForFonts(slides), fontFamily)
+      return await buildFreeformFontCSS(collectFreeformFontRequests(slides))
     } catch {
       return ''
     }
@@ -757,7 +769,7 @@ export function FreeformWorkspace() {
     try {
       setSelection([])
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-      const fontCSS = await freeformFontEmbedOnce(doc.slides)
+      const fontCSS = await freeformFontEmbedOnce([activeSlide])
       const blob = await renderSlideBlob(activeSlide, fontCSS)
       if (blob) {
         const activeIndex = Math.max(
@@ -1230,7 +1242,14 @@ export function FreeformWorkspace() {
                     <span className="field-label">字体</span>
                     <Select
                       value={selectedElement.fontFamily}
-                      onChange={(fontFamily) => updateElement(selectedElement.id, { fontFamily })}
+                      onChange={(fontFamily) => {
+                        void buildFontEmbedCSS(
+                          selectedElement.text,
+                          fontFamily,
+                          [selectedElement.fontWeight],
+                        ).catch(() => undefined)
+                        updateElement(selectedElement.id, { fontFamily })
+                      }}
                       title="字体"
                       testId="freeform-font-select"
                       previewFonts
