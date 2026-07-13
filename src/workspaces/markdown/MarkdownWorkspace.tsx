@@ -52,7 +52,11 @@ interface Ctx {
   index: number
 }
 
-export function MarkdownWorkspace() {
+type MarkdownWorkspaceProps = {
+  isActive: boolean
+}
+
+export function MarkdownWorkspace({ isActive }: MarkdownWorkspaceProps) {
   const [source, setSource] = useState(SAMPLE)
   const [platformId, setPlatformId] = useState(PLATFORMS[0].id)
   const [themeId, setThemeId] = useState(THEMES[0].id)
@@ -119,6 +123,10 @@ export function MarkdownWorkspace() {
   useEffect(() => {
     if (active > pages.length - 1) setActive(Math.max(0, pages.length - 1))
   }, [pages.length, active])
+
+  useEffect(() => {
+    if (!isActive) setCtx(null)
+  }, [isActive])
 
   // Dismiss the context menu on any outside click / escape / scroll.
   useEffect(() => {

@@ -456,6 +456,31 @@ test('copies, pastes, and deletes the selected element', async ({ page }) => {
   await expect(page.locator('.freeform-element')).toHaveCount(1)
 })
 
+test('hidden freeform workspace does not handle Delete', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByRole('button', { name: '矩形' }).click()
+  const elements = page.getByTestId('freeform-element')
+  await expect(elements).toHaveCount(1)
+  await elements.first().click()
+  await page.getByRole('button', { name: 'Markdown 卡片' }).click()
+  await page.keyboard.press('Delete')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await expect(elements).toHaveCount(1)
+})
+
+test('hidden freeform workspace does not handle undo', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await page.getByRole('button', { name: '矩形' }).click()
+  const elements = page.getByTestId('freeform-element')
+  await expect(elements).toHaveCount(1)
+  await page.getByRole('button', { name: 'Markdown 卡片' }).click()
+  await page.keyboard.press('Control+z')
+  await page.getByRole('button', { name: '自由编辑' }).click()
+  await expect(elements).toHaveCount(1)
+})
+
 test('moves the selected element through layer order', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '自由编辑' }).click()

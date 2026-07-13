@@ -28,10 +28,10 @@ export function AppShell() {
       </div>
 
       <div className="workspace-panel" hidden={workspaceMode !== 'markdown-card'}>
-        <MarkdownWorkspace />
+        <MarkdownWorkspace isActive={workspaceMode === 'markdown-card'} />
       </div>
       <div className="workspace-panel" hidden={workspaceMode !== 'freeform-slide'}>
-        <FreeformWorkspace />
+        <FreeformWorkspace isActive={workspaceMode === 'freeform-slide'} />
       </div>
     </div>
   )

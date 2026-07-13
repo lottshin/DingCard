@@ -149,7 +149,11 @@ function isLineElement(element: FreeformElement | undefined): element is Freefor
   return element?.type === 'line'
 }
 
-export function FreeformWorkspace() {
+type FreeformWorkspaceProps = {
+  isActive: boolean
+}
+
+export function FreeformWorkspace({ isActive }: FreeformWorkspaceProps) {
   const [history, setHistory] = useState<HistoryState<FreeformDocument>>(() =>
     createHistory(createFreeformDocument()),
   )
@@ -518,6 +522,7 @@ export function FreeformWorkspace() {
   }
 
   useEffect(() => {
+    if (!isActive) return
     const onKey = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return
       const key = event.key.toLowerCase()
