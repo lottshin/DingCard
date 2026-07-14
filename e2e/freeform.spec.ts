@@ -587,6 +587,121 @@ test('only the active workspace contextual toolbar is exposed', async ({ page })
   await expect(freeformToolbar.locator('.toolbar-primary')).toHaveCSS('height', '32px')
 })
 
+for (const viewport of [
+  { name: 'wide', width: 1440, height: 900, railWidth: 152, inspectorWidth: 248 },
+  { name: 'compact', width: 1024, height: 768, railWidth: 136, inspectorWidth: 224 },
+]) {
+  test(`freeform chrome fits the ${viewport.name} desktop viewport`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await openFreeform(page)
+
+    const documentOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(documentOverflow).toBeLessThanOrEqual(0)
+
+    const main = page.locator('.freeform-main')
+    const mainOverflow = await main.evaluate((element) => element.scrollWidth - element.clientWidth)
+    expect(mainOverflow).toBeLessThanOrEqual(0)
+    await expect(main).toHaveCSS('overflow-x', 'hidden')
+    await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
+    await expect(page.locator('.freeform-inspector')).toBeVisible()
+    await expect(page.locator('.freeform-stage-scroll')).toBeVisible()
+
+    const railBox = await page.locator('.freeform-rail').boundingBox()
+    const inspectorBox = await page.locator('.freeform-inspector').boundingBox()
+    expect(railBox?.width).toBeCloseTo(viewport.railWidth, 0)
+    expect(inspectorBox?.width).toBeCloseTo(viewport.inspectorWidth, 0)
+    await expect(page.locator('.freeform-slide-list')).toHaveCSS('overflow-y', 'auto')
+    await expect(page.locator('.freeform-stage-scroll')).toHaveCSS('overflow-y', 'auto')
+    await expect(page.locator('.freeform-inspector')).toHaveCSS('overflow-y', 'auto')
+
+    const themeBox = await page.getByTestId('theme-toggle').boundingBox()
+    expect(themeBox?.width).toBeGreaterThanOrEqual(44)
+    expect(themeBox?.height).toBeGreaterThanOrEqual(44)
+    for (const name of ['缩小画布', '放大画布']) {
+      const zoomBox = await page.getByRole('button', { name }).boundingBox()
+      expect(zoomBox?.width).toBeGreaterThanOrEqual(44)
+      expect(zoomBox?.height).toBeGreaterThanOrEqual(44)
+    }
+  })
+}
+
+test('dark mode keeps freeform chrome controls and popovers legible', async ({ page }) => {
+  await openFreeform(page)
+  const html = page.locator('html')
+  if ((await html.getAttribute('data-theme')) !== 'dark') {
+    await page.getByTestId('theme-toggle').click()
+  }
+  await expect(html).toHaveAttribute('data-theme', 'dark')
+  await expect(html).not.toHaveClass(/theme-anim/)
+
+  const toolbar = page.getByTestId('freeform-toolbar')
+  await expect(toolbar).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(toolbar).not.toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)')
+  const undoButton = toolbar.getByRole('button', { name: '撤销', exact: true })
+  await expect(undoButton).toBeDisabled()
+  expect(Number(await undoButton.evaluate((button) => getComputedStyle(button).opacity))).toBeGreaterThanOrEqual(0.35)
+
+  await page.getByTestId('page-size-trigger').click()
+  const pageSizePopover = page.getByTestId('page-size-popover')
+  await expect(pageSizePopover).toBeVisible()
+  const pageSizeColors = await pageSizePopover.locator('.page-size-popover-heading strong').evaluate((element) => ({
+    foreground: getComputedStyle(element).color,
+    background: getComputedStyle(element.closest('.page-size-popover')!).backgroundColor,
+  }))
+  expect(contrastRatio(pageSizeColors.foreground, pageSizeColors.background)).toBeGreaterThanOrEqual(4.5)
+  await page.keyboard.press('Escape')
+
+  await page.getByTestId('insert-shape').click()
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const rectangle = shapeMenu.getByRole('menuitem', { name: '矩形' })
+  const menuColors = await rectangle.evaluate((element) => ({
+    foreground: getComputedStyle(element).color,
+    background: getComputedStyle(element.closest('[role="menu"]')!).backgroundColor,
+  }))
+  expect(contrastRatio(menuColors.foreground, menuColors.background)).toBeGreaterThanOrEqual(4.5)
+  await rectangle.click()
+
+  const inspectorTitle = page.getByTestId('inspector-geometry').locator('.inspector-section-title')
+  const inspectorColors = await inspectorTitle.evaluate((element) => ({
+    foreground: getComputedStyle(element).color,
+    background: getComputedStyle(element.closest('.freeform-inspector')!).backgroundColor,
+  }))
+  expect(contrastRatio(inspectorColors.foreground, inspectorColors.background)).toBeGreaterThanOrEqual(4.5)
+
+  const shapeFill = page.getByTestId('shape-fill-paint')
+  await shapeFill.getByTestId('paint-mode-linear-gradient').click()
+  const range = shapeFill.getByTestId('paint-gradient-angle')
+  await expect(range).toBeVisible()
+  await expect(range).toHaveCSS('appearance', 'none')
+  await expect(range).toHaveCSS('background-image', /linear-gradient/)
+})
+
+test('freeform visual system keeps approved tokens and neutral stage rules', async () => {
+  const css = await readFile('src/styles.css', 'utf8')
+  for (const declaration of [
+    '--app-header-height: 52px',
+    '--workspace-toolbar-height: 50px',
+    '--control-height: 32px',
+    '--control-radius: 8px',
+    '--panel-radius: 10px',
+  ]) {
+    expect(css).toContain(declaration)
+  }
+  expect(css).toMatch(
+    /\.freeform-main\s*\{[^}]*grid-template-columns:\s*152px minmax\(0, 1fr\) 248px;[^}]*gap:\s*0;[^}]*padding:\s*0;[^}]*overflow:\s*hidden;/s,
+  )
+  expect(css).toMatch(
+    /@media\s*\(max-width:\s*1279px\)[\s\S]*?\.freeform-main\s*\{[^}]*grid-template-columns:\s*136px minmax\(0, 1fr\) 224px;/s,
+  )
+  const stageRule = css.match(/\.freeform-stage-scroll\s*\{([^}]*)\}/s)?.[1] ?? ''
+  expect(stageRule).not.toContain('radial-gradient')
+  expect(css).toMatch(/\.freeform-thumb\.on\s*\{[^}]*border:\s*2px solid var\(--accent\);/s)
+  expect(css).toContain('.toolbar-collapsible-label')
+  expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/)
+})
+
 test('workspace tabs support arrow, Home, and End keyboard navigation', async ({ page }) => {
   await page.goto('/')
 

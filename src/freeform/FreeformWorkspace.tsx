@@ -872,7 +872,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               height={activeSlide.height}
               onApply={applySlideSize}
             />
-            <span className="freeform-page-meta" data-testid="freeform-slide-meta">
+            <span
+              className="freeform-page-meta toolbar-collapsible-label"
+              data-testid="freeform-slide-meta"
+            >
               {doc.slides.length}页
               {savedAt ? '·已保存' : ''}
             </span>
@@ -959,8 +962,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         <aside className="freeform-rail" aria-label="页面列表">
           <div className="freeform-panel-head">
             <span>页面</span>
-            <button className="mini-btn" type="button" onClick={addSlide}>
-              新增页面
+            <button
+              className="mini-btn freeform-add-page"
+              type="button"
+              aria-label="新增页面"
+              title="新增页面"
+              onClick={addSlide}
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M10 4v12M4 10h12" />
+              </svg>
             </button>
           </div>
           <div className="freeform-slide-list">
@@ -978,8 +989,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                     background: slideBackgroundToCss(slide.background),
                   }}
                 />
-                <span className="freeform-thumb-title">
-                  {index + 1}. {slide.name}
+                <span className="freeform-thumb-caption">
+                  <span className="freeform-thumb-number">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="freeform-thumb-title">{slide.name}</span>
                 </span>
               </button>
             ))}
@@ -1000,9 +1012,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               <button
                 className="zoom-btn"
                 type="button"
+                aria-label="缩小画布"
+                title="缩小画布"
                 onClick={() => setPreviewScale((scale) => Math.max(0.2, Number((scale - 0.1).toFixed(2))))}
               >
-                −
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M4 10h12" />
+                </svg>
               </button>
               <button className="zoom-value" type="button" onClick={() => setPreviewScale(0.5)}>
                 {Math.round(previewScale * 100)}%
@@ -1010,9 +1026,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               <button
                 className="zoom-btn"
                 type="button"
+                aria-label="放大画布"
+                title="放大画布"
                 onClick={() => setPreviewScale((scale) => Math.min(1.2, Number((scale + 0.1).toFixed(2))))}
               >
-                +
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M10 4v12M4 10h12" />
+                </svg>
               </button>
             </div>
           </div>
