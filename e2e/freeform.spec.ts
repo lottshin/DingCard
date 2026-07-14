@@ -285,6 +285,46 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await expectSections(['arrange'])
 })
 
+test('inspector hierarchy never commits stale object sections while undo clears selection', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+
+  const inspector = page.locator('.freeform-inspector')
+  await expect(page.getByTestId('inspector-geometry')).toBeVisible()
+  await inspector.evaluate((node) => {
+    const snapshots: string[][] = []
+    node.setAttribute('data-undo-section-snapshots', '[]')
+    const observer = new MutationObserver(() => {
+      snapshots.push(
+        Array.from(node.querySelectorAll(':scope > [data-testid^="inspector-"]'))
+          .map((section) => section.getAttribute('data-testid'))
+          .filter((testId): testId is string => testId !== null),
+      )
+      node.setAttribute('data-undo-section-snapshots', JSON.stringify(snapshots))
+    })
+    observer.observe(node, { childList: true, subtree: true })
+  })
+
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await expect(page.getByTestId('inspector-page')).toBeVisible()
+  await expect
+    .poll(async () => {
+      const value = await inspector.getAttribute('data-undo-section-snapshots')
+      const snapshots = JSON.parse(value ?? '[]') as string[][]
+      return snapshots.at(-1)
+    })
+    .toEqual(['inspector-page'])
+
+  const value = await inspector.getAttribute('data-undo-section-snapshots')
+  const snapshots = JSON.parse(value ?? '[]') as string[][]
+  expect(snapshots.length).toBeGreaterThan(0)
+  for (const snapshot of snapshots) {
+    expect(snapshot).not.toContain('inspector-arrange')
+    expect(snapshot).not.toContain('inspector-danger')
+  }
+})
+
 test('shared inspector controls use 32px height, 8px radius, and custom native replacements', async ({ page }) => {
   const expectControlBox = async (control: import('@playwright/test').Locator) => {
     await expect(control).toHaveCSS('height', '32px')

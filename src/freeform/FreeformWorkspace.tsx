@@ -181,9 +181,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   selectedElementIds.current = selection
 
+  const liveSelection = useMemo(() => {
+    const liveIds = new Set(activeSlide.elements.map((element) => element.id))
+    return selection.filter((id) => liveIds.has(id))
+  }, [activeSlide.elements, selection])
   const selectedElement = useMemo(
-    () => activeSlide.elements.find((element) => element.id === selection[0]),
-    [activeSlide.elements, selection],
+    () => activeSlide.elements.find((element) => element.id === liveSelection[0]),
+    [activeSlide.elements, liveSelection],
   )
 
   const canUndo = history.past.length > 0
@@ -1097,7 +1101,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             <span>属性</span>
           </div>
 
-          {selection.length === 0 ? (
+          {liveSelection.length === 0 ? (
             <>
               <InspectorSection title="页面" testId="inspector-page">
                 <label className="field">
@@ -1134,7 +1138,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             </>
           ) : (
             <>
-              {selection.length === 1 && selectedElement && (
+              {liveSelection.length === 1 && selectedElement && (
                 <>
                   <InspectorSection title="位置与尺寸" testId="inspector-geometry">
                     <div className="field-grid">
@@ -1383,7 +1387,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               )}
 
               <InspectorSection title="排列" testId="inspector-arrange">
-                {selection.length > 1 && (
+                {liveSelection.length > 1 && (
                   <>
                     <div className="field-label">对齐与分布</div>
                     <div className="inspector-actions">
@@ -1439,7 +1443,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 </div>
               </InspectorSection>
 
-              {selection.length === 1 && (
+              {liveSelection.length === 1 && (
                 <InspectorSection title="删除" testId="inspector-danger" tone="danger">
                   <button className="ghost inspector-delete" type="button" onClick={deleteSelection}>
                     删除
