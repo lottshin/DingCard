@@ -476,6 +476,53 @@ test('inserts shapes and lines through accessible toolbar menus', async ({ page 
   await expect(lineTrigger).toBeFocused()
 })
 
+test('keeps dark insert menu triggers in the accent expanded state', async ({ page }) => {
+  await openFreeform(page)
+  if ((await page.locator('html').getAttribute('data-theme')) !== 'dark') {
+    await page.getByTestId('theme-toggle').click()
+  }
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+
+  const expandedColors = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.borderColor = 'var(--accent)'
+    probe.style.backgroundColor = 'var(--accent-weak)'
+    document.body.append(probe)
+    const style = getComputedStyle(probe)
+    const colors = {
+      border: style.borderColor,
+      background: style.backgroundColor,
+    }
+    probe.remove()
+    return colors
+  })
+
+  const shapeTrigger = page.getByTestId('insert-shape')
+  await shapeTrigger.click()
+  await expect(shapeTrigger).toHaveCSS('border-color', expandedColors.border)
+  await expect(shapeTrigger).toHaveCSS('background-color', expandedColors.background)
+})
+
+test('switches insert menus without returning focus to the previous trigger', async ({ page }) => {
+  await openFreeform(page)
+
+  const shapeTrigger = page.getByTestId('insert-shape')
+  const lineTrigger = page.getByTestId('insert-line')
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const lineMenu = page.getByRole('menu', { name: '线条' })
+
+  await shapeTrigger.click()
+  await expect(shapeMenu.getByRole('menuitem', { name: '矩形' })).toBeFocused()
+  await lineTrigger.click()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+
+  await expect(shapeMenu).toBeHidden()
+  await expect(lineMenu).toBeVisible()
+  await expect(lineMenu.getByRole('menuitem', { name: '直线' })).toBeFocused()
+})
+
 test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
@@ -742,31 +789,39 @@ function extractCssSelectors(css: string) {
   return selectors
 }
 
-function findUnscopedPageSizeSelectors(css: string) {
+function findUnscopedWorkspaceChromeSelectors(css: string) {
   return extractCssSelectors(css)
-    .filter((selector) => selector.includes('.page-size-'))
+    .filter(
+      (selector) =>
+        selector.includes('.page-size-') || selector.includes('.freeform-insert-'),
+    )
     .filter((selector) => {
       const withoutThemePrefix = selector.replace(/^\[data-theme=['"]dark['"]\]\s+/, '')
       return !/^(?:\.workspace-toolbar|\.freeform-toolbar)(?:\s|$)/.test(withoutThemePrefix)
     })
 }
 
-test('page size chrome selectors stay scoped to workspace toolbar', async () => {
-  expect(findUnscopedPageSizeSelectors(`
+test('workspace chrome selectors stay scoped to workspace toolbar', async () => {
+  expect(findUnscopedWorkspaceChromeSelectors(`
     @media (max-width: 1100px) {
       .page-size-trigger { color: red; }
+      .freeform-insert-trigger { color: red; }
     }
     .page-size-trigger .workspace-toolbar { color: red; }
+    .freeform-insert-menu .freeform-toolbar { color: red; }
     .workspace-toolbar .page-size-trigger { content: ".page-size-declaration"; }
+    .freeform-toolbar .freeform-insert-trigger { content: ".freeform-insert-declaration"; }
   `)).toEqual([
     '.page-size-trigger',
+    '.freeform-insert-trigger',
     '.page-size-trigger .workspace-toolbar',
+    '.freeform-insert-menu .freeform-toolbar',
   ])
 
   const css = await readFile('src/styles.css', 'utf8')
-  const unscoped = findUnscopedPageSizeSelectors(css)
+  const unscoped = findUnscopedWorkspaceChromeSelectors(css)
 
-  expect(unscoped, `裸 page-size 选择器：${unscoped.join(' | ')}`).toEqual([])
+  expect(unscoped, `裸 workspace chrome 选择器：${unscoped.join(' | ')}`).toEqual([])
 })
 
 test('edits preset and custom page sizes from the toolbar popover', async ({ page }) => {

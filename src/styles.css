@@ -1591,6 +1591,12 @@ html.theme-anim * {
   border-color: #4a4a56;
 }
 
+[data-theme='dark'] .workspace-toolbar .freeform-insert-trigger[aria-expanded='true'] {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent-text);
+}
+
 .toolbar-primary {
   height: 34px;
   padding: 0 16px;
