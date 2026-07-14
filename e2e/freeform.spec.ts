@@ -587,7 +587,23 @@ test('compact saved freeform toolbar keeps controls from overlapping', async ({ 
   await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
   await expect(page.getByRole('button', { name: /^草稿(?: · \d+)?$/ })).toHaveText('草稿 · 1')
   await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
+  await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '草稿 · 1', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '打包导出', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '导出当前页', exact: true })).toBeVisible()
   await expectVisibleFreeformToolbarButtonsToFit(page)
+})
+
+test('page size chrome selectors stay scoped to workspace toolbar', async () => {
+  const css = await readFile('src/styles.css', 'utf8')
+  const selectors = Array.from(css.matchAll(/(?:^|})\s*([^{}]+)\{/gms))
+    .flatMap((match) => match[1].split(',').map((selector) => selector.trim()))
+    .filter((selector) => selector.includes('.page-size-'))
+  const unscoped = selectors.filter(
+    (selector) => !selector.includes('.workspace-toolbar') && !selector.includes('.freeform-toolbar'),
+  )
+
+  expect(unscoped, `裸 page-size 选择器：${unscoped.join(' | ')}`).toEqual([])
 })
 
 test('edits preset and custom page sizes from the toolbar popover', async ({ page }) => {
