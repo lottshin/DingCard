@@ -17,6 +17,7 @@ import {
   createTextElement,
   freeformReducer,
 } from './document'
+import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
 import {
@@ -53,6 +54,11 @@ const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
   { id: 'rect', label: '矩形' },
   { id: 'ellipse', label: '圆形' },
   { id: 'triangle', label: '三角形' },
+]
+
+const LINES: Array<{ id: FreeformLineElement['lineKind']; label: string }> = [
+  { id: 'line', label: '直线' },
+  { id: 'arrow', label: '箭头' },
 ]
 
 const FITS: Array<{ id: 'cover' | 'contain'; label: string }> = [
@@ -863,10 +869,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           </div>
 
           <div className="toolbar-insert-tools" role="group" aria-label="插入工具">
-            <button className="bar-btn" type="button" onClick={addText}>
+            <button className="bar-btn" type="button" data-testid="insert-text" onClick={addText}>
               文本框
             </button>
-            <button className="bar-btn" type="button" onClick={() => imageInputRef.current?.click()}>
+            <button
+              className="bar-btn"
+              type="button"
+              data-testid="insert-image"
+              onClick={() => imageInputRef.current?.click()}
+            >
               图片
             </button>
             <input
@@ -876,22 +887,20 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               accept="image/*"
               onChange={(event) => handleImageInput(event.currentTarget.files)}
             />
-            {SHAPES.map((shape) => (
-              <button
-                key={shape.id}
-                className="bar-btn"
-                type="button"
-                onClick={() => addShape(shape.id)}
-              >
-                {shape.label}
-              </button>
-            ))}
-            <button className="bar-btn" type="button" onClick={() => addLine('line')}>
-              直线
-            </button>
-            <button className="bar-btn" type="button" onClick={() => addLine('arrow')}>
-              箭头
-            </button>
+            <FreeformInsertMenu
+              isActive={isActive}
+              testId="insert-shape"
+              label="形状"
+              options={SHAPES}
+              onSelect={addShape}
+            />
+            <FreeformInsertMenu
+              isActive={isActive}
+              testId="insert-line"
+              label="线条"
+              options={LINES}
+              onSelect={addLine}
+            />
           </div>
 
           <ToolbarDivider />

@@ -170,14 +170,43 @@ async function setSelectedElementBox(
   await positionInputs.nth(3).fill(String(height))
 }
 
-async function insertTwoSelectedRectangles(page: import('@playwright/test').Page) {
+async function openFreeform(page: import('@playwright/test').Page) {
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
+}
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+async function insertText(page: import('@playwright/test').Page) {
+  await page.getByTestId('insert-text').click()
+}
+
+async function insertShape(
+  page: import('@playwright/test').Page,
+  label: '矩形' | '圆形' | '三角形' = '矩形',
+) {
+  await page.getByTestId('insert-shape').click()
+  await page
+    .getByRole('menu', { name: '形状' })
+    .getByRole('menuitem', { name: label, exact: true })
+    .click()
+}
+
+async function insertLine(
+  page: import('@playwright/test').Page,
+  label: '直线' | '箭头',
+) {
+  await page.getByTestId('insert-line').click()
+  await page
+    .getByRole('menu', { name: '线条' })
+    .getByRole('menuitem', { name: label, exact: true })
+    .click()
+}
+
+async function insertTwoSelectedRectangles(page: import('@playwright/test').Page) {
+  await openFreeform(page)
+
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 100, 100, 100)
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 320, 120, 100, 100)
 
   const elements = page.getByTestId('freeform-element')
@@ -189,13 +218,11 @@ async function insertTwoSelectedRectangles(page: import('@playwright/test').Page
 }
 
 async function insertTwoRectanglesLeavingInspectorFocused(page: import('@playwright/test').Page) {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 100, 100, 100)
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 320, 120, 100, 100)
 
   const elements = page.getByTestId('freeform-element')
@@ -273,6 +300,7 @@ test('only the active workspace contextual toolbar is exposed', async ({ page })
   await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
   await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
   await expect(freeformToolbar.locator('.bar-btn').first()).toHaveCSS('height', '32px')
+  await expect(page.getByTestId('insert-shape')).toHaveCSS('height', '32px')
   await expect(freeformToolbar.locator('.toolbar-primary')).toHaveCSS('height', '32px')
 })
 
@@ -316,9 +344,8 @@ test('workspace tabs support arrow, Home, and End keyboard navigation', async ({
 })
 
 test('workspace tab arrow navigation does not nudge selected freeform elements', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '矩形' }).click()
+  await openFreeform(page)
+  await insertShape(page)
   await setSelectedElementPosition(page, 240, 180)
 
   const positionInputs = page.locator('.freeform-inspector .field-grid').first().locator('input')
@@ -358,7 +385,7 @@ test('account changes reset workspace draft identity', async ({ page }) => {
 
   const accountSuffix = Date.now()
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '文本框' }).click()
+  await insertText(page)
   await page.getByLabel('文本内容').fill('跨账户草稿内容')
 
   await page.getByRole('button', { name: '保存草稿' }).click()
@@ -406,8 +433,7 @@ test('account changes reset workspace draft identity', async ({ page }) => {
 })
 
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
   await expect(page.getByTestId('freeform-slide-meta')).toContainText('1页')
   await expect(page.getByTestId('freeform-slide-size')).toContainText('1080×1440px')
@@ -418,11 +444,101 @@ test('switches to the freeform workspace and edits a slide', async ({ page }) =>
   await expect(page.getByTestId('freeform-slide-meta')).toContainText('1页')
   await expect(page.getByTestId('freeform-slide-size')).toContainText('1920×1080px')
 
-  await page.getByRole('button', { name: '文本框' }).click()
+  await insertText(page)
   await expect(page.getByLabel('文本内容')).toBeVisible()
 
-  await page.getByRole('button', { name: '矩形' }).click()
-  await expect(page.getByText('形状')).toBeVisible()
+  await insertShape(page)
+  await expect(page.getByTestId('freeform-shape')).toBeVisible()
+})
+
+test('inserts shapes and lines through accessible toolbar menus', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('workspace-tab-freeform').click()
+
+  const shapeTrigger = page.getByTestId('insert-shape')
+  await expect(shapeTrigger).toHaveAttribute('aria-haspopup', 'menu')
+  await expect(shapeTrigger).not.toHaveClass(/bar-btn/)
+  await shapeTrigger.click()
+  await expect(shapeTrigger).toHaveAttribute('aria-expanded', 'true')
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  await expect(shapeMenu).toBeVisible()
+  await shapeMenu.getByRole('menuitem', { name: '矩形' }).click()
+  await expect(shapeTrigger).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByTestId('freeform-shape')).toHaveCount(1)
+
+  const lineTrigger = page.getByTestId('insert-line')
+  await lineTrigger.click()
+  const lineMenu = page.getByRole('menu', { name: '线条' })
+  await expect(lineMenu).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(lineMenu).toBeHidden()
+  await expect(lineTrigger).toHaveAttribute('aria-expanded', 'false')
+  await expect(lineTrigger).toBeFocused()
+})
+
+test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('workspace-tab-freeform').click()
+
+  const shapeTrigger = page.getByTestId('insert-shape')
+  await shapeTrigger.click()
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const rectangle = shapeMenu.getByRole('menuitem', { name: '矩形' })
+  const ellipse = shapeMenu.getByRole('menuitem', { name: '圆形' })
+  const triangle = shapeMenu.getByRole('menuitem', { name: '三角形' })
+
+  await expect(rectangle).toBeFocused()
+  await page.keyboard.press('ArrowUp')
+  await expect(triangle).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(rectangle).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(ellipse).toBeFocused()
+  await page.keyboard.press('Space')
+
+  await expect(shapeMenu).toBeHidden()
+  await expect(page.getByTestId('freeform-shape')).toHaveCount(1)
+  await expect(shapeTrigger).toBeFocused()
+
+  await shapeTrigger.click()
+  await expect(rectangle).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(shapeMenu).toBeHidden()
+  await expect(page.getByTestId('freeform-shape')).toHaveCount(2)
+  await expect(shapeTrigger).toBeFocused()
+})
+
+test('closes insert menus without recording history', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('workspace-tab-freeform').click()
+
+  const undo = page.getByRole('button', { name: '撤销' })
+  const shapeTrigger = page.getByTestId('insert-shape')
+  const lineTrigger = page.getByTestId('insert-line')
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const lineMenu = page.getByRole('menu', { name: '线条' })
+
+  await expect(undo).toBeDisabled()
+  await shapeTrigger.click()
+  await page.keyboard.press('Escape')
+  await expect(shapeMenu).toBeHidden()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await expect(undo).toBeDisabled()
+
+  await lineTrigger.click()
+  await page.getByTestId('freeform-canvas').click({ position: { x: 8, y: 8 } })
+  await expect(lineMenu).toBeHidden()
+  await expect(lineTrigger).toBeFocused()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await expect(undo).toBeDisabled()
+
+  await shapeTrigger.click()
+  await expect(shapeMenu).toBeVisible()
+  await page.getByTestId('workspace-tab-markdown').click()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await expect(shapeMenu).toBeHidden()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await expect(undo).toBeDisabled()
 })
 
 test('freeform inspector exposes styled paint controls instead of visible native color inputs', async ({ page }) => {
@@ -476,26 +592,24 @@ test('uses styled scrollbars in the freeform workspace', async ({ page }) => {
 })
 
 test('uses custom color popovers for shape and line stroke colors', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  await page.locator('.freeform-toolbar .bar-btn').nth(2).click()
+  await insertShape(page)
   await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
   await page.getByTestId('shape-stroke-color').getByTestId('paint-color-button').click()
   await expect(page.getByTestId('paint-popover')).toBeVisible()
   await page.keyboard.press('Escape')
 
-  await page.getByLabel('插入工具').getByRole('button', { name: '直线' }).click()
+  await insertLine(page, '直线')
   await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
   await page.getByTestId('line-stroke-color').getByTestId('paint-color-button').click()
   await expect(page.getByTestId('paint-popover')).toBeVisible()
 })
 
 test('changes a selected text element font family', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  await insertText(page)
   await page.getByTestId('freeform-element').first().click()
   await page.getByTestId('freeform-font-select').click()
   await page.locator('[role="option"]').nth(2).click()
@@ -517,7 +631,7 @@ test('warms the selected web font before export is clicked', async ({ page }) =>
 
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  await insertText(page)
   await page.getByTestId('freeform-element').first().click()
   await page.getByTestId('freeform-font-select').click()
   await page.locator('[role="option"]').nth(2).click()
@@ -527,28 +641,26 @@ test('warms the selected web font before export is clicked', async ({ page }) =>
 })
 
 test('applies page, shape, and text gradients from the inspector', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
   await expect(page.getByTestId('freeform-canvas')).toHaveCSS('background-image', /linear-gradient/)
 
-  await page.locator('.freeform-toolbar .bar-btn').nth(2).click()
+  await insertShape(page)
   await page.getByTestId('freeform-element').last().click()
   await page.getByTestId('shape-fill-paint').getByTestId('paint-mode-linear-gradient').click()
   await expect(page.getByTestId('freeform-shape').last()).toHaveCSS('background-image', /linear-gradient/)
 
-  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  await insertText(page)
   await page.getByTestId('freeform-element').last().click()
   await page.getByTestId('text-fill-paint').getByTestId('paint-mode-linear-gradient').click()
   await expect(page.getByTestId('freeform-textbox').last()).toHaveCSS('background-image', /linear-gradient/)
 })
 
 test('edits Chinese text in the freeform contenteditable textbox without losing text', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  await insertText(page)
   const textbox = page.getByTestId('freeform-textbox').last()
   await expect(textbox).toHaveAttribute('contenteditable', 'true')
   await textbox.fill('中文渐变测试')
@@ -557,10 +669,9 @@ test('edits Chinese text in the freeform contenteditable textbox without losing 
 })
 
 test('pastes plain text into the freeform contenteditable textbox', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  await page.locator('.freeform-toolbar .bar-btn').nth(0).click()
+  await insertText(page)
   const textbox = page.getByTestId('freeform-textbox').last()
   await textbox.evaluate((node) => {
     const data = new DataTransfer()
@@ -693,7 +804,7 @@ test('edits preset and custom page sizes from the toolbar popover', async ({ pag
 
   await page.getByTestId('theme-toggle').click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await page.getByLabel('插入工具').getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   const selectedElement = page.getByTestId('freeform-element').last()
   await expect(selectedElement).toHaveAttribute('data-selected', 'true')
 
@@ -784,9 +895,8 @@ test('sets custom page size and new pages inherit it', async ({ page }) => {
 })
 
 test('fills a shape with an image', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '矩形' }).click()
+  await openFreeform(page)
+  await insertShape(page)
 
   const fileChooserPromise = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: '插入图片填充' }).click()
@@ -815,11 +925,10 @@ test('exports the current slide as a PNG at slide dimensions', async ({ page }) 
 })
 
 test('exports current freeform slide with gradient pixels and without editor ui', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
-  await page.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 100, 100, 100)
   await expect(page.getByTestId('freeform-element')).toHaveAttribute('data-selected', 'true')
 
@@ -855,7 +964,7 @@ test('saves and restores a freeform draft', async ({ page }) => {
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '文本框' }).click()
+  await insertText(page)
   await page.getByLabel('文本内容').fill('保存恢复测试')
 
   await page.getByRole('button', { name: '保存草稿' }).click()
@@ -913,9 +1022,8 @@ test('shows progress while exporting multiple freeform slides', async ({ page })
 })
 
 test('copies, pastes, and deletes the selected element', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '文本框' }).click()
+  await openFreeform(page)
+  await insertText(page)
 
   await expect(page.locator('.freeform-element')).toHaveCount(1)
   const before = await freeformElementPositions(page)
@@ -933,9 +1041,8 @@ test('copies, pastes, and deletes the selected element', async ({ page }) => {
 })
 
 test('hidden freeform workspace does not handle Delete', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '矩形' }).click()
+  await openFreeform(page)
+  await insertShape(page)
   const elements = page.getByTestId('freeform-element')
   await expect(elements).toHaveCount(1)
   await elements.first().click()
@@ -946,9 +1053,8 @@ test('hidden freeform workspace does not handle Delete', async ({ page }) => {
 })
 
 test('hidden freeform workspace does not handle undo', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '矩形' }).click()
+  await openFreeform(page)
+  await insertShape(page)
   const elements = page.getByTestId('freeform-element')
   await expect(elements).toHaveCount(1)
   await page.getByTestId('workspace-tab-markdown').click()
@@ -958,10 +1064,9 @@ test('hidden freeform workspace does not handle undo', async ({ page }) => {
 })
 
 test('moves the selected element through layer order', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '文本框' }).click()
-  await page.getByRole('button', { name: '矩形' }).click()
+  await openFreeform(page)
+  await insertText(page)
+  await insertShape(page)
 
   await expect(page.locator('.freeform-element')).toHaveCount(2)
   await expect.poll(() => freeformElementKinds(page)).toEqual(['text', 'shape'])
@@ -975,24 +1080,21 @@ test('moves the selected element through layer order', async ({ page }) => {
 })
 
 test('inserts line and arrow elements', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '直线' }).click()
+  await insertLine(page, '直线')
   await expect(page.getByTestId('freeform-line')).toBeVisible()
 
-  await insertTools.getByRole('button', { name: '箭头' }).click()
+  await insertLine(page, '箭头')
   await expect(page.getByTestId('freeform-arrow')).toBeVisible()
 })
 
 test('multi-selects elements and aligns them left', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  await page.getByRole('button', { name: '文本框' }).click()
+  await insertText(page)
   await setSelectedElementPosition(page, 100, 120)
-  await page.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementPosition(page, 400, 240)
 
   await expect.poll(() => freeformElementPositions(page)).toEqual([
@@ -1010,13 +1112,11 @@ test('multi-selects elements and aligns them left', async ({ page }) => {
 })
 
 test('drags selected elements together', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 100, 100, 100)
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 320, 120, 100, 100)
 
   const elements = page.getByTestId('freeform-element')
@@ -1049,11 +1149,9 @@ test('drags selected elements together', async ({ page }) => {
 })
 
 test('snapping aligns a dragged element to the page center and hides guides after release', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 100, 100, 100)
 
   const element = page.getByTestId('freeform-element').first()
@@ -1072,13 +1170,11 @@ test('snapping aligns a dragged element to the page center and hides guides afte
 })
 
 test('snapping aligns a dragged element to another element left edge', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 100, 100, 100)
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 700, 120, 140, 100)
 
   const first = page.getByTestId('freeform-element').first()
@@ -1117,11 +1213,9 @@ test('snapping aligns a selected group by its bounding box', async ({ page }) =>
 })
 
 test('snapping hides guides when pointer drag is canceled', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 100, 100, 100)
 
   const element = page.getByTestId('freeform-element').first()
@@ -1140,11 +1234,9 @@ test('snapping hides guides when pointer drag is canceled', async ({ page }) => 
 })
 
 test('snapping does not apply to keyboard nudges', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 485, 100, 100, 100)
   await page.getByTestId('freeform-element').first().click()
   await page.keyboard.press('ArrowRight')
@@ -1237,16 +1329,14 @@ test('keyboard shortcuts work after marquee from an inspector input', async ({ p
 })
 
 test('marquee selects elements by dragging empty canvas', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
   await expect(page.getByTestId('freeform-canvas')).toBeVisible()
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 100, 120, 100)
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 320, 140, 120, 100)
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 760, 140, 120, 100)
 
   const canvas = page.getByTestId('freeform-canvas')
@@ -1273,15 +1363,13 @@ test('marquee selects elements by dragging empty canvas', async ({ page }) => {
 })
 
 test('distributes selected elements horizontally', async ({ page }) => {
-  await page.goto('/')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await openFreeform(page)
 
-  const insertTools = page.getByLabel('插入工具')
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 100, 160, 100, 100)
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 400, 160, 100, 100)
-  await insertTools.getByRole('button', { name: '矩形' }).click()
+  await insertShape(page)
   await setSelectedElementBox(page, 800, 160, 100, 100)
 
   await page.locator('.freeform-element').nth(0).click({ modifiers: ['Shift'] })

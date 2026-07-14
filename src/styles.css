@@ -310,6 +310,7 @@ html.theme-anim * {
 .workspace-toolbar .bar-btn,
 .workspace-toolbar .sel-trigger,
 .workspace-toolbar .page-size-trigger,
+.workspace-toolbar .freeform-insert-trigger,
 .workspace-toolbar .toolbar-primary {
   height: 32px;
 }
@@ -328,6 +329,7 @@ html.theme-anim * {
 .workspace-toolbar .sel-trigger:focus-visible,
 .workspace-toolbar .bar-btn:focus-visible,
 .workspace-toolbar .page-size-trigger:focus-visible,
+.workspace-toolbar .freeform-insert-trigger:focus-visible,
 .workspace-toolbar .toolbar-primary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -389,9 +391,108 @@ html.theme-anim * {
     border: 0;
   }
 
-  .freeform-toolbar .bar-btn {
+  .freeform-toolbar .bar-btn,
+  .freeform-toolbar .freeform-insert-trigger {
     padding-inline: 9px;
   }
+}
+
+.workspace-toolbar .freeform-insert-menu-control {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.freeform-toolbar .freeform-insert-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.freeform-toolbar .freeform-insert-trigger svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+  transition: transform 0.15s ease;
+}
+
+.freeform-toolbar .freeform-insert-trigger:hover {
+  border-color: var(--line-2);
+  background: var(--surface-2);
+}
+
+.freeform-toolbar .freeform-insert-trigger[aria-expanded='true'] {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent-text);
+}
+
+.freeform-toolbar .freeform-insert-trigger[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.freeform-toolbar .freeform-insert-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  min-width: 112px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.freeform-toolbar .freeform-insert-menu-item {
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.freeform-toolbar .freeform-insert-menu-item:hover,
+.freeform-toolbar .freeform-insert-menu-item:focus-visible {
+  outline: none;
+  background: var(--accent-weak);
+  color: var(--accent-text);
+}
+
+[data-theme='dark'] .freeform-toolbar .freeform-insert-menu {
+  border-color: #3a3a44;
+  background: #24242a;
+}
+
+[data-theme='dark'] .freeform-toolbar .freeform-insert-menu-item:hover,
+[data-theme='dark'] .freeform-toolbar .freeform-insert-menu-item:focus-visible {
+  background: #2c2c34;
 }
 
 .workspace-toolbar .page-size-control {
@@ -1476,6 +1577,7 @@ html.theme-anim * {
    don't read as faint. Stronger fill + border than the shared tokens give. */
 [data-theme='dark'] .bar-btn,
 [data-theme='dark'] .sel-trigger,
+[data-theme='dark'] .workspace-toolbar .freeform-insert-trigger,
 [data-theme='dark'] .workspace-toolbar .page-size-trigger {
   background: #24242a;
   border-color: #3a3a44;
@@ -1483,6 +1585,7 @@ html.theme-anim * {
 
 [data-theme='dark'] .bar-btn:hover,
 [data-theme='dark'] .sel-trigger:hover,
+[data-theme='dark'] .workspace-toolbar .freeform-insert-trigger:hover:not([aria-expanded='true']),
 [data-theme='dark'] .workspace-toolbar .page-size-trigger:hover:not([aria-expanded='true']) {
   background: #2c2c34;
   border-color: #4a4a56;
