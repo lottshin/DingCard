@@ -1,6 +1,10 @@
 import { expect, expectTypeOf, it } from 'vitest'
 
-import { getElementsInMarquee, moveElementsWithinSlide } from '../selection'
+import {
+  filterLiveSelectionIds,
+  getElementsInMarquee,
+  moveElementsWithinSlide,
+} from '../selection'
 import type { FreeformElement, FreeformSlide } from '../types'
 
 expectTypeOf(moveElementsWithinSlide)
@@ -19,6 +23,25 @@ const element = (id: string, x: number, y: number, width = 100, height = 100): F
   fill: { type: 'solid', color: '#fff' },
   stroke: '#000',
   strokeWidth: 0,
+})
+
+it('filters stale selection ids while keeping live ids', () => {
+  const elements = [element('a', 40, 80), element('b', 180, 80)]
+
+  expect(filterLiveSelectionIds(elements, ['missing', 'a', 'gone', 'b'])).toEqual(['a', 'b'])
+})
+
+it('returns an empty selection for empty and all-stale ids', () => {
+  const elements = [element('a', 40, 80)]
+
+  expect(filterLiveSelectionIds(elements, [])).toEqual([])
+  expect(filterLiveSelectionIds(elements, ['missing', 'gone'])).toEqual([])
+})
+
+it('preserves selected id order instead of document order', () => {
+  const elements = [element('a', 40, 80), element('b', 180, 80), element('c', 320, 80)]
+
+  expect(filterLiveSelectionIds(elements, ['c', 'a', 'b'])).toEqual(['c', 'a', 'b'])
 })
 
 it('selects elements intersecting the marquee rectangle', () => {

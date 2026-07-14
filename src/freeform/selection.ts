@@ -14,6 +14,14 @@ interface Bounds {
   bottom: number
 }
 
+export function filterLiveSelectionIds(
+  elements: FreeformElement[],
+  selectedIds: string[],
+): string[] {
+  const liveIds = new Set(elements.map((element) => element.id))
+  return selectedIds.filter((id) => liveIds.has(id))
+}
+
 export function getElementsInMarquee(elements: FreeformElement[], rect: Rect): string[] {
   const marquee = normalizeRect(rect)
 

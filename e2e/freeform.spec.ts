@@ -43,6 +43,29 @@ function rgbDistance(a: number[], b: number[]) {
   )
 }
 
+function contrastRatio(foreground: string, background: string) {
+  const parse = (value: string) => {
+    const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number)
+    if (!channels || channels.length !== 3) throw new Error(`Unsupported CSS color: ${value}`)
+    return channels.map((channel) => {
+      const normalized = channel / 255
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4
+    })
+  }
+  const luminance = (value: string) => {
+    const [red, green, blue] = parse(value)
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  }
+  const foregroundLuminance = luminance(foreground)
+  const backgroundLuminance = luminance(background)
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  )
+}
+
 async function freeformElementPositions(page: import('@playwright/test').Page) {
   return page.getByTestId('freeform-element').evaluateAll((elements) =>
     elements.map((element) => {
@@ -245,6 +268,10 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await expect(page.getByTestId('inspector-page')).toBeVisible()
   await expect(inspector.locator('.inspector-empty')).toContainText('选择')
   await expectSections(['page'])
+  const pagePaint = page.getByTestId('page-background-paint')
+  await expect(pagePaint.getByTestId('paint-mode-solid')).toBeVisible()
+  await expect(pagePaint.getByTestId('paint-mode-linear-gradient')).toBeVisible()
+  await expect(pagePaint.getByTestId('paint-mode-transparent')).toBeVisible()
 
   await insertShape(page)
   await setSelectedElementPosition(page, 100, 100)
@@ -257,6 +284,10 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await insertText(page)
   await setSelectedElementPosition(page, 420, 180)
   await expectSections(['geometry', 'typography', 'fill', 'arrange', 'danger'])
+  const textFill = page.getByTestId('text-fill-paint')
+  await expect(textFill.getByTestId('paint-mode-solid')).toBeVisible()
+  await expect(textFill.getByTestId('paint-mode-linear-gradient')).toBeVisible()
+  await expect(textFill.getByTestId('paint-mode-image')).toHaveCount(0)
 
   await insertLine(page, '直线')
   await setSelectedElementPosition(page, 760, 300)
@@ -268,6 +299,17 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await expect(lineStroke.getByTestId('freeform-paint-field')).toHaveCount(0)
   await expect(lineStroke.getByTestId('paint-mode-linear-gradient')).toHaveCount(0)
   await expect(lineStroke.getByTestId('paint-mode-image')).toHaveCount(0)
+
+  const fileChooserPromise = page.waitForEvent('filechooser')
+  await page.getByTestId('insert-image').click()
+  const fileChooser = await fileChooserPromise
+  await fileChooser.setFiles('public/favicon.svg')
+  await expectSections(['geometry', 'fill', 'arrange', 'danger'])
+  const imageFill = page.getByTestId('inspector-fill')
+  await expect(imageFill.getByRole('button', { name: '填满', exact: true })).toBeVisible()
+  await expect(imageFill.getByRole('button', { name: '适应', exact: true })).toBeVisible()
+  await expect(imageFill.getByTestId('freeform-paint-field')).toHaveCount(0)
+  await expect(page.getByTestId('inspector-stroke')).toHaveCount(0)
 
   await page.getByTestId('freeform-canvas').click({ position: { x: 10, y: 10 } })
   await expect(selectedFreeformElements(page)).toHaveCount(0)
@@ -340,11 +382,13 @@ test('shared inspector controls use 32px height, 8px radius, and custom native r
   await insertShape(page)
 
   const geometry = page.getByTestId('inspector-geometry')
+  const shapeSegmentGroup = geometry.locator('.seg.stretch')
   const shapeSegment = geometry.getByRole('button', { name: '矩形', exact: true })
   const geometryNumber = geometry.locator('input[type="number"]').first()
   const shapeFill = page.getByTestId('shape-fill-paint')
   const arrangeButton = page.getByTestId('inspector-arrange').getByRole('button', { name: '后移', exact: true })
   const deleteButton = page.getByTestId('inspector-danger').getByRole('button', { name: '删除', exact: true })
+  await expectControlBox(shapeSegmentGroup)
   await expectControlBox(shapeSegment)
   await expectControlBox(geometryNumber)
   await expect(geometryNumber).toHaveCSS('appearance', 'textfield')
@@ -370,13 +414,20 @@ test('shared inspector controls use 32px height, 8px radius, and custom native r
   await expect(channelRange).toHaveCSS('height', '8px')
   await expect(channelRange).toHaveCSS('border-radius', '999px')
   await expect(channelRange).toHaveCSS('background-image', /linear-gradient/)
+  const css = await readFile('src/styles.css', 'utf8')
+  expect(css).toMatch(
+    /\.freeform-inspector \.paint-channel-range::-webkit-slider-thumb\s*\{[^}]*background:\s*var\(--text\)/s,
+  )
+  expect(css).toMatch(
+    /\.freeform-inspector \.paint-channel-range::-moz-range-thumb\s*\{[^}]*background:\s*var\(--text\)/s,
+  )
   await gradientStartColor.click()
 
   await expect(page.locator('.freeform-inspector input[type="file"]:visible')).toHaveCount(0)
-  await expect(page.locator('.freeform-inspector select:visible')).toHaveCount(0)
 
   await insertText(page)
   await expectControlBox(page.getByTestId('freeform-font-select'))
+  await expect(page.locator('.freeform-inspector select:visible')).toHaveCount(0)
 })
 
 test('shared inspector controls expose a visible accent focus ring', async ({ page }) => {
@@ -390,6 +441,7 @@ test('shared inspector controls expose a visible accent focus ring', async ({ pa
     return color
   })
   const expectAccentFocus = async (control: import('@playwright/test').Locator) => {
+    // Establish Chromium's keyboard modality so programmatic focus exercises :focus-visible.
     await page.keyboard.press('Tab')
     await control.focus()
     await expect(control).toHaveCSS('outline-color', accentColor)
@@ -418,10 +470,47 @@ test('shared inspector controls expose a visible accent focus ring', async ({ pa
   const popover = shapeFill.getByTestId('paint-popover')
   await expectAccentFocus(popover.locator('.paint-popover-hex'))
   await expectAccentFocus(popover.locator('.paint-channel-number').first())
+  await expectAccentFocus(popover.locator('.paint-channel-range').first())
+  await expectAccentFocus(popover.locator('.paint-swatch').first())
   await gradientStartColor.click()
 
   await insertText(page)
   await expectAccentFocus(page.getByTestId('freeform-font-select'))
+})
+
+test('inspector danger text remains readable in light and dark themes', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+
+  const html = page.locator('html')
+  if ((await html.getAttribute('data-theme')) !== 'light') {
+    await page.getByTestId('theme-toggle').click()
+  }
+  await expect(html).toHaveAttribute('data-theme', 'light')
+  await expect(html).not.toHaveClass(/theme-anim/)
+
+  const danger = page.getByTestId('inspector-danger')
+  const title = danger.locator('.inspector-section-title')
+  const button = danger.getByRole('button', { name: '删除', exact: true })
+  const readContrast = (control: import('@playwright/test').Locator) =>
+    control.evaluate((element) => ({
+      foreground: getComputedStyle(element).color,
+      background: getComputedStyle(element.closest('.freeform-inspector')!).backgroundColor,
+    }))
+
+  const lightTitle = await readContrast(title)
+  const lightButton = await readContrast(button)
+  expect(contrastRatio(lightTitle.foreground, lightTitle.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(lightButton.foreground, lightButton.background)).toBeGreaterThanOrEqual(4.5)
+
+  await page.getByTestId('theme-toggle').click()
+  await expect(html).toHaveAttribute('data-theme', 'dark')
+  await expect(html).not.toHaveClass(/theme-anim/)
+  const darkTitle = await readContrast(title)
+  const darkButton = await readContrast(button)
+  expect(contrastRatio(darkTitle.foreground, darkTitle.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(darkButton.foreground, darkButton.background)).toBeGreaterThanOrEqual(4.5)
+  expect(darkTitle.foreground).not.toBe(lightTitle.foreground)
 })
 
 test('global header owns workspace tabs, theme, and account state', async ({ page }) => {
@@ -950,17 +1039,30 @@ test('uses styled scrollbars in the freeform workspace', async ({ page }) => {
 
 test('uses custom color popovers for shape and line stroke colors', async ({ page }) => {
   await openFreeform(page)
+  const inspector = page.locator('.freeform-inspector')
+  const expectPopoverInsideInspector = async () => {
+    const inspectorBox = await inspector.boundingBox()
+    const popoverBox = await page.getByTestId('paint-popover').boundingBox()
+    expect(inspectorBox).toBeTruthy()
+    expect(popoverBox).toBeTruthy()
+    expect(popoverBox!.x).toBeGreaterThanOrEqual(inspectorBox!.x)
+    expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(
+      inspectorBox!.x + inspectorBox!.width,
+    )
+  }
 
   await insertShape(page)
   await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
   await page.getByTestId('shape-stroke-color').getByTestId('paint-color-button').click()
   await expect(page.getByTestId('paint-popover')).toBeVisible()
+  await expectPopoverInsideInspector()
   await page.keyboard.press('Escape')
 
   await insertLine(page, '直线')
   await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
   await page.getByTestId('line-stroke-color').getByTestId('paint-color-button').click()
   await expect(page.getByTestId('paint-popover')).toBeVisible()
+  await expectPopoverInsideInspector()
 })
 
 test('changes a selected text element font family', async ({ page }) => {

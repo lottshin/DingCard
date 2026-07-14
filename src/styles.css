@@ -28,6 +28,8 @@
   --accent-weak: rgba(194, 65, 12, 0.10);
   --accent-text: #c2410c;
   --on-accent: #ffffff;
+  --danger: #b42318;
+  --danger-weak: rgba(180, 35, 24, 0.10);
   --btn: #18181b;         /* primary button = graphite ink */
   --on-btn: #fafafa;
 
@@ -55,6 +57,8 @@
   --accent-weak: rgba(249, 115, 22, 0.16);
   --accent-text: #fb923c;
   --on-accent: #0b0b0d;
+  --danger: #ff8a80;
+  --danger-weak: rgba(255, 138, 128, 0.14);
   --btn: #fafafa;         /* primary button inverts to light ink on dark */
   --on-btn: #0b0b0d;
 
@@ -1120,7 +1124,7 @@ html.theme-anim * {
 }
 
 .freeform-inspector .inspector-section-danger .inspector-section-title {
-  color: #d63c43;
+  color: var(--danger);
 }
 
 .freeform-inspector .inspector-empty {
@@ -1164,6 +1168,7 @@ html.theme-anim * {
 }
 
 .freeform-inspector .field-grid .color-field {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1226,8 +1231,12 @@ html.theme-anim * {
 
 .freeform-inspector .seg.stretch {
   width: 100%;
+  height: 32px;
   margin-top: 8px;
+  padding: 0;
+  border: 0;
   border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .freeform-inspector .seg.stretch .seg-btn {
@@ -1257,15 +1266,15 @@ html.theme-anim * {
 .freeform-inspector .inspector-delete {
   width: 100%;
   height: 32px;
-  border-color: color-mix(in srgb, #e5484d 34%, var(--line));
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
   border-radius: 8px;
-  color: #d63c43;
+  color: var(--danger);
   font-size: 12px;
 }
 
 .freeform-inspector .inspector-delete:hover {
-  border-color: #e5484d;
-  background: color-mix(in srgb, #e5484d 9%, var(--surface));
+  border-color: var(--danger);
+  background: var(--danger-weak);
 }
 
 .freeform-inspector input[type='file'],
@@ -1351,6 +1360,16 @@ html.theme-anim * {
   border-radius: var(--radius-sm);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
+}
+
+.freeform-inspector .field-grid .color-field .paint-color {
+  position: static;
+}
+
+.freeform-inspector .field-grid .color-field .paint-popover {
+  left: 0;
+  width: calc(200% + 9px);
+  max-width: calc(100vw - 32px);
 }
 
 .freeform-inspector .paint-popover-head {
@@ -1498,6 +1517,10 @@ html.theme-anim * {
   cursor: pointer;
 }
 
+.freeform-inspector .paint-channel-range::-moz-range-thumb {
+  background: var(--text);
+}
+
 .freeform-inspector .paint-preview {
   height: 28px;
   border: 1px solid var(--line-2);
@@ -1530,7 +1553,10 @@ html.theme-anim * {
 .freeform-inspector .paint-angle:focus-visible,
 .freeform-inspector .paint-popover-hex:focus-visible,
 .freeform-inspector .paint-channel-number:focus-visible,
-.freeform-inspector .paint-color-button:focus-visible {
+.freeform-inspector .paint-color-button:focus-visible,
+.freeform-inspector .paint-range:focus-visible,
+.freeform-inspector .paint-channel-range:focus-visible,
+.freeform-inspector .paint-swatch:focus-visible {
   border-color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 2px;

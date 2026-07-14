@@ -35,7 +35,12 @@ import {
   slideBackgroundToCss,
   textFillToStyle,
 } from './paint'
-import { getElementsInMarquee, moveElementsWithinSlide, type Rect } from './selection'
+import {
+  filterLiveSelectionIds,
+  getElementsInMarquee,
+  moveElementsWithinSlide,
+  type Rect,
+} from './selection'
 import { snapDrag, type SnapLine } from './snapping'
 import type {
   FreeformAction,
@@ -181,10 +186,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   selectedElementIds.current = selection
 
-  const liveSelection = useMemo(() => {
-    const liveIds = new Set(activeSlide.elements.map((element) => element.id))
-    return selection.filter((id) => liveIds.has(id))
-  }, [activeSlide.elements, selection])
+  const liveSelection = useMemo(
+    () => filterLiveSelectionIds(activeSlide.elements, selection),
+    [activeSlide.elements, selection],
+  )
   const selectedElement = useMemo(
     () => activeSlide.elements.find((element) => element.id === liveSelection[0]),
     [activeSlide.elements, liveSelection],
