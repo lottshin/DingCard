@@ -107,7 +107,12 @@ export function FreeformPageSizePopover({
 
     function closeOnOutsidePointer(event: PointerEvent) {
       const root = rootRef.current
-      if (root && !root.contains(event.target as Node)) closePopover(true)
+      if (!root || root.contains(event.target as Node)) return
+      const nextFlyoutTrigger =
+        event.target instanceof Element
+          ? event.target.closest('[data-freeform-toolbar-flyout-trigger]')
+          : null
+      closePopover(nextFlyoutTrigger === null)
     }
 
     function closeOnEscape(event: KeyboardEvent) {
@@ -127,12 +132,21 @@ export function FreeformPageSizePopover({
   }, [open, isActive])
 
   return (
-    <div className="page-size-control" ref={rootRef}>
+    <div
+      className="page-size-control"
+      ref={rootRef}
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget
+        if (!(nextTarget instanceof Node) || event.currentTarget.contains(nextTarget)) return
+        closePopover(false)
+      }}
+    >
       <button
         ref={triggerRef}
         className="page-size-trigger"
         type="button"
         data-testid="page-size-trigger"
+        data-freeform-toolbar-flyout-trigger=""
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={POPOVER_ID}

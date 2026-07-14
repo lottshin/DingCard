@@ -299,7 +299,7 @@ test('only the active workspace contextual toolbar is exposed', async ({ page })
   await expect(freeformToolbar).toHaveCSS('height', '50px')
   await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
   await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
-  await expect(freeformToolbar.locator('.bar-btn').first()).toHaveCSS('height', '32px')
+  await expect(page.getByTestId('insert-text')).toHaveCSS('height', '32px')
   await expect(page.getByTestId('insert-shape')).toHaveCSS('height', '32px')
   await expect(freeformToolbar.locator('.toolbar-primary')).toHaveCSS('height', '32px')
 })
@@ -523,6 +523,117 @@ test('switches insert menus without returning focus to the previous trigger', as
   await expect(lineMenu.getByRole('menuitem', { name: '直线' })).toBeFocused()
 })
 
+test('hands focus from the page size popover to an insert menu', async ({ page }) => {
+  await openFreeform(page)
+
+  const undo = page.getByRole('button', { name: '撤销' })
+  const pageSizeTrigger = page.getByTestId('page-size-trigger')
+  const pageSizePopover = page.getByTestId('page-size-popover')
+  const shapeTrigger = page.getByTestId('insert-shape')
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const rectangle = shapeMenu.getByRole('menuitem', { name: '矩形' })
+
+  await expect(undo).toBeDisabled()
+  await pageSizeTrigger.click()
+  await expect(pageSizePopover).toBeVisible()
+  await shapeTrigger.click()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+
+  await expect(pageSizePopover).toBeHidden()
+  await expect(shapeMenu).toBeVisible()
+  await expect(rectangle).toBeFocused()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await expect(undo).toBeDisabled()
+})
+
+test('hands focus from an insert menu to the page size popover', async ({ page }) => {
+  await openFreeform(page)
+
+  const undo = page.getByRole('button', { name: '撤销' })
+  const pageSizeTrigger = page.getByTestId('page-size-trigger')
+  const pageSizePopover = page.getByTestId('page-size-popover')
+  const selectedPreset = pageSizePopover.getByRole('button', { name: '3:4', exact: true })
+  const shapeTrigger = page.getByTestId('insert-shape')
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+
+  await expect(undo).toBeDisabled()
+  await shapeTrigger.click()
+  await expect(shapeMenu).toBeVisible()
+  await pageSizeTrigger.click()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+
+  await expect(shapeMenu).toBeHidden()
+  await expect(pageSizePopover).toBeVisible()
+  await expect(selectedPreset).toBeFocused()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await expect(undo).toBeDisabled()
+})
+
+test('closes an insert menu when tabbing to another toolbar trigger', async ({ page }) => {
+  await openFreeform(page)
+
+  const shapeTrigger = page.getByTestId('insert-shape')
+  const lineTrigger = page.getByTestId('insert-line')
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const lineMenu = page.getByRole('menu', { name: '线条' })
+
+  await shapeTrigger.click()
+  await expect(shapeMenu.getByRole('menuitem', { name: '矩形' })).toBeFocused()
+  await page.keyboard.press('Tab')
+
+  await expect(lineTrigger).toBeFocused()
+  await expect(shapeMenu).toBeHidden()
+  await page.keyboard.press('Enter')
+  await expect(lineMenu).toBeVisible()
+  await expect(page.getByRole('menu')).toHaveCount(1)
+})
+
+test('closes the page size popover before keyboard-opening an insert menu', async ({ page }) => {
+  await openFreeform(page)
+
+  const pageSizeTrigger = page.getByTestId('page-size-trigger')
+  const pageSizePopover = page.getByTestId('page-size-popover')
+  const shapeTrigger = page.getByTestId('insert-shape')
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+
+  await pageSizeTrigger.click()
+  await expect(pageSizePopover).toBeVisible()
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (await shapeTrigger.evaluate((element) => element === document.activeElement)) break
+    await page.keyboard.press('Tab')
+  }
+
+  await expect(shapeTrigger).toBeFocused()
+  await page.keyboard.press('Enter')
+
+  await expect(pageSizePopover).toBeHidden()
+  await expect(shapeMenu).toBeVisible()
+  await expect(shapeMenu.getByRole('menuitem', { name: '矩形' })).toBeFocused()
+  await expect(page.getByRole('menu')).toHaveCount(1)
+
+  await page.keyboard.press('Escape')
+  await expect(shapeMenu).toBeHidden()
+  await expect(shapeTrigger).toBeFocused()
+})
+
+test('keeps the page size popover open when clicking non-focusable content inside it', async ({ page }) => {
+  await openFreeform(page)
+
+  const pageSizePopover = page.getByTestId('page-size-popover')
+  await page.getByTestId('page-size-trigger').click()
+  await expect(pageSizePopover).toBeVisible()
+  await expect(pageSizePopover.getByRole('button', { name: '3:4', exact: true })).toBeFocused()
+
+  await pageSizePopover.locator('.page-size-popover-heading').click()
+
+  await expect(pageSizePopover).toBeVisible()
+})
+
 test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
@@ -581,7 +692,12 @@ test('closes insert menus without recording history', async ({ page }) => {
 
   await shapeTrigger.click()
   await expect(shapeMenu).toBeVisible()
-  await page.getByTestId('workspace-tab-markdown').click()
+  const markdownTab = page.getByTestId('workspace-tab-markdown')
+  await markdownTab.click()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+  await expect(markdownTab).toBeFocused()
   await page.getByTestId('workspace-tab-freeform').click()
   await expect(shapeMenu).toBeHidden()
   await expect(page.getByTestId('freeform-element')).toHaveCount(0)

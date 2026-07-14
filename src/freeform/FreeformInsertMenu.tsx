@@ -95,11 +95,11 @@ export function FreeformInsertMenu<T extends string>({
     function closeOnOutsidePointer(event: PointerEvent) {
       const root = rootRef.current
       if (!root || root.contains(event.target as Node)) return
-      const nextInsertTrigger =
+      const nextFlyoutTrigger =
         event.target instanceof Element
-          ? event.target.closest('.freeform-insert-trigger')
+          ? event.target.closest('[data-freeform-toolbar-flyout-trigger]')
           : null
-      closeMenu(nextInsertTrigger === null)
+      closeMenu(nextFlyoutTrigger === null)
     }
 
     window.addEventListener('pointerdown', closeOnOutsidePointer, true)
@@ -113,6 +113,7 @@ export function FreeformInsertMenu<T extends string>({
         className="freeform-insert-trigger"
         type="button"
         data-testid={testId}
+        data-freeform-toolbar-flyout-trigger=""
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
@@ -134,6 +135,10 @@ export function FreeformInsertMenu<T extends string>({
             const activeIndex = itemRefs.current.findIndex(
               (item) => item === globalThis.document.activeElement,
             )
+            if (event.key === 'Tab') {
+              closeMenu(false)
+              return
+            }
             if (event.key === 'ArrowDown') {
               event.preventDefault()
               event.stopPropagation()
