@@ -594,14 +594,66 @@ test('compact saved freeform toolbar keeps controls from overlapping', async ({ 
   await expectVisibleFreeformToolbarButtonsToFit(page)
 })
 
-test('page size chrome selectors stay scoped to workspace toolbar', async () => {
-  const css = await readFile('src/styles.css', 'utf8')
-  const selectors = Array.from(css.matchAll(/(?:^|})\s*([^{}]+)\{/gms))
-    .flatMap((match) => match[1].split(',').map((selector) => selector.trim()))
+function extractCssSelectors(css: string) {
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const selectors: string[] = []
+  let prelude = ''
+  let quote: '"' | "'" | null = null
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index]
+    const previous = source[index - 1]
+    if (quote) {
+      prelude += character
+      if (character === quote && previous !== '\\') quote = null
+      continue
+    }
+    if (character === '"' || character === "'") {
+      quote = character
+      prelude += character
+      continue
+    }
+    if (character === '{') {
+      const trimmed = prelude.trim()
+      if (trimmed && !trimmed.startsWith('@')) {
+        selectors.push(...trimmed.split(',').map((selector) => selector.trim()))
+      }
+      prelude = ''
+      continue
+    }
+    if (character === '}') {
+      prelude = ''
+      continue
+    }
+    prelude += character
+  }
+
+  return selectors
+}
+
+function findUnscopedPageSizeSelectors(css: string) {
+  return extractCssSelectors(css)
     .filter((selector) => selector.includes('.page-size-'))
-  const unscoped = selectors.filter(
-    (selector) => !selector.includes('.workspace-toolbar') && !selector.includes('.freeform-toolbar'),
-  )
+    .filter((selector) => {
+      const withoutThemePrefix = selector.replace(/^\[data-theme=['"]dark['"]\]\s+/, '')
+      return !/^(?:\.workspace-toolbar|\.freeform-toolbar)(?:\s|$)/.test(withoutThemePrefix)
+    })
+}
+
+test('page size chrome selectors stay scoped to workspace toolbar', async () => {
+  expect(findUnscopedPageSizeSelectors(`
+    @media (max-width: 1100px) {
+      .page-size-trigger { color: red; }
+    }
+    .page-size-trigger .workspace-toolbar { color: red; }
+    .workspace-toolbar .page-size-trigger { content: ".page-size-declaration"; }
+  `)).toEqual([
+    '.page-size-trigger',
+    '.page-size-trigger .workspace-toolbar',
+  ])
+
+  const css = await readFile('src/styles.css', 'utf8')
+  const unscoped = findUnscopedPageSizeSelectors(css)
 
   expect(unscoped, `裸 page-size 选择器：${unscoped.join(' | ')}`).toEqual([])
 })
