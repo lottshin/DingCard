@@ -514,6 +514,7 @@ test('inspector danger text remains readable in light and dark themes', async ({
 })
 
 test('global header owns workspace tabs, theme, and account state', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -535,6 +536,23 @@ test('global header owns workspace tabs, theme, and account state', async ({ pag
   await registerUser(page, `header-${Date.now()}`)
 
   await expect(page.getByTestId('account-logout')).toBeVisible()
+  await expect(page.locator('html')).not.toHaveClass(/theme-anim/)
+  const accountBackground = await page
+    .getByTestId('account-logout')
+    .evaluate((element) => getComputedStyle(element).backgroundColor)
+  const primaryExportBackground = await page
+    .getByTestId('freeform-primary-export')
+    .evaluate((element) => getComputedStyle(element).backgroundColor)
+  const accentBackground = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.backgroundColor = 'var(--accent)'
+    document.body.append(probe)
+    const color = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return color
+  })
+  expect(accountBackground).not.toBe(accentBackground)
+  expect(accountBackground).not.toBe(primaryExportBackground)
   await page.getByTestId('workspace-tab-markdown').click()
   await expect(page.getByTestId('account-logout')).toBeVisible()
 })
@@ -643,6 +661,12 @@ test('dark mode keeps freeform chrome controls and popovers legible', async ({ p
   await expect(undoButton).toBeDisabled()
   expect(Number(await undoButton.evaluate((button) => getComputedStyle(button).opacity))).toBeGreaterThanOrEqual(0.35)
 
+  const emptyHintColors = await page.locator('.freeform-inspector .inspector-empty').evaluate((element) => ({
+    foreground: getComputedStyle(element).color,
+    background: getComputedStyle(element.closest('.freeform-inspector')!).backgroundColor,
+  }))
+  expect(contrastRatio(emptyHintColors.foreground, emptyHintColors.background)).toBeGreaterThanOrEqual(4.5)
+
   await page.getByTestId('page-size-trigger').click()
   const pageSizePopover = page.getByTestId('page-size-popover')
   await expect(pageSizePopover).toBeVisible()
@@ -670,12 +694,64 @@ test('dark mode keeps freeform chrome controls and popovers legible', async ({ p
   }))
   expect(contrastRatio(inspectorColors.foreground, inspectorColors.background)).toBeGreaterThanOrEqual(4.5)
 
+  for (const locator of [
+    page.locator('.freeform-inspector .field-grid label').first(),
+    page.locator('.freeform-inspector .field-grid .color-field').first(),
+  ]) {
+    const colors = await locator.evaluate((element) => ({
+      foreground: getComputedStyle(element).color,
+      background: getComputedStyle(element.closest('.freeform-inspector')!).backgroundColor,
+    }))
+    expect(contrastRatio(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5)
+  }
+
   const shapeFill = page.getByTestId('shape-fill-paint')
   await shapeFill.getByTestId('paint-mode-linear-gradient').click()
   const range = shapeFill.getByTestId('paint-gradient-angle')
   await expect(range).toBeVisible()
   await expect(range).toHaveCSS('appearance', 'none')
   await expect(range).toHaveCSS('background-image', /linear-gradient/)
+})
+
+test('freeform chrome provides visible pressed feedback', async ({ page }) => {
+  await openFreeform(page)
+  const trigger = page.getByTestId('insert-shape')
+  const box = await trigger.boundingBox()
+  expect(box).toBeTruthy()
+  const idleTransform = await trigger.evaluate((element) => getComputedStyle(element).transform)
+
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  const pressedTransform = await trigger.evaluate((element) => getComputedStyle(element).transform)
+  expect(pressedTransform).not.toBe(idleTransform)
+  await page.mouse.up()
+  await page.keyboard.press('Escape')
+})
+
+test('keeps artwork chrome-free on a warm stage in light and dark themes', async ({ page }) => {
+  await openFreeform(page)
+  const html = page.locator('html')
+  const artboard = page.getByTestId('freeform-canvas')
+  const stageBox = page.locator('.freeform-stage-box')
+  const stage = page.locator('.freeform-stage-scroll')
+
+  for (const theme of ['light', 'dark'] as const) {
+    if ((await html.getAttribute('data-theme')) !== theme) {
+      await page.getByTestId('theme-toggle').click()
+    }
+    await expect(html).toHaveAttribute('data-theme', theme)
+    await expect(artboard).toHaveCSS('box-shadow', 'none')
+    await expect(stageBox).not.toHaveCSS('box-shadow', 'none')
+
+    const channels = await stage.evaluate((element) => {
+      const values = getComputedStyle(element).backgroundColor.match(/[\d.]+/g)?.slice(0, 3).map(Number)
+      if (!values || values.length !== 3) throw new Error('stage background must be an RGB color')
+      return values
+    })
+    expect(channels[0]).toBeGreaterThanOrEqual(channels[1])
+    expect(channels[1]).toBeGreaterThanOrEqual(channels[2])
+    expect(channels[0] - channels[2]).toBeGreaterThanOrEqual(2)
+  }
 })
 
 test('freeform visual system keeps approved tokens and neutral stage rules', async () => {

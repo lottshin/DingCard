@@ -17,6 +17,7 @@
 :root[data-theme='light'] {
   --bg: #f4f4f5;          /* app canvas */
   --bg-sink: #eeeef0;     /* recessed areas (preview well) */
+  --freeform-stage-sink: #f1efec;
   --surface: #ffffff;     /* panels, bars, modals */
   --surface-2: #fafafa;   /* subtle inset fills */
   --text: #18181b;        /* primary text */
@@ -46,6 +47,7 @@
 :root[data-theme='dark'] {
   --bg: #0b0b0d;
   --bg-sink: #101013;
+  --freeform-stage-sink: #12110f;
   --surface: #161619;
   --surface-2: #1c1c20;
   --text: #f4f4f5;
@@ -256,10 +258,10 @@ html.theme-anim * {
 .app-account-user {
   width: 44px;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--surface);
+  color: var(--text);
   font-size: 14px;
   font-weight: 700;
   text-transform: uppercase;
@@ -267,6 +269,8 @@ html.theme-anim * {
 }
 
 .app-account-user:hover {
+  border-color: var(--line-2);
+  background: var(--surface-2);
   box-shadow: var(--shadow-md);
 }
 
@@ -1004,18 +1008,18 @@ html.theme-anim * {
   display: grid;
   place-items: center;
   padding: 32px;
-  background: var(--bg-sink);
+  background: var(--freeform-stage-sink);
 }
 
 .freeform-stage-box {
   flex: 0 0 auto;
+  box-shadow: 0 12px 30px rgba(24, 24, 27, 0.14), 0 2px 8px rgba(24, 24, 27, 0.08);
 }
 
 .freeform-artboard {
   position: relative;
   overflow: hidden;
   transform-origin: top left;
-  box-shadow: 0 12px 30px rgba(24, 24, 27, 0.14), 0 2px 8px rgba(24, 24, 27, 0.08);
 }
 
 .freeform-element {
@@ -1177,7 +1181,7 @@ html.theme-anim * {
 
 .freeform-inspector .inspector-empty {
   padding: 12px 14px 16px;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -1210,7 +1214,7 @@ html.theme-anim * {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 700;
 }
@@ -1221,7 +1225,7 @@ html.theme-anim * {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 700;
 }
@@ -2982,8 +2986,17 @@ html.theme-anim * {
   border-radius: var(--panel-radius);
 }
 
-[data-theme='dark'] .freeform-artboard {
+[data-theme='dark'] .freeform-stage-box {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.34);
+}
+
+.app-header button:active:not(:disabled),
+.workspace-toolbar button:active:not(:disabled),
+.freeform-rail button:active:not(:disabled),
+.freeform-stage-head button:active:not(:disabled),
+.freeform-inspector button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px var(--line-2);
 }
 
 @media (max-width: 1279px) {
