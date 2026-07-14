@@ -70,6 +70,82 @@ async function freeformElementKinds(page: import('@playwright/test').Page) {
   )
 }
 
+async function registerUser(page: import('@playwright/test').Page, username: string) {
+  await page.getByRole('button', { name: '注册' }).click()
+  await page.getByLabel('用户名').fill(username)
+  await page.getByLabel('密码').fill('1234')
+  await page.getByRole('button', { name: '创建账号' }).click()
+}
+
+async function expectVisibleFreeformToolbarButtonsToFit(
+  page: import('@playwright/test').Page,
+) {
+  const toolbarGeometry = await page.getByTestId('freeform-toolbar').evaluate((toolbar) => {
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const buttons = Array.from(toolbar.querySelectorAll('button'))
+      .flatMap((button) => {
+        const rect = button.getBoundingClientRect()
+        const style = getComputedStyle(button)
+        if (style.display === 'none' || style.visibility === 'hidden' || rect.width === 0 || rect.height === 0) {
+          return []
+        }
+        const hitTarget = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        )
+        return [{
+          label: (button.getAttribute('aria-label') ?? button.textContent ?? '')
+            .replace(/\s+/g, ' ')
+            .trim(),
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+          isHitTarget: hitTarget === button || hitTarget?.closest('button') === button,
+        }]
+      })
+      .sort((a, b) => a.left - b.left)
+
+    return {
+      buttons,
+      toolbar: {
+        left: toolbarRect.left,
+        right: toolbarRect.right,
+        top: toolbarRect.top,
+        bottom: toolbarRect.bottom,
+      },
+      clientWidth: toolbar.clientWidth,
+      scrollWidth: toolbar.scrollWidth,
+    }
+  })
+
+  expect(toolbarGeometry.buttons.length).toBeGreaterThan(0)
+  for (const button of toolbarGeometry.buttons) {
+    expect.soft(button.left, `${button.label} 超出工具栏左边界`).toBeGreaterThanOrEqual(
+      toolbarGeometry.toolbar.left - 0.5,
+    )
+    expect.soft(button.right, `${button.label} 超出工具栏右边界`).toBeLessThanOrEqual(
+      toolbarGeometry.toolbar.right + 0.5,
+    )
+    expect.soft(button.top, `${button.label} 超出工具栏上边界`).toBeGreaterThanOrEqual(
+      toolbarGeometry.toolbar.top - 0.5,
+    )
+    expect.soft(button.bottom, `${button.label} 超出工具栏下边界`).toBeLessThanOrEqual(
+      toolbarGeometry.toolbar.bottom + 0.5,
+    )
+    expect.soft(button.isHitTarget, `${button.label} 的中心点被其他控件遮挡`).toBe(true)
+  }
+  for (let index = 0; index < toolbarGeometry.buttons.length - 1; index += 1) {
+    const current = toolbarGeometry.buttons[index]
+    const next = toolbarGeometry.buttons[index + 1]
+    expect.soft(
+      current.right,
+      `${current.label} [${current.left}, ${current.right}] 与 ${next.label} [${next.left}, ${next.right}] 重叠`,
+    ).toBeLessThanOrEqual(next.left + 0.5)
+  }
+  expect(toolbarGeometry.scrollWidth).toBeLessThanOrEqual(toolbarGeometry.clientWidth)
+}
+
 async function setSelectedElementPosition(
   page: import('@playwright/test').Page,
   x: number,
@@ -146,10 +222,7 @@ test('global header owns workspace tabs, theme, and account state', async ({ pag
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme!)
 
   await page.getByTestId('account-login').click()
-  await page.getByRole('button', { name: '注册' }).click()
-  await page.getByLabel('用户名').fill(`header-${Date.now()}`)
-  await page.getByLabel('密码').fill('1234')
-  await page.getByRole('button', { name: '创建账号' }).click()
+  await registerUser(page, `header-${Date.now()}`)
 
   await expect(page.getByTestId('account-logout')).toBeVisible()
   await page.getByTestId('workspace-tab-markdown').click()
@@ -289,13 +362,10 @@ test('account changes reset workspace draft identity', async ({ page }) => {
   await page.getByLabel('文本内容').fill('跨账户草稿内容')
 
   await page.getByRole('button', { name: '保存草稿' }).click()
-  await page.getByRole('button', { name: '注册' }).click()
-  await page.getByLabel('用户名').fill(`draft-${accountSuffix}-a`)
-  await page.getByLabel('密码').fill('1234')
-  await page.getByRole('button', { name: '创建账号' }).click()
+  await registerUser(page, `draft-${accountSuffix}-a`)
   await page.getByRole('button', { name: '保存草稿' }).click()
 
-  const slideStatus = page.getByTestId('freeform-slide-size')
+  const slideStatus = page.getByTestId('freeform-slide-meta')
   await expect(slideStatus).toContainText('已保存')
   const userADraftIds = await page.evaluate(() =>
     Object.keys(localStorage)
@@ -314,10 +384,7 @@ test('account changes reset workspace draft identity', async ({ page }) => {
   await expect(page.getByLabel('文本内容')).toContainText('跨账户草稿内容')
 
   await page.getByTestId('account-login').click()
-  await page.getByRole('button', { name: '注册' }).click()
-  await page.getByLabel('用户名').fill(`draft-${accountSuffix}-b`)
-  await page.getByLabel('密码').fill('1234')
-  await page.getByRole('button', { name: '创建账号' }).click()
+  await registerUser(page, `draft-${accountSuffix}-b`)
   await page.getByRole('button', { name: '保存草稿' }).click()
   await expect(slideStatus).toContainText('已保存')
 
@@ -342,11 +409,14 @@ test('switches to the freeform workspace and edits a slide', async ({ page }) =>
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
 
-  await expect(page.getByText('1 页 · 1080×1440px')).toBeVisible()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('1页')
+  await expect(page.getByTestId('freeform-slide-size')).toContainText('1080×1440px')
   await expect(page.getByTestId('freeform-canvas')).toBeVisible()
 
-  await page.getByRole('button', { name: '16:9' }).click()
-  await expect(page.getByText('1 页 · 1920×1080px')).toBeVisible()
+  await page.getByTestId('page-size-trigger').click()
+  await page.getByRole('button', { name: '16:9', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('1页')
+  await expect(page.getByTestId('freeform-slide-size')).toContainText('1920×1080px')
 
   await page.getByRole('button', { name: '文本框' }).click()
   await expect(page.getByLabel('文本内容')).toBeVisible()
@@ -503,20 +573,146 @@ test('pastes plain text into the freeform contenteditable textbox', async ({ pag
   await expect(textbox.locator('b')).toHaveCount(0)
 })
 
+test('compact saved freeform toolbar keeps controls from overlapping', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+
+  await page.getByRole('button', { name: '保存草稿' }).click()
+  await registerUser(page, `c${Date.now().toString(36).slice(-6)}`)
+  await page.getByRole('button', { name: '保存草稿' }).click()
+
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByRole('button', { name: /^草稿(?: · \d+)?$/ })).toHaveText('草稿 · 1')
+  await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
+  await expectVisibleFreeformToolbarButtonsToFit(page)
+})
+
+test('edits preset and custom page sizes from the toolbar popover', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 })
+  await page.goto('/')
+  if ((await page.locator('html').getAttribute('data-theme')) !== 'light') {
+    await page.getByTestId('theme-toggle').click()
+  }
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await page.getByTestId('workspace-tab-freeform').click()
+
+  const trigger = page.getByTestId('page-size-trigger')
+  const popover = page.getByTestId('page-size-popover')
+  const slideSize = page.getByTestId('freeform-slide-size')
+  const widthInput = page.getByLabel('宽度 px')
+  const heightInput = page.getByLabel('高度 px')
+  const applyButton = page.getByRole('button', { name: '应用尺寸' })
+  const readAccentColor = () =>
+    page.evaluate(() => {
+      const probe = document.createElement('div')
+      probe.style.color = 'var(--accent)'
+      document.body.append(probe)
+      const color = getComputedStyle(probe).color
+      probe.remove()
+      return color
+    })
+
+  await trigger.click()
+  await expect(popover).toBeVisible()
+  await expect(trigger).toHaveCSS('border-color', await readAccentColor())
+  await expect(popover.getByRole('button', { name: '3:4', exact: true })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(popover).toBeHidden()
+  await expect(trigger).toBeFocused()
+
+  await page.getByTestId('theme-toggle').click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.getByLabel('插入工具').getByRole('button', { name: '矩形' }).click()
+  const selectedElement = page.getByTestId('freeform-element').last()
+  await expect(selectedElement).toHaveAttribute('data-selected', 'true')
+
+  await trigger.click()
+  await expect(popover).toBeVisible()
+  await expect(trigger).toHaveCSS('border-color', await readAccentColor())
+  await expect(trigger).toContainText('3:4 · 1080×1440px')
+
+  await popover.getByRole('button', { name: '9:16', exact: true }).click()
+  await expect(slideSize).toContainText('1080×1920px')
+  await expect(popover).toBeHidden()
+
+  await trigger.click()
+  await expect(widthInput).toHaveValue('1080')
+  await expect(heightInput).toHaveValue('1920')
+
+  await widthInput.fill('100')
+  await heightInput.fill('200')
+  await applyButton.click()
+  await expect(popover).toBeVisible()
+  await expect(popover.getByRole('alert')).toContainText('128')
+  await expect(slideSize).toContainText('1080×1920px')
+
+  await widthInput.fill('128.5')
+  await applyButton.click()
+  await expect(popover).toBeVisible()
+  await expect(popover.getByRole('alert')).toContainText('128')
+  await expect(slideSize).toContainText('1080×1920px')
+
+  await widthInput.fill('4097')
+  await applyButton.click()
+  await expect(popover).toBeVisible()
+  await expect(popover.getByRole('alert')).toContainText('128')
+  await expect(slideSize).toContainText('1080×1920px')
+
+  await widthInput.fill('')
+  await applyButton.click()
+  await expect(popover).toBeVisible()
+  await expect(popover.getByRole('alert')).toContainText('128')
+  await expect(slideSize).toContainText('1080×1920px')
+
+  await page.keyboard.press('Escape')
+  await expect(popover).toBeHidden()
+  await expect(trigger).toBeFocused()
+  await expect(selectedElement).toHaveAttribute('data-selected', 'true')
+
+  await trigger.click()
+  const markdownTab = page.getByTestId('workspace-tab-markdown')
+  await markdownTab.click()
+  await expect(popover).toBeHidden()
+  await expect(markdownTab).toBeFocused()
+
+  await page.getByTestId('workspace-tab-freeform').click()
+  await expect(popover).toBeHidden()
+  await trigger.click()
+  await expect(popover).toBeVisible()
+  await widthInput.fill('1200')
+  await heightInput.fill('1600')
+  await page.locator('.freeform-stage-head').click()
+  await expect(popover).toBeHidden()
+  await expect(slideSize).toContainText('1080×1920px')
+  await expect(trigger).toBeFocused()
+
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(slideSize).toContainText('3:4 · 1080×1440px')
+  await page.getByRole('button', { name: '重做', exact: true }).click()
+  await expect(slideSize).toContainText('9:16 · 1080×1920px')
+})
+
 test('sets custom page size and new pages inherit it', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
 
-  await page.getByRole('button', { name: '9:16' }).click()
+  const trigger = page.getByTestId('page-size-trigger')
+  await trigger.click()
+  await page.getByRole('button', { name: '9:16', exact: true }).click()
   await expect(page.getByTestId('freeform-slide-size')).toHaveText(/1080×1920px/)
 
+  await trigger.click()
   await page.getByLabel('宽度 px').fill('1200')
   await page.getByLabel('高度 px').fill('1600')
   await page.getByRole('button', { name: '应用尺寸' }).click()
-  await expect(page.getByTestId('freeform-slide-size')).toHaveText(/1200×1600px/)
+  await expect(page.getByTestId('freeform-slide-size')).toHaveText(/自定义 · 1200×1600px/)
 
   await page.getByRole('button', { name: '新增页面' }).click()
-  await expect(page.getByTestId('freeform-slide-size')).toHaveText(/2 页 · 1200×1600px/)
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('2页')
+  await expect(page.getByTestId('freeform-slide-size')).toHaveText(/1200×1600px/)
 })
 
 test('fills a shape with an image', async ({ page }) => {
@@ -535,7 +731,8 @@ test('fills a shape with an image', async ({ page }) => {
 test('exports the current slide as a PNG at slide dimensions', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '9:16' }).click()
+  await page.getByTestId('page-size-trigger').click()
+  await page.getByRole('button', { name: '9:16', exact: true }).click()
 
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出当前页' }).click()
@@ -594,12 +791,9 @@ test('saves and restores a freeform draft', async ({ page }) => {
   await page.getByLabel('文本内容').fill('保存恢复测试')
 
   await page.getByRole('button', { name: '保存草稿' }).click()
-  await page.getByRole('button', { name: '注册' }).click()
-  await page.getByLabel('用户名').fill(`freeform-${Date.now()}`)
-  await page.getByLabel('密码').fill('1234')
-  await page.getByRole('button', { name: '创建账号' }).click()
+  await registerUser(page, `freeform-${Date.now()}`)
   await page.getByRole('button', { name: '保存草稿' }).click()
-  await expect(page.getByTestId('freeform-slide-size')).toHaveText(/已保存/)
+  await expect(page.getByTestId('freeform-slide-meta')).toHaveText(/已保存/)
 
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -611,9 +805,12 @@ test('saves and restores a freeform draft', async ({ page }) => {
 test('exports mixed-size slides as a zip after warning', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '9:16' }).click()
+  const trigger = page.getByTestId('page-size-trigger')
+  await trigger.click()
+  await page.getByRole('button', { name: '9:16', exact: true }).click()
   await page.getByRole('button', { name: '新增页面' }).click()
-  await page.getByRole('button', { name: '16:9' }).click()
+  await trigger.click()
+  await page.getByRole('button', { name: '16:9', exact: true }).click()
 
   await page.getByRole('button', { name: '打包导出' }).click()
   await expect(page.getByRole('heading', { name: '包含不同尺寸页面' })).toBeVisible()

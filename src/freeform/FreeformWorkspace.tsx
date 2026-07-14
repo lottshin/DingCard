@@ -16,9 +16,8 @@ import {
   createShapeElement,
   createTextElement,
   freeformReducer,
-  pageSizePresets,
-  validatePageSize,
 } from './document'
+import { FreeformPageSizePopover } from './FreeformPageSizePopover'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
 import {
   buildFreeformFontCSS,
@@ -158,9 +157,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [selection, setSelection] = useState<string[]>([])
   const [clipboard, setClipboard] = useState<FreeformElement[]>([])
   const [previewScale, setPreviewScale] = useState(0.5)
-  const [widthDraft, setWidthDraft] = useState(String(activeSlide.width))
-  const [heightDraft, setHeightDraft] = useState(String(activeSlide.height))
-  const [sizeError, setSizeError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
@@ -210,12 +206,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       setShowDrafts(false)
     }
   }, [user])
-
-  useEffect(() => {
-    setWidthDraft(String(activeSlide.width))
-    setHeightDraft(String(activeSlide.height))
-    setSizeError(null)
-  }, [activeSlide.id, activeSlide.width, activeSlide.height])
 
   useEffect(() => {
     const liveIds = new Set(activeSlide.elements.map((element) => element.id))
@@ -467,17 +457,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function applySlideSize(width: number, height: number) {
-    const validation = validatePageSize(width, height)
-    if (!validation.ok) {
-      setSizeError(validation.message)
-      return
-    }
-    setSizeError(null)
     applyAction({ type: 'slide/resize', slideId: activeSlide.id, width, height })
-  }
-
-  function applyCustomSize() {
-    applySlideSize(Number(widthDraft), Number(heightDraft))
   }
 
   function undoDocument() {
@@ -869,11 +849,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         className="freeform-toolbar"
       >
         <ToolbarGroup>
-          <div className="freeform-title">
-            <strong>自由编辑</strong>
-            <span data-testid="freeform-slide-size">
-              {doc.slides.length} 页 · {activeSlide.width}×{activeSlide.height}px
-              {savedAt ? ' · 已保存' : ''}
+          <div className="freeform-page-context">
+            <FreeformPageSizePopover
+              isActive={isActive}
+              width={activeSlide.width}
+              height={activeSlide.height}
+              onApply={applySlideSize}
+            />
+            <span className="freeform-page-meta" data-testid="freeform-slide-meta">
+              {doc.slides.length}页
+              {savedAt ? '·已保存' : ''}
             </span>
           </div>
 
@@ -992,47 +977,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
         <section className="freeform-stage-pane" aria-label="自由画布">
           <div className="freeform-stage-head">
-            <div className="freeform-size-bar" aria-label="页面尺寸">
-              {pageSizePresets.map((preset) => (
-                <button
-                  key={preset.ratio}
-                  type="button"
-                  className={
-                    activeSlide.width === preset.width && activeSlide.height === preset.height
-                      ? 'size-preset on'
-                      : 'size-preset'
-                  }
-                  onClick={() => applySlideSize(preset.width, preset.height)}
-                >
-                  {preset.ratio}
-                </button>
-              ))}
-              <label className="size-input">
-                宽
-                <input
-                  aria-label="宽度 px"
-                  type="number"
-                  min="128"
-                  max="4096"
-                  value={widthDraft}
-                  onChange={(event) => setWidthDraft(event.currentTarget.value)}
-                />
-              </label>
-              <label className="size-input">
-                高
-                <input
-                  aria-label="高度 px"
-                  type="number"
-                  min="128"
-                  max="4096"
-                  value={heightDraft}
-                  onChange={(event) => setHeightDraft(event.currentTarget.value)}
-                />
-              </label>
-              <button className="mini-btn" type="button" onClick={applyCustomSize}>
-                应用尺寸
-              </button>
-            </div>
             <div className="zoom-controls" aria-label="预览缩放">
               <button
                 className="zoom-btn"
@@ -1053,7 +997,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               </button>
             </div>
           </div>
-          {sizeError && <div className="freeform-error">{sizeError}</div>}
 
           <div className="freeform-stage-scroll">
             <div
