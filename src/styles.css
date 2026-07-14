@@ -1092,43 +1092,69 @@ html.theme-anim * {
   overflow-y: auto;
 }
 
-.inspector-section {
-  padding: 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.inspector-empty {
-  padding: 18px 14px;
-  color: var(--text-3);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.color-field {
-  width: 100%;
-  height: 38px;
-  padding: 3px;
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-sm);
+.freeform-inspector .freeform-panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   background: var(--surface);
 }
 
-.field-grid {
+.freeform-inspector .inspector-section {
+  padding: 0 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.freeform-inspector .inspector-section-title {
+  margin: 0;
+  padding: 14px 0 11px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.freeform-inspector .inspector-section-body {
+  min-width: 0;
+}
+
+.freeform-inspector .inspector-section-danger .inspector-section-title {
+  color: #d63c43;
+}
+
+.freeform-inspector .inspector-empty {
+  padding: 12px 14px 16px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.freeform-inspector .color-field {
+  width: 100%;
+  height: 32px;
+  padding: 0 7px 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.freeform-inspector .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
 }
 
-.field-grid.with-gap {
+.freeform-inspector .field-grid.with-gap {
   margin-top: 12px;
 }
 
-.field.with-gap {
+.freeform-inspector .field.with-gap,
+.freeform-inspector .field-label.with-gap {
   margin-top: 12px;
 }
 
-.field-grid label,
-.field-grid .color-field {
+.freeform-inspector .field-grid label {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1137,11 +1163,21 @@ html.theme-anim * {
   font-weight: 700;
 }
 
-.field-grid input {
+.freeform-inspector .field-grid .color-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.freeform-inspector .field-grid input {
   min-width: 0;
-  height: 34px;
+  height: 32px;
   border: 1px solid var(--line-2);
-  border-radius: var(--radius-xs);
+  border-radius: 8px;
   background: var(--surface);
   color: var(--text);
   font-family: var(--mono);
@@ -1149,12 +1185,12 @@ html.theme-anim * {
   padding: 0 8px;
 }
 
-.freeform-inspector-text {
+.freeform-inspector .freeform-inspector-text {
   width: 100%;
   min-height: 92px;
   resize: vertical;
   border: 1px solid var(--line-2);
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   background: var(--surface);
   color: var(--text);
   font-family: var(--sans);
@@ -1164,80 +1200,131 @@ html.theme-anim * {
   outline: none;
 }
 
-.freeform-inspector-text:focus,
-.field-grid input:focus {
+.freeform-inspector .freeform-inspector-text:focus,
+.freeform-inspector .field-grid input:focus,
+.freeform-inspector .text-input:focus,
+.freeform-inspector .sel-trigger:focus-visible {
+  outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-weak);
 }
 
-.seg.stretch {
+.freeform-inspector .field {
+  margin-bottom: 12px;
+}
+
+.freeform-inspector .text-input,
+.freeform-inspector .sel-trigger {
   width: 100%;
-  margin-top: 10px;
+  height: 32px;
+  border-radius: 8px;
 }
 
-.seg.stretch .seg-btn {
+.freeform-inspector .sel {
+  width: 100%;
+}
+
+.freeform-inspector .seg.stretch {
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 8px;
+}
+
+.freeform-inspector .seg.stretch .seg-btn {
   flex: 1 1 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 12px;
 }
 
-.inspector-actions {
+.freeform-inspector .inspector-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
-.paint-field {
+.freeform-inspector .inspector-actions .ghost {
+  flex: 1 1 calc(50% - 4px);
+  height: 32px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.freeform-inspector .inspector-delete {
+  width: 100%;
+  height: 32px;
+  border-color: color-mix(in srgb, #e5484d 34%, var(--line));
+  border-radius: 8px;
+  color: #d63c43;
+  font-size: 12px;
+}
+
+.freeform-inspector .inspector-delete:hover {
+  border-color: #e5484d;
+  background: color-mix(in srgb, #e5484d 9%, var(--surface));
+}
+
+.freeform-inspector input[type='file'],
+.freeform-inspector input[type='color'] {
+  display: none;
+}
+
+.freeform-inspector .paint-field {
   display: grid;
   gap: 10px;
 }
 
-.paint-field .field-label {
+.freeform-inspector .paint-field .field-label {
   margin-bottom: 0;
 }
 
-.paint-mode {
+.freeform-inspector .paint-mode {
   margin-top: 0;
 }
 
-.paint-row {
+.freeform-inspector .paint-row {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-.paint-color {
+.freeform-inspector .paint-color {
   position: relative;
   flex: 0 0 auto;
   z-index: 3;
 }
 
-.paint-color-button {
-  width: 34px;
-  height: 34px;
+.freeform-inspector .paint-color-button {
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 1px solid var(--line-2);
-  border-radius: var(--radius-xs);
+  border-radius: 8px;
   box-shadow: var(--shadow-sm);
   cursor: pointer;
 }
 
-.paint-color-button:focus-visible,
-.paint-hex:focus,
-.paint-angle:focus {
+.freeform-inspector .paint-color-button:focus-visible,
+.freeform-inspector .paint-hex:focus,
+.freeform-inspector .paint-angle:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-weak);
   outline: none;
 }
 
-.paint-hex,
-.paint-angle,
-.paint-popover-hex,
-.paint-channel-number {
+.freeform-inspector .paint-hex,
+.freeform-inspector .paint-angle,
+.freeform-inspector .paint-popover-hex,
+.freeform-inspector .paint-channel-number {
   min-width: 0;
-  height: 34px;
+  height: 32px;
   border: 1px solid var(--line-2);
-  border-radius: var(--radius-xs);
+  border-radius: 8px;
   background: var(--surface);
   color: var(--text);
   font-family: var(--mono);
@@ -1245,15 +1332,15 @@ html.theme-anim * {
   padding: 0 8px;
 }
 
-.paint-hex {
+.freeform-inspector .paint-hex {
   flex: 1 1 auto;
 }
 
-.paint-angle {
+.freeform-inspector .paint-angle {
   width: 64px;
 }
 
-.paint-popover {
+.freeform-inspector .paint-popover {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
@@ -1266,14 +1353,14 @@ html.theme-anim * {
   box-shadow: var(--shadow-lg);
 }
 
-.paint-popover-head {
+.freeform-inspector .paint-popover-head {
   display: grid;
   grid-template-columns: 34px 1fr;
   gap: 8px;
   align-items: center;
 }
 
-.paint-popover-sample {
+.freeform-inspector .paint-popover-sample {
   width: 34px;
   height: 34px;
   border: 1px solid var(--line-2);
@@ -1281,19 +1368,19 @@ html.theme-anim * {
   box-shadow: var(--shadow-sm);
 }
 
-.paint-popover-hex {
+.freeform-inspector .paint-popover-hex {
   width: 100%;
   text-transform: lowercase;
 }
 
-.paint-swatch-grid {
+.freeform-inspector .paint-swatch-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 7px;
   margin-top: 10px;
 }
 
-.paint-swatch {
+.freeform-inspector .paint-swatch {
   width: 100%;
   aspect-ratio: 1;
   padding: 0;
@@ -1305,18 +1392,18 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.paint-swatch:focus-visible {
+.freeform-inspector .paint-swatch:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-weak);
 }
 
-.paint-channel-list {
+.freeform-inspector .paint-channel-list {
   display: grid;
   gap: 8px;
   margin-top: 12px;
 }
 
-.paint-channel {
+.freeform-inspector .paint-channel {
   display: grid;
   grid-template-columns: 18px 1fr 48px;
   gap: 8px;
@@ -1326,18 +1413,18 @@ html.theme-anim * {
   font-size: 11px;
 }
 
-.paint-channel-number {
+.freeform-inspector .paint-channel-number {
   width: 48px;
-  height: 28px;
+  height: 32px;
   padding: 0 6px;
 }
 
-.paint-gradient {
+.freeform-inspector .paint-gradient {
   display: grid;
   gap: 8px;
 }
 
-.paint-range {
+.freeform-inspector .paint-range {
   flex: 1 1 auto;
   min-width: 0;
   height: 8px;
@@ -1347,14 +1434,19 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.paint-range,
-.paint-channel-range {
+.freeform-inspector .paint-range,
+.freeform-inspector .paint-channel-range {
   -webkit-appearance: none;
   appearance: none;
   outline: none;
 }
 
-.paint-channel-range {
+.freeform-inspector .paint-range:focus-visible,
+.freeform-inspector .paint-channel-range:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.freeform-inspector .paint-channel-range {
   width: 100%;
   height: 8px;
   border-radius: 999px;
@@ -1362,15 +1454,15 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.paint-range::-webkit-slider-runnable-track,
-.paint-channel-range::-webkit-slider-runnable-track {
+.freeform-inspector .paint-range::-webkit-slider-runnable-track,
+.freeform-inspector .paint-channel-range::-webkit-slider-runnable-track {
   height: 8px;
   border-radius: 999px;
   background: transparent;
 }
 
-.paint-range::-webkit-slider-thumb,
-.paint-channel-range::-webkit-slider-thumb {
+.freeform-inspector .paint-range::-webkit-slider-thumb,
+.freeform-inspector .paint-channel-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 18px;
@@ -1383,20 +1475,20 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.paint-channel-range::-webkit-slider-thumb {
+.freeform-inspector .paint-channel-range::-webkit-slider-thumb {
   background: var(--text);
 }
 
-.paint-range::-moz-range-track,
-.paint-channel-range::-moz-range-track {
+.freeform-inspector .paint-range::-moz-range-track,
+.freeform-inspector .paint-channel-range::-moz-range-track {
   height: 8px;
   border: 0;
   border-radius: 999px;
   background: transparent;
 }
 
-.paint-range::-moz-range-thumb,
-.paint-channel-range::-moz-range-thumb {
+.freeform-inspector .paint-range::-moz-range-thumb,
+.freeform-inspector .paint-channel-range::-moz-range-thumb {
   width: 18px;
   height: 18px;
   border: 2px solid var(--surface);
@@ -1406,26 +1498,42 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.paint-preview {
+.freeform-inspector .paint-preview {
   height: 28px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xs);
   box-shadow: var(--shadow-sm) inset;
 }
 
-.paint-image {
+.freeform-inspector .paint-image {
   display: grid;
   gap: 8px;
 }
 
-.field-grid input[type='number']::-webkit-outer-spin-button,
-.field-grid input[type='number']::-webkit-inner-spin-button,
-.paint-angle::-webkit-outer-spin-button,
-.paint-angle::-webkit-inner-spin-button,
-.paint-channel-number::-webkit-outer-spin-button,
-.paint-channel-number::-webkit-inner-spin-button {
+.freeform-inspector input[type='number'] {
+  appearance: textfield;
+}
+
+.freeform-inspector input[type='number']::-webkit-outer-spin-button,
+.freeform-inspector input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+.freeform-inspector .seg-btn:focus-visible,
+.freeform-inspector .field-grid input:focus-visible,
+.freeform-inspector .text-input:focus-visible,
+.freeform-inspector .sel-trigger:focus-visible,
+.freeform-inspector .inspector-actions .ghost:focus-visible,
+.freeform-inspector .inspector-delete:focus-visible,
+.freeform-inspector .paint-hex:focus-visible,
+.freeform-inspector .paint-angle:focus-visible,
+.freeform-inspector .paint-popover-hex:focus-visible,
+.freeform-inspector .paint-channel-number:focus-visible,
+.freeform-inspector .paint-color-button:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Segmented platform switch — pill with sliding-feel active state. */

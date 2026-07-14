@@ -19,6 +19,7 @@ import {
 } from './document'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
+import { InspectorSection } from './InspectorSection'
 import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
 import {
   buildFreeformFontCSS,
@@ -1094,316 +1095,334 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         <aside className="freeform-inspector" aria-label="属性面板">
           <div className="freeform-panel-head">
             <span>属性</span>
-            {selection.length > 0 && (
-              <button className="mini-btn danger" type="button" onClick={deleteSelection}>
-                删除
-              </button>
-            )}
           </div>
 
-          <div className="inspector-section">
-            <label className="field">
-              <span className="field-label">页面名称</span>
-              <input
-                className="text-input"
-                value={activeSlide.name}
-                onChange={(event) =>
-                  applyAction({
-                    type: 'slide/update',
-                    slideId: activeSlide.id,
-                    patch: { name: event.currentTarget.value },
-                  })
-                }
-              />
-            </label>
-            <div data-testid="page-background-paint">
-              <PaintField
-                label="背景"
-                value={activeSlide.background}
-                modes={['solid', 'linear-gradient', 'transparent']}
-                fallbackPaint={DEFAULT_PAGE_PAINT}
-                onChange={(background) =>
-                  applyAction({
-                    type: 'slide/update',
-                    slideId: activeSlide.id,
-                    patch: { background: background as SlideBackground },
-                  })
-                }
-              />
-            </div>
-          </div>
-
-          {selectedElement ? (
+          {selection.length === 0 ? (
             <>
-              <div className="inspector-section">
-                <div className="field-grid">
-                  <label>
-                    X
-                    <input
-                      type="number"
-                      value={selectedElement.x}
-                      onChange={(event) => updateSelected({ x: Number(event.currentTarget.value) })}
-                    />
-                  </label>
-                  <label>
-                    Y
-                    <input
-                      type="number"
-                      value={selectedElement.y}
-                      onChange={(event) => updateSelected({ y: Number(event.currentTarget.value) })}
-                    />
-                  </label>
-                  <label>
-                    宽
-                    <input
-                      type="number"
-                      min="1"
-                      value={selectedElement.width}
-                      onChange={(event) => updateSelected({ width: Number(event.currentTarget.value) })}
-                    />
-                  </label>
-                  <label>
-                    高
-                    <input
-                      type="number"
-                      min="1"
-                      value={selectedElement.height}
-                      onChange={(event) => updateSelected({ height: Number(event.currentTarget.value) })}
-                    />
-                  </label>
-                  <label>
-                    旋转
-                    <input
-                      type="number"
-                      value={selectedElement.rotation}
-                      onChange={(event) => updateSelected({ rotation: Number(event.currentTarget.value) })}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {isTextElement(selectedElement) && (
-                <div className="inspector-section">
-                  <label className="field">
-                    <span className="field-label">文本</span>
-                    <textarea
-                      className="freeform-inspector-text"
-                      value={selectedElement.text}
-                      onChange={(event) => updateElement(selectedElement.id, { text: event.currentTarget.value })}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">字体</span>
-                    <Select
-                      value={selectedElement.fontFamily}
-                      onChange={(fontFamily) => {
-                        void buildFontEmbedCSS(
-                          selectedElement.text,
-                          fontFamily,
-                          [selectedElement.fontWeight],
-                        ).catch(() => undefined)
-                        updateElement(selectedElement.id, { fontFamily })
-                      }}
-                      title="字体"
-                      testId="freeform-font-select"
-                      previewFonts
-                      options={FONTS.map((font) => ({ id: font.id, label: font.label }))}
-                    />
-                  </label>
-                  <div className="field-grid">
-                    <label>
-                      字号
-                      <input
-                        type="number"
-                        min="8"
-                        max="240"
-                        value={selectedElement.fontSize}
-                        onChange={(event) =>
-                          updateElement(selectedElement.id, { fontSize: Number(event.currentTarget.value) })
-                        }
-                      />
-                    </label>
-                  </div>
-                  <div className="field with-gap" data-testid="text-fill-paint">
-                    <PaintField
-                      label="文字颜色"
-                      value={selectedElement.textFill}
-                      modes={['solid', 'linear-gradient']}
-                      fallbackPaint={DEFAULT_TEXT_PAINT}
-                      onChange={(textFill) =>
-                        updateElement(selectedElement.id, { textFill: textFill as ColorPaint })
-                      }
-                    />
-                  </div>
-                  <div className="seg stretch">
-                    {(['left', 'center', 'right'] as const).map((align) => (
-                      <button
-                        key={align}
-                        type="button"
-                        className={selectedElement.align === align ? 'seg-btn on' : 'seg-btn'}
-                        onClick={() => updateElement(selectedElement.id, { align })}
-                      >
-                        {align === 'left' ? '左' : align === 'center' ? '中' : '右'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {isImageElement(selectedElement) && (
-                <div className="inspector-section">
-                  <div className="field-label">图片填充方式</div>
-                  <div className="seg stretch">
-                    {FITS.map((fit) => (
-                      <button
-                        key={fit.id}
-                        type="button"
-                        className={selectedElement.fit === fit.id ? 'seg-btn on' : 'seg-btn'}
-                        onClick={() => updateElement(selectedElement.id, { fit: fit.id })}
-                      >
-                        {fit.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {isShapeElement(selectedElement) && (
-                <div className="inspector-section">
-                  <div className="field-label">形状</div>
-                  <div className="seg stretch">
-                    {SHAPES.map((shape) => (
-                      <button
-                        key={shape.id}
-                        type="button"
-                        className={selectedElement.shape === shape.id ? 'seg-btn on' : 'seg-btn'}
-                        onClick={() => updateElement(selectedElement.id, { shape: shape.id })}
-                      >
-                        {shape.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="field with-gap" data-testid="shape-fill-paint">
-                    <PaintField
-                      label="填充"
-                      value={selectedElement.fill}
-                      modes={['solid', 'linear-gradient', 'image']}
-                      fallbackPaint={DEFAULT_SHAPE_PAINT}
-                      onChange={(fill) => updateElement(selectedElement.id, { fill: fill as ShapeFill })}
-                      onChooseImage={() => shapeFillInputRef.current?.click()}
-                      onClearImage={() =>
-                        updateElement(selectedElement.id, { fill: { ...DEFAULT_SHAPE_PAINT } })
-                      }
-                      onImageFitChange={(fit) => {
-                        if (selectedElement.fill.type !== 'image') return
-                        updateElement(selectedElement.id, { fill: { ...selectedElement.fill, fit } })
-                      }}
-                    />
-                  </div>
-                  <div className="field-grid with-gap">
-                    <div className="color-field" data-testid="shape-stroke-color">
-                      <span>描边</span>
-                      <ColorPickerButton
-                        label="形状描边颜色"
-                        color={selectedElement.stroke}
-                        onChange={(stroke) => updateElement(selectedElement.id, { stroke })}
-                      />
-                    </div>
-                    <label>
-                      描边宽
-                      <input
-                        type="number"
-                        min="0"
-                        value={selectedElement.strokeWidth}
-                        onChange={(event) =>
-                          updateElement(selectedElement.id, { strokeWidth: Number(event.currentTarget.value) })
-                        }
-                      />
-                    </label>
-                  </div>
+              <InspectorSection title="页面" testId="inspector-page">
+                <label className="field">
+                  <span className="field-label">页面名称</span>
                   <input
-                    ref={shapeFillInputRef}
-                    className="freeform-file"
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => handleShapeFillInput(event.currentTarget.files)}
+                    className="text-input"
+                    value={activeSlide.name}
+                    onChange={(event) =>
+                      applyAction({
+                        type: 'slide/update',
+                        slideId: activeSlide.id,
+                        patch: { name: event.currentTarget.value },
+                      })
+                    }
+                  />
+                </label>
+                <div data-testid="page-background-paint">
+                  <PaintField
+                    label="背景"
+                    value={activeSlide.background}
+                    modes={['solid', 'linear-gradient', 'transparent']}
+                    fallbackPaint={DEFAULT_PAGE_PAINT}
+                    onChange={(background) =>
+                      applyAction({
+                        type: 'slide/update',
+                        slideId: activeSlide.id,
+                        patch: { background: background as SlideBackground },
+                      })
+                    }
                   />
                 </div>
-              )}
-
-              {isLineElement(selectedElement) && (
-                <div className="inspector-section">
-                  <div className="field-label">线条</div>
-                  <div className="seg stretch">
-                    {(['line', 'arrow'] as const).map((lineKind) => (
-                      <button
-                        key={lineKind}
-                        type="button"
-                        className={selectedElement.lineKind === lineKind ? 'seg-btn on' : 'seg-btn'}
-                        onClick={() => updateElement(selectedElement.id, { lineKind })}
-                      >
-                        {lineKind === 'line' ? '直线' : '箭头'}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="field-grid with-gap">
-                    <div className="color-field" data-testid="line-stroke-color">
-                      <span>颜色</span>
-                      <ColorPickerButton
-                        label="线条颜色"
-                        color={selectedElement.stroke}
-                        onChange={(stroke) => updateElement(selectedElement.id, { stroke })}
-                      />
+              </InspectorSection>
+              <div className="inspector-empty">选择对象以编辑属性。</div>
+            </>
+          ) : (
+            <>
+              {selection.length === 1 && selectedElement && (
+                <>
+                  <InspectorSection title="位置与尺寸" testId="inspector-geometry">
+                    <div className="field-grid">
+                      <label>
+                        X
+                        <input
+                          type="number"
+                          value={selectedElement.x}
+                          onChange={(event) => updateSelected({ x: Number(event.currentTarget.value) })}
+                        />
+                      </label>
+                      <label>
+                        Y
+                        <input
+                          type="number"
+                          value={selectedElement.y}
+                          onChange={(event) => updateSelected({ y: Number(event.currentTarget.value) })}
+                        />
+                      </label>
+                      <label>
+                        宽
+                        <input
+                          type="number"
+                          min="1"
+                          value={selectedElement.width}
+                          onChange={(event) => updateSelected({ width: Number(event.currentTarget.value) })}
+                        />
+                      </label>
+                      <label>
+                        高
+                        <input
+                          type="number"
+                          min="1"
+                          value={selectedElement.height}
+                          onChange={(event) => updateSelected({ height: Number(event.currentTarget.value) })}
+                        />
+                      </label>
+                      <label>
+                        旋转
+                        <input
+                          type="number"
+                          value={selectedElement.rotation}
+                          onChange={(event) => updateSelected({ rotation: Number(event.currentTarget.value) })}
+                        />
+                      </label>
                     </div>
-                    <label>
-                      粗细
-                      <input
-                        type="number"
-                        min="1"
-                        max="40"
-                        value={selectedElement.strokeWidth}
-                        onChange={(event) =>
-                          updateElement(selectedElement.id, { strokeWidth: Number(event.currentTarget.value) })
-                        }
-                      />
-                    </label>
-                  </div>
-                </div>
+                    {isShapeElement(selectedElement) && (
+                      <>
+                        <div className="field-label with-gap">形状</div>
+                        <div className="seg stretch">
+                          {SHAPES.map((shape) => (
+                            <button
+                              key={shape.id}
+                              type="button"
+                              className={selectedElement.shape === shape.id ? 'seg-btn on' : 'seg-btn'}
+                              onClick={() => updateElement(selectedElement.id, { shape: shape.id })}
+                            >
+                              {shape.label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </InspectorSection>
+
+                  {isTextElement(selectedElement) && (
+                    <InspectorSection title="文字" testId="inspector-typography">
+                      <label className="field">
+                        <span className="field-label">文本</span>
+                        <textarea
+                          className="freeform-inspector-text"
+                          value={selectedElement.text}
+                          onChange={(event) =>
+                            updateElement(selectedElement.id, { text: event.currentTarget.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span className="field-label">字体</span>
+                        <Select
+                          value={selectedElement.fontFamily}
+                          onChange={(fontFamily) => {
+                            void buildFontEmbedCSS(
+                              selectedElement.text,
+                              fontFamily,
+                              [selectedElement.fontWeight],
+                            ).catch(() => undefined)
+                            updateElement(selectedElement.id, { fontFamily })
+                          }}
+                          title="字体"
+                          testId="freeform-font-select"
+                          previewFonts
+                          options={FONTS.map((font) => ({ id: font.id, label: font.label }))}
+                        />
+                      </label>
+                      <div className="field-grid">
+                        <label>
+                          字号
+                          <input
+                            type="number"
+                            min="8"
+                            max="240"
+                            value={selectedElement.fontSize}
+                            onChange={(event) =>
+                              updateElement(selectedElement.id, {
+                                fontSize: Number(event.currentTarget.value),
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="field-label with-gap">对齐</div>
+                      <div className="seg stretch">
+                        {(['left', 'center', 'right'] as const).map((align) => (
+                          <button
+                            key={align}
+                            type="button"
+                            className={selectedElement.align === align ? 'seg-btn on' : 'seg-btn'}
+                            onClick={() => updateElement(selectedElement.id, { align })}
+                          >
+                            {align === 'left' ? '左' : align === 'center' ? '中' : '右'}
+                          </button>
+                        ))}
+                      </div>
+                    </InspectorSection>
+                  )}
+
+                  {(isTextElement(selectedElement) ||
+                    isShapeElement(selectedElement) ||
+                    isImageElement(selectedElement)) && (
+                    <InspectorSection title="填充" testId="inspector-fill">
+                      {isTextElement(selectedElement) && (
+                        <div data-testid="text-fill-paint">
+                          <PaintField
+                            label="文字颜色"
+                            value={selectedElement.textFill}
+                            modes={['solid', 'linear-gradient']}
+                            fallbackPaint={DEFAULT_TEXT_PAINT}
+                            onChange={(textFill) =>
+                              updateElement(selectedElement.id, { textFill: textFill as ColorPaint })
+                            }
+                          />
+                        </div>
+                      )}
+                      {isShapeElement(selectedElement) && (
+                        <>
+                          <div data-testid="shape-fill-paint">
+                            <PaintField
+                              label="填充"
+                              value={selectedElement.fill}
+                              modes={['solid', 'linear-gradient', 'image']}
+                              fallbackPaint={DEFAULT_SHAPE_PAINT}
+                              onChange={(fill) =>
+                                updateElement(selectedElement.id, { fill: fill as ShapeFill })
+                              }
+                              onChooseImage={() => shapeFillInputRef.current?.click()}
+                              onClearImage={() =>
+                                updateElement(selectedElement.id, { fill: { ...DEFAULT_SHAPE_PAINT } })
+                              }
+                              onImageFitChange={(fit) => {
+                                if (selectedElement.fill.type !== 'image') return
+                                updateElement(selectedElement.id, {
+                                  fill: { ...selectedElement.fill, fit },
+                                })
+                              }}
+                            />
+                          </div>
+                          <input
+                            ref={shapeFillInputRef}
+                            className="freeform-file"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => handleShapeFillInput(event.currentTarget.files)}
+                          />
+                        </>
+                      )}
+                      {isImageElement(selectedElement) && (
+                        <>
+                          <div className="field-label">图片填充方式</div>
+                          <div className="seg stretch">
+                            {FITS.map((fit) => (
+                              <button
+                                key={fit.id}
+                                type="button"
+                                className={selectedElement.fit === fit.id ? 'seg-btn on' : 'seg-btn'}
+                                onClick={() => updateElement(selectedElement.id, { fit: fit.id })}
+                              >
+                                {fit.label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </InspectorSection>
+                  )}
+
+                  {(isShapeElement(selectedElement) || isLineElement(selectedElement)) && (
+                    <InspectorSection title="描边" testId="inspector-stroke">
+                      {isLineElement(selectedElement) && (
+                        <>
+                          <div className="field-label">线条</div>
+                          <div className="seg stretch">
+                            {(['line', 'arrow'] as const).map((lineKind) => (
+                              <button
+                                key={lineKind}
+                                type="button"
+                                className={selectedElement.lineKind === lineKind ? 'seg-btn on' : 'seg-btn'}
+                                onClick={() => updateElement(selectedElement.id, { lineKind })}
+                              >
+                                {lineKind === 'line' ? '直线' : '箭头'}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      <div className="field-grid with-gap">
+                        <div
+                          className="color-field"
+                          data-testid={isShapeElement(selectedElement) ? 'shape-stroke-color' : 'line-stroke-color'}
+                        >
+                          <span>{isShapeElement(selectedElement) ? '描边' : '颜色'}</span>
+                          <ColorPickerButton
+                            label={isShapeElement(selectedElement) ? '形状描边颜色' : '线条颜色'}
+                            color={selectedElement.stroke}
+                            onChange={(stroke) => updateElement(selectedElement.id, { stroke })}
+                          />
+                        </div>
+                        <label>
+                          {isShapeElement(selectedElement) ? '描边宽' : '粗细'}
+                          <input
+                            type="number"
+                            min={isShapeElement(selectedElement) ? 0 : 1}
+                            max={isLineElement(selectedElement) ? 40 : undefined}
+                            value={selectedElement.strokeWidth}
+                            onChange={(event) =>
+                              updateElement(selectedElement.id, {
+                                strokeWidth: Number(event.currentTarget.value),
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    </InspectorSection>
+                  )}
+                </>
               )}
 
-              {selection.length > 1 && (
-                <div className="inspector-section">
-                  <div className="field-label">对齐</div>
-                  <div className="inspector-actions">
-                    <button className="ghost" type="button" onClick={() => alignSelection('left')}>
-                      左对齐
-                    </button>
-                    <button className="ghost" type="button" onClick={() => alignSelection('h-center')}>
-                      水平居中
-                    </button>
-                    <button className="ghost" type="button" onClick={() => alignSelection('right')}>
-                      右对齐
-                    </button>
-                    <button className="ghost" type="button" onClick={() => alignSelection('top')}>
-                      顶对齐
-                    </button>
-                    <button className="ghost" type="button" onClick={() => alignSelection('v-center')}>
-                      垂直居中
-                    </button>
-                    <button className="ghost" type="button" onClick={() => alignSelection('bottom')}>
-                      底对齐
-                    </button>
-                    <button className="ghost" type="button" onClick={() => distributeSelection('horizontal')}>
-                      水平均分
-                    </button>
-                    <button className="ghost" type="button" onClick={() => distributeSelection('vertical')}>
-                      垂直均分
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="inspector-section">
+              <InspectorSection title="排列" testId="inspector-arrange">
+                {selection.length > 1 && (
+                  <>
+                    <div className="field-label">对齐与分布</div>
+                    <div className="inspector-actions">
+                      <button className="ghost" type="button" onClick={() => alignSelection('left')}>
+                        左对齐
+                      </button>
+                      <button className="ghost" type="button" onClick={() => alignSelection('h-center')}>
+                        水平居中
+                      </button>
+                      <button className="ghost" type="button" onClick={() => alignSelection('right')}>
+                        右对齐
+                      </button>
+                      <button className="ghost" type="button" onClick={() => alignSelection('top')}>
+                        顶对齐
+                      </button>
+                      <button className="ghost" type="button" onClick={() => alignSelection('v-center')}>
+                        垂直居中
+                      </button>
+                      <button className="ghost" type="button" onClick={() => alignSelection('bottom')}>
+                        底对齐
+                      </button>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() => distributeSelection('horizontal')}
+                      >
+                        水平均分
+                      </button>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() => distributeSelection('vertical')}
+                      >
+                        垂直均分
+                      </button>
+                    </div>
+                  </>
+                )}
+                <div className="field-label with-gap">层级</div>
                 <div className="inspector-actions">
                   <button className="ghost" type="button" onClick={() => reorderSelection('backward')}>
                     后移
@@ -1418,12 +1437,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                     置顶
                   </button>
                 </div>
-              </div>
+              </InspectorSection>
+
+              {selection.length === 1 && (
+                <InspectorSection title="删除" testId="inspector-danger" tone="danger">
+                  <button className="ghost inspector-delete" type="button" onClick={deleteSelection}>
+                    删除
+                  </button>
+                </InspectorSection>
+              )}
             </>
-          ) : (
-            <div className="inspector-empty">
-              选择画布上的对象后，可以编辑位置、尺寸、颜色和图片填充。
-            </div>
           )}
         </aside>
       </main>

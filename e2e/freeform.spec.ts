@@ -230,6 +230,160 @@ async function insertTwoRectanglesLeavingInspectorFocused(page: import('@playwri
   return elements
 }
 
+test('inspector hierarchy shows only context-relevant sections in contract order', async ({ page }) => {
+  const inspector = page.locator('.freeform-inspector')
+  const sectionIds = () =>
+    inspector.locator(':scope > [data-testid^="inspector-"]').evaluateAll((sections) =>
+      sections.map((section) => section.getAttribute('data-testid')),
+    )
+  const expectSections = async (expected: string[]) => {
+    await expect.poll(sectionIds).toEqual(expected.map((name) => `inspector-${name}`))
+  }
+
+  await openFreeform(page)
+
+  await expect(page.getByTestId('inspector-page')).toBeVisible()
+  await expect(inspector.locator('.inspector-empty')).toContainText('选择')
+  await expectSections(['page'])
+
+  await insertShape(page)
+  await setSelectedElementPosition(page, 100, 100)
+  await expectSections(['geometry', 'fill', 'stroke', 'arrange', 'danger'])
+  const shapeFill = page.getByTestId('inspector-fill').getByTestId('shape-fill-paint')
+  await expect(shapeFill.getByTestId('paint-mode-solid')).toBeVisible()
+  await expect(shapeFill.getByTestId('paint-mode-linear-gradient')).toBeVisible()
+  await expect(shapeFill.getByTestId('paint-mode-image')).toBeVisible()
+
+  await insertText(page)
+  await setSelectedElementPosition(page, 420, 180)
+  await expectSections(['geometry', 'typography', 'fill', 'arrange', 'danger'])
+
+  await insertLine(page, '直线')
+  await setSelectedElementPosition(page, 760, 300)
+  await expectSections(['geometry', 'stroke', 'arrange', 'danger'])
+  const lineStroke = page.getByTestId('inspector-stroke')
+  await expect(
+    lineStroke.getByTestId('line-stroke-color').getByTestId('paint-color-button'),
+  ).toBeVisible()
+  await expect(lineStroke.getByTestId('freeform-paint-field')).toHaveCount(0)
+  await expect(lineStroke.getByTestId('paint-mode-linear-gradient')).toHaveCount(0)
+  await expect(lineStroke.getByTestId('paint-mode-image')).toHaveCount(0)
+
+  await page.getByTestId('freeform-canvas').click({ position: { x: 10, y: 10 } })
+  await expect(selectedFreeformElements(page)).toHaveCount(0)
+  await expect(page.getByTestId('inspector-page')).toBeVisible()
+  await expect(inspector.locator('.inspector-empty')).toHaveText('选择对象以编辑属性。')
+  await expect(inspector.locator('input[type="number"]')).toHaveCount(0)
+  await expect(page.getByTestId('line-stroke-color')).toHaveCount(0)
+  await expectSections(['page'])
+
+  const lineElement = page.getByTestId('freeform-element').filter({ has: page.getByTestId('freeform-line') })
+  const textElement = page.getByTestId('freeform-element').filter({ has: page.getByTestId('freeform-textbox') })
+  await lineElement.click()
+  await textElement.click({ modifiers: ['Shift'] })
+  await expect(selectedFreeformElements(page)).toHaveCount(2)
+  await expectSections(['arrange'])
+})
+
+test('shared inspector controls use 32px height, 8px radius, and custom native replacements', async ({ page }) => {
+  const expectControlBox = async (control: import('@playwright/test').Locator) => {
+    await expect(control).toHaveCSS('height', '32px')
+    await expect(control).toHaveCSS('border-radius', '8px')
+  }
+
+  await openFreeform(page)
+
+  const pageSection = page.getByTestId('inspector-page')
+  await expectControlBox(pageSection.locator('.text-input'))
+  await expectControlBox(pageSection.locator('.paint-hex'))
+
+  await insertShape(page)
+
+  const geometry = page.getByTestId('inspector-geometry')
+  const shapeSegment = geometry.getByRole('button', { name: '矩形', exact: true })
+  const geometryNumber = geometry.locator('input[type="number"]').first()
+  const shapeFill = page.getByTestId('shape-fill-paint')
+  const arrangeButton = page.getByTestId('inspector-arrange').getByRole('button', { name: '后移', exact: true })
+  const deleteButton = page.getByTestId('inspector-danger').getByRole('button', { name: '删除', exact: true })
+  await expectControlBox(shapeSegment)
+  await expectControlBox(geometryNumber)
+  await expect(geometryNumber).toHaveCSS('appearance', 'textfield')
+  await expectControlBox(shapeFill.getByTestId('paint-color-button'))
+  await expectControlBox(arrangeButton)
+  await expectControlBox(deleteButton)
+
+  await shapeFill.getByTestId('paint-mode-linear-gradient').click()
+  const angleNumber = shapeFill.locator('.paint-angle')
+  await expectControlBox(angleNumber)
+
+  const gradientStartColor = shapeFill.getByRole('button', { name: '填充 渐变起始色', exact: true })
+  await expectControlBox(gradientStartColor)
+  await gradientStartColor.click()
+  const popover = shapeFill.getByTestId('paint-popover')
+  const popoverHex = popover.locator('.paint-popover-hex')
+  const channelNumber = popover.locator('.paint-channel-number').first()
+  const channelRange = popover.locator('.paint-channel-range').first()
+  await expectControlBox(popoverHex)
+  await expectControlBox(channelNumber)
+  await expect(channelNumber).toHaveCSS('appearance', 'textfield')
+  await expect(channelRange).toHaveCSS('appearance', 'none')
+  await expect(channelRange).toHaveCSS('height', '8px')
+  await expect(channelRange).toHaveCSS('border-radius', '999px')
+  await expect(channelRange).toHaveCSS('background-image', /linear-gradient/)
+  await gradientStartColor.click()
+
+  await expect(page.locator('.freeform-inspector input[type="file"]:visible')).toHaveCount(0)
+  await expect(page.locator('.freeform-inspector select:visible')).toHaveCount(0)
+
+  await insertText(page)
+  await expectControlBox(page.getByTestId('freeform-font-select'))
+})
+
+test('shared inspector controls expose a visible accent focus ring', async ({ page }) => {
+  await openFreeform(page)
+  const accentColor = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.color = 'var(--accent)'
+    document.body.append(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  })
+  const expectAccentFocus = async (control: import('@playwright/test').Locator) => {
+    await page.keyboard.press('Tab')
+    await control.focus()
+    await expect(control).toHaveCSS('outline-color', accentColor)
+    await expect(control).toHaveCSS('outline-style', 'solid')
+    await expect(control).toHaveCSS('outline-width', '2px')
+    await expect(control).toHaveCSS('outline-offset', '2px')
+  }
+
+  const pageSection = page.getByTestId('inspector-page')
+  await expectAccentFocus(pageSection.locator('.text-input'))
+  await expectAccentFocus(pageSection.locator('.paint-hex'))
+
+  await insertShape(page)
+  const geometry = page.getByTestId('inspector-geometry')
+  const shapeFill = page.getByTestId('shape-fill-paint')
+  await expectAccentFocus(geometry.getByRole('button', { name: '矩形', exact: true }))
+  await expectAccentFocus(geometry.locator('input[type="number"]').first())
+  await expectAccentFocus(page.getByTestId('inspector-arrange').getByRole('button', { name: '后移', exact: true }))
+  await expectAccentFocus(page.getByTestId('inspector-danger').getByRole('button', { name: '删除', exact: true }))
+
+  await shapeFill.getByTestId('paint-mode-linear-gradient').click()
+  await expectAccentFocus(shapeFill.locator('.paint-angle'))
+  const gradientStartColor = shapeFill.getByRole('button', { name: '填充 渐变起始色', exact: true })
+  await expectAccentFocus(gradientStartColor)
+  await gradientStartColor.click()
+  const popover = shapeFill.getByTestId('paint-popover')
+  await expectAccentFocus(popover.locator('.paint-popover-hex'))
+  await expectAccentFocus(popover.locator('.paint-channel-number').first())
+  await gradientStartColor.click()
+
+  await insertText(page)
+  await expectAccentFocus(page.getByTestId('freeform-font-select'))
+})
+
 test('global header owns workspace tabs, theme, and account state', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
