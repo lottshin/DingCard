@@ -59,7 +59,7 @@ export type FreeformDraft = DraftEnvelopeBase & {
 
 export type Draft = MarkdownDraft | FreeformDraft
 
-type SaveDraftInput = {
+export type SaveDraftInput = {
   id?: string
   title?: string
 } & (

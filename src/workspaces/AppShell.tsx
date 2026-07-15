@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AuthModal } from '../AuthModal'
-import { current as currentUser, logout as authLogout, type User } from '../auth'
+import type { User } from '../auth'
+import { store } from '../storage'
 import { FreeformWorkspace } from '../freeform/FreeformWorkspace'
 import { useAppTheme } from '../useAppTheme'
 import { AppHeader } from './AppHeader'
@@ -10,12 +11,23 @@ import type { WorkspaceMode } from './types'
 export function AppShell() {
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('markdown-card')
   const [appTheme, toggleAppTheme] = useAppTheme()
-  const [user, setUser] = useState<User | null>(() => currentUser())
+  const [user, setUser] = useState<User | null>(null)
   const [showAuth, setShowAuth] = useState(false)
 
+  // Load the current session (async so the remote backend can verify the token
+  // against /api/auth/me; the local backend resolves immediately).
+  useEffect(() => {
+    let alive = true
+    store.auth.current().then((u) => {
+      if (alive) setUser(u)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   function handleLogout() {
-    authLogout()
-    setUser(null)
+    store.auth.logout().then(() => setUser(null))
   }
 
   return (

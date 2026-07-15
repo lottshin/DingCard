@@ -1,5 +1,5 @@
 import { marked } from 'marked'
-import { resolveImage } from './imageStore'
+import { store } from './storage'
 
 export interface Block {
   /** rendered HTML for a single top-level markdown block */
@@ -41,7 +41,7 @@ marked.use({
       const width = m ? Number(m[2]) : null
       const widthStyle = width ? `width:${width}px;` : ''
       const ref = href ?? ''
-      const src = resolveImage(ref)
+      const src = store.images.resolve(ref)
       // data-href keeps the ORIGINAL href (short ref) so resize can find it in source.
       return (
         `<span class="img-wrap" style="${widthStyle}" data-href="${encodeURIComponent(ref)}">` +

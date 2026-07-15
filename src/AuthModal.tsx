@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { login, register, type User } from './auth'
+import type { User } from './auth'
+import { store } from './storage'
 
 interface AuthModalProps {
   onAuthed: (user: User) => void
@@ -26,8 +27,8 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
     try {
       const user =
         mode === 'login'
-          ? await login(username, password)
-          : await register(username, password)
+          ? await store.auth.login(username, password)
+          : await store.auth.register(username, password)
       onAuthed(user)
     } catch (err) {
       setError(err instanceof Error ? err.message : '出错了，请重试')

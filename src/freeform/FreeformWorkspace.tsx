@@ -2,10 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { toBlob } from 'html-to-image'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
-import { deleteDraft, listDrafts, saveDraft, type Draft } from '../drafts'
+import { type Draft } from '../drafts'
 import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
+import { store } from '../storage'
 import { FONTS } from '../theme'
 import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../workspaces/types'
@@ -227,7 +228,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   )
 
   const refreshDrafts = useCallback(() => {
-    setDrafts(user ? listDrafts(user.id) : [])
+    if (!user) {
+      setDrafts([])
+      return
+    }
+    const uid = user.id
+    void store.drafts.list(uid).then((list) => setDrafts(list))
   }, [user])
 
   const measureFitScale = useCallback(() => {
@@ -269,8 +275,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   useEffect(() => {
     const nextUserId = user?.id ?? null
-    setDrafts(user ? listDrafts(user.id) : [])
+    if (user) {
+      const uid = user.id
+      // Guard against a stale response landing after the user changed again.
+      let cancelled = false
+      void store.drafts.list(uid).then((list) => {
+        if (!cancelled) setDrafts(list)
+      })
+      if (previousUserId.current !== nextUserId) {
+        previousUserId.current = nextUserId
+        setDraftId(null)
+        setSavedAt(null)
+        setShowDrafts(false)
+      }
+      return () => {
+        cancelled = true
+      }
+    }
 
+    setDrafts([])
     if (previousUserId.current !== nextUserId) {
       previousUserId.current = nextUserId
       setDraftId(null)
@@ -890,12 +913,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     void exportAllSlides()
   }
 
-  function handleSaveDraft() {
+  async function handleSaveDraft() {
     if (!user) {
       requestAuth()
       return
     }
-    const saved = saveDraft(user.id, {
+    const saved = await store.drafts.save(user.id, {
       id: draftId ?? undefined,
       mode: 'freeform-slide',
       document: doc,
@@ -914,9 +937,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setShowDrafts(false)
   }
 
-  function removeDraft(id: string) {
+  async function removeDraft(id: string) {
     if (!user) return
-    deleteDraft(user.id, id)
+    await store.drafts.remove(user.id, id)
     if (id === draftId) setDraftId(null)
     refreshDrafts()
   }

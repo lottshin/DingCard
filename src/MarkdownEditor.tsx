@@ -7,7 +7,8 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { syntaxTree, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { indentWithTab, insertNewlineAndIndent } from '@codemirror/commands'
 import { tags } from '@lezer/highlight'
-import { resolveImage, putImage, downscaleDataUrl } from './imageStore'
+import { downscaleDataUrl } from './imageStore'
+import { store } from './storage'
 
 /**
  * Obsidian-style "Live Preview" Markdown editor built on CodeMirror 6.
@@ -193,7 +194,7 @@ function buildDecorations(state: EditorState): DecorationSet {
           const rawAlt = m[1]
           const url = m[2]
           const alt = rawAlt.replace(/\|\d+$/, '')
-          const src = resolveImage(url)
+          const src = store.images.resolve(url)
           add(
             Decoration.replace({ widget: new ImageWidget(src, alt) }),
             node.from,
@@ -302,7 +303,7 @@ const pasteHandler = EditorView.domEventHandlers({
     const reader = new FileReader()
     reader.onload = async () => {
       const url = await downscaleDataUrl(reader.result as string)
-      const imgRef = putImage(url)
+      const imgRef = await store.images.put(url)
       const { from, to } = cmView.state.selection.main
       const pre = from > 0 && cmView.state.doc.sliceString(from - 1, from) !== '\n' ? '\n' : ''
       const snippet = `${pre}![](${imgRef})\n`
