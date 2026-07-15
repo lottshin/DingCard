@@ -203,9 +203,23 @@ main()
     console.error('smoke test crashed:', err)
     failures++
   })
-  .finally(() => {
-    server.kill()
-    rmSync(dataDir, { recursive: true, force: true })
+  .finally(async () => {
+    // Wait for the server process to fully exit before removing the temp dir.
+    // On Windows the SQLite file handle lingers briefly after kill(), so an
+    // immediate rmSync throws EPERM/EBUSY. Await 'exit', then retry the delete.
+    await new Promise((resolve) => {
+      server.once('exit', resolve)
+      server.kill()
+      setTimeout(resolve, 2000) // safety net if 'exit' never fires
+    })
+    for (let i = 0; i < 10; i++) {
+      try {
+        rmSync(dataDir, { recursive: true, force: true })
+        break
+      } catch {
+        await new Promise((r) => setTimeout(r, 100))
+      }
+    }
     console.log(failures === 0 ? '\nALL PASSED' : `\n${failures} FAILED`)
     process.exit(failures === 0 ? 0 : 1)
   })
