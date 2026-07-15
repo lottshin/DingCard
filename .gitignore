@@ -2,6 +2,9 @@
 node_modules/
 .worktrees/
 
+# Prototyping scratch — not product source
+.superpowers/
+
 # Build output
 dist/
 
