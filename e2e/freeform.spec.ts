@@ -2131,7 +2131,7 @@ test('exports current freeform slide with gradient pixels and without editor ui'
   expect(rgbDistance(resizeHandleProbe, accentRgb)).toBeGreaterThan(30)
 })
 
-test('exports identical artwork pixels in light and dark app themes', async ({ page }) => {
+test('exports identical artwork pixels across app themes and preview zooms', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
   await page.reload()
@@ -2159,10 +2159,12 @@ test('exports identical artwork pixels in light and dark app themes', async ({ p
     return path
   }
 
+  await setFreeformZoom(page, 50)
   const lightPath = await downloadCurrent()
   await page.getByTestId('theme-toggle').click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(page.locator('html')).not.toHaveClass(/theme-anim/)
+  await setFreeformZoom(page, 400)
   const darkPath = await downloadCurrent()
 
   expect(readPngSize(await readFile(lightPath))).toEqual(readPngSize(await readFile(darkPath)))
