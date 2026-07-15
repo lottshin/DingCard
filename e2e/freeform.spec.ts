@@ -100,6 +100,18 @@ async function freeformElementPositions(page: import('@playwright/test').Page) {
   )
 }
 
+async function freeformCanvasScale(page: import('@playwright/test').Page) {
+  return page.getByTestId('freeform-canvas').evaluate((canvas) => {
+    const element = canvas as HTMLElement
+    const logicalWidth = Number.parseFloat(element.style.width)
+    const renderedWidth = element.getBoundingClientRect().width
+    if (!Number.isFinite(logicalWidth) || logicalWidth <= 0 || renderedWidth <= 0) {
+      throw new Error('freeform canvas scale is not measurable')
+    }
+    return renderedWidth / logicalWidth
+  })
+}
+
 function selectedFreeformElements(page: import('@playwright/test').Page) {
   return page.locator('[data-testid="freeform-element"][data-selected="true"]')
 }
@@ -2032,10 +2044,11 @@ test('drags selected elements together', async ({ page }) => {
     x: firstElementBox!.x + firstElementBox!.width / 2,
     y: firstElementBox!.y + firstElementBox!.height / 2,
   }
+  const scale = await freeformCanvasScale(page)
 
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
-  await page.mouse.move(start.x + 50, start.y + 20)
+  await page.mouse.move(start.x + 100 * scale, start.y + 40 * scale)
   await page.mouse.up()
 
   await expect.poll(() => freeformElementPositions(page)).toEqual([
@@ -2060,10 +2073,11 @@ test('snapping aligns a dragged element to the page center and hides guides afte
   const box = await element.boundingBox()
   expect(box).toBeTruthy()
   const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  const scale = await freeformCanvasScale(page)
 
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
-  await page.mouse.move(start.x + 192, start.y)
+  await page.mouse.move(start.x + (390 - 5) * scale, start.y)
   await expect(page.getByTestId('freeform-snap-line')).toHaveCount(1)
   await page.mouse.up()
 
@@ -2083,10 +2097,11 @@ test('snapping aligns a dragged element to another element left edge', async ({ 
   const box = await first.boundingBox()
   expect(box).toBeTruthy()
   const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  const scale = await freeformCanvasScale(page)
 
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
-  await page.mouse.move(start.x + 297, start.y)
+  await page.mouse.move(start.x + (600 - 5) * scale, start.y)
   await page.mouse.up()
 
   await expect.poll(() => freeformElementPositions(page)).toEqual([
@@ -2102,10 +2117,11 @@ test('snapping aligns a selected group by its bounding box', async ({ page }) =>
   const box = await first.boundingBox()
   expect(box).toBeTruthy()
   const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  const scale = await freeformCanvasScale(page)
 
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
-  await page.mouse.move(start.x + 137, start.y)
+  await page.mouse.move(start.x + (280 - 5) * scale, start.y)
   await page.mouse.up()
 
   await expect.poll(() => freeformElementPositions(page)).toEqual([
@@ -2124,10 +2140,11 @@ test('snapping hides guides when pointer drag is canceled', async ({ page }) => 
   const box = await element.boundingBox()
   expect(box).toBeTruthy()
   const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  const scale = await freeformCanvasScale(page)
 
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
-  await page.mouse.move(start.x + 192, start.y)
+  await page.mouse.move(start.x + (390 - 5) * scale, start.y)
   await expect(page.getByTestId('freeform-snap-line')).toHaveCount(1)
 
   await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel')))
@@ -2212,7 +2229,7 @@ test('keyboard shortcuts work after marquee from an inspector input', async ({ p
   const canvas = page.getByTestId('freeform-canvas')
   const box = await canvas.boundingBox()
   expect(box).toBeTruthy()
-  const scale = 0.5
+  const scale = await freeformCanvasScale(page)
   const start = { x: box!.x + 70 * scale, y: box!.y + 70 * scale }
   const end = { x: box!.x + 500 * scale, y: box!.y + 290 * scale }
 
@@ -2244,7 +2261,7 @@ test('marquee selects elements by dragging empty canvas', async ({ page }) => {
   const canvas = page.getByTestId('freeform-canvas')
   const box = await canvas.boundingBox()
   expect(box).toBeTruthy()
-  const scale = 0.5
+  const scale = await freeformCanvasScale(page)
   const start = { x: box!.x + 70 * scale, y: box!.y + 70 * scale }
   const end = { x: box!.x + 500 * scale, y: box!.y + 290 * scale }
 
