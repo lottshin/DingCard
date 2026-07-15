@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { isFocusablePointerTarget } from './focusTarget'
 
 export interface FreeformInsertMenuOption<T extends string> {
   id: T
@@ -95,11 +96,7 @@ export function FreeformInsertMenu<T extends string>({
     function closeOnOutsidePointer(event: PointerEvent) {
       const root = rootRef.current
       if (!root || root.contains(event.target as Node)) return
-      const nextFlyoutTrigger =
-        event.target instanceof Element
-          ? event.target.closest('[data-freeform-toolbar-flyout-trigger]')
-          : null
-      closeMenu(nextFlyoutTrigger === null)
+      closeMenu(!isFocusablePointerTarget(event.target))
     }
 
     window.addEventListener('pointerdown', closeOnOutsidePointer, true)

@@ -239,13 +239,18 @@ export function freeformReducer(document: FreeformDocument, action: FreeformActi
         ...slide,
         ...action.patch,
       }))
-    case 'slide/resize':
+    case 'slide/resize': {
       if (!validatePageSize(action.width, action.height).ok) return document
+      const slide = document.slides.find((candidate) => candidate.id === action.slideId)
+      if (!slide || (slide.width === action.width && slide.height === action.height)) {
+        return document
+      }
       return withSlide(document, action.slideId, (slide) => ({
         ...slide,
         width: action.width,
         height: action.height,
       }))
+    }
     case 'element/add':
       return withSlide(document, action.slideId, (slide) => ({
         ...slide,

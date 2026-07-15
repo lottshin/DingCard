@@ -856,7 +856,7 @@ html.theme-anim * {
 }
 
 .freeform-panel-head,
-.freeform-stage-head {
+.freeform-stage-pane .freeform-stage-head {
   flex: 0 0 auto;
   min-height: 52px;
   padding: 0 14px;
@@ -883,7 +883,7 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.freeform-add-page {
+.freeform-rail .freeform-add-page {
   width: 44px;
   padding: 0;
   display: inline-flex;
@@ -892,7 +892,7 @@ html.theme-anim * {
   border-radius: var(--control-radius);
 }
 
-.freeform-add-page svg {
+.freeform-rail .freeform-add-page svg {
   width: 17px;
   height: 17px;
   fill: none;
@@ -959,16 +959,16 @@ html.theme-anim * {
   box-shadow: var(--shadow-sm);
 }
 
-.freeform-thumb-caption {
+.freeform-rail .freeform-thumb-caption {
   min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 7px;
 }
 
-.freeform-thumb-number {
+.freeform-rail .freeform-thumb-number {
   flex: 0 0 auto;
-  color: var(--text-3);
+  color: var(--text-2);
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 600;
@@ -996,12 +996,12 @@ html.theme-anim * {
   flex-direction: column;
 }
 
-.freeform-stage-head {
+.freeform-stage-pane .freeform-stage-head {
   background: var(--surface);
   justify-content: flex-end;
 }
 
-.freeform-stage-scroll {
+.freeform-stage-pane .freeform-stage-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -1011,7 +1011,7 @@ html.theme-anim * {
   background: var(--freeform-stage-sink);
 }
 
-.freeform-stage-box {
+.freeform-stage-pane .freeform-stage-box {
   flex: 0 0 auto;
   box-shadow: 0 12px 30px rgba(24, 24, 27, 0.14), 0 2px 8px rgba(24, 24, 27, 0.08);
 }
@@ -1765,9 +1765,14 @@ html.theme-anim * {
   transition: border-color 0.15s, background 0.15s;
 }
 
-.bar-btn:hover {
+.bar-btn:hover:not(:disabled) {
   border-color: var(--line-2);
   background: var(--surface-2);
+}
+
+.bar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Dark mode: lift secondary controls off the near-black background so they
@@ -1780,7 +1785,7 @@ html.theme-anim * {
   border-color: #3a3a44;
 }
 
-[data-theme='dark'] .bar-btn:hover,
+[data-theme='dark'] .bar-btn:hover:not(:disabled),
 [data-theme='dark'] .sel-trigger:hover,
 [data-theme='dark'] .workspace-toolbar .freeform-insert-trigger:hover:not([aria-expanded='true']),
 [data-theme='dark'] .workspace-toolbar .page-size-trigger:hover:not([aria-expanded='true']) {
@@ -1961,26 +1966,26 @@ html.theme-anim * {
   cursor: default;
 }
 
-.freeform-stage-head .zoom-controls {
+.freeform-stage-pane .freeform-stage-head .zoom-controls {
   gap: 2px;
   padding: 2px;
   border-radius: var(--panel-radius);
 }
 
-.freeform-stage-head .zoom-btn,
-.freeform-stage-head .zoom-value {
+.freeform-stage-pane .freeform-stage-head .zoom-btn,
+.freeform-stage-pane .freeform-stage-head .zoom-value {
   height: 44px;
   border-radius: var(--control-radius);
 }
 
-.freeform-stage-head .zoom-btn {
+.freeform-stage-pane .freeform-stage-head .zoom-btn {
   width: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.freeform-stage-head .zoom-btn svg {
+.freeform-stage-pane .freeform-stage-head .zoom-btn svg {
   width: 17px;
   height: 17px;
   fill: none;
@@ -1989,9 +1994,9 @@ html.theme-anim * {
   stroke-linecap: round;
 }
 
-.freeform-stage-head .zoom-btn:focus-visible,
-.freeform-stage-head .zoom-value:focus-visible,
-.freeform-add-page:focus-visible {
+.freeform-stage-pane .freeform-stage-head .zoom-btn:focus-visible,
+.freeform-stage-pane .freeform-stage-head .zoom-value:focus-visible,
+.freeform-rail .freeform-add-page:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -2226,9 +2231,14 @@ html.theme-anim * {
   transition: background 0.15s, border-color 0.15s;
 }
 
-.ghost:hover {
+.ghost:hover:not(:disabled) {
   background: var(--surface-2);
   border-color: var(--text-3);
+}
+
+.ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .primary {
@@ -2986,14 +2996,14 @@ html.theme-anim * {
   border-radius: var(--panel-radius);
 }
 
-[data-theme='dark'] .freeform-stage-box {
+[data-theme='dark'] .freeform-stage-pane .freeform-stage-box {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.34);
 }
 
 .app-header button:active:not(:disabled),
 .workspace-toolbar button:active:not(:disabled),
 .freeform-rail button:active:not(:disabled),
-.freeform-stage-head button:active:not(:disabled),
+.freeform-stage-pane .freeform-stage-head button:active:not(:disabled),
 .freeform-inspector button:active:not(:disabled) {
   transform: translateY(1px);
   box-shadow: inset 0 0 0 1px var(--line-2);
@@ -3013,7 +3023,7 @@ html.theme-anim * {
     grid-template-columns: 136px minmax(0, 1fr) 224px;
   }
 
-  .toolbar-collapsible-label {
+  .workspace-toolbar .toolbar-collapsible-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -3027,11 +3037,11 @@ html.theme-anim * {
   }
 
   .freeform-panel-head,
-  .freeform-stage-head {
+  .freeform-stage-pane .freeform-stage-head {
     padding-inline: 10px;
   }
 
-  .freeform-stage-scroll {
+  .freeform-stage-pane .freeform-stage-scroll {
     padding: 24px;
   }
 }
@@ -3044,5 +3054,10 @@ html.theme-anim * {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  html.theme-anim,
+  html.theme-anim * {
+    transition-duration: 0.01ms !important;
   }
 }

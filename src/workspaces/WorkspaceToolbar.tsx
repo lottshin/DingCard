@@ -11,9 +11,9 @@ export function WorkspaceToolbar({ testId, label, className, children }: Workspa
   const classes = ['workspace-toolbar', className].filter(Boolean).join(' ')
 
   return (
-    <header className={classes} data-testid={testId} aria-label={label}>
+    <div className={classes} data-testid={testId} role="toolbar" aria-label={label}>
       {children}
-    </header>
+    </div>
   )
 }
 

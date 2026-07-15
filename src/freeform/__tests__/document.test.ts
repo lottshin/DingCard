@@ -81,4 +81,17 @@ describe('freeform document', () => {
     expect(next.slides.find((slide) => slide.id === firstSlideId)?.height).toBe(1440)
     expect(next.slides.find((slide) => slide.id === secondSlideId)?.height).toBe(1920)
   })
+
+  it('keeps document identity when resizing a slide to its current size', () => {
+    const doc = createFreeformDocument()
+
+    const next = freeformReducer(doc, {
+      type: 'slide/resize',
+      slideId: doc.activeSlideId,
+      width: doc.slides[0].width,
+      height: doc.slides[0].height,
+    })
+
+    expect(next).toBe(doc)
+  })
 })

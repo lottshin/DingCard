@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
 import { pageSizePresets, validatePageSize } from './document'
+import { isFocusablePointerTarget } from './focusTarget'
 
 export interface FreeformPageSizePopoverProps {
   isActive: boolean
@@ -108,11 +109,7 @@ export function FreeformPageSizePopover({
     function closeOnOutsidePointer(event: PointerEvent) {
       const root = rootRef.current
       if (!root || root.contains(event.target as Node)) return
-      const nextFlyoutTrigger =
-        event.target instanceof Element
-          ? event.target.closest('[data-freeform-toolbar-flyout-trigger]')
-          : null
-      closePopover(nextFlyoutTrigger === null)
+      closePopover(!isFocusablePointerTarget(event.target))
     }
 
     function closeOnEscape(event: KeyboardEvent) {

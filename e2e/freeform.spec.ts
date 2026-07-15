@@ -35,6 +35,28 @@ async function samplePngPixel(
   )
 }
 
+async function pngPixelDigest(
+  page: import('@playwright/test').Page,
+  filePath: string,
+) {
+  const buffer = await readFile(filePath)
+  const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`
+  return page.evaluate(async (source) => {
+    const image = new Image()
+    image.src = source
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('no canvas context')
+    context.drawImage(image, 0, 0)
+    const pixels = context.getImageData(0, 0, image.width, image.height).data
+    const digest = await crypto.subtle.digest('SHA-256', pixels)
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  }, dataUrl)
+}
+
 function rgbDistance(a: number[], b: number[]) {
   return Math.sqrt(
     (a[0] - b[0]) ** 2 +
@@ -557,11 +579,46 @@ test('global header owns workspace tabs, theme, and account state', async ({ pag
   await expect(page.getByTestId('account-logout')).toBeVisible()
 })
 
+test('malformed account storage falls back to a logged-out app shell', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.setItem('slicer.users.v1', '{}')
+    localStorage.setItem('slicer.session.v1', 'broken-session')
+  })
+  await page.reload()
+
+  await expect(page.getByTestId('app-header')).toBeVisible()
+  await expect(page.getByTestId('account-login')).toBeVisible()
+  await expect(page.getByTestId('workspace-tab-markdown')).toHaveAttribute('aria-selected', 'true')
+})
+
+test('blocked browser storage keeps the app shell and theme toggle usable', async ({ page }) => {
+  await page.addInitScript(() => {
+    const blocked = () => {
+      throw new DOMException('storage blocked', 'SecurityError')
+    }
+    Storage.prototype.getItem = blocked
+    Storage.prototype.setItem = blocked
+    Storage.prototype.removeItem = blocked
+  })
+  await page.goto('/')
+
+  const html = page.locator('html')
+  await expect(page.getByTestId('app-header')).toBeVisible()
+  const initialTheme = await html.getAttribute('data-theme')
+  expect(initialTheme).toMatch(/^(light|dark)$/)
+
+  await page.getByTestId('theme-toggle').click()
+  await expect(html).toHaveAttribute('data-theme', initialTheme === 'light' ? 'dark' : 'light')
+  await expect(page.getByTestId('app-header')).toBeVisible()
+})
+
 test('only the active workspace contextual toolbar is exposed', async ({ page }) => {
   await page.goto('/')
 
   const markdownToolbar = page.getByTestId('markdown-toolbar')
   await expect(markdownToolbar).toBeVisible()
+  await expect(markdownToolbar).toHaveAttribute('role', 'toolbar')
   await expect(markdownToolbar).toHaveCSS('height', '50px')
   await expect(page.getByTestId('freeform-toolbar')).toBeHidden()
   await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
@@ -597,12 +654,14 @@ test('only the active workspace contextual toolbar is exposed', async ({ page })
   await expect(page.getByTestId('markdown-toolbar')).toBeHidden()
   const freeformToolbar = page.getByTestId('freeform-toolbar')
   await expect(freeformToolbar).toBeVisible()
+  await expect(freeformToolbar).toHaveAttribute('role', 'toolbar')
   await expect(freeformToolbar).toHaveCSS('height', '50px')
   await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
   await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
   await expect(page.getByTestId('insert-text')).toHaveCSS('height', '32px')
   await expect(page.getByTestId('insert-shape')).toHaveCSS('height', '32px')
   await expect(freeformToolbar.locator('.toolbar-primary')).toHaveCSS('height', '32px')
+  await expect(page.locator('.freeform-thumb.on')).toHaveAttribute('aria-current', 'page')
 })
 
 for (const viewport of [
@@ -659,7 +718,23 @@ test('dark mode keeps freeform chrome controls and popovers legible', async ({ p
   await expect(toolbar).not.toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)')
   const undoButton = toolbar.getByRole('button', { name: '撤销', exact: true })
   await expect(undoButton).toBeDisabled()
-  expect(Number(await undoButton.evaluate((button) => getComputedStyle(button).opacity))).toBeGreaterThanOrEqual(0.35)
+  const undoOpacity = Number(await undoButton.evaluate((button) => getComputedStyle(button).opacity))
+  expect(undoOpacity).toBeGreaterThanOrEqual(0.35)
+  expect(undoOpacity).toBeLessThan(1)
+  await expect(undoButton).toHaveCSS('cursor', 'not-allowed')
+
+  const deletePageButton = page.getByRole('button', { name: '删除页面', exact: true })
+  await expect(deletePageButton).toBeDisabled()
+  expect(
+    Number(await deletePageButton.evaluate((button) => getComputedStyle(button).opacity)),
+  ).toBeLessThan(1)
+  await expect(deletePageButton).toHaveCSS('cursor', 'not-allowed')
+
+  const pageNumberColors = await page.locator('.freeform-thumb-number').evaluate((element) => ({
+    foreground: getComputedStyle(element).color,
+    background: getComputedStyle(element.closest('.freeform-rail')!).backgroundColor,
+  }))
+  expect(contrastRatio(pageNumberColors.foreground, pageNumberColors.background)).toBeGreaterThanOrEqual(4.5)
 
   const emptyHintColors = await page.locator('.freeform-inspector .inspector-empty').evaluate((element) => ({
     foreground: getComputedStyle(element).color,
@@ -728,6 +803,24 @@ test('freeform chrome provides visible pressed feedback', async ({ page }) => {
   await page.keyboard.press('Escape')
 })
 
+test('reduced motion suppresses theme animation transitions', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+  await page.evaluate(() => document.documentElement.classList.add('theme-anim'))
+
+  const longestTransitionMs = await page.getByTestId('app-header').evaluate((element) => {
+    const toMilliseconds = (value: string) =>
+      value.endsWith('ms') ? Number.parseFloat(value) : Number.parseFloat(value) * 1000
+    return Math.max(
+      ...getComputedStyle(element)
+        .transitionDuration.split(',')
+        .map((value) => toMilliseconds(value.trim())),
+    )
+  })
+
+  expect(longestTransitionMs).toBeLessThanOrEqual(0.01)
+})
+
 test('keeps artwork chrome-free on a warm stage in light and dark themes', async ({ page }) => {
   await openFreeform(page)
   const html = page.locator('html')
@@ -754,28 +847,49 @@ test('keeps artwork chrome-free on a warm stage in light and dark themes', async
   }
 })
 
-test('freeform visual system keeps approved tokens and neutral stage rules', async () => {
-  const css = await readFile('src/styles.css', 'utf8')
-  for (const declaration of [
-    '--app-header-height: 52px',
-    '--workspace-toolbar-height: 50px',
-    '--control-height: 32px',
-    '--control-radius: 8px',
-    '--panel-radius: 10px',
-  ]) {
-    expect(css).toContain(declaration)
-  }
-  expect(css).toMatch(
-    /\.freeform-main\s*\{[^}]*grid-template-columns:\s*152px minmax\(0, 1fr\) 248px;[^}]*gap:\s*0;[^}]*padding:\s*0;[^}]*overflow:\s*hidden;/s,
-  )
-  expect(css).toMatch(
-    /@media\s*\(max-width:\s*1279px\)[\s\S]*?\.freeform-main\s*\{[^}]*grid-template-columns:\s*136px minmax\(0, 1fr\) 224px;/s,
-  )
-  const stageRule = css.match(/\.freeform-stage-scroll\s*\{([^}]*)\}/s)?.[1] ?? ''
-  expect(stageRule).not.toContain('radial-gradient')
-  expect(css).toMatch(/\.freeform-thumb\.on\s*\{[^}]*border:\s*2px solid var\(--accent\);/s)
-  expect(css).toContain('.toolbar-collapsible-label')
-  expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/)
+test('freeform visual system uses approved runtime tokens and neutral stage rules', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openFreeform(page)
+
+  const tokens = await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement)
+    return Object.fromEntries(
+      [
+        '--app-header-height',
+        '--workspace-toolbar-height',
+        '--control-height',
+        '--control-radius',
+        '--panel-radius',
+      ].map((name) => [name, style.getPropertyValue(name).trim()]),
+    )
+  })
+  expect(tokens).toEqual({
+    '--app-header-height': '52px',
+    '--workspace-toolbar-height': '50px',
+    '--control-height': '32px',
+    '--control-radius': '8px',
+    '--panel-radius': '10px',
+  })
+
+  const mainColumns = await page.locator('.freeform-main').evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      columns: style.gridTemplateColumns.split(' '),
+      gap: style.columnGap,
+      padding: style.padding,
+      overflowX: style.overflowX,
+    }
+  })
+  expect(mainColumns.columns.at(0)).toBe('152px')
+  expect(mainColumns.columns.at(-1)).toBe('248px')
+  expect(mainColumns.gap).toBe('0px')
+  expect(mainColumns.padding).toBe('0px')
+  expect(mainColumns.overflowX).toBe('hidden')
+  await expect(page.locator('.freeform-stage-scroll')).toHaveCSS('background-image', 'none')
+  await expect(page.locator('.freeform-thumb.on')).toHaveCSS('border-top-width', '2px')
+
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await expect(page.getByTestId('freeform-slide-meta')).toHaveCSS('clip-path', 'inset(50%)')
 })
 
 test('workspace tabs support arrow, Home, and End keyboard navigation', async ({ page }) => {
@@ -995,6 +1109,44 @@ test('switches insert menus without returning focus to the previous trigger', as
   await expect(shapeMenu).toBeHidden()
   await expect(lineMenu).toBeVisible()
   await expect(lineMenu.getByRole('menuitem', { name: '直线' })).toBeFocused()
+})
+
+test('keeps focus on an outside toolbar button when closing an insert menu', async ({ page }) => {
+  await openFreeform(page)
+
+  const shapeTrigger = page.getByTestId('insert-shape')
+  const textButton = page.getByTestId('insert-text')
+  const shapeMenu = page.getByRole('menu', { name: '形状' })
+
+  await shapeTrigger.click()
+  await expect(shapeMenu).toBeVisible()
+  await textButton.click()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+
+  await expect(shapeMenu).toBeHidden()
+  await expect(textButton).toBeFocused()
+  await expect(page.getByTestId('freeform-textbox')).toHaveCount(1)
+})
+
+test('keeps focus on an outside toolbar button when closing the page size popover', async ({ page }) => {
+  await openFreeform(page)
+
+  const pageSizeTrigger = page.getByTestId('page-size-trigger')
+  const pageSizePopover = page.getByTestId('page-size-popover')
+  const textButton = page.getByTestId('insert-text')
+
+  await pageSizeTrigger.click()
+  await expect(pageSizePopover).toBeVisible()
+  await textButton.click()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+
+  await expect(pageSizePopover).toBeHidden()
+  await expect(textButton).toBeFocused()
+  await expect(page.getByTestId('freeform-textbox')).toHaveCount(1)
 })
 
 test('hands focus from the page size popover to an insert menu', async ({ page }) => {
@@ -1393,14 +1545,21 @@ function extractCssSelectors(css: string) {
 }
 
 function findUnscopedWorkspaceChromeSelectors(css: string) {
+  const chromeMarkers = [
+    '.page-size-',
+    '.freeform-insert-',
+    '.freeform-add-page',
+    '.freeform-thumb-caption',
+    '.freeform-thumb-number',
+    '.freeform-stage-head',
+    '.freeform-stage-box',
+    '.toolbar-collapsible-label',
+  ]
   return extractCssSelectors(css)
-    .filter(
-      (selector) =>
-        selector.includes('.page-size-') || selector.includes('.freeform-insert-'),
-    )
+    .filter((selector) => chromeMarkers.some((marker) => selector.includes(marker)))
     .filter((selector) => {
       const withoutThemePrefix = selector.replace(/^\[data-theme=['"]dark['"]\]\s+/, '')
-      return !/^(?:\.workspace-toolbar|\.freeform-toolbar)(?:\s|$)/.test(withoutThemePrefix)
+      return !/^(?:\.app-header|\.workspace-toolbar|\.freeform-toolbar|\.freeform-rail|\.freeform-stage-pane|\.freeform-inspector)(?:\s|$)/.test(withoutThemePrefix)
     })
 }
 
@@ -1409,14 +1568,23 @@ test('workspace chrome selectors stay scoped to workspace toolbar', async () => 
     @media (max-width: 1100px) {
       .page-size-trigger { color: red; }
       .freeform-insert-trigger { color: red; }
+      .freeform-add-page { color: red; }
+      .freeform-stage-head .zoom-btn { color: red; }
+      .toolbar-collapsible-label { color: red; }
     }
     .page-size-trigger .workspace-toolbar { color: red; }
     .freeform-insert-menu .freeform-toolbar { color: red; }
     .workspace-toolbar .page-size-trigger { content: ".page-size-declaration"; }
     .freeform-toolbar .freeform-insert-trigger { content: ".freeform-insert-declaration"; }
+    .freeform-rail .freeform-add-page { color: green; }
+    .freeform-stage-pane .freeform-stage-head { color: green; }
+    .workspace-toolbar .toolbar-collapsible-label { color: green; }
   `)).toEqual([
     '.page-size-trigger',
     '.freeform-insert-trigger',
+    '.freeform-add-page',
+    '.freeform-stage-head .zoom-btn',
+    '.toolbar-collapsible-label',
     '.page-size-trigger .workspace-toolbar',
     '.freeform-insert-menu .freeform-toolbar',
   ])
@@ -1532,6 +1700,39 @@ test('edits preset and custom page sizes from the toolbar popover', async ({ pag
   await expect(slideSize).toContainText('9:16 · 1080×1920px')
 })
 
+test('reapplying the current page size preserves history and saved state', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+
+  const toolbar = page.getByTestId('freeform-toolbar')
+  const slideMeta = page.getByTestId('freeform-slide-meta')
+  await expect(toolbar.locator('button:disabled')).toHaveCount(2)
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await registerUser(page, `same-size-${Date.now()}`)
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(slideMeta).toContainText('已保存')
+  await expect(toolbar.locator('button:disabled')).toHaveCount(2)
+
+  await page.getByTestId('page-size-trigger').click()
+  await page.getByTestId('page-size-popover').getByRole('button', { name: '3:4', exact: true }).click()
+
+  await expect(page.getByTestId('page-size-popover')).toBeHidden()
+  await expect(slideMeta).toContainText('已保存')
+  await expect(toolbar.locator('button:disabled')).toHaveCount(2)
+
+  await page.getByTestId('page-size-trigger').click()
+  await page.getByLabel('宽度 px').fill('1080')
+  await page.getByLabel('高度 px').fill('1440')
+  await page.getByRole('button', { name: '应用尺寸', exact: true }).click()
+
+  await expect(page.getByTestId('page-size-popover')).toBeHidden()
+  await expect(slideMeta).toContainText('已保存')
+  await expect(toolbar.locator('button:disabled')).toHaveCount(2)
+})
+
 test('sets custom page size and new pages inherit it', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
@@ -1615,6 +1816,49 @@ test('exports current freeform slide with gradient pixels and without editor ui'
   })
   const resizeHandleProbe = await samplePngPixel(page, path!, 203, 203)
   expect(rgbDistance(resizeHandleProbe, accentRgb)).toBeGreaterThan(30)
+})
+
+test('exports identical artwork pixels in light and dark app themes', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
+  await insertText(page)
+  await setSelectedElementBox(page, 80, 80, 320, 120)
+  await page.locator('.freeform-inspector-text').fill('Theme isolation 主题')
+  await insertShape(page)
+  await setSelectedElementBox(page, 430, 240, 220, 180)
+  await insertLine(page, '直线')
+  await setSelectedElementBox(page, 180, 600, 480, 80)
+  await expect(page.getByTestId('freeform-element')).toHaveCount(3)
+
+  async function downloadCurrent() {
+    const exportButton = page.getByTestId('freeform-primary-export')
+    await expect(exportButton).toBeEnabled()
+    const downloadPromise = page.waitForEvent('download')
+    await exportButton.click()
+    const download = await downloadPromise
+    const path = await download.path()
+    if (!path) throw new Error('missing downloaded PNG path')
+    await expect(exportButton).toBeEnabled()
+    return path
+  }
+
+  const lightPath = await downloadCurrent()
+  await page.getByTestId('theme-toggle').click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.locator('html')).not.toHaveClass(/theme-anim/)
+  const darkPath = await downloadCurrent()
+
+  expect(readPngSize(await readFile(lightPath))).toEqual(readPngSize(await readFile(darkPath)))
+  expect(await pngPixelDigest(page, lightPath)).toBe(await pngPixelDigest(page, darkPath))
+  for (const [x, y] of [[10, 10], [540, 720], [1000, 1300]]) {
+    expect(await samplePngPixel(page, lightPath, x, y)).toEqual(
+      await samplePngPixel(page, darkPath, x, y),
+    )
+  }
 })
 
 test('saves and restores a freeform draft', async ({ page }) => {

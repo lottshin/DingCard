@@ -23,9 +23,24 @@ interface StoredUser extends User {
   pwHash: string
 }
 
+function isStoredUser(value: unknown): value is StoredUser {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<StoredUser>
+  return (
+    typeof candidate.id === 'string' &&
+    candidate.id.length > 0 &&
+    typeof candidate.username === 'string' &&
+    candidate.username.length > 0 &&
+    typeof candidate.createdAt === 'number' &&
+    Number.isFinite(candidate.createdAt) &&
+    typeof candidate.pwHash === 'string'
+  )
+}
+
 function loadUsers(): StoredUser[] {
   try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) ?? '[]')
+    const value: unknown = JSON.parse(localStorage.getItem(USERS_KEY) ?? '[]')
+    return Array.isArray(value) ? value.filter(isStoredUser) : []
   } catch {
     return []
   }
@@ -88,8 +103,12 @@ export function logout() {
 
 /** The currently signed-in user, or null. Reads synchronously from storage. */
 export function current(): User | null {
-  const id = localStorage.getItem(SESSION_KEY)
-  if (!id) return null
-  const user = loadUsers().find((u) => u.id === id)
-  return user ? publicUser(user) : null
+  try {
+    const id = localStorage.getItem(SESSION_KEY)
+    if (!id) return null
+    const user = loadUsers().find((u) => u.id === id)
+    return user ? publicUser(user) : null
+  } catch {
+    return null
+  }
 }

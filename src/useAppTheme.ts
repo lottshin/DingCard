@@ -13,10 +13,15 @@ const KEY = 'slicer.mode.v1'
 let animTimer = 0
 
 function initialMode(): Mode {
-  const saved = localStorage.getItem(KEY)
-  if (saved === 'light' || saved === 'dark') return saved
-  // Fall back to the OS preference on first run.
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  try {
+    const saved = localStorage.getItem(KEY)
+    if (saved === 'light' || saved === 'dark') return saved
+    // Fall back to the OS preference on first run.
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  } catch {
+    // Match the inline boot script: blocked storage must still render safely.
+    return 'light'
+  }
 }
 
 /** Returns `[mode, toggle]` — a tuple so callers destructure positionally. */
@@ -29,7 +34,11 @@ export function useAppTheme(): [Mode, () => void] {
     // Keep the UA canvas / scrollbars in step with the theme so toggling
     // doesn't flash. Mirrors the inline boot script in index.html.
     root.style.colorScheme = mode
-    localStorage.setItem(KEY, mode)
+    try {
+      localStorage.setItem(KEY, mode)
+    } catch {
+      // Theme persistence is optional; the live UI remains fully usable.
+    }
   }, [mode])
 
   const toggle = () => {

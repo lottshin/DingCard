@@ -473,6 +473,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function applySlideSize(width: number, height: number) {
+    if (activeSlide.width === width && activeSlide.height === height) return
     applyAction({ type: 'slide/resize', slideId: activeSlide.id, width, height })
   }
 
@@ -980,6 +981,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 key={slide.id}
                 type="button"
                 className={slide.id === activeSlide.id ? 'freeform-thumb on' : 'freeform-thumb'}
+                aria-current={slide.id === activeSlide.id ? 'page' : undefined}
                 onClick={() => selectSlide(slide.id)}
               >
                 <span
