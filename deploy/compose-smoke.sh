@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# 全栈冒烟:起 compose 全套(前端 Nginx + 后端 + 卷),在栈活着时一次性验证
+# 首页 / API 反代 / 图片上传+经 Nginx 直出(跨容器共享卷),最后无条件清理。
+#
+# 用完整链路证明部署可用。不留残留:EXIT 陷阱保证任何情况下都 down -v。
+#
+# 用法: bash deploy/compose-smoke.sh
+set -u
+
+PROJECT=dinka-smoke
+WEB_PORT=8093
+ENV_FILE="$(mktemp)"
+FAIL=0
+
+# 临时测试用环境(密钥仅用于本次冒烟,不落仓库)。
+cat >"$ENV_FILE" <<'EOF'
+JWT_SECRET=compose-smoke-secret-not-for-prod
+EOF
+
+cleanup() {
+  echo "=== 清理 ==="
+  docker compose -p "$PROJECT" --env-file "$ENV_FILE" down -v --remove-orphans >/dev/null 2>&1
+  rm -f "$ENV_FILE" /tmp/dinka-smoke-*.png 2>/dev/null
+  echo "已清理"
+}
+trap cleanup EXIT
+
+pass() { echo "  ✓ $1"; }
+fail() { echo "  ✗ $1  <-- $2"; FAIL=1; }
+
+echo "=== build + up ==="
+WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" up -d --build 2>&1 | tail -4
+
+echo "=== 等后端 healthy ==="
+for i in $(seq 1 30); do
+  h=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT}-server-1" 2>/dev/null || echo none)
+  echo "  $i: $h"
+  [ "$h" = healthy ] && break
+  sleep 1
+done
+
+base="http://127.0.0.1:${WEB_PORT}"
+
+# 1) 首页经 Nginx
+body=$(curl -s "$base/")
+echo "$body" | grep -q '<div id="root">' && pass "首页经 Nginx 出 (root div)" || fail "首页" "$body"
+
+# 2) 注册经 /api 反代
+reg=$(curl -s -X POST "$base/api/auth/register" -H 'content-type: application/json' \
+  -d '{"username":"smoke","password":"1234"}')
+token=$(printf '%s' "$reg" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).token||'')}catch{console.log('')}})")
+[ -n "$token" ] && pass "注册经 /api 反代拿到 token" || fail "注册" "$reg"
+
+# 3) 上传图片经 web->server,写入 uploads 卷
+node -e "require('fs').writeFileSync('/tmp/dinka-smoke-1.png',Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64'))"
+up=$(curl -s -X POST "$base/api/images" -H "authorization: Bearer $token" \
+  -F "file=@/tmp/dinka-smoke-1.png;type=image/png")
+imgurl=$(printf '%s' "$up" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).url||'')}catch{console.log('')}})")
+[ -n "$imgurl" ] && pass "上传经 /api 反代 (url=$imgurl)" || fail "上传" "$up"
+
+# 4) 关键:后端写的图片,Nginx 能否经只读共享卷直出
+if [ -n "$imgurl" ]; then
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$base$imgurl")
+  [ "$code" = 200 ] && pass "图片经 Nginx 直出 (跨容器共享卷 200)" || fail "图片直出" "HTTP $code"
+fi
+
+# 诊断信息(无论成败都抓,栈此刻还活着)
+echo "=== 后端 maxUploadBytes 实际值 ==="
+docker exec "${PROJECT}-server-1" node -e "import('./src/config.js').then(m=>console.log(m.config.maxUploadBytes))" 2>&1 | tail -1
+
+echo "=== 后端日志尾部 ==="
+docker logs "${PROJECT}-server-1" 2>&1 | tail -6
+
+echo ""
+[ "$FAIL" = 0 ] && echo "ALL PASSED" || echo "SOME FAILED"
+exit $FAIL
