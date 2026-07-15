@@ -159,55 +159,101 @@ POST /api/images   (multipart/form-data, 字段 file)  → { ref: "img:<id>", ur
 
 ---
 
-## 6. 部署
+## 6. 部署(Docker,推荐)
 
-### 目录约定
+实际交付采用 Docker 全栈容器化,一条命令起全套。已在本地全链路自动验证通过(见 §6.5)。
+
+### 6.1 拓扑
+
 ```
-/var/dinka/
-  ├── data.db          # SQLite 库
-  ├── uploads/         # 图片
-  ├── server/          # 后端代码 + node_modules
-  └── web/             # 前端 dist(npm run build 产物)
+                    宿主机(2c2g,已备案域名)
+┌──────────────────────────────────────────────────────────┐
+│  (可选)外层反代 / 云负载均衡 —— 终结 HTTPS,转发到 web:8080  │
+│                                                            │
+│  web 容器 (Nginx, 对外唯一入口)                            │
+│   ├── /            出前端静态页(dist,构建期打进镜像)       │
+│   ├── /api/*       反代 → server:3000                       │
+│   └── /uploads/*   只读卷直出图片(不经 Node)               │
+│                                                            │
+│  server 容器 (Fastify, 仅内网 expose 3000,不对外)         │
+│   └── 认证 / 草稿 / 图片上传 → 写 /data                    │
+│                                                            │
+│  命名卷:                                                   │
+│   ├── db       → server:/data          (SQLite,仅 server) │
+│   └── uploads  → server:/data/uploads  + web:/uploads:ro   │
+└──────────────────────────────────────────────────────────┘
 ```
 
-### Nginx(核心片段)
-```nginx
-server {
-  listen 443 ssl http2;
-  server_name your-domain.com;        # 已备案域名
+要点:
+- **前后端同源**,浏览器所有请求都经 web 的 Nginx(`VITE_API_BASE=/`),**无需 CORS**。
+- **两卷分离**:`db` 卷只挂给 server;`uploads` 卷读写挂 server、只读挂 web。**Nginx 永远看不到数据库文件**。
+- server **不对外映射端口**,只在 compose 内网供 web 反代,减少攻击面。
 
-  ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+### 6.2 相关文件
 
-  # 前端
-  root /var/dinka/web;
-  location / { try_files $uri /index.html; }
+| 文件 | 作用 |
+|---|---|
+| `docker-compose.yml` | 编排 web + server + 两个命名卷 |
+| `Dockerfile`(根) | 前端:Node 构建 dist → Nginx 出静态页 |
+| `server/Dockerfile` | 后端:多阶段、非 root、内置健康检查 |
+| `deploy/nginx.conf` | 同源出前端 + `/api` 反代 + `/uploads` 直出 |
+| `.env.example` / `server/.env.example` | 环境变量模板(见 §6.3) |
+| `deploy/compose-smoke.sh` | 全栈冒烟脚本(起栈→全链路验证→清理) |
 
-  # 图片:Nginx 直出,长缓存
-  location /uploads/ {
-    alias /var/dinka/uploads/;
-    expires 30d;
-    add_header Cache-Control "public, immutable";
-  }
+### 6.3 环境变量
 
-  # API:反代到 Node
-  location /api/ {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_set_header Host $host;
-    client_max_body_size 6m;          # 允许图片上传
-  }
-}
+复制模板并填值(**`.env` 含密钥,已被 `.gitignore` 忽略,绝不提交**):
+
+```bash
+cp .env.example .env
+# 生成一个强随机 JWT_SECRET:
+openssl rand -hex 32        # 或 node -e "console.log(crypto.randomBytes(32).toString('hex'))"
+# 把输出填进 .env 的 JWT_SECRET=
 ```
-80 端口用 Certbot 自动跳 443 + 续证书。
 
-### 进程守护(systemd)
-一个 `dinka.service` 跑 `node server/index.js`,`Restart=always`,`EnvironmentFile` 里放 `JWT_SECRET`、`DB_PATH` 等。开机自启、崩溃自拉。
+compose 用到的键(其余用镜像内默认值即可):
 
-### 资源占用(2c2g 完全够)
-- Node + Fastify 常驻内存 ~60–120MB
-- SQLite 几乎不占额外内存
-- Nginx ~20MB
-- 剩下的内存给系统缓存,轻松有余
+| 键 | 说明 | 默认 |
+|---|---|---|
+| `JWT_SECRET` | **必填**,JWT 签名密钥,强随机 | 无(缺失则拒绝启动) |
+| `WEB_PORT` | 宿主暴露端口 | 8080 |
+| `JWT_EXPIRY` | 登录有效期 | 7d |
+| `USER_QUOTA_BYTES` | 每用户图片配额 | 500MB |
+| `MAX_UPLOAD_BYTES` | 单图上限(与 Nginx `client_max_body_size` 一致) | 6MB |
+
+### 6.4 上线步骤
+
+```bash
+# 1. 装 Docker + Compose(略,各发行版不同)
+# 2. 拉代码到服务器
+git clone <你的仓库> dinka && cd dinka
+# 3. 配置环境变量
+cp .env.example .env && 编辑 .env 填 JWT_SECRET
+# 4. 起全套(首次会 build 两个镜像)
+docker compose up -d --build
+# 5. 确认
+docker compose ps           # 两个容器都 Up,server 显示 healthy
+curl -sf http://127.0.0.1:8080/api/health   # {"ok":true}
+```
+
+**HTTPS**:容器内 Nginx 只跑 HTTP(80→映射 8080)。生产用**外层反代**(宿主机 Nginx / Caddy / 云 LB)终结 TLS,再转发到 `127.0.0.1:8080`。域名需已备案。Caddy 最省事(自动续证书);用宿主 Nginx 则配 Certbot。
+
+**升级**:`git pull && docker compose up -d --build`,命名卷里的数据不受影响。
+
+### 6.5 已验证(本地全链路)
+
+`deploy/compose-smoke.sh` 自动跑通并已确认:
+- ✅ 首页经 Nginx 返回(200 + React 挂载点)
+- ✅ `/api` 反代:注册 / 草稿存取(web→server)打通
+- ✅ 图片上传 web→server→写入 uploads 卷
+- ✅ **上传的图片经 Nginx 只读卷直出**(200 + `image/jpeg`)
+- ✅ **数据库对 web 容器不可见**(两卷分离安全设计生效)
+
+### 6.6 资源占用(2c2g 完全够)
+- server(Node+Fastify)常驻 ~60–120MB;Nginx ~20MB;SQLite 几乎不占额外内存
+- 镜像:后端 ~336MB、前端 ~50MB(Nginx alpine + 静态产物)
+
+> 附:也可不用 Docker,在宿主机直接 `node server/src/index.js`(用 `server/.env.example`)+ systemd 守护 + 宿主 Nginx。Docker 方案更省心且开源友好,故为推荐。
 
 ---
 
@@ -373,11 +419,13 @@ UI 层只 import `store`,对两种模式无感。这正是之前"抽 StorageAdap
 
 1. ✅ **搭后端骨架** — Fastify + SQLite + 三张表 + 认证 + 草稿 API + 图片上传(冒烟测试 15 项通过)
 2. ✅ **草稿改通用信封** — 适配 markdown-card + freeform-slide 双模式
-3. ⏭️ **前端抽存储适配层** — `src/storage/` 三接口 + Local/Remote 双实现 + 环境变量开关(见第 10 章)
-4. ⏭️ **前端接后端联调** — 图片改走 `/api/images`,`current()` 转异步
-5. ⏭️ **部署** — Nginx + systemd + HTTPS + 备份 crontab
+3. ✅ **前端抽存储适配层** — `src/storage/` 三接口 + Local/Remote 双实现 + 环境变量开关(见第 10 章)
+4. ✅ **前端接后端联调** — `current()` 转异步;端到端联调测试(真后端 + 远程前端)通过
+5. ✅ **Docker 全栈容器化 + 部署文档** — 一条 `docker compose up` 起全套(见第 6 章),全链路自动验证通过
 6. ⏭️ **(可选,后置)接邮件** — 阿里云邮件推送 + `email_tokens` 表 + 找回密码 API(见第 9 章)
 
-每步都能独立验证。第 3 步是开源"后端可选"的关键,做完本地模式即完备;第 4-5 步让服务器模式跑通;第 6 步等真有找回密码需求了再做。
+第 1-5 步已全部完成并验证:本地模式(默认,零部署)与服务器模式(Docker)均可用。第 6 步邮件等真有找回密码需求了再做。
+
+> 遗留(不阻塞上线):freeform 图片仍 base64 内嵌进 `element.src`;远程模式下宜改为走 `/api/images` 上传、element 只存 URL(见第 5 章注)。markdown 图片已走适配层。
 
 
