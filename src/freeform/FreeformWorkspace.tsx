@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toBlob } from 'html-to-image'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
@@ -55,6 +55,17 @@ import type {
   ShapeFill,
   SlideBackground,
 } from './types'
+import {
+  DEFAULT_ZOOM_PERCENT,
+  MAX_ZOOM_PERCENT,
+  MIN_ZOOM_PERCENT,
+  ZOOM_STEP,
+  calculateFitScale,
+  calculateRenderScale,
+  clampZoomPercent,
+} from './viewportScale'
+
+const FIT_SCALE_EPSILON = 0.0001
 
 const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
   { id: 'rect', label: '矩形' },
@@ -100,6 +111,11 @@ function blurActiveTypingTarget() {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
+}
+
+function cssPixels(value: string): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -168,7 +184,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const selectedElementIds = useRef<string[]>([])
   const [selection, setSelection] = useState<string[]>([])
   const [clipboard, setClipboard] = useState<FreeformElement[]>([])
-  const [previewScale, setPreviewScale] = useState(0.5)
+  const [zoomPercent, setZoomPercent] = useState(DEFAULT_ZOOM_PERCENT)
+  const [fitScale, setFitScale] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
@@ -178,7 +195,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
+  const renderScale = calculateRenderScale(fitScale, zoomPercent)
 
+  const stageScrollRef = useRef<HTMLDivElement>(null)
   const artboardRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
@@ -210,6 +229,43 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const refreshDrafts = useCallback(() => {
     setDrafts(user ? listDrafts(user.id) : [])
   }, [user])
+
+  const measureFitScale = useCallback(() => {
+    const stage = stageScrollRef.current
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    const style = getComputedStyle(stage)
+    const contentWidth = rect.width
+      - cssPixels(style.borderLeftWidth)
+      - cssPixels(style.borderRightWidth)
+      - cssPixels(style.paddingLeft)
+      - cssPixels(style.paddingRight)
+    const contentHeight = rect.height
+      - cssPixels(style.borderTopWidth)
+      - cssPixels(style.borderBottomWidth)
+      - cssPixels(style.paddingTop)
+      - cssPixels(style.paddingBottom)
+    const next = calculateFitScale(
+      contentWidth,
+      contentHeight,
+      activeSlide.width,
+      activeSlide.height,
+    )
+    if (next === null) return
+    setFitScale((current) =>
+      current !== null && Math.abs(current - next) < FIT_SCALE_EPSILON ? current : next,
+    )
+  }, [activeSlide.height, activeSlide.width])
+
+  useLayoutEffect(() => {
+    if (!isActive) return
+    measureFitScale()
+    const stage = stageScrollRef.current
+    if (!stage) return
+    const observer = new ResizeObserver(() => measureFitScale())
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [isActive, measureFitScale])
 
   useEffect(() => {
     const nextUserId = user?.id ?? null
@@ -576,6 +632,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   })
 
   function onElementPointerDown(event: React.PointerEvent, element: FreeformElement) {
+    if (renderScale === null) return
+    const interactionScale = renderScale
     if (event.shiftKey) {
       event.preventDefault()
       event.stopPropagation()
@@ -604,8 +662,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const startY = event.clientY
 
     const onMove = (moveEvent: PointerEvent) => {
-      const rawDx = Math.round((moveEvent.clientX - startX) / previewScale)
-      const rawDy = Math.round((moveEvent.clientY - startY) / previewScale)
+      const rawDx = Math.round((moveEvent.clientX - startX) / interactionScale)
+      const rawDy = Math.round((moveEvent.clientY - startY) / interactionScale)
       const snap = snapDrag(activeSlide, startElements, draggingIds, rawDx, rawDy)
       const patches = moveElementsWithinSlide(activeSlide, startElements, draggingIds, snap.dx, snap.dy)
       setSnapLines(snap.lines)
@@ -652,11 +710,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function artboardPointFromClient(clientX: number, clientY: number) {
     const artboard = artboardRef.current
-    if (!artboard) return null
+    if (!artboard || renderScale === null) return null
     const bounds = artboard.getBoundingClientRect()
     return {
-      x: Math.round(clamp((clientX - bounds.left) / previewScale, 0, activeSlide.width)),
-      y: Math.round(clamp((clientY - bounds.top) / previewScale, 0, activeSlide.height)),
+      x: Math.round(clamp((clientX - bounds.left) / renderScale, 0, activeSlide.width)),
+      y: Math.round(clamp((clientY - bounds.top) / renderScale, 0, activeSlide.height)),
     }
   }
 
@@ -710,6 +768,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function onResizePointerDown(event: React.PointerEvent, element: FreeformElement) {
+    if (renderScale === null) return
+    const interactionScale = renderScale
     event.preventDefault()
     event.stopPropagation()
     setSelection([element.id])
@@ -721,8 +781,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const startH = element.height
 
     const onMove = (moveEvent: PointerEvent) => {
-      const dx = (moveEvent.clientX - startX) / previewScale
-      const dy = (moveEvent.clientY - startY) / previewScale
+      const dx = (moveEvent.clientX - startX) / interactionScale
+      const dy = (moveEvent.clientY - startY) / interactionScale
       const width = Math.round(clamp(startW + dx, 40, activeSlide.width - element.x))
       const height = Math.round(clamp(startH + dy, 40, activeSlide.height - element.y))
       replaceCurrent({
@@ -768,6 +828,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   async function exportCurrentSlide() {
+    if (renderScale === null) return
     setExporting(true)
     try {
       setSelection([])
@@ -787,7 +848,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   async function exportAllSlides() {
-    if (doc.slides.length === 0) return
+    if (doc.slides.length === 0 || renderScale === null) return
     setExporting(true)
     setExportProgress(null)
     const originalSlideId = activeSlide.id
@@ -815,6 +876,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function requestExportAllSlides() {
+    if (renderScale === null) return
     if (hasMixedSlideSizes(doc.slides)) {
       setShowMixedSizeWarning(true)
       return
@@ -823,6 +885,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function continueMixedSizeExport() {
+    if (renderScale === null) return
     setShowMixedSizeWarning(false)
     void exportAllSlides()
   }
@@ -944,7 +1007,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           >
             草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
           </button>
-          <button className="bar-btn" type="button" onClick={requestExportAllSlides} disabled={exporting}>
+          <button
+            className="bar-btn"
+            type="button"
+            onClick={requestExportAllSlides}
+            disabled={exporting || renderScale === null}
+          >
             {exportProgress ? `导出 ${exportProgress.current}/${exportProgress.total}` : '打包导出'}
           </button>
           <button
@@ -952,7 +1020,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             type="button"
             data-testid="freeform-primary-export"
             onClick={exportCurrentSlide}
-            disabled={exporting}
+            disabled={exporting || renderScale === null}
           >
             {exporting ? '导出中…' : '导出当前页'}
           </button>
@@ -1016,21 +1084,28 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 type="button"
                 aria-label="缩小画布"
                 title="缩小画布"
-                onClick={() => setPreviewScale((scale) => Math.max(0.2, Number((scale - 0.1).toFixed(2))))}
+                disabled={zoomPercent <= MIN_ZOOM_PERCENT}
+                onClick={() => setZoomPercent((value) => clampZoomPercent(value - ZOOM_STEP))}
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M4 10h12" />
                 </svg>
               </button>
-              <button className="zoom-value" type="button" onClick={() => setPreviewScale(0.5)}>
-                {Math.round(previewScale * 100)}%
+              <button
+                className="zoom-value"
+                type="button"
+                title="适应画布（恢复 100%）"
+                onClick={() => setZoomPercent(DEFAULT_ZOOM_PERCENT)}
+              >
+                {zoomPercent}%
               </button>
               <button
                 className="zoom-btn"
                 type="button"
                 aria-label="放大画布"
                 title="放大画布"
-                onClick={() => setPreviewScale((scale) => Math.min(1.2, Number((scale + 0.1).toFixed(2))))}
+                disabled={zoomPercent >= MAX_ZOOM_PERCENT}
+                onClick={() => setZoomPercent((value) => clampZoomPercent(value + ZOOM_STEP))}
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M10 4v12M4 10h12" />
@@ -1039,87 +1114,93 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             </div>
           </div>
 
-          <div className="freeform-stage-scroll">
-            <div
-              className="freeform-stage-box"
-              style={{
-                width: activeSlide.width * previewScale,
-                height: activeSlide.height * previewScale,
-              }}
-            >
+          <div
+            ref={stageScrollRef}
+            className="freeform-stage-scroll"
+            aria-busy={renderScale === null}
+          >
+            {renderScale !== null && (
               <div
-                ref={artboardRef}
-                className="freeform-artboard"
-                data-testid="freeform-canvas"
-                onPointerDown={onArtboardPointerDown}
+                className="freeform-stage-box"
                 style={{
-                  width: activeSlide.width,
-                  height: activeSlide.height,
-                  transform: `scale(${previewScale})`,
-                  background: slideBackgroundToCss(activeSlide.background),
+                  width: activeSlide.width * renderScale,
+                  height: activeSlide.height * renderScale,
                 }}
               >
-                {activeSlide.elements.map((element) => (
-                  <div
-                    key={element.id}
-                    className={selection.includes(element.id) ? 'freeform-element selected' : 'freeform-element'}
-                    data-testid="freeform-element"
-                    data-selected={selection.includes(element.id) ? 'true' : 'false'}
-                    onPointerDown={(event) => onElementPointerDown(event, element)}
-                    style={{
-                      left: element.x,
-                      top: element.y,
-                      width: element.width,
-                      height: element.height,
-                      transform: `rotate(${element.rotation}deg)`,
-                    }}
-                  >
-                    <FreeformElementContent
-                      element={element}
-                      onTextChange={(text) => updateElement(element.id, { text })}
-                      onTextFocus={() => setSelection([element.id])}
+                <div
+                  ref={artboardRef}
+                  className="freeform-artboard"
+                  data-testid="freeform-canvas"
+                  onPointerDown={onArtboardPointerDown}
+                  style={{
+                    width: activeSlide.width,
+                    height: activeSlide.height,
+                    transform: `scale(${renderScale})`,
+                    background: slideBackgroundToCss(activeSlide.background),
+                  }}
+                >
+                  {activeSlide.elements.map((element) => (
+                    <div
+                      key={element.id}
+                      className={selection.includes(element.id) ? 'freeform-element selected' : 'freeform-element'}
+                      data-testid="freeform-element"
+                      data-selected={selection.includes(element.id) ? 'true' : 'false'}
+                      onPointerDown={(event) => onElementPointerDown(event, element)}
+                      style={{
+                        left: element.x,
+                        top: element.y,
+                        width: element.width,
+                        height: element.height,
+                        transform: `rotate(${element.rotation}deg)`,
+                      }}
+                    >
+                      <FreeformElementContent
+                        element={element}
+                        onTextChange={(text) => updateElement(element.id, { text })}
+                        onTextFocus={() => setSelection([element.id])}
+                      />
+                      {selection.includes(element.id) && (
+                        <>
+                          <span className="freeform-ui-only element-outline" />
+                          <button
+                            className="freeform-ui-only element-drag"
+                            type="button"
+                            aria-label="移动对象"
+                            title="拖拽移动"
+                            onPointerDown={(event) => onElementPointerDown(event, element)}
+                          />
+                          <button
+                            className="freeform-ui-only element-resize"
+                            type="button"
+                            aria-label="调整大小"
+                            onPointerDown={(event) => onResizePointerDown(event, element)}
+                          />
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  {marqueeRect && (
+                    <div
+                      className="freeform-ui-only freeform-marquee"
+                      style={{
+                        left: Math.min(marqueeRect.x, marqueeRect.x + marqueeRect.width),
+                        top: Math.min(marqueeRect.y, marqueeRect.y + marqueeRect.height),
+                        width: Math.abs(marqueeRect.width),
+                        height: Math.abs(marqueeRect.height),
+                      }}
                     />
-                    {selection.includes(element.id) && (
-                      <>
-                        <span className="freeform-ui-only element-outline" />
-                        <button
-                          className="freeform-ui-only element-drag"
-                          type="button"
-                          aria-label="移动对象"
-                          title="拖拽移动"
-                          onPointerDown={(event) => onElementPointerDown(event, element)}
-                        />
-                        <button
-                          className="freeform-ui-only element-resize"
-                          type="button"
-                          aria-label="调整大小"
-                          onPointerDown={(event) => onResizePointerDown(event, element)}
-                        />
-                      </>
-                    )}
-                  </div>
-                ))}
-                {marqueeRect && (
-                  <div
-                    className="freeform-ui-only freeform-marquee"
-                    style={{
-                      left: Math.min(marqueeRect.x, marqueeRect.x + marqueeRect.width),
-                      top: Math.min(marqueeRect.y, marqueeRect.y + marqueeRect.height),
-                      width: Math.abs(marqueeRect.width),
-                      height: Math.abs(marqueeRect.height),
-                    }}
-                  />
-                )}
-                {snapLines.map((line) => (
-                  <div
-                    key={`${line.axis}-${line.position}-${line.source}`}
-                    className={`freeform-ui-only freeform-snap-line freeform-snap-line-${line.axis}`}
-                    data-testid="freeform-snap-line"
-                    style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
-                  />
-                ))}
+                  )}
+                  {snapLines.map((line) => (
+                    <div
+                      key={`${line.axis}-${line.position}-${line.source}`}
+                      className={`freeform-ui-only freeform-snap-line freeform-snap-line-${line.axis}`}
+                      data-testid="freeform-snap-line"
+                      style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </section>
 
@@ -1504,7 +1585,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 <button type="button" className="ghost" onClick={() => setShowMixedSizeWarning(false)}>
                   取消
                 </button>
-                <button type="button" className="accent" onClick={continueMixedSizeExport}>
+                <button
+                  type="button"
+                  className="accent"
+                  onClick={continueMixedSizeExport}
+                  disabled={renderScale === null}
+                >
                   继续导出
                 </button>
               </div>

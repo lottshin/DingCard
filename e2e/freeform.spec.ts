@@ -112,6 +112,130 @@ async function freeformCanvasScale(page: import('@playwright/test').Page) {
   })
 }
 
+async function freeformStageMetrics(page: import('@playwright/test').Page) {
+  return page.locator('.freeform-stage-scroll').evaluate((stage) => {
+    const canvas = stage.querySelector<HTMLElement>('[data-testid="freeform-canvas"]')
+    if (!canvas) throw new Error('freeform canvas is not ready')
+    const stageRect = stage.getBoundingClientRect()
+    const canvasRect = canvas.getBoundingClientRect()
+    const style = getComputedStyle(stage)
+    const px = (value: string) => Number.parseFloat(value) || 0
+    const borderLeft = px(style.borderLeftWidth)
+    const borderRight = px(style.borderRightWidth)
+    const borderTop = px(style.borderTopWidth)
+    const borderBottom = px(style.borderBottomWidth)
+    const paddingLeft = px(style.paddingLeft)
+    const paddingRight = px(style.paddingRight)
+    const paddingTop = px(style.paddingTop)
+    const paddingBottom = px(style.paddingBottom)
+    const logicalWidth = Number.parseFloat(canvas.style.width)
+    const logicalHeight = Number.parseFloat(canvas.style.height)
+
+    return {
+      contentWidth: stageRect.width - borderLeft - borderRight - paddingLeft - paddingRight,
+      contentHeight: stageRect.height - borderTop - borderBottom - paddingTop - paddingBottom,
+      logicalWidth,
+      logicalHeight,
+      renderedWidth: canvasRect.width,
+      renderedHeight: canvasRect.height,
+      stageLeft: stageRect.left + borderLeft,
+      stageRight: stageRect.right - borderRight,
+      stageTop: stageRect.top + borderTop,
+      stageBottom: stageRect.bottom - borderBottom,
+      canvasLeft: canvasRect.left,
+      canvasRight: canvasRect.right,
+      canvasTop: canvasRect.top,
+      canvasBottom: canvasRect.bottom,
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      paddingBottom,
+      clientWidth: stage.clientWidth,
+      clientHeight: stage.clientHeight,
+      scrollWidth: stage.scrollWidth,
+      scrollHeight: stage.scrollHeight,
+      scrollLeft: stage.scrollLeft,
+      scrollTop: stage.scrollTop,
+    }
+  })
+}
+
+async function expectFreeformCanvasMatchesZoom(
+  page: import('@playwright/test').Page,
+  zoomPercent: number,
+  expectNoOverflow: boolean,
+) {
+  await expect
+    .poll(async () => {
+      const metrics = await freeformStageMetrics(page)
+      const fitScale = Math.min(
+        metrics.contentWidth / metrics.logicalWidth,
+        metrics.contentHeight / metrics.logicalHeight,
+      )
+      const actualScale = metrics.renderedWidth / metrics.logicalWidth
+      return actualScale / (fitScale * (zoomPercent / 100))
+    })
+    .toBeCloseTo(1, 3)
+
+  const metrics = await freeformStageMetrics(page)
+  if (expectNoOverflow) {
+    expect(metrics.scrollWidth - metrics.clientWidth).toBeLessThanOrEqual(1)
+    expect(metrics.scrollHeight - metrics.clientHeight).toBeLessThanOrEqual(1)
+  }
+  return metrics
+}
+
+async function setFreeformZoom(page: import('@playwright/test').Page, target: number) {
+  const value = page.locator('.freeform-stage-pane .zoom-value')
+  const current = Number.parseInt((await value.textContent()) ?? '', 10)
+  if (!Number.isFinite(current) || target % 10 !== 0) throw new Error('invalid zoom target')
+  const direction = target > current ? 10 : -10
+  const button = page.getByRole('button', {
+    name: direction > 0 ? '放大画布' : '缩小画布',
+    exact: true,
+  })
+  for (let zoom = current; zoom !== target; zoom += direction) {
+    if (await button.isDisabled()) {
+      throw new Error(`freeform zoom stopped at ${zoom}% before reaching ${target}%`)
+    }
+    await button.click()
+  }
+  await expect(value).toHaveText(`${target}%`)
+}
+
+async function selectFreeformPagePreset(
+  page: import('@playwright/test').Page,
+  ratio: '1:1' | '9:16' | '16:9',
+) {
+  await page.getByTestId('page-size-trigger').click()
+  await page.getByTestId('page-size-popover').getByRole('button', { name: ratio, exact: true }).click()
+}
+
+async function applyFreeformCustomSize(
+  page: import('@playwright/test').Page,
+  width: number,
+  height: number,
+) {
+  await page.getByTestId('page-size-trigger').click()
+  await page.getByLabel('宽度 px').fill(String(width))
+  await page.getByLabel('高度 px').fill(String(height))
+  await page.getByRole('button', { name: '应用尺寸', exact: true }).click()
+}
+
+async function freeformElementBoxes(page: import('@playwright/test').Page) {
+  return page.getByTestId('freeform-element').evaluateAll((elements) =>
+    elements.map((element) => {
+      const node = element as HTMLElement
+      return {
+        x: Number.parseFloat(node.style.left),
+        y: Number.parseFloat(node.style.top),
+        width: Number.parseFloat(node.style.width),
+        height: Number.parseFloat(node.style.height),
+      }
+    }),
+  )
+}
+
 function selectedFreeformElements(page: import('@playwright/test').Page) {
   return page.locator('[data-testid="freeform-element"][data-selected="true"]')
 }
@@ -715,6 +839,183 @@ for (const viewport of [
     }
   })
 }
+
+test.describe('fit-relative freeform zoom', () => {
+  test('withholds the canvas until the first active fit measurement', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByTestId('freeform-canvas')).toHaveCount(0)
+
+    await page.getByTestId('workspace-tab-freeform').click()
+
+    await expect(page.getByTestId('freeform-canvas')).toBeVisible()
+    await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
+    await expect(page.getByTestId('freeform-primary-export')).toBeEnabled()
+  })
+
+  for (const viewport of [
+    { name: 'wide', width: 1440, height: 900, padding: 32 },
+    { name: 'compact', width: 1024, height: 768, padding: 24 },
+  ]) {
+    test(`fits common ratios at 100% in the ${viewport.name} stage`, async ({ page }) => {
+      await page.setViewportSize(viewport)
+      await openFreeform(page)
+      await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('100%')
+
+      for (const ratio of ['1:1', '9:16', '16:9'] as const) {
+        await selectFreeformPagePreset(page, ratio)
+        const metrics = await expectFreeformCanvasMatchesZoom(page, 100, true)
+        expect(metrics.paddingLeft).toBeCloseTo(viewport.padding, 3)
+        expect(metrics.paddingRight).toBeCloseTo(viewport.padding, 3)
+        expect(metrics.paddingTop).toBeCloseTo(viewport.padding, 3)
+        expect(metrics.paddingBottom).toBeCloseTo(viewport.padding, 3)
+      }
+    })
+
+    test(`fits minimum and maximum custom pages in the ${viewport.name} stage`, async ({ page }) => {
+      await page.setViewportSize(viewport)
+      await openFreeform(page)
+
+      await applyFreeformCustomSize(page, 128, 128)
+      await expectFreeformCanvasMatchesZoom(page, 100, true)
+
+      await applyFreeformCustomSize(page, 4096, 4096)
+      await expectFreeformCanvasMatchesZoom(page, 100, true)
+    })
+  }
+
+  test('keeps 50% smaller and makes both vertical edges reachable at 110%', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openFreeform(page)
+    await selectFreeformPagePreset(page, '9:16')
+    const fitted = await expectFreeformCanvasMatchesZoom(page, 100, true)
+
+    await setFreeformZoom(page, 50)
+    const half = await expectFreeformCanvasMatchesZoom(page, 50, true)
+    expect(half.renderedHeight).toBeCloseTo(fitted.renderedHeight / 2, 0)
+
+    await page.locator('.freeform-stage-pane .zoom-value').click()
+    await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('100%')
+    await setFreeformZoom(page, 110)
+    await expect
+      .poll(async () => {
+        const metrics = await freeformStageMetrics(page)
+        return metrics.scrollHeight - metrics.clientHeight
+      })
+      .toBeGreaterThan(1)
+
+    const stage = page.locator('.freeform-stage-scroll')
+    await stage.evaluate((node) => { node.scrollTop = 0 })
+    const atTop = await freeformStageMetrics(page)
+    expect(atTop.canvasTop).toBeCloseTo(atTop.stageTop + atTop.paddingTop, 0)
+
+    await stage.evaluate((node) => { node.scrollTop = node.scrollHeight })
+    await expect.poll(async () => (await freeformStageMetrics(page)).scrollTop).toBeGreaterThan(0)
+    const atBottom = await freeformStageMetrics(page)
+    expect(atBottom.canvasBottom).toBeCloseTo(atBottom.stageBottom - atBottom.paddingBottom, 0)
+  })
+
+  test('makes both horizontal edges reachable at 110%', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openFreeform(page)
+    await selectFreeformPagePreset(page, '16:9')
+    await setFreeformZoom(page, 110)
+    await expect
+      .poll(async () => {
+        const metrics = await freeformStageMetrics(page)
+        return metrics.scrollWidth - metrics.clientWidth
+      })
+      .toBeGreaterThan(1)
+
+    const stage = page.locator('.freeform-stage-scroll')
+    await stage.evaluate((node) => { node.scrollLeft = 0 })
+    const atLeft = await freeformStageMetrics(page)
+    expect(atLeft.canvasLeft).toBeCloseTo(atLeft.stageLeft + atLeft.paddingLeft, 0)
+
+    await stage.evaluate((node) => { node.scrollLeft = node.scrollWidth })
+    await expect.poll(async () => (await freeformStageMetrics(page)).scrollLeft).toBeGreaterThan(0)
+    const atRight = await freeformStageMetrics(page)
+    expect(atRight.canvasRight).toBeCloseTo(atRight.stageRight - atRight.paddingRight, 0)
+  })
+
+  test('enforces zoom bounds and resets the middle control to 100%', async ({ page }) => {
+    await openFreeform(page)
+    const shrink = page.getByRole('button', { name: '缩小画布', exact: true })
+    const enlarge = page.getByRole('button', { name: '放大画布', exact: true })
+    const value = page.locator('.freeform-stage-pane .zoom-value')
+
+    await setFreeformZoom(page, 10)
+    await expect(shrink).toBeDisabled()
+    await expect(enlarge).toBeEnabled()
+
+    await setFreeformZoom(page, 400)
+    await expect(enlarge).toBeDisabled()
+    await expect(shrink).toBeEnabled()
+
+    await value.click()
+    await expect(value).toHaveText('100%')
+    await expect(shrink).toBeEnabled()
+    await expect(enlarge).toBeEnabled()
+  })
+
+  test('preserves 150% while the viewport, page ratio, and active workspace change', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openFreeform(page)
+    await setFreeformZoom(page, 150)
+    const wide = await expectFreeformCanvasMatchesZoom(page, 150, false)
+
+    await page.setViewportSize({ width: 1024, height: 768 })
+    const compact = await expectFreeformCanvasMatchesZoom(page, 150, false)
+    expect(compact.renderedWidth).not.toBeCloseTo(wide.renderedWidth, 0)
+    await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('150%')
+
+    await selectFreeformPagePreset(page, '9:16')
+    await expectFreeformCanvasMatchesZoom(page, 150, false)
+    await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('150%')
+
+    await page.getByTestId('workspace-tab-markdown').click()
+    await page.getByTestId('workspace-tab-freeform').click()
+    await expectFreeformCanvasMatchesZoom(page, 150, false)
+    await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('150%')
+  })
+
+  test('uses the live render scale for dragging and resizing at 150%', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 120, 100)
+    await setFreeformZoom(page, 150)
+    const scale = await freeformCanvasScale(page)
+
+    const element = page.getByTestId('freeform-element')
+    const elementBox = await element.boundingBox()
+    expect(elementBox).toBeTruthy()
+    const dragStart = {
+      x: elementBox!.x + elementBox!.width / 2,
+      y: elementBox!.y + elementBox!.height / 2,
+    }
+    await page.mouse.move(dragStart.x, dragStart.y)
+    await page.mouse.down()
+    await page.mouse.move(dragStart.x + 120 * scale, dragStart.y + 80 * scale)
+    await page.mouse.up()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 220, y: 180, width: 120, height: 100 },
+    ])
+
+    const resizeHandle = page.locator('.element-resize')
+    const handleBox = await resizeHandle.boundingBox()
+    expect(handleBox).toBeTruthy()
+    const resizeStart = {
+      x: handleBox!.x + handleBox!.width / 2,
+      y: handleBox!.y + handleBox!.height / 2,
+    }
+    await page.mouse.move(resizeStart.x, resizeStart.y)
+    await page.mouse.down()
+    await page.mouse.move(resizeStart.x + 60 * scale, resizeStart.y + 40 * scale)
+    await page.mouse.up()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 220, y: 180, width: 180, height: 140 },
+    ])
+  })
+})
 
 test('dark mode keeps freeform chrome controls and popovers legible', async ({ page }) => {
   await openFreeform(page)
