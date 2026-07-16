@@ -122,6 +122,7 @@ html.theme-anim * {
 }
 
 .app-shell {
+  position: relative;
   height: 100vh;
   min-height: 0;
   display: flex;
@@ -274,6 +275,153 @@ html.theme-anim * {
   box-shadow: var(--shadow-md);
 }
 
+.app-account-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  padding: 0 11px;
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: default;
+}
+
+.app-account-status-retry {
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.app-account-status-retry:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: var(--accent-weak);
+}
+
+.app-account-status-retry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Recoverable operation notice ---------- */
+.operation-notice {
+  position: absolute;
+  z-index: 70;
+  top: calc(var(--workspace-toolbar-height) + 12px);
+  right: 16px;
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  width: min(420px, calc(100% - 32px));
+  min-height: 52px;
+  padding: 9px 9px 9px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--danger-weak));
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  animation: operation-notice-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.operation-notice--global {
+  top: calc(var(--app-header-height) + 12px);
+}
+
+.operation-notice-mark {
+  align-self: stretch;
+  width: 3px;
+  min-height: 30px;
+  border-radius: 999px;
+  background: var(--danger);
+}
+
+.operation-notice-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.35;
+}
+
+.operation-notice-copy strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.operation-notice-copy span {
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.operation-notice-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.operation-notice-retry,
+.operation-notice-dismiss {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--sans);
+  cursor: pointer;
+}
+
+.operation-notice-retry {
+  height: 30px;
+  padding: 0 9px;
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.operation-notice-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.operation-notice-dismiss svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.7;
+}
+
+.operation-notice-retry:hover,
+.operation-notice-dismiss:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.operation-notice-retry:focus-visible,
+.operation-notice-dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@keyframes operation-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 :root[data-theme='dark'] .workspace-tab[aria-selected='true'] {
   border-color: #45454f;
   background: #2a2a30;
@@ -372,6 +520,7 @@ html.theme-anim * {
    Freeform workspace
    ===================================================================== */
 .freeform-workspace {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;

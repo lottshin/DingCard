@@ -290,37 +290,72 @@ const baseTheme = EditorView.theme({
   },
 })
 
-// Paste a screenshot straight in as a markdown image (downscaled + stored).
-const pasteHandler = EditorView.domEventHandlers({
-  paste(event, cmView) {
-    const items = event.clipboardData?.items
-    if (!items) return false
-    const item = Array.from(items).find((it) => it.type.startsWith('image/'))
-    if (!item) return false
-    event.preventDefault()
-    const file = item.getAsFile()
-    if (!file) return true
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = async () => {
-      const url = await downscaleDataUrl(reader.result as string)
-      const imgRef = await store.images.put(url)
-      const { from, to } = cmView.state.selection.main
-      const pre = from > 0 && cmView.state.doc.sliceString(from - 1, from) !== '\n' ? '\n' : ''
-      const snippet = `${pre}![](${imgRef})\n`
-      cmView.dispatch({
-        changes: { from, to, insert: snippet },
-        selection: { anchor: from + snippet.length },
-      })
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error('无法读取粘贴的图片'))
     }
-    reader.readAsDataURL(file)
-    return true
-  },
-})
+    reader.onerror = () => reject(reader.error ?? new Error('无法读取粘贴的图片'))
+    try {
+      reader.readAsDataURL(file)
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
+function notifyImageError(onImageError: Props['onImageError'], error: unknown) {
+  try {
+    onImageError?.(error)
+  } catch {
+    // UI error reporting must not create another unhandled paste rejection.
+  }
+}
+
+// Paste a screenshot straight in as a markdown image (downscaled + stored).
+function createPasteHandler(
+  beforeImageUpload: Props['beforeImageUpload'],
+  onImageError: Props['onImageError'],
+) {
+  return EditorView.domEventHandlers({
+    paste(event, cmView) {
+      const items = event.clipboardData?.items
+      if (!items) return false
+      const item = Array.from(items).find((it) => it.type.startsWith('image/'))
+      if (!item) return false
+      event.preventDefault()
+      const file = item.getAsFile()
+      if (!file) return true
+
+      void (async () => {
+        await beforeImageUpload?.()
+        const dataUrl = await readFileAsDataUrl(file)
+        const url = await downscaleDataUrl(dataUrl)
+        const imgRef = await store.images.put(url)
+        const { from, to } = cmView.state.selection.main
+        const pre = from > 0 && cmView.state.doc.sliceString(from - 1, from) !== '\n' ? '\n' : ''
+        const snippet = `${pre}![](${imgRef})\n`
+        cmView.dispatch({
+          changes: { from, to, insert: snippet },
+          selection: { anchor: from + snippet.length },
+        })
+      })().catch((error) => notifyImageError(onImageError, error))
+      return true
+    },
+  })
+}
 
 interface Props {
   value: string
   onChange: (next: string) => void
   fontFamily: string
+  beforeImageUpload?: () => Promise<void>
+  onImageError?: (error: unknown) => void
 }
 
 /**
@@ -330,7 +365,13 @@ interface Props {
  * All of OUR logic — the Obsidian-style live-preview decorations, the paste-image
  * handler, syntax highlight — is layered on as CodeMirror extensions and preserved.
  */
-export function MarkdownEditor({ value, onChange, fontFamily }: Props) {
+export function MarkdownEditor({
+  value,
+  onChange,
+  fontFamily,
+  beforeImageUpload,
+  onImageError,
+}: Props) {
   const extensions = useMemo(
     () => [
       // Override markdown's Enter (insertNewlineContinueMarkup): on a lazy
@@ -344,9 +385,9 @@ export function MarkdownEditor({ value, onChange, fontFamily }: Props) {
       livePreview,
       baseTheme,
       EditorView.contentAttributes.of({ style: `--editor-font:${fontFamily}` }),
-      pasteHandler,
+      createPasteHandler(beforeImageUpload, onImageError),
     ],
-    [fontFamily],
+    [beforeImageUpload, fontFamily, onImageError],
   )
 
   return (

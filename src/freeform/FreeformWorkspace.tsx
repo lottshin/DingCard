@@ -8,8 +8,10 @@ import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
 import { store } from '../storage'
 import { FONTS } from '../theme'
+import { OperationNotice } from '../workspaces/OperationNotice'
 import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../workspaces/types'
+import { useImageLease } from '../workspaces/useImageLease'
 import {
   createFreeformDocument,
   createImageElement,
@@ -33,6 +35,7 @@ import {
   buildFreeformFontCSS,
   collectFreeformFontRequests,
 } from './fontRequests'
+import { collectFreeformImageSources } from './imageAssets'
 import { ColorPickerButton, PaintField } from './PaintField'
 import { PlainTextEditable } from './PlainTextEditable'
 import {
@@ -158,6 +161,10 @@ type Alignment = 'left' | 'h-center' | 'right' | 'top' | 'v-center' | 'bottom'
 type Distribution = 'horizontal' | 'vertical'
 type MarqueeState = { startX: number; startY: number; currentX: number; currentY: number }
 
+function operationErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : fallback
+}
+
 function toRect(marquee: MarqueeState): Rect {
   return {
     x: marquee.startX,
@@ -201,6 +208,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [operationNotice, setOperationNotice] = useState<string | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
   const renderScale = calculateRenderScale(fitScale, zoomPercent)
@@ -213,7 +222,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const currentDocumentRef = useRef(doc)
   const currentDraftIdRef = useRef(draftId)
   const currentUserIdRef = useRef<string | null>(user?.id ?? null)
+  const draftListGenerationRef = useRef(0)
   const saveGenerationRef = useRef(0)
+  const saveInFlightRef = useRef(false)
 
   selectedElementIds.current = selection
   currentDocumentRef.current = doc
@@ -245,15 +256,44 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     () => collectFreeformFontRequests(doc.slides),
     [doc.slides],
   )
+  const imageSources = useMemo(() => collectFreeformImageSources(doc), [doc])
+  const showOperationError = useCallback((error: unknown, fallback: string) => {
+    setOperationNotice(operationErrorMessage(error, fallback))
+  }, [])
+  const handleImageLeaseError = useCallback((error: unknown) => {
+    showOperationError(error, '图片续租失败，请检查网络后重试')
+  }, [showOperationError])
+  const retainImagesNow = useImageLease(
+    imageSources,
+    store.remote && Boolean(user),
+    handleImageLeaseError,
+  )
+
+  const loadDrafts = useCallback(async (uid: string) => {
+    const generation = ++draftListGenerationRef.current
+    try {
+      const list = await store.drafts.list(uid)
+      if (
+        generation === draftListGenerationRef.current &&
+        currentUserIdRef.current === uid
+      ) setDrafts(list)
+    } catch (error) {
+      if (
+        generation === draftListGenerationRef.current &&
+        currentUserIdRef.current === uid
+      ) showOperationError(error, '草稿列表加载失败，请稍后重试')
+    }
+  }, [showOperationError])
 
   const refreshDrafts = useCallback(() => {
-    if (!user) {
+    const uid = currentUserIdRef.current
+    if (!uid) {
+      draftListGenerationRef.current += 1
       setDrafts([])
       return
     }
-    const uid = user.id
-    void store.drafts.list(uid).then((list) => setDrafts(list))
-  }, [user])
+    void loadDrafts(uid)
+  }, [loadDrafts])
 
   const measureFitScale = useCallback(() => {
     const stage = stageScrollRef.current
@@ -294,32 +334,29 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   useEffect(() => {
     const nextUserId = user?.id ?? null
-    if (user) {
-      const uid = user.id
-      // Guard against a stale response landing after the user changed again.
-      let cancelled = false
-      void store.drafts.list(uid).then((list) => {
-        if (!cancelled) setDrafts(list)
-      })
-      if (previousUserId.current !== nextUserId) {
-        previousUserId.current = nextUserId
-        updateDraftId(null)
-        setSavedAt(null)
-        setShowDrafts(false)
-      }
-      return () => {
-        cancelled = true
-      }
-    }
-
-    setDrafts([])
-    if (previousUserId.current !== nextUserId) {
+    const userChanged = previousUserId.current !== nextUserId
+    if (userChanged) {
       previousUserId.current = nextUserId
+      draftListGenerationRef.current += 1
+      saveGenerationRef.current += 1
+      setDrafts([])
       updateDraftId(null)
       setSavedAt(null)
       setShowDrafts(false)
+      setOperationNotice(null)
     }
-  }, [updateDraftId, user])
+
+    if (user) {
+      void loadDrafts(user.id)
+    } else {
+      draftListGenerationRef.current += 1
+      setDrafts([])
+    }
+
+    return () => {
+      draftListGenerationRef.current += 1
+    }
+  }, [loadDrafts, updateDraftId, user])
 
   useEffect(() => {
     const liveIds = new Set(activeSlide.elements.map((element) => element.id))
@@ -409,6 +446,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   async function addImageFromFile(file: File) {
+    if (store.remote) await retainImagesNow()
     const raw = await readFileAsDataUrl(file)
     const downscaled = await downscaleDataUrl(raw, 1800)
     const src = await store.images.put(downscaled)
@@ -420,12 +458,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   async function handleImageInput(files: FileList | null) {
     const file = files?.[0]
     if (!file) return
-    await addImageFromFile(file)
-    if (imageInputRef.current) imageInputRef.current.value = ''
+    try {
+      await addImageFromFile(file)
+    } catch (error) {
+      showOperationError(error, '图片插入失败，请稍后重试')
+    } finally {
+      if (imageInputRef.current) imageInputRef.current.value = ''
+    }
   }
 
   async function fillSelectedShapeFromFile(file: File) {
     if (!isShapeElement(selectedElement)) return
+    if (store.remote) await retainImagesNow()
     const raw = await readFileAsDataUrl(file)
     const downscaled = await downscaleDataUrl(raw, 1800)
     const src = await store.images.put(downscaled)
@@ -440,8 +484,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   async function handleShapeFillInput(files: FileList | null) {
     const file = files?.[0]
     if (!file) return
-    await fillSelectedShapeFromFile(file)
-    if (shapeFillInputRef.current) shapeFillInputRef.current.value = ''
+    try {
+      await fillSelectedShapeFromFile(file)
+    } catch (error) {
+      showOperationError(error, '形状图片填充失败，请稍后重试')
+    } finally {
+      if (shapeFillInputRef.current) shapeFillInputRef.current.value = ''
+    }
   }
 
   function updateElement(elementId: string, patch: Partial<FreeformElement>) {
@@ -939,38 +988,58 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       requestAuth()
       return
     }
+    if (saveInFlightRef.current) return
+    saveInFlightRef.current = true
+    setSaving(true)
     const snapshot = doc
     const startedDraftId = currentDraftIdRef.current
     const saveGeneration = ++saveGenerationRef.current
-    const saved = await store.drafts.save(user.id, {
-      id: draftId ?? undefined,
-      mode: 'freeform-slide',
-      document: snapshot,
-    })
-    const saveIsCurrent = (
-      currentUserIdRef.current === user.id &&
-      isLatestSaveForDraft(
-        saveGeneration,
-        saveGenerationRef.current,
-        startedDraftId,
-        currentDraftIdRef.current,
+    try {
+      const saved = await store.drafts.save(user.id, {
+        id: startedDraftId ?? undefined,
+        mode: 'freeform-slide',
+        document: snapshot,
+      })
+      const saveIsCurrent = (
+        currentUserIdRef.current === user.id &&
+        isLatestSaveForDraft(
+          saveGeneration,
+          saveGenerationRef.current,
+          startedDraftId,
+          currentDraftIdRef.current,
+        )
       )
-    )
-    const snapshotIsCurrent = Object.is(currentDocumentRef.current, snapshot)
-    if (saveIsCurrent) updateDraftId(saved.id)
-    if (saveIsCurrent && store.remote && saved.mode === 'freeform-slide') {
-      setHistory((current) => (
-        Object.is(current.current, snapshot)
-          ? { ...current, current: saved.document }
-          : current
-      ))
+      const snapshotIsCurrent = Object.is(currentDocumentRef.current, snapshot)
+      if (saveIsCurrent) updateDraftId(saved.id)
+      if (saveIsCurrent && store.remote && saved.mode === 'freeform-slide') {
+        setHistory((current) => (
+          Object.is(current.current, snapshot)
+            ? { ...current, current: saved.document }
+            : current
+        ))
+      }
+      if (saveIsCurrent) setSavedAt(snapshotIsCurrent ? saved.updatedAt : null)
+      if (currentUserIdRef.current === user.id) void refreshDrafts()
+    } catch (error) {
+      if (
+        currentUserIdRef.current !== user.id ||
+        !isLatestSaveForDraft(
+          saveGeneration,
+          saveGenerationRef.current,
+          startedDraftId,
+          currentDraftIdRef.current,
+        )
+      ) return
+      showOperationError(error, '草稿保存失败，请稍后重试')
+    } finally {
+      saveInFlightRef.current = false
+      setSaving(false)
     }
-    if (saveIsCurrent) setSavedAt(snapshotIsCurrent ? saved.updatedAt : null)
-    if (currentUserIdRef.current === user.id) refreshDrafts()
   }
 
   function openDraft(draft: Draft) {
     if (draft.mode !== 'freeform-slide') return
+    saveGenerationRef.current += 1
     setHistory(createHistory(draft.document))
     setSelection([])
     updateDraftId(draft.id)
@@ -980,9 +1049,21 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   async function removeDraft(id: string) {
     if (!user) return
-    await store.drafts.remove(user.id, id)
-    if (id === currentDraftIdRef.current) updateDraftId(null)
-    refreshDrafts()
+    try {
+      if (store.remote) await retainImagesNow()
+      await store.drafts.remove(user.id, id)
+      if (currentUserIdRef.current !== user.id) return
+      if (id === currentDraftIdRef.current) {
+        saveGenerationRef.current += 1
+        updateDraftId(null)
+        setSavedAt(null)
+      }
+      void refreshDrafts()
+    } catch (error) {
+      if (currentUserIdRef.current === user.id) {
+        showOperationError(error, '草稿删除失败，请稍后重试')
+      }
+    }
   }
 
   return (
@@ -1055,8 +1136,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         </ToolbarGroup>
 
         <ToolbarGroup side="right">
-          <button className="bar-btn" type="button" onClick={handleSaveDraft}>
-            保存草稿
+          <button className="bar-btn" type="button" onClick={handleSaveDraft} disabled={saving}>
+            {saving ? '保存中…' : '保存草稿'}
           </button>
           <button
             className="bar-btn"
@@ -1090,6 +1171,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           </button>
         </ToolbarGroup>
       </WorkspaceToolbar>
+
+      {operationNotice && (
+        <OperationNotice
+          title={operationNotice}
+          onDismiss={() => setOperationNotice(null)}
+        />
+      )}
 
       <main className="freeform-main">
         <aside className="freeform-rail" aria-label="页面列表">

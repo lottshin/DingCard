@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toPng } from 'html-to-image'
 import { buildFontEmbedCSS } from '../../fontEmbed'
-import { parseBlocks, setImageWidth } from '../../markdown'
+import { isLatestSaveForDraft } from '../../freeform/history'
+import { collectMarkdownImageSources, parseBlocks, setImageWidth } from '../../markdown'
 import { paginate, type Page } from '../../paginate'
 import { PLATFORMS, THEMES, FONTS, buildConfig, DEFAULT_PROFILE } from '../../theme'
 import type { CardConfig, Profile } from '../../theme'
@@ -13,8 +14,10 @@ import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
 import type { Draft } from '../../drafts'
 import { store } from '../../storage'
+import { OperationNotice } from '../OperationNotice'
 import { ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../types'
+import { useImageLease } from '../useImageLease'
 
 const SAMPLE = `# 图文切片快速上手
 
@@ -50,6 +53,15 @@ interface Ctx {
   index: number
 }
 
+interface WorkspaceNotice {
+  title: string
+  detail: string
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : fallback
+}
+
 export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShellProps) {
   const [source, setSource] = useState(SAMPLE)
   const [platformId, setPlatformId] = useState(PLATFORMS[0].id)
@@ -68,9 +80,29 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [operationNotice, setOperationNotice] = useState<WorkspaceNotice | null>(null)
 
   const cardRef = useRef<HTMLDivElement>(null)
   const previousUserId = useRef<string | null>(user?.id ?? null)
+  const activeUserIdRef = useRef<string | null>(user?.id ?? null)
+  const currentDraftIdRef = useRef<string | null>(draftId)
+  const draftRevisionRef = useRef(0)
+  const draftListGeneration = useRef(0)
+  const saveGenerationRef = useRef(0)
+  const saveInFlightRef = useRef(false)
+  activeUserIdRef.current = user?.id ?? null
+  currentDraftIdRef.current = draftId
+
+  const updateDraftId = useCallback((nextDraftId: string | null) => {
+    currentDraftIdRef.current = nextDraftId
+    setDraftId(nextDraftId)
+  }, [])
+
+  const markDraftDirty = useCallback(() => {
+    draftRevisionRef.current += 1
+    setSavedAt(null)
+  }, [])
 
   const platform = PLATFORMS.find((p) => p.id === platformId)!
   const theme = THEMES.find((t) => t.id === themeId)!
@@ -81,7 +113,32 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   )
 
   const blocks = useMemo(() => parseBlocks(source), [source])
+  const imageSources = useMemo(() => collectMarkdownImageSources(source), [source])
   const [pages, setPages] = useState<Page[]>([{ blocks: [] }])
+
+  const showOperationError = useCallback(
+    (title: string, error: unknown, fallback: string) => {
+      setOperationNotice({ title, detail: errorMessage(error, fallback) })
+    },
+    [],
+  )
+  const handleLeaseError = useCallback(
+    (error: unknown) => {
+      showOperationError('图片资源续租失败', error, '暂时无法保护已上传图片，请稍后重试')
+    },
+    [showOperationError],
+  )
+  const handleImageError = useCallback(
+    (error: unknown) => {
+      showOperationError('Markdown 图片上传失败', error, '图片处理失败，请稍后重试')
+    },
+    [showOperationError],
+  )
+  const retainNow = useImageLease(
+    imageSources,
+    store.remote && Boolean(user),
+    handleLeaseError,
+  )
 
   // paginate() measures real DOM nodes. Running it inside render/useMemo mutates
   // document.body and forces layout while React (and CodeMirror) are processing
@@ -101,46 +158,59 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   // Stable identity so the memoized MarkdownEditor never re-renders on typing.
   const handleEditorChange = useCallback((next: string) => {
     setSource(next)
-    setSavedAt(null)
-  }, [])
+    markDraftDirty()
+  }, [markDraftDirty])
+
+  const loadDrafts = useCallback(
+    async (uid: string) => {
+      const generation = ++draftListGeneration.current
+      try {
+        const list = await store.drafts.list(uid)
+        if (generation !== draftListGeneration.current || activeUserIdRef.current !== uid) return
+        setDrafts(list)
+      } catch (error) {
+        if (generation !== draftListGeneration.current || activeUserIdRef.current !== uid) return
+        showOperationError('草稿列表加载失败', error, '暂时无法加载草稿，请稍后重试')
+      }
+    },
+    [showOperationError],
+  )
 
   const refreshDrafts = useCallback(() => {
-    if (!user) {
+    const uid = activeUserIdRef.current
+    if (!uid) {
+      draftListGeneration.current += 1
       setDrafts([])
       return
     }
-    const uid = user.id
-    void store.drafts.list(uid).then((list) => setDrafts(list))
-  }, [user])
+    void loadDrafts(uid)
+  }, [loadDrafts])
 
   useEffect(() => {
     const nextUserId = user?.id ?? null
-    if (user) {
-      const uid = user.id
-      // Guard against a stale response landing after the user changed again.
-      let cancelled = false
-      void store.drafts.list(uid).then((list) => {
-        if (!cancelled) setDrafts(list)
-      })
-      if (previousUserId.current !== nextUserId) {
-        previousUserId.current = nextUserId
-        setDraftId(null)
-        setSavedAt(null)
-        setShowDrafts(false)
-      }
-      return () => {
-        cancelled = true
-      }
-    }
-
-    setDrafts([])
-    if (previousUserId.current !== nextUserId) {
+    const userChanged = previousUserId.current !== nextUserId
+    if (userChanged) {
       previousUserId.current = nextUserId
-      setDraftId(null)
+      draftListGeneration.current += 1
+      saveGenerationRef.current += 1
+      draftRevisionRef.current += 1
+      setDrafts([])
+      updateDraftId(null)
       setSavedAt(null)
       setShowDrafts(false)
     }
-  }, [user])
+
+    if (user) {
+      void loadDrafts(user.id)
+    } else {
+      draftListGeneration.current += 1
+      setDrafts([])
+    }
+
+    return () => {
+      draftListGeneration.current += 1
+    }
+  }, [loadDrafts, updateDraftId, user])
 
   useEffect(() => {
     if (active > pages.length - 1) setActive(Math.max(0, pages.length - 1))
@@ -297,7 +367,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if (href) {
         // Editor is controlled by `source`; updating state syncs it into CM.
         setSource((s) => setImageWidth(s, href, Math.round(finalW)))
-        setSavedAt(null)
+        markDraftDirty()
       }
     }
     window.addEventListener('pointermove', onMove)
@@ -340,7 +410,10 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       window.removeEventListener('pointerup', onUp)
       frame.classList.remove('rounding')
       frame.style.removeProperty('--card-radius') // hand control back to React state
-      setRadius(finalR)
+      if (finalR !== radius) {
+        setRadius(finalR)
+        markDraftDirty()
+      }
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -352,25 +425,64 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       requestAuth()
       return
     }
-    const saved = await store.drafts.save(user.id, {
-      id: draftId ?? undefined,
-      mode: 'markdown-card',
-      document: {
-        source,
-        platformId,
-        themeId,
-        fontFamily,
-        profile,
-        radius,
-      },
-    })
-    setDraftId(saved.id)
-    setSavedAt(saved.updatedAt)
-    refreshDrafts()
+    if (saveInFlightRef.current) return
+    saveInFlightRef.current = true
+    setSaving(true)
+    const uid = user.id
+    const startedDraftId = currentDraftIdRef.current
+    const revisionSnapshot = draftRevisionRef.current
+    const saveGeneration = ++saveGenerationRef.current
+    try {
+      const saved = await store.drafts.save(uid, {
+        id: startedDraftId ?? undefined,
+        mode: 'markdown-card',
+        document: {
+          source,
+          platformId,
+          themeId,
+          fontFamily,
+          profile,
+          radius,
+        },
+      })
+      const saveIsCurrent = (
+        activeUserIdRef.current === uid &&
+        isLatestSaveForDraft(
+          saveGeneration,
+          saveGenerationRef.current,
+          startedDraftId,
+          currentDraftIdRef.current,
+        )
+      )
+      if (!saveIsCurrent) {
+        if (activeUserIdRef.current === uid) refreshDrafts()
+        return
+      }
+      updateDraftId(saved.id)
+      setSavedAt(draftRevisionRef.current === revisionSnapshot ? saved.updatedAt : null)
+      setDrafts((current) => [saved, ...current.filter((draft) => draft.id !== saved.id)])
+      refreshDrafts()
+    } catch (error) {
+      if (
+        activeUserIdRef.current !== uid ||
+        !isLatestSaveForDraft(
+          saveGeneration,
+          saveGenerationRef.current,
+          startedDraftId,
+          currentDraftIdRef.current,
+        )
+      ) return
+      showOperationError('草稿保存失败', error, '暂时无法保存草稿，请稍后重试')
+    } finally {
+      saveInFlightRef.current = false
+      setSaving(false)
+    }
   }
 
   function openDraft(d: Draft) {
     if (d.mode !== 'markdown-card') return
+    saveGenerationRef.current += 1
+    draftRevisionRef.current += 1
     const document = d.document
     // Re-register the draft's embedded images so `img:` refs resolve again.
     if (document.images) for (const [ref, url] of Object.entries(document.images)) store.images.register(ref, url)
@@ -380,16 +492,29 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setFontFamily(document.fontFamily)
     setProfile(document.profile)
     setRadius(document.radius)
-    setDraftId(d.id)
+    updateDraftId(d.id)
     setActive(0)
     setShowDrafts(false)
   }
 
   async function removeDraft(id: string) {
     if (!user) return
-    await store.drafts.remove(user.id, id)
-    if (id === draftId) setDraftId(null)
-    refreshDrafts()
+    const uid = user.id
+    try {
+      if (store.remote) await retainNow()
+      await store.drafts.remove(uid, id)
+      if (activeUserIdRef.current !== uid) return
+      setDrafts((current) => current.filter((draft) => draft.id !== id))
+      if (id === currentDraftIdRef.current) {
+        saveGenerationRef.current += 1
+        updateDraftId(null)
+        setSavedAt(null)
+      }
+      refreshDrafts()
+    } catch (error) {
+      if (activeUserIdRef.current !== uid) return
+      showOperationError('草稿删除失败', error, '暂时无法删除草稿，请稍后重试')
+    }
   }
 
   return (
@@ -401,7 +526,11 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               <button
                 key={p.id}
                 className={p.id === platformId ? 'seg-btn on' : 'seg-btn'}
-                onClick={() => setPlatformId(p.id)}
+                onClick={() => {
+                  if (p.id === platformId) return
+                  setPlatformId(p.id)
+                  markDraftDirty()
+                }}
               >
                 {p.label}
               </button>
@@ -410,14 +539,22 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
           <Select
             value={themeId}
-            onChange={setThemeId}
+            onChange={(nextThemeId) => {
+              if (nextThemeId === themeId) return
+              setThemeId(nextThemeId)
+              markDraftDirty()
+            }}
             title="主题"
             options={THEMES.map((t) => ({ id: t.id, label: t.label }))}
           />
 
           <Select
             value={fontFamily}
-            onChange={setFontFamily}
+            onChange={(nextFontFamily) => {
+              if (nextFontFamily === fontFamily) return
+              setFontFamily(nextFontFamily)
+              markDraftDirty()
+            }}
             title="字体"
             previewFonts
             options={FONTS.map((f) => ({ id: f.id, label: f.label }))}
@@ -429,8 +566,8 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         </ToolbarGroup>
 
         <ToolbarGroup side="right">
-          <button className="bar-btn" onClick={handleSaveDraft}>
-            保存草稿
+          <button className="bar-btn" onClick={handleSaveDraft} disabled={saving}>
+            {saving ? '保存中…' : '保存草稿'}
           </button>
           <button
             className="bar-btn"
@@ -451,6 +588,14 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         </ToolbarGroup>
       </WorkspaceToolbar>
 
+      {operationNotice && (
+        <OperationNotice
+          title={operationNotice.title}
+          detail={operationNotice.detail}
+          onDismiss={() => setOperationNotice(null)}
+        />
+      )}
+
       {/* ---------- Body: editor | preview ---------- */}
       <div className="body">
         <section className="pane pane-editor">
@@ -464,6 +609,8 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             value={source}
             onChange={handleEditorChange}
             fontFamily={config.fontFamily}
+            beforeImageUpload={store.remote ? retainNow : undefined}
+            onImageError={handleImageError}
           />
         </section>
 
@@ -593,6 +740,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           onClose={() => setShowProfile(false)}
           onSave={(next) => {
             setProfile(next)
+            markDraftDirty()
             setShowProfile(false)
           }}
         />

@@ -9,10 +9,7 @@ interface AuthModalProps {
 
 type Mode = 'login' | 'register'
 
-/**
- * Sign-in / sign-up dialog. Backed by the client-only auth in auth.ts, so this
- * is a UX shell rather than real security — see the warning in that file.
- */
+/** Sign-in / sign-up dialog for the active LocalStore or RemoteStore backend. */
 export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
   const [mode, setMode] = useState<Mode>('login')
   const [username, setUsername] = useState('')
@@ -87,7 +84,9 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
           {error && <div className="form-error">{error}</div>}
 
           <p className="form-note">
-            账号仅保存在此浏览器本地，不会上传，也不能跨设备同步。
+            {store.remote
+              ? '账号会安全保存到你的服务器，可在登录后跨设备同步草稿。'
+              : '账号仅保存在此浏览器本地，不会上传，也不能跨设备同步。'}
           </p>
 
           <div className="sheet-foot">

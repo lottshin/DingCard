@@ -745,6 +745,7 @@ test('global header owns workspace tabs, theme, and account state', async ({ pag
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme!)
 
   await page.getByTestId('account-login').click()
+  await expect(page.locator('.form-note')).toContainText('仅保存在此浏览器本地')
   await registerUser(page, `header-${Date.now()}`)
 
   await expect(page.getByTestId('account-logout')).toBeVisible()

@@ -8,9 +8,11 @@ interface AppHeaderProps {
   mode: WorkspaceMode
   theme: Mode
   user: User | null
+  authStatus: 'checking' | 'ready' | 'error'
   onModeChange: (mode: WorkspaceMode) => void
   onToggleTheme: () => void
   onRequestAuth: () => void
+  onRetryAuth: () => void
   onLogout: () => void
 }
 
@@ -18,9 +20,11 @@ export function AppHeader({
   mode,
   theme,
   user,
+  authStatus,
   onModeChange,
   onToggleTheme,
   onRequestAuth,
+  onRetryAuth,
   onLogout,
 }: AppHeaderProps) {
   const markdownTabRef = useRef<HTMLButtonElement>(null)
@@ -130,6 +134,24 @@ export function AppHeader({
           onClick={onLogout}
         >
           {user.username.slice(0, 1)}
+        </button>
+      ) : authStatus === 'checking' ? (
+        <span
+          className="app-account app-account-status"
+          data-testid="account-status"
+          aria-label="正在检查登录状态"
+        >
+          检查中
+        </span>
+      ) : authStatus === 'error' ? (
+        <button
+          className="app-account app-account-status app-account-status-retry"
+          type="button"
+          data-testid="account-status-retry"
+          title="重新检查登录状态"
+          onClick={onRetryAuth}
+        >
+          待确认
         </button>
       ) : (
         <button
