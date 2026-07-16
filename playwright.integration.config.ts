@@ -50,6 +50,8 @@ export default defineConfig({
         PORT: String(BACKEND_PORT),
         HOST: '127.0.0.1',
         CORS_ORIGINS: FRONTEND_ORIGIN,
+        RATE_LIMIT_MAX: '10000',
+        AUTH_RATE_LIMIT_MAX: '10000',
       },
     },
     {

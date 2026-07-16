@@ -15,6 +15,12 @@ function nonNegativeNumber(value, fallback) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
+export function positiveInteger(value, fallback) {
+  if (value === undefined || value === '') return fallback
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
 // Where SQLite db + uploaded images live. In prod: /var/dinka.
 // Always resolved to an absolute path — @fastify/static (and sane file writes)
 // require it, and we don't want to depend on the caller passing an absolute one.
@@ -35,6 +41,11 @@ export const config = {
   jwtExpiry: process.env.JWT_EXPIRY || '7d',
 
   bcryptCost: Number(process.env.BCRYPT_COST || 12),
+
+  // Requests per minute. Auth stays tighter by default, while integration or
+  // trusted private deployments can raise either cap explicitly.
+  rateLimitMax: positiveInteger(process.env.RATE_LIMIT_MAX, 300),
+  authRateLimitMax: positiveInteger(process.env.AUTH_RATE_LIMIT_MAX, 20),
 
   // Public URL prefix images are served under (Nginx maps this to uploadsDir).
   uploadsPublicPath: process.env.UPLOADS_PUBLIC_PATH || '/uploads',

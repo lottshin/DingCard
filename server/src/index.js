@@ -51,7 +51,7 @@ await app.register(multipart, {
 })
 
 // Basic global rate limit; auth routes get a tighter cap below.
-await app.register(rateLimit, { max: 300, timeWindow: '1 minute' })
+await app.register(rateLimit, { max: config.rateLimitMax, timeWindow: '1 minute' })
 
 await app.register(authPlugin)
 
@@ -69,7 +69,7 @@ app.get('/api/health', async () => ({ ok: true }))
 // Auth routes get a tighter rate limit (anti brute-force / anti sign-up spam).
 await app.register(
   async (scoped) => {
-    await scoped.register(rateLimit, { max: 20, timeWindow: '1 minute' })
+    await scoped.register(rateLimit, { max: config.authRateLimitMax, timeWindow: '1 minute' })
     await scoped.register(authRoutes, { prefix: '/api/auth' })
   },
 )
