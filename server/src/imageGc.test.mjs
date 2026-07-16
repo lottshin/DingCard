@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
+import path from 'node:path'
 import test from 'node:test'
+import { tmpdir } from 'node:os'
 
 import { reclaimExpiredImages } from './imageGc.js'
+
+const BASE_UPLOADS_DIR = path.join(tmpdir(), 'dinka-image-gc-test-uploads')
 
 function image(overrides = {}) {
   return {
@@ -20,7 +24,7 @@ function createDeps(overrides = {}) {
     listImages: async () => [],
     removeFile: async () => undefined,
     deleteImage: async () => undefined,
-    uploadsDir: 'C:\\data\\uploads',
+    uploadsDir: BASE_UPLOADS_DIR,
     uploadsPublicPath: '/uploads',
     ...overrides,
   }
@@ -94,7 +98,7 @@ test('reclaimExpiredImages removes an expired orphan and accumulates its bytes',
     reclaimedBytes: 25,
     aborted: false,
   })
-  assert.deepEqual(removed, ['C:\\data\\uploads\\image-1.png'])
+  assert.deepEqual(removed, [path.resolve(BASE_UPLOADS_DIR, 'image-1.png')])
   assert.deepEqual(deleted, [['image-1', 'user-1']])
 })
 
