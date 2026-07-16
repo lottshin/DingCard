@@ -1,6 +1,16 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import JSZip from 'jszip'
+import { installOfflineFontRoutes } from './offlineFonts'
+
+test.beforeEach(async ({ context }) => {
+  await installOfflineFontRoutes(context)
+})
+
+const TEST_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
 
 function readPngSize(buffer: Buffer) {
   expect(buffer.subarray(1, 4).toString('ascii')).toBe('PNG')
@@ -369,6 +379,50 @@ async function insertShape(
     .getByRole('menu', { name: '形状' })
     .getByRole('menuitem', { name: label, exact: true })
     .click()
+}
+
+async function insertImageElementAndShapeFill(page: import('@playwright/test').Page) {
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'image-element.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expect(page.getByTestId('freeform-element').filter({ has: page.locator('.freeform-image') }))
+    .toHaveCount(1)
+
+  await insertShape(page)
+  await page.locator('input.freeform-file').nth(1).setInputFiles({
+    name: 'shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expect(page.getByTestId('freeform-shape-image-fill')).toHaveCount(1)
+}
+
+async function expectFreeformImagesDecoded(page: import('@playwright/test').Page) {
+  await expect.poll(() => page.locator('.freeform-image').evaluate(async (node) => {
+    const image = node as HTMLImageElement
+    try {
+      await image.decode()
+      return image.naturalWidth > 0 && image.naturalHeight > 0
+    } catch {
+      return false
+    }
+  })).toBe(true)
+
+  await expect.poll(() => page.getByTestId('freeform-shape-image-fill').evaluate(async (node) => {
+    const background = getComputedStyle(node).backgroundImage
+    const match = background.match(/^url\(["']?(.*?)["']?\)$/)
+    if (!match) return false
+    const image = new Image()
+    image.src = match[1]
+    try {
+      await image.decode()
+      return image.naturalWidth > 0 && image.naturalHeight > 0
+    } catch {
+      return false
+    }
+  })).toBe(true)
 }
 
 async function insertLine(
@@ -1733,6 +1787,26 @@ test('changes a selected text element font family', async ({ page }) => {
 })
 
 test('warms the selected web font before export is clicked', async ({ page }) => {
+  await page.route(/^https?:\/\/fonts\.googleapis\.com\//, (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/css',
+    headers: { 'access-control-allow-origin': '*' },
+    body: `
+      @font-face {
+        font-family: 'Noto Serif SC';
+        font-style: normal;
+        font-weight: 700;
+        src: url('https://fonts.gstatic.com/s/test-font.woff2') format('woff2');
+        unicode-range: U+0-10FFFF;
+      }
+    `,
+  }))
+  await page.route(/^https?:\/\/fonts\.gstatic\.com\//, (route) => route.fulfill({
+    status: 200,
+    contentType: 'font/woff2',
+    headers: { 'access-control-allow-origin': '*' },
+    body: Buffer.from('offline-font-fixture'),
+  }))
   const fontFetches: string[] = []
   const stylesheetRefetches: string[] = []
   page.on('request', (request) => {
@@ -2076,6 +2150,52 @@ test('fills a shape with an image', async ({ page }) => {
   await fileChooser.setFiles('public/favicon.svg')
 
   await expect(page.getByTestId('freeform-shape-image-fill')).toBeVisible()
+})
+
+test('persists image element and shape fill through ImageStore', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+
+  await insertImageElementAndShapeFill(page)
+  await expectFreeformImagesDecoded(page)
+
+  const sessionImageKeys = await page.evaluate(() => {
+    const raw = sessionStorage.getItem('slicer.images.v1')
+    return Object.keys(raw ? JSON.parse(raw) as Record<string, string> : {})
+  })
+  expect(sessionImageKeys).toHaveLength(2)
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await registerUser(page, `image-store-${Date.now()}`)
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+  const persistedDrafts = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    return key ? localStorage.getItem(key) ?? '' : ''
+  })
+  expect(persistedDrafts).toContain('data:image/png;base64,')
+  expect(persistedDrafts).not.toContain('img:')
+
+  await page.evaluate(() => sessionStorage.removeItem('slicer.images.v1'))
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.locator('.draft-item', { hasText: 'Page 1' }).click()
+
+  await expectFreeformImagesDecoded(page)
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出当前页', exact: true }).click()
+  const download = await downloadPromise
+  const downloadPath = await download.path()
+  expect(downloadPath).toBeTruthy()
+  expect(readPngSize(await readFile(downloadPath!))).toEqual({ width: 1080, height: 1440 })
 })
 
 test('exports the current slide as a PNG at slide dimensions', async ({ page }) => {

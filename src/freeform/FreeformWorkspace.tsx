@@ -21,7 +21,14 @@ import {
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
 import { InspectorSection } from './InspectorSection'
-import { createHistory, pushHistory, redo, undo, type HistoryState } from './history'
+import {
+  createHistory,
+  isLatestSaveForDraft,
+  pushHistory,
+  redo,
+  undo,
+  type HistoryState,
+} from './history'
 import {
   buildFreeformFontCSS,
   collectFreeformFontRequests,
@@ -203,8 +210,20 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
   const previousUserId = useRef<string | null>(user?.id ?? null)
+  const currentDocumentRef = useRef(doc)
+  const currentDraftIdRef = useRef(draftId)
+  const currentUserIdRef = useRef<string | null>(user?.id ?? null)
+  const saveGenerationRef = useRef(0)
 
   selectedElementIds.current = selection
+  currentDocumentRef.current = doc
+  currentDraftIdRef.current = draftId
+  currentUserIdRef.current = user?.id ?? null
+
+  const updateDraftId = useCallback((nextDraftId: string | null) => {
+    currentDraftIdRef.current = nextDraftId
+    setDraftId(nextDraftId)
+  }, [])
 
   const liveSelection = useMemo(
     () => filterLiveSelectionIds(activeSlide.elements, selection),
@@ -284,7 +303,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       })
       if (previousUserId.current !== nextUserId) {
         previousUserId.current = nextUserId
-        setDraftId(null)
+        updateDraftId(null)
         setSavedAt(null)
         setShowDrafts(false)
       }
@@ -296,11 +315,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setDrafts([])
     if (previousUserId.current !== nextUserId) {
       previousUserId.current = nextUserId
-      setDraftId(null)
+      updateDraftId(null)
       setSavedAt(null)
       setShowDrafts(false)
     }
-  }, [user])
+  }, [updateDraftId, user])
 
   useEffect(() => {
     const liveIds = new Set(activeSlide.elements.map((element) => element.id))
@@ -391,7 +410,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   async function addImageFromFile(file: File) {
     const raw = await readFileAsDataUrl(file)
-    const src = await downscaleDataUrl(raw, 1800)
+    const downscaled = await downscaleDataUrl(raw, 1800)
+    const src = await store.images.put(downscaled)
     const element = createImageElement(activeSlide, src, file.name)
     applyAction({ type: 'element/add', slideId: activeSlide.id, element })
     setSelection([element.id])
@@ -407,7 +427,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   async function fillSelectedShapeFromFile(file: File) {
     if (!isShapeElement(selectedElement)) return
     const raw = await readFileAsDataUrl(file)
-    const src = await downscaleDataUrl(raw, 1800)
+    const downscaled = await downscaleDataUrl(raw, 1800)
+    const src = await store.images.put(downscaled)
     applyAction({
       type: 'element/update',
       slideId: activeSlide.id,
@@ -918,21 +939,41 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       requestAuth()
       return
     }
+    const snapshot = doc
+    const startedDraftId = currentDraftIdRef.current
+    const saveGeneration = ++saveGenerationRef.current
     const saved = await store.drafts.save(user.id, {
       id: draftId ?? undefined,
       mode: 'freeform-slide',
-      document: doc,
+      document: snapshot,
     })
-    setDraftId(saved.id)
-    setSavedAt(saved.updatedAt)
-    refreshDrafts()
+    const saveIsCurrent = (
+      currentUserIdRef.current === user.id &&
+      isLatestSaveForDraft(
+        saveGeneration,
+        saveGenerationRef.current,
+        startedDraftId,
+        currentDraftIdRef.current,
+      )
+    )
+    const snapshotIsCurrent = Object.is(currentDocumentRef.current, snapshot)
+    if (saveIsCurrent) updateDraftId(saved.id)
+    if (saveIsCurrent && store.remote && saved.mode === 'freeform-slide') {
+      setHistory((current) => (
+        Object.is(current.current, snapshot)
+          ? { ...current, current: saved.document }
+          : current
+      ))
+    }
+    if (saveIsCurrent) setSavedAt(snapshotIsCurrent ? saved.updatedAt : null)
+    if (currentUserIdRef.current === user.id) refreshDrafts()
   }
 
   function openDraft(draft: Draft) {
     if (draft.mode !== 'freeform-slide') return
     setHistory(createHistory(draft.document))
     setSelection([])
-    setDraftId(draft.id)
+    updateDraftId(draft.id)
     setSavedAt(draft.updatedAt)
     setShowDrafts(false)
   }
@@ -940,7 +981,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   async function removeDraft(id: string) {
     if (!user) return
     await store.drafts.remove(user.id, id)
-    if (id === draftId) setDraftId(null)
+    if (id === currentDraftIdRef.current) updateDraftId(null)
     refreshDrafts()
   }
 
@@ -1655,7 +1696,7 @@ function FreeformElementContent({ element, onTextChange, onTextFocus }: Freeform
     return (
       <img
         className="freeform-image"
-        src={element.src}
+        src={store.images.resolve(element.src)}
         alt={element.alt}
         draggable={false}
         style={{ objectFit: element.fit }}
@@ -1707,7 +1748,11 @@ function FreeformElementContent({ element, onTextChange, onTextFocus }: Freeform
       className={`freeform-shape shape-${element.shape}`}
       data-testid={element.fill.type === 'image' ? 'freeform-shape-image-fill' : 'freeform-shape'}
       style={{
-        ...shapeFillToStyle(element.fill),
+        ...shapeFillToStyle(
+          element.fill.type === 'image'
+            ? { ...element.fill, src: store.images.resolve(element.fill.src) }
+            : element.fill,
+        ),
         borderColor: element.stroke,
         borderWidth: element.strokeWidth,
       }}

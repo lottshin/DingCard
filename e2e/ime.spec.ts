@@ -1,4 +1,9 @@
 import { test, expect } from '@playwright/test'
+import { installOfflineFontRoutes } from './offlineFonts'
+
+test.beforeEach(async ({ context }) => {
+  await installOfflineFontRoutes(context)
+})
 
 /**
  * Reproduces the reported bug: typing a Chinese (IME) character on a line that

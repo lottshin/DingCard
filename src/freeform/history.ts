@@ -32,3 +32,12 @@ export function redo<T>(history: HistoryState<T>): HistoryState<T> {
     future: history.future.slice(1),
   }
 }
+
+export function isLatestSaveForDraft(
+  startedGeneration: number,
+  currentGeneration: number,
+  startedDraftId: string | null,
+  currentDraftId: string | null,
+): boolean {
+  return startedGeneration === currentGeneration && startedDraftId === currentDraftId
+}
