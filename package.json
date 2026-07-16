@@ -1,15 +1,16 @@
 {
   "name": "tuwen-slicer",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "npm run test:unit && npm run test:e2e",
+    "test": "npm run test:unit && npm run test:server && npm run test:e2e",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "test:server": "npm --prefix server test",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:integration": "playwright test --config playwright.integration.config.ts"

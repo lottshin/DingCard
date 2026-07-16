@@ -1,6 +1,6 @@
 # 叮卡 · 后端接入方案
 
-> 后端自动化测试：`npm --prefix server test`（覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟：`node server/smoke-test.mjs`。
+> 当前发布版本：前端 `0.9.0`，后端 `0.2.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
 
 把当前"纯浏览器存储"改造成真实后端,实现跨设备同步与真实账号。
 
@@ -11,7 +11,7 @@
 - **部署形态**:后端可选 —— 默认纯本地(零部署),配了后端地址才走服务器(见第 10 章)
 
 > 进度:后端、`src/storage/` 的 Local/Remote 双实现、远程联调与 Docker 部署均已落地。
-> 图片租约/回收与 retain API 已在后端实现；RemoteStore 在保存自由编辑草稿时执行“续租已有 URL → 上传历史 Data URL → 续租完整 URL → 提交草稿”。活动画布的周期续租和可见错误提示仍由后续 UI 任务接入。本文与代码保持同步。
+> 图片租约/回收与 retain API 已接入前后端：RemoteStore 保存自由编辑草稿时执行“续租已有 URL → 上传历史 Data URL → 续租完整 URL → 提交草稿”，活动 Markdown/自由编辑文档还会在图片源变化、恢复联网、页面重新可见和每 5 分钟周期触发续租。认证、草稿与图片操作失败统一显示可恢复的非阻塞提示，不再静默失败。本文与代码保持同步。
 
 ---
 
@@ -23,7 +23,7 @@
 |---|---|---|
 | 账号/密码/登录态 | `localStorage`,SHA-256(非加盐) | `src/storage/local.ts` 包装 `src/auth.ts` |
 | 草稿 | `localStorage`,按 userId 分区 | `src/storage/local.ts` 包装 `src/drafts.ts` |
-| 草稿内图片 | base64 内嵌进草稿 JSON | `src/storage/local.ts` 包装 `src/drafts.ts` + `src/imageStore.ts` |
+| 草稿内图片 | 编辑时可用会话级 `img:` 引用；保存副本物化为 Data URL | `src/storage/local.ts` 包装 `src/drafts.ts` + `src/imageStore.ts` |
 | 会话图片缓存 | `sessionStorage` | `src/storage/local.ts` 包装 `src/imageStore.ts` |
 
 `src/storage/types.ts` 定义统一异步契约，UI 只依赖 `store`。LocalStore 包装 `auth.ts` / `drafts.ts` / `imageStore.ts`，RemoteStore 通过 HTTP 调后端；切换模式不会自动把已有 localStorage 草稿或图片上传到服务器，需要用户显式导入。
@@ -121,6 +121,7 @@ GET  /api/auth/me                                 → { user }        (校验 to
 - 密码用 **bcrypt**(cost 10~12)哈希存储。**绝不再用现在的 SHA-256**。
 - 登录成功签发 JWT,载荷放 `{ sub: userId, username }`,有效期如 7 天。
 - JWT 密钥从环境变量读(`JWT_SECRET`),不写进代码。
+- 除注册和登录外，缺少、过期或无效 JWT 的受保护请求返回 401。前端只在“实际携带的 token 收到 401 且该 token 仍为当前会话”时清除登录态；网络错误、5xx 和迟到的旧请求不会误登出用户。
 - 注册/登录是公共请求，即使浏览器已有 token 也不附带 `Authorization`。它们的 401 只表示本次凭据失败，不会清除已有会话。
 - RemoteStore 统一抛出带 `status: number | null` 的 `ApiError`：HTTP 错误保留实际状态码；网络失败、客户端预校验或已被更新会话取代的认证请求没有对应 HTTP 状态，使用 `null`；无效 JSON 使用稳定错误“服务器返回了无效响应”。只有实际携带的 token 收到 401、且该 token 仍是当前值时才清除并通知 `onInvalidated`；迟到的旧请求 401、网络错误、5xx 和无效 JSON 都不误清新 token，旧 `/me` 响应遇到新 token 时会重新校验新会话。
 - token 同时保留在模块内存；`localStorage` 因隐私模式或安全策略不可用时，同一页面内登录和 `/me` 仍可工作。`current()` 只在没有 token 或收到 401 时返回 `null`，其他失败继续抛给 UI。
@@ -148,8 +149,21 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 - 新上传图片获得 `IMAGE_LEASE_MS` 租约；retain 对普通 `/uploads/...`、同公开 request origin 的绝对 URL 或协议相对 URL 续租，外部 origin/data URL 会忽略。反代部署时公开协议取可信 `X-Forwarded-Proto` 的第一个 `http`/`https` 值，公开 authority 取请求 `Host`（包含非默认端口）；因此 HTTPS 页面只接受同 host、同端口的 HTTPS 绝对图片 URL，不会把 HTTP URL 当同源。
 - retain 的 `urls` 不是数组时返回 400 + `INVALID_IMAGE_RETAIN_REQUEST`；单次托管路径超过 500 条时返回 400 + `IMAGE_RETAIN_LIMIT_EXCEEDED`；任一路径不存在或不属于当前用户时整批返回 409 + `IMAGE_RETAIN_CONFLICT`，不会部分续租。
 - 同一用户的草稿写入/删除、retain、上传共用一把资源锁。上传临界区完整覆盖“GC → 配额检查 → 文件持久化 → SQLite insert”，避免并发上传都基于旧配额通过；删除草稿后也在同一锁内触发 GC。
-- **降采样仍在前端做**(现有 `downscaleDataUrl` 保留),上传前就压到 1200px,省带宽和磁盘。
+- **降采样仍在前端做**（现有 `downscaleDataUrl` 保留）：Markdown 粘图默认限制到 1200px，自由编辑图片与形状填充限制到 1800px，上传前先缩图以节省带宽和磁盘。
 - 图片按 `/uploads/<id>.jpg` 存盘,`url` 直接可作 `<img src>`。Fastify static 仅供后端直连开发/联调，生产由 Nginx 优先直出。
+
+### 状态码约定
+
+| 状态码 | 稳定语义 |
+|---|---|
+| 400 | 请求结构或字段无效，例如草稿信封、草稿 ID、retain 数组或 retain 数量上限不符合契约。 |
+| 401 | 公共登录请求凭据错误，或受保护请求的 JWT 缺失/无效/过期；只有后者满足当前 token 条件时才使客户端会话失效。 |
+| 404 | 草稿不存在，或调用者尝试读取/更新不属于自己的草稿；不泄露其他用户草稿是否存在。 |
+| 409 | 用户名冲突，或 retain 中至少一个托管图片不存在/不属于当前用户；retain 整批失败，不部分续租。 |
+| 413 | 单图超过上传上限，或用户图片配额不足。 |
+| 415 | 上传文件 MIME 不在 PNG/JPEG/WebP 白名单。 |
+
+图片 retain 的机器可读错误码为 `INVALID_IMAGE_RETAIN_REQUEST`、`IMAGE_RETAIN_LIMIT_EXCEEDED`、`IMAGE_RETAIN_CONFLICT`；配额错误码为 `IMAGE_QUOTA_EXCEEDED`。
 
 ---
 
@@ -172,7 +186,9 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 
 RemoteStore 的草稿 `list` 与 `save` 都经过 `normalizeDraftForRead`：列表顶层不是数组时明确失败，数组内坏项丢弃，legacy Markdown 与 freeform v1/v2 使用和 LocalStore 一致的迁移；保存输入在任何续租、上传或 POST 前先校验，单项保存响应无效时也拒绝交给工作区。保存自由编辑草稿时，先续租输入文档已有的托管 URL，再把历史 `data:image/...` 克隆、上传并替换为服务器 URL，随后续租转换后的完整 URL 集合，最后才 POST 草稿。任一续租或上传失败都不会提交草稿；映射只在单次保存内去重，提交失败后下次保存会重新上传，输入文档保持不变。
 
-当前自由编辑插入处理器仍将在下一步统一改为即时调用 `store.images.put()`；在此之前，RemoteStore 的保存迁移保证成功写入服务器的自由编辑草稿不含历史 Base64。活动画布周期续租、认证失效订阅和操作错误提示也在后续 UI 任务接入。
+Markdown 粘贴图片、自由编辑普通图片和形状图片填充都统一执行“读取 → 前端降采样 → `store.images.put()`”，渲染时再由 `store.images.resolve()` 解析本地 `img:` 引用或远程 URL。LocalStore 保存自由编辑草稿时只克隆并物化待保存副本，不把活动文档膨胀成 Base64；RemoteStore 会把历史 Data URL 上传并替换为服务器 URL，服务器草稿不会继续积累 Base64。
+
+两个工作区都从活动文档收集图片源并使用 `useImageLease` 续租。后台续租失败会在 30 秒后保留唯一自动重试；删除草稿和上传新图片前会显式等待安全续租，失败时中止危险操作并显示 `OperationNotice`。草稿列表、保存、删除、图片上传和认证检查都捕获错误并保留上一次成功状态；`AuthStore.onInvalidated` 让受保护请求的有效 401 立即同步到登录 UI。同一工作区的保存请求采用单飞门禁，保存期间按钮禁用，避免旧请求迟到后覆盖较新的文档；Markdown 的“已保存”状态按完整草稿文档修订判断，正文、平台、主题、字体、个人资料或圆角任一变化都会立即清除标记。
 
 ---
 
@@ -235,6 +251,8 @@ compose 用到的键(其余用镜像内默认值即可):
 | `JWT_SECRET` | **必填**,JWT 签名密钥,强随机 | 无(缺失则拒绝启动) |
 | `WEB_PORT` | 宿主暴露端口 | 8080 |
 | `JWT_EXPIRY` | 登录有效期 | 7d |
+| `RATE_LIMIT_MAX` | 全局每分钟请求上限(正整数) | 300 |
+| `AUTH_RATE_LIMIT_MAX` | 注册、登录与 `/me` 每分钟请求上限(正整数) | 20 |
 | `USER_QUOTA_BYTES` | 每用户图片配额 | 500MB |
 | `IMAGE_LEASE_MS` | 新上传/续租图片的租约时长(毫秒) | 86400000(24 小时) |
 | `MAX_UPLOAD_BYTES` | 单图上限(与 Nginx `client_max_body_size` 一致) | 6MB |
@@ -258,14 +276,18 @@ curl -sf http://127.0.0.1:8080/api/health   # {"ok":true}
 
 **升级**:`git pull && docker compose up -d --build`,命名卷里的数据不受影响。
 
-### 6.5 已验证(本地全链路)
+### 6.5 自动化验证入口
 
-`deploy/compose-smoke.sh` 自动跑通并已确认:
-- ✅ 首页经 Nginx 返回(200 + React 挂载点)
-- ✅ `/api` 反代:注册 / 草稿存取(web→server)打通
-- ✅ 图片上传 web→server→写入 uploads 卷
-- ✅ **上传的图片经 Nginx 只读卷直出**(200 + `image/jpeg`)
-- ✅ **数据库对 web 容器不可见**(两卷分离安全设计生效)
+| 命令 | 覆盖范围 |
+|---|---|
+| `npm run test:server` | SQLite 迁移、图片引用/租约/GC、用户级资源锁和后端路由单元/集成测试。 |
+| `node server/smoke-test.mjs` | 直连 Fastify 的认证、跨用户草稿隔离、图片上传/retain/配额/回收及 Fastify 静态图片路径。 |
+| `npm run test:integration` | 真实 Fastify 后端 + RemoteStore 前端，包括远程图片保存恢复、认证失效和可恢复错误 UI。 |
+| `npm run test:e2e` | 默认 LocalStore、离线字体和自由编辑导出等浏览器回归。 |
+| `$env:JWT_SECRET='compose-validation-secret'; docker compose config` | 展开并校验 Compose 配置，确认 `IMAGE_LEASE_MS` 等变量进入 server 容器。 |
+| `deploy/compose-smoke.sh` | 在可使用 Docker daemon 的环境中验证 Nginx 首页、`/api` 反代、uploads 只读卷直出和数据库卷隔离。 |
+
+生产静态路径由 Nginx 直接读取 uploads 只读卷；Fastify 同时保留同一路径的静态注册，供直连开发、自动化联调和后端冒烟使用。
 
 ### 6.6 资源占用(2c2g 完全够)
 - server(Node+Fastify)常驻 ~60–120MB;Nginx ~20MB;SQLite 几乎不占额外内存
@@ -423,7 +445,7 @@ UI 层只 import `store`,对两种模式无感。这正是之前"抽 StorageAdap
 - [ ] **`.superpowers/`**:确认目录内无不宜公开内容(设计稿注明"不属于产品源代码"),按需加进 `.gitignore` 或清理
 - [ ] **LICENSE**:选协议(个人项目 MIT 最省心)
 - [ ] **README**:说明两种模式;本地模式一键跑,服务器模式指向部署文档(本文)
-- [ ] **示例配置**:前端 `.env.example` 写明 `VITE_API_BASE`(留空 = 本地模式)
+- [x] **示例配置**:根 `.env.example` 写明 `VITE_API_BASE`（留空 = 本地模式）；Docker Compose 构建仍固定使用同源 `/`。
 
 ---
 
@@ -433,13 +455,13 @@ UI 层只 import `store`,对两种模式无感。这正是之前"抽 StorageAdap
 
 1. ✅ **搭后端骨架** — Fastify + SQLite + 三张表 + 认证 + 草稿 API + 图片上传、租约/GC 与 retain；单元/集成测试和后端冒烟均通过
 2. ✅ **草稿改通用信封** — 适配 markdown-card + freeform-slide 双模式
-3. ✅ **前端抽存储适配层** — `src/storage/` 三接口 + Local/Remote 双实现 + 环境变量开关；含条件 401、草稿归一化、历史自由编辑图片上传与保存期 retain(见第 10 章)
-4. ✅ **前端接后端联调** — `current()` 转异步;端到端联调测试(真后端 + 远程前端)通过
-5. ✅ **Docker 全栈容器化 + 部署文档** — 一条 `docker compose up` 起全套(见第 6 章),全链路自动验证通过
+3. ✅ **前端抽存储适配层** — `src/storage/` 三接口 + Local/Remote 双实现 + 环境变量开关；含条件 401、草稿归一化、统一图片上传、保存期 retain 与活动文档续租(见第 10 章)
+4. ✅ **前端接后端联调** — `current()` 转异步；认证失效、草稿/图片错误提示和端到端联调测试（真后端 + 远程前端）均已接入
+5. ✅ **Docker 全栈容器化 + 部署文档** — 一条 `docker compose up` 起全套（见第 6 章），并提供 Compose 配置检查与全链路烟测入口
 6. ⏭️ **(可选,后置)接邮件** — 阿里云邮件推送 + `email_tokens` 表 + 找回密码 API(见第 9 章)
 
-第 1-5 步已全部完成并验证:本地模式(默认,零部署)与服务器模式(Docker)均可用。第 6 步邮件等真有找回密码需求了再做。
+第 1-5 步的实现与自动化入口已完成；本地模式和真实 Fastify 远程模式由仓库测试覆盖，Docker 上线前还应在有 daemon 权限的目标环境运行 `deploy/compose-smoke.sh`。第 6 步邮件等真有找回密码需求了再做。
 
-> 剩余前端接线：freeform 插入时即时走 `ImageStore`、活动文档周期续租，以及把认证/草稿/图片失败显示为非阻塞 UI 提示。RemoteStore 已能在保存历史自由编辑草稿时把 Data URL 迁移为服务器 URL。
+> 本次加固不会自动上传或迁移已有 localStorage 账号、草稿和图片。未来若提供迁移能力，必须是用户显式触发、可预览并可核对结果的独立导入流程。
 
 
