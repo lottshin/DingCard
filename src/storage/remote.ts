@@ -1,130 +1,371 @@
 // Remote storage backend — talks to the Fastify + SQLite server over HTTP.
 //
-// Enabled only when VITE_API_BASE is set (see index.ts). Gives real accounts,
-// cross-device sync and server-side image storage. The JWT is kept in
-// localStorage and sent as `Authorization: Bearer <token>` on every request.
+// Enabled only when VITE_API_BASE is set (see index.ts). The adapter keeps the
+// UI-facing contract identical to LocalStore while adding conditional session
+// invalidation, draft normalization, and managed-image lease renewal.
 
-import type { AuthStore, DraftStore, ImageStore, Storage } from './types'
-import type { Draft } from '../drafts'
 import type { User } from '../auth'
+import { normalizeDraftForRead } from '../drafts'
+import type { SaveDraftInput } from '../drafts'
+import {
+  collectFreeformImageSources,
+  uploadInlineFreeformImages,
+} from '../freeform/imageAssets'
+import type { AuthStore, DraftStore, ImageStore, Storage } from './types'
 
 const TOKEN_KEY = 'slicer.token.v1'
+const invalidationListeners = new Set<() => void>()
 
-function getToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY)
-  } catch {
-    return null
+let memoryToken: string | null = null
+let tokenLoaded = false
+let authGeneration = 0
+
+export class ApiError extends Error {
+  readonly status: number | null
+
+  constructor(message: string, status: number | null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
   }
 }
 
-function setToken(token: string | null) {
+function currentToken(): string | null {
+  if (!tokenLoaded) {
+    tokenLoaded = true
+    try {
+      const stored = localStorage.getItem(TOKEN_KEY)
+      memoryToken = typeof stored === 'string' && stored !== '' ? stored : null
+    } catch {
+      // Keep the in-memory value when persistent storage is unavailable.
+    }
+  }
+  return memoryToken
+}
+
+function setToken(token: string | null): void {
+  memoryToken = token
+  tokenLoaded = true
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token)
     else localStorage.removeItem(TOKEN_KEY)
   } catch {
-    // storage unavailable (private mode) — token lives only for this page load
+    // The page-level session remains usable through memoryToken.
   }
 }
 
+function invalidateToken(requestToken: string | null): void {
+  if (!requestToken || currentToken() !== requestToken) return
+  setToken(null)
+  for (const listener of [...invalidationListeners]) {
+    try {
+      listener()
+    } catch {
+      // One UI subscriber must not replace the request error or block others.
+    }
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isUser(value: unknown): value is User {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.username === 'string' &&
+    typeof value.createdAt === 'number' &&
+    Number.isFinite(value.createdAt)
+  )
+}
+
+function normalizeSaveInput(data: SaveDraftInput): SaveDraftInput {
+  if (typeof data !== 'object' || data === null) {
+    throw new ApiError('远程草稿内容无效', null)
+  }
+
+  const raw = data as unknown as Record<string, unknown>
+  if (raw.id !== undefined && typeof raw.id !== 'string') {
+    throw new ApiError('远程草稿内容无效', null)
+  }
+  if (raw.title !== undefined && typeof raw.title !== 'string') {
+    throw new ApiError('远程草稿内容无效', null)
+  }
+
+  const normalized = normalizeDraftForRead({
+    id: raw.id ?? '__remote-draft-validation__',
+    title: raw.title ?? '',
+    schemaVersion: 2,
+    updatedAt: 0,
+    mode: raw.mode,
+    document: raw.document,
+  })
+  if (!normalized) throw new ApiError('远程草稿内容无效', null)
+
+  const identity = {
+    ...(raw.id !== undefined ? { id: raw.id } : {}),
+    ...(raw.title !== undefined ? { title: raw.title } : {}),
+  }
+  return normalized.mode === 'freeform-slide'
+    ? { ...identity, mode: normalized.mode, document: normalized.document }
+    : { ...identity, mode: normalized.mode, document: normalized.document }
+}
+
+interface ApiRequestInit extends RequestInit {
+  authenticated?: boolean
+}
+
+interface ApiResponse<T> {
+  data: T
+  status: number
+}
+
 export function createRemoteStore(apiBase: string): Storage {
-  // Normalise: no trailing slash, so `${base}/api/...` is always well-formed.
   const base = apiBase.replace(/\/+$/, '')
 
-  /**
-   * Fetch a JSON endpoint with the auth header attached. Throws Error(message)
-   * on non-2xx, using the server's `{ error }` body when present so the existing
-   * UI (AuthModal etc.) can surface it verbatim.
-   */
-  async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const token = getToken()
-    const headers = new Headers(init.headers)
-    if (token) headers.set('authorization', `Bearer ${token}`)
-    // Only set JSON content-type when we're sending a plain body (not FormData).
-    if (init.body && !(init.body instanceof FormData) && !headers.has('content-type')) {
+  async function api<T>(path: string, init: ApiRequestInit = {}): Promise<ApiResponse<T>> {
+    const { authenticated = true, ...requestInit } = init
+    const requestToken = authenticated ? currentToken() : null
+    const headers = new Headers(requestInit.headers)
+    if (requestToken) headers.set('authorization', `Bearer ${requestToken}`)
+    if (
+      requestInit.body &&
+      !(requestInit.body instanceof FormData) &&
+      !headers.has('content-type')
+    ) {
       headers.set('content-type', 'application/json')
     }
 
-    const res = await fetch(`${base}${path}`, { ...init, headers })
-    const text = await res.text()
-    const data = text ? JSON.parse(text) : null
-
-    if (!res.ok) {
-      const message = (data && data.error) || `请求失败（${res.status}）`
-      throw new Error(message)
+    let response: Response
+    try {
+      response = await fetch(`${base}${path}`, { ...requestInit, headers })
+    } catch {
+      throw new ApiError('网络请求失败，请检查网络后重试', null)
     }
-    return data as T
+
+    if (response.status === 401) invalidateToken(requestToken)
+
+    let text: string
+    try {
+      text = await response.text()
+    } catch {
+      throw new ApiError('服务器返回了无效响应', response.status)
+    }
+
+    let data: unknown
+    try {
+      data = JSON.parse(text)
+    } catch {
+      throw new ApiError('服务器返回了无效响应', response.status)
+    }
+
+    if (!response.ok) {
+      const message = isRecord(data) && typeof data.error === 'string'
+        ? data.error
+        : `请求失败（${response.status}）`
+      throw new ApiError(message, response.status)
+    }
+
+    return { data: data as T, status: response.status }
   }
 
   const auth: AuthStore = {
     async register(username, password) {
-      const { user, token } = await api<{ user: User; token: string }>('/api/auth/register', {
+      const generation = ++authGeneration
+      const { data, status } = await api<unknown>('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
+        authenticated: false,
       })
-      setToken(token)
-      return user
+      if (generation !== authGeneration) {
+        throw new ApiError('认证请求已失效', null)
+      }
+      if (
+        !isRecord(data) ||
+        !isUser(data.user) ||
+        typeof data.token !== 'string' ||
+        data.token === ''
+      ) {
+        throw new ApiError('服务器返回了无效响应', status)
+      }
+      setToken(data.token)
+      return data.user
     },
     async login(username, password) {
-      const { user, token } = await api<{ user: User; token: string }>('/api/auth/login', {
+      const generation = ++authGeneration
+      const { data, status } = await api<unknown>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
+        authenticated: false,
       })
-      setToken(token)
-      return user
+      if (generation !== authGeneration) {
+        throw new ApiError('认证请求已失效', null)
+      }
+      if (
+        !isRecord(data) ||
+        !isUser(data.user) ||
+        typeof data.token !== 'string' ||
+        data.token === ''
+      ) {
+        throw new ApiError('服务器返回了无效响应', status)
+      }
+      setToken(data.token)
+      return data.user
     },
     async logout() {
+      authGeneration += 1
       setToken(null)
     },
     async current() {
-      if (!getToken()) return null
-      try {
-        const { user } = await api<{ user: User }>('/api/auth/me')
-        return user
-      } catch {
-        // token expired / invalid — drop it and report signed-out
-        setToken(null)
-        return null
+      let requestToken = currentToken()
+      while (requestToken) {
+        try {
+          const { data, status } = await api<unknown>('/api/auth/me')
+          const latestToken = currentToken()
+          if (latestToken !== requestToken) {
+            requestToken = latestToken
+            continue
+          }
+          if (!isRecord(data) || !isUser(data.user)) {
+            throw new ApiError('服务器返回了无效响应', status)
+          }
+          return data.user
+        } catch (error) {
+          const latestToken = currentToken()
+          if (latestToken !== requestToken) {
+            requestToken = latestToken
+            continue
+          }
+          if (error instanceof ApiError && error.status === 401) return null
+          throw error
+        }
       }
+      return null
+    },
+    onInvalidated(listener) {
+      invalidationListeners.add(listener)
+      return () => invalidationListeners.delete(listener)
     },
   }
 
-  const drafts: DraftStore = {
-    // userId is implied by the JWT server-side; the param is kept for interface
-    // parity with the local store but not sent.
-    async list() {
-      return api<Draft[]>('/api/drafts')
-    },
-    async save(_userId, data) {
-      return api<Draft>('/api/drafts', { method: 'POST', body: JSON.stringify(data) })
-    },
-    async remove(_userId, id) {
-      await api<{ ok: true }>(`/api/drafts/${encodeURIComponent(id)}`, { method: 'DELETE' })
-    },
+  const apiOrigin = (() => {
+    try {
+      if (/^https?:\/\//i.test(base)) return new URL(base).origin
+      if (typeof location !== 'undefined' && location.origin) return location.origin
+    } catch {
+      // Invalid bases will fail normally when fetch is attempted.
+    }
+    return null
+  })()
+
+  function sameOriginRetainCandidates(hrefs: readonly string[]): string[] {
+    const unique = new Map<string, string>()
+    const fallbackOrigin = apiOrigin ?? 'http://local.invalid'
+
+    for (const value of hrefs) {
+      if (typeof value !== 'string') continue
+      const href = value.trim()
+      if (href === '' || /^data:/i.test(href) || href.startsWith('img:')) continue
+
+      let parsed: URL
+      try {
+        if (href.startsWith('/') && !href.startsWith('//')) {
+          parsed = new URL(href, fallbackOrigin)
+        } else if (href.startsWith('//')) {
+          if (!apiOrigin) continue
+          parsed = new URL(href, apiOrigin)
+          if (parsed.origin !== apiOrigin) continue
+        } else if (/^https?:\/\//i.test(href)) {
+          if (!apiOrigin) continue
+          parsed = new URL(href)
+          if (parsed.origin !== apiOrigin) continue
+        } else {
+          continue
+        }
+      } catch {
+        continue
+      }
+
+      if (parsed.pathname === '/') continue
+      if (!unique.has(parsed.pathname)) unique.set(parsed.pathname, href)
+    }
+
+    return [...unique.values()]
+  }
+
+  function publicImageUrl(url: string): string {
+    if (/^https?:\/\//i.test(url)) return url
+    if (url.startsWith('//')) {
+      return apiOrigin ? new URL(url, apiOrigin).href : url
+    }
+    if (url.startsWith('/') && /^https?:\/\//i.test(base)) {
+      return new URL(url, base).href
+    }
+    return url.startsWith('/') ? url : `${base}/${url.replace(/^\/+/, '')}`
   }
 
   const images: ImageStore = {
-    // Upload the (already-downscaled) image; the server returns a real
-    // `/uploads/x` URL which we embed directly in the document. Because the URL
-    // is absolute-to-the-server, prefix it with the API base so <img src> works
-    // even when the SPA is served from a different origin.
     async put(dataUrl) {
       const blob = await (await fetch(dataUrl)).blob()
       const form = new FormData()
       form.append('file', blob)
-      const { url } = await api<{ ref: string; url: string }>('/api/images', {
+      const { data, status } = await api<unknown>('/api/images', {
         method: 'POST',
         body: form,
       })
-      return url.startsWith('http') ? url : `${base}${url}`
+      if (!isRecord(data) || typeof data.url !== 'string' || data.url.trim() === '') {
+        throw new ApiError('服务器返回了无效图片地址', status)
+      }
+      return publicImageUrl(data.url)
     },
-    // Remote images are embedded as real URLs, so resolve/isRef/register/collect
-    // are effectively no-ops: a real URL passes through untouched, and there are
-    // no `img:` refs to track or embed.
     resolve: (href) => href,
     isRef: () => false,
     register: () => {},
     collect: () => ({}),
+    async retain(hrefs) {
+      const urls = sameOriginRetainCandidates(hrefs)
+      if (urls.length === 0) return
+      await api('/api/images/retain', {
+        method: 'POST',
+        body: JSON.stringify({ urls }),
+      })
+    },
+  }
+
+  const drafts: DraftStore = {
+    async list() {
+      const { data, status } = await api<unknown>('/api/drafts')
+      if (!Array.isArray(data)) {
+        throw new ApiError('服务器返回了无效草稿列表', status)
+      }
+      return data
+        .map(normalizeDraftForRead)
+        .filter((draft): draft is NonNullable<typeof draft> => draft !== null)
+    },
+    async save(_userId, data) {
+      const validated = normalizeSaveInput(data)
+      let prepared: SaveDraftInput = validated
+      if (validated.mode === 'freeform-slide') {
+        await images.retain(collectFreeformImageSources(validated.document))
+        const document = await uploadInlineFreeformImages(validated.document, (dataUrl) => (
+          images.put(dataUrl)
+        ))
+        await images.retain(collectFreeformImageSources(document))
+        prepared = { ...validated, document }
+      }
+
+      const { data: raw, status } = await api<unknown>('/api/drafts', {
+        method: 'POST',
+        body: JSON.stringify(prepared),
+      })
+      const normalized = normalizeDraftForRead(raw)
+      if (!normalized) throw new ApiError('服务器返回了无效草稿', status)
+      return normalized
+    },
+    async remove(_userId, id) {
+      await api(`/api/drafts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
   }
 
   return { auth, drafts, images, remote: true }

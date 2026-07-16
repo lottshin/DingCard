@@ -19,6 +19,8 @@ export interface AuthStore {
   logout(): Promise<void>
   /** The currently signed-in user, or null. */
   current(): Promise<User | null>
+  /** Subscribe to server-confirmed session invalidation (for example, HTTP 401). */
+  onInvalidated(listener: () => void): () => void
 }
 
 /** Per-user draft persistence. All scoped to the signed-in user. */
@@ -48,6 +50,8 @@ export interface ImageStore {
   register(ref: string, dataUrl: string): void
   /** Collect data URLs for every ref used in a markdown source (for embedding). */
   collect(source: string): Record<string, string>
+  /** Renew the lease for managed image URLs. Local storage implements this as a no-op. */
+  retain(hrefs: readonly string[]): Promise<void>
 }
 
 /** The full storage surface the app depends on. */

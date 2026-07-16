@@ -17,6 +17,7 @@ const auth: AuthStore = {
   login: (username, password) => authImpl.login(username, password),
   logout: async () => authImpl.logout(),
   current: async () => authImpl.current(),
+  onInvalidated: () => () => {},
 }
 
 const images: ImageStore = {
@@ -27,6 +28,7 @@ const images: ImageStore = {
   isRef: (href) => imagesImpl.isImageRef(href),
   register: (ref, dataUrl) => imagesImpl.registerImage(ref, dataUrl),
   collect: (source) => imagesImpl.collectImages(source),
+  retain: async () => {},
 }
 
 function normalizeSaveInput(data: SaveDraftInput): SaveDraftInput {

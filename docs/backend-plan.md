@@ -11,7 +11,7 @@
 - **部署形态**:后端可选 —— 默认纯本地(零部署),配了后端地址才走服务器(见第 10 章)
 
 > 进度:后端、`src/storage/` 的 Local/Remote 双实现、远程联调与 Docker 部署均已落地。
-> 图片租约/回收与 retain API 已在后端实现；现有 RemoteStore 负责上传真实 URL，尚未主动调用 retain。本文与代码保持同步。
+> 图片租约/回收与 retain API 已在后端实现；RemoteStore 在保存自由编辑草稿时执行“续租已有 URL → 上传历史 Data URL → 续租完整 URL → 提交草稿”。活动画布的周期续租和可见错误提示仍由后续 UI 任务接入。本文与代码保持同步。
 
 ---
 
@@ -121,6 +121,9 @@ GET  /api/auth/me                                 → { user }        (校验 to
 - 密码用 **bcrypt**(cost 10~12)哈希存储。**绝不再用现在的 SHA-256**。
 - 登录成功签发 JWT,载荷放 `{ sub: userId, username }`,有效期如 7 天。
 - JWT 密钥从环境变量读(`JWT_SECRET`),不写进代码。
+- 注册/登录是公共请求，即使浏览器已有 token 也不附带 `Authorization`。它们的 401 只表示本次凭据失败，不会清除已有会话。
+- RemoteStore 统一抛出带 `status: number | null` 的 `ApiError`：HTTP 错误保留实际状态码；网络失败、客户端预校验或已被更新会话取代的认证请求没有对应 HTTP 状态，使用 `null`；无效 JSON 使用稳定错误“服务器返回了无效响应”。只有实际携带的 token 收到 401、且该 token 仍是当前值时才清除并通知 `onInvalidated`；迟到的旧请求 401、网络错误、5xx 和无效 JSON 都不误清新 token，旧 `/me` 响应遇到新 token 时会重新校验新会话。
+- token 同时保留在模块内存；`localStorage` 因隐私模式或安全策略不可用时，同一页面内登录和 `/me` 仍可工作。`current()` 只在没有 token 或收到 401 时返回 `null`，其他失败继续抛给 UI。
 
 ### 草稿
 ```
@@ -162,12 +165,14 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 |---|---|
 | `src/storage/types.ts` | 定义 `AuthStore` / `DraftStore` / `ImageStore` / `Storage` 统一契约。 |
 | `src/storage/local.ts` | 包装现有 `auth.ts` / `drafts.ts` / `imageStore.ts`，保留浏览器本地数据与兼容逻辑。 |
-| `src/storage/remote.ts` | 封装 fetch、JWT、草稿 API 与图片上传；远程图片返回真实 URL。当前未主动调用 `/api/images/retain`。 |
+| `src/storage/remote.ts` | 封装 fetch、JWT、条件认证失效、草稿归一化、图片上传与 `/api/images/retain`；远程图片返回真实 URL。 |
 | `src/storage/index.ts` | 模块加载时读取 `VITE_API_BASE`，只在这里选择 LocalStore 或 RemoteStore。 |
 
-设计上刻意让**接口形状一致**，两套实现对 UI 基本无感。模式切换只改变之后的读写目标，**不会自动迁移**已有 localStorage 账号、草稿或图片；需要迁移时必须提供显式导入流程。
+设计上刻意让**接口形状一致**，两套实现对 UI 基本无感。`AuthStore.onInvalidated` 在 LocalStore 中是空订阅，在 RemoteStore 中只对符合条件的受保护请求 401 发出通知；显式退出和较新的注册/登录请求还会使较早的成功响应失效，避免迟到响应恢复或覆盖会话。`ImageStore.retain` 在 LocalStore 中立即成功；RemoteStore 过滤空值、Data URL、`img:` 和外部 origin，把同源根路径候选交给服务端，由服务端按实际 `UPLOADS_PUBLIC_PATH` 判定托管图片，因此自定义 `/media/...` 前缀也不会被客户端静默漏掉。模式切换只改变之后的读写目标，**不会自动迁移**已有 localStorage 账号、草稿或图片；需要迁移时必须提供显式导入流程。
 
-> freeform 目前把图片 base64 内嵌进 `element.src`。远程模式下应改成走 `/api/images` 上传、element 只存 URL;本地模式维持内嵌。这是前端改造的活,后端不变。
+RemoteStore 的草稿 `list` 与 `save` 都经过 `normalizeDraftForRead`：列表顶层不是数组时明确失败，数组内坏项丢弃，legacy Markdown 与 freeform v1/v2 使用和 LocalStore 一致的迁移；保存输入在任何续租、上传或 POST 前先校验，单项保存响应无效时也拒绝交给工作区。保存自由编辑草稿时，先续租输入文档已有的托管 URL，再把历史 `data:image/...` 克隆、上传并替换为服务器 URL，随后续租转换后的完整 URL 集合，最后才 POST 草稿。任一续租或上传失败都不会提交草稿；映射只在单次保存内去重，提交失败后下次保存会重新上传，输入文档保持不变。
+
+当前自由编辑插入处理器仍将在下一步统一改为即时调用 `store.images.put()`；在此之前，RemoteStore 的保存迁移保证成功写入服务器的自由编辑草稿不含历史 Base64。活动画布周期续租、认证失效订阅和操作错误提示也在后续 UI 任务接入。
 
 ---
 
@@ -428,13 +433,13 @@ UI 层只 import `store`,对两种模式无感。这正是之前"抽 StorageAdap
 
 1. ✅ **搭后端骨架** — Fastify + SQLite + 三张表 + 认证 + 草稿 API + 图片上传、租约/GC 与 retain；单元/集成测试和后端冒烟均通过
 2. ✅ **草稿改通用信封** — 适配 markdown-card + freeform-slide 双模式
-3. ✅ **前端抽存储适配层** — `src/storage/` 三接口 + Local/Remote 双实现 + 环境变量开关(见第 10 章)
+3. ✅ **前端抽存储适配层** — `src/storage/` 三接口 + Local/Remote 双实现 + 环境变量开关；含条件 401、草稿归一化、历史自由编辑图片上传与保存期 retain(见第 10 章)
 4. ✅ **前端接后端联调** — `current()` 转异步;端到端联调测试(真后端 + 远程前端)通过
 5. ✅ **Docker 全栈容器化 + 部署文档** — 一条 `docker compose up` 起全套(见第 6 章),全链路自动验证通过
 6. ⏭️ **(可选,后置)接邮件** — 阿里云邮件推送 + `email_tokens` 表 + 找回密码 API(见第 9 章)
 
 第 1-5 步已全部完成并验证:本地模式(默认,零部署)与服务器模式(Docker)均可用。第 6 步邮件等真有找回密码需求了再做。
 
-> 遗留(不阻塞上线):freeform 图片仍 base64 内嵌进 `element.src`;远程模式下宜改为走 `/api/images` 上传、element 只存 URL(见第 5 章注)。markdown 图片已走适配层。
+> 剩余前端接线：freeform 插入时即时走 `ImageStore`、活动文档周期续租，以及把认证/草稿/图片失败显示为非阻塞 UI 提示。RemoteStore 已能在保存历史自由编辑草稿时把 Data URL 迁移为服务器 URL。
 
 
