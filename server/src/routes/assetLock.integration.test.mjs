@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import Fastify from 'fastify'
@@ -269,6 +270,51 @@ test('retain uses the first forwarded protocol to reconstruct the public request
   assert.equal(response.statusCode, 200)
   assert.deepEqual(response.json(), { retained: 1 })
   assert.deepEqual(validations, [['user-1', '/uploads/secure.png']])
+})
+
+test('retain preserves a non-default port from the request Host authority', async (t) => {
+  const validations = []
+  const app = await buildApp({
+    assetLock: createUserAssetLock(),
+    draftsStmts: draftStatements(),
+    imagesStmts: imageStatements({
+      imageByUserPath: {
+        get(userId, managedPath) {
+          validations.push([userId, managedPath])
+          return { id: managedPath }
+        },
+      },
+      renewImageLeases(_userId, managedPaths) {
+        return { changes: managedPaths.length }
+      },
+    }),
+  })
+  t.after(() => app.close())
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/images/retain',
+    headers: { host: 'api.test:8080' },
+    payload: {
+      urls: [
+        'http://api.test:8080/uploads/public-port.png',
+        'http://api.test/uploads/default-port.png',
+      ],
+    },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(response.json(), { retained: 1 })
+  assert.deepEqual(validations, [['user-1', '/uploads/public-port.png']])
+})
+
+test('deployment proxy preserves the complete public Host authority', async () => {
+  const nginxConfig = await readFile(
+    new URL('../../../deploy/nginx.conf', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(nginxConfig, /proxy_set_header\s+Host\s+\$http_host\s*;/)
 })
 
 test('retain returns 409 without renewing any path when ownership validation fails', async (t) => {

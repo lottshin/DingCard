@@ -142,7 +142,7 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 ```
 - 上传限制：缺文件返回 400；MIME 不在 png/jpeg/webp 白名单返回 415；单图过大返回 413。随机文件名不使用客户端原始名，避免路径穿越。
 - 配额超限返回 413 + `IMAGE_QUOTA_EXCEEDED`。上传前会先尝试 GC，但 GC 只回收“租约已过期且没有任何草稿引用”的图片，因此删除草稿后释放空间可能延迟。
-- 新上传图片获得 `IMAGE_LEASE_MS` 租约；retain 对普通 `/uploads/...`、同公开 request origin 的绝对 URL 或协议相对 URL 续租，外部 origin/data URL 会忽略。反代部署时公开协议取可信 `X-Forwarded-Proto` 的第一个 `http`/`https` 值，因此 HTTPS 页面只接受同 host 的 HTTPS 绝对图片 URL，不会把 HTTP URL 当同源。
+- 新上传图片获得 `IMAGE_LEASE_MS` 租约；retain 对普通 `/uploads/...`、同公开 request origin 的绝对 URL 或协议相对 URL 续租，外部 origin/data URL 会忽略。反代部署时公开协议取可信 `X-Forwarded-Proto` 的第一个 `http`/`https` 值，公开 authority 取请求 `Host`（包含非默认端口）；因此 HTTPS 页面只接受同 host、同端口的 HTTPS 绝对图片 URL，不会把 HTTP URL 当同源。
 - retain 的 `urls` 不是数组时返回 400 + `INVALID_IMAGE_RETAIN_REQUEST`；单次托管路径超过 500 条时返回 400 + `IMAGE_RETAIN_LIMIT_EXCEEDED`；任一路径不存在或不属于当前用户时整批返回 409 + `IMAGE_RETAIN_CONFLICT`，不会部分续租。
 - 同一用户的草稿写入/删除、retain、上传共用一把资源锁。上传临界区完整覆盖“GC → 配额检查 → 文件持久化 → SQLite insert”，避免并发上传都基于旧配额通过；删除草稿后也在同一锁内触发 GC。
 - **降采样仍在前端做**(现有 `downscaleDataUrl` 保留),上传前就压到 1200px,省带宽和磁盘。
@@ -249,7 +249,7 @@ docker compose ps           # 两个容器都 Up,server 显示 healthy
 curl -sf http://127.0.0.1:8080/api/health   # {"ok":true}
 ```
 
-**HTTPS**:容器内 Nginx 只跑 HTTP(80→映射 8080)。生产用**外层反代**(宿主机 Nginx / Caddy / 云 LB)终结 TLS,再转发到 `127.0.0.1:8080`。外层代理必须覆盖 `X-Forwarded-Proto` 为客户端实际公开协议，不能保留客户端伪造值；容器内 Nginx 会保留该值，只有未收到时才回退自身 `$scheme`。Fastify server 仅在 Compose 内网暴露，因此信任内部 Nginx 转交的首个 `http`/`https` 值来还原绝对图片 retain 的公开 origin。若直接暴露 `WEB_PORT` 而没有可信外层代理，应视传入的该头为客户端可控；它不会绕过 JWT/图片所有权校验，但仍建议在边缘代理处统一覆盖。域名需已备案。Caddy 最省事(自动续证书);用宿主 Nginx 则配 Certbot。
+**HTTPS**:容器内 Nginx 只跑 HTTP(80→映射 8080)。生产用**外层反代**(宿主机 Nginx / Caddy / 云 LB)终结 TLS,再转发到 `127.0.0.1:8080`。外层代理必须覆盖 `X-Forwarded-Proto` 为客户端实际公开协议，不能保留客户端伪造值；同时必须原样转发浏览器请求的 `Host` authority（含非默认端口；宿主 Nginx 使用 `proxy_set_header Host $http_host`）。容器内 Nginx 会保留公开协议并将收到的完整 `Host` 写给后端，不额外信任客户端提供的 `X-Forwarded-Host`。Fastify server 仅在 Compose 内网暴露，因此信任内部 Nginx 转交的首个 `http`/`https` 值来还原绝对图片 retain 的公开 origin。若直接暴露 `WEB_PORT` 而没有可信外层代理，应视传入的 `X-Forwarded-Proto` 为客户端可控；它不会绕过 JWT/图片所有权校验，但仍建议在边缘代理处统一覆盖。域名需已备案。Caddy 最省事(自动续证书);用宿主 Nginx 则配 Certbot。
 
 **升级**:`git pull && docker compose up -d --build`,命名卷里的数据不受影响。
 
