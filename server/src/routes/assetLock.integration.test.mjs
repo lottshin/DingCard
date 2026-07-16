@@ -232,6 +232,45 @@ test('retain validates protocol-relative URLs against the request origin', async
   ])
 })
 
+test('retain uses the first forwarded protocol to reconstruct the public request origin', async (t) => {
+  const validations = []
+  const app = await buildApp({
+    assetLock: createUserAssetLock(),
+    draftsStmts: draftStatements(),
+    imagesStmts: imageStatements({
+      imageByUserPath: {
+        get(userId, managedPath) {
+          validations.push([userId, managedPath])
+          return { id: managedPath }
+        },
+      },
+      renewImageLeases(_userId, managedPaths) {
+        return { changes: managedPaths.length }
+      },
+    }),
+  })
+  t.after(() => app.close())
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/images/retain',
+    headers: {
+      host: 'api.test',
+      'x-forwarded-proto': 'https, http',
+    },
+    payload: {
+      urls: [
+        'https://api.test/uploads/secure.png',
+        'http://api.test/uploads/wrong.png',
+      ],
+    },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(response.json(), { retained: 1 })
+  assert.deepEqual(validations, [['user-1', '/uploads/secure.png']])
+})
+
 test('retain returns 409 without renewing any path when ownership validation fails', async (t) => {
   let renewals = 0
   const app = await buildApp({

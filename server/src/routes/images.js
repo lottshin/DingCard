@@ -21,8 +21,18 @@ const MAX_RETAINED_PATHS = 500
 function requestOrigin(request) {
   const host = request.headers.host
   if (typeof host !== 'string' || host.trim() === '') return null
+
+  const forwarded = request.headers['x-forwarded-proto']
+  const firstForwarded = Array.isArray(forwarded) ? forwarded[0] : forwarded
+  const forwardedProtocol = typeof firstForwarded === 'string'
+    ? firstForwarded.split(',', 1)[0].trim().toLowerCase()
+    : ''
+  const protocol = forwardedProtocol === 'http' || forwardedProtocol === 'https'
+    ? forwardedProtocol
+    : request.protocol
+
   try {
-    return new URL(`${request.protocol}://${host}`).origin
+    return new URL(`${protocol}://${host}`).origin
   } catch {
     return null
   }
