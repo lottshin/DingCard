@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test"
+    "test": "node --test src"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
