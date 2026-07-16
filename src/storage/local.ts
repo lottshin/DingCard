@@ -7,6 +7,7 @@
 
 import * as authImpl from '../auth'
 import * as draftsImpl from '../drafts'
+import { materializeLocalFreeformImages } from '../freeform/imageAssets'
 import * as imagesImpl from '../imageStore'
 import type { AuthStore, DraftStore, ImageStore, Storage } from './types'
 
@@ -17,12 +18,6 @@ const auth: AuthStore = {
   current: async () => authImpl.current(),
 }
 
-const drafts: DraftStore = {
-  list: async (userId) => draftsImpl.listDrafts(userId),
-  save: async (userId, data) => draftsImpl.saveDraft(userId, data),
-  remove: async (userId, id) => draftsImpl.deleteDraft(userId, id),
-}
-
 const images: ImageStore = {
   // downscale happens at the call site (paste handler) before this; local just
   // stashes the data URL and returns an `img:<id>` ref.
@@ -31,6 +26,23 @@ const images: ImageStore = {
   isRef: (href) => imagesImpl.isImageRef(href),
   register: (ref, dataUrl) => imagesImpl.registerImage(ref, dataUrl),
   collect: (source) => imagesImpl.collectImages(source),
+}
+
+const drafts: DraftStore = {
+  list: async (userId) => draftsImpl.listDrafts(userId),
+  save: async (userId, data) => {
+    const prepared = data.mode === 'freeform-slide'
+      ? {
+          ...data,
+          document: materializeLocalFreeformImages(data.document, images),
+        }
+      : data
+    const saved = draftsImpl.saveDraft(userId, prepared)
+    const normalized = draftsImpl.normalizeDraftForRead(saved)
+    if (!normalized) throw new Error('本地草稿保存结果无效')
+    return normalized
+  },
+  remove: async (userId, id) => draftsImpl.deleteDraft(userId, id),
 }
 
 export function createLocalStore(): Storage {
