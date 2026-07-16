@@ -14,6 +14,42 @@ test('normalizeManagedImagePath normalizes relative and absolute managed URLs', 
   )
 })
 
+test('normalizeManagedImagePath canonicalizes percent-encoded unreserved characters', () => {
+  assert.equal(
+    normalizeManagedImagePath('/uploads/%61.png', '/uploads'),
+    '/uploads/a.png',
+  )
+  assert.equal(
+    normalizeManagedImagePath('https://host/uploads/%61.png?x=1', '/uploads'),
+    '/uploads/a.png',
+  )
+
+  const databasePath = normalizeManagedImagePath('/uploads/a.png', '/uploads')
+  const draftPaths = collectManagedImagePaths(
+    { src: 'https://host/uploads/%61.png' },
+    '/uploads',
+  )
+  assert.deepEqual(draftPaths, [databasePath])
+})
+
+test('normalizeManagedImagePath preserves encoded path separators', () => {
+  assert.equal(
+    normalizeManagedImagePath('/uploads/a%2fb.png', '/uploads'),
+    '/uploads/a%2Fb.png',
+  )
+  assert.equal(
+    normalizeManagedImagePath('/uploads/a%5cb.png', '/uploads'),
+    '/uploads/a%5Cb.png',
+  )
+})
+
+test('normalizeManagedImagePath rejects encoded dot segments that escape the managed root', () => {
+  assert.equal(
+    normalizeManagedImagePath('/uploads/%2e%2e/secret', '/uploads'),
+    null,
+  )
+})
+
 test('normalizeManagedImagePath rejects unmanaged and non-path image references', () => {
   for (const value of [
     'https://host/other/a.png',

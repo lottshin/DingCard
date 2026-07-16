@@ -1,4 +1,15 @@
+import { posix } from 'node:path'
+
 const MANAGED_URL_BASE = 'http://managed.local'
+const RFC_UNRESERVED = /^[A-Za-z0-9._~-]$/
+
+function canonicalizePathname(pathname) {
+  const decodedUnreserved = pathname.replace(/%([0-9a-fA-F]{2})/g, (_, hex) => {
+    const character = String.fromCharCode(Number.parseInt(hex, 16))
+    return RFC_UNRESERVED.test(character) ? character : `%${hex.toUpperCase()}`
+  })
+  return posix.normalize(decodedUnreserved)
+}
 
 function normalizeUploadsPath(uploadsPublicPath) {
   if (typeof uploadsPublicPath !== 'string' || uploadsPublicPath.trim() === '') {
@@ -6,7 +17,9 @@ function normalizeUploadsPath(uploadsPublicPath) {
   }
 
   try {
-    const pathname = new URL(uploadsPublicPath, MANAGED_URL_BASE).pathname
+    const pathname = canonicalizePathname(
+      new URL(uploadsPublicPath, MANAGED_URL_BASE).pathname,
+    )
     const normalized = pathname.replace(/\/+$/, '')
     return normalized === '' ? '/' : normalized
   } catch {
@@ -27,9 +40,10 @@ export function normalizeManagedImagePath(value, uploadsPublicPath) {
     const url = new URL(input, MANAGED_URL_BASE)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
 
+    const pathname = canonicalizePathname(url.pathname)
     const managedPrefix = managedRoot === '/' ? '/' : `${managedRoot}/`
-    return url.pathname.startsWith(managedPrefix) && url.pathname !== managedRoot
-      ? url.pathname
+    return pathname.startsWith(managedPrefix) && pathname !== managedRoot
+      ? pathname
       : null
   } catch {
     return null
