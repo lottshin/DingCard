@@ -8,12 +8,15 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
+const serverDir = path.dirname(fileURLToPath(import.meta.url))
 const dataDir = mkdtempSync(path.join(tmpdir(), 'dinka-smoke-'))
 const PORT = 3999
 const base = `http://127.0.0.1:${PORT}`
 
 const server = spawn(process.execPath, ['src/index.js'], {
+  cwd: serverDir,
   env: {
     ...process.env,
     NODE_ENV: 'production',
@@ -193,9 +196,56 @@ async function main() {
     body: JSON.stringify({ username: 'bob', password: 'secret' }),
   })
   const bob = await r.json()
-  r = await fetch(`${base}/api/drafts`, { headers: { authorization: `Bearer ${bob.token}` } })
+  const bobAuth = { authorization: `Bearer ${bob.token}` }
+  r = await fetch(`${base}/api/drafts`, { headers: bobAuth })
   const bobList = await r.json()
   check('new user sees no drafts (isolation)', r.ok && bobList.length === 0, bobList)
+
+  // --- cross-user updates are rejected and cannot clobber the owner ---
+  r = await fetch(`${base}/api/drafts`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...bobAuth },
+    body: JSON.stringify({ ...mdEnvelope, id: mdDraft.id, title: 'Bob must not overwrite Alice' }),
+  })
+  check("bob updating alice's draft -> 404", r.status === 404, r.status)
+
+  r = await fetch(`${base}/api/drafts/${mdDraft.id}`, { headers: auth })
+  const aliceDraftAfterBob = await r.json()
+  check(
+    "bob's rejected update leaves alice's title unchanged",
+    r.ok && aliceDraftAfterBob.title === updated.title,
+    aliceDraftAfterBob,
+  )
+
+  // --- supplied draft ids must be non-empty strings ---
+  for (const invalidId of ['', '   ', 42, {}]) {
+    r = await fetch(`${base}/api/drafts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...bobAuth },
+      body: JSON.stringify({ ...mdEnvelope, id: invalidId }),
+    })
+    check(`invalid draft id ${JSON.stringify(invalidId)} -> 400`, r.status === 400, r.status)
+  }
+
+  // --- a valid but missing id is an update miss, not an insert ---
+  r = await fetch(`${base}/api/drafts`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...bobAuth },
+    body: JSON.stringify({
+      ...mdEnvelope,
+      id: '00000000-0000-4000-8000-000000000000',
+      title: 'Must not be inserted',
+    }),
+  })
+  check('bob updating a missing draft -> 404', r.status === 404, r.status)
+
+  r = await fetch(`${base}/api/drafts`, { headers: bobAuth })
+  const bobListAfterRejectedUpdates = await r.json()
+  check(
+    'rejected updates leave bob draft list empty',
+    r.ok && bobListAfterRejectedUpdates.length === 0,
+    bobListAfterRejectedUpdates,
+  )
 }
 
 main()

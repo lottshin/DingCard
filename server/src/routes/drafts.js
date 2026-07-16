@@ -1,4 +1,4 @@
-// Draft routes: list / get / upsert / delete — all scoped to the JWT's user.
+// Draft routes: list / get / create-or-update / delete — all scoped to the JWT's user.
 //
 // Drafts are opaque versioned envelopes: { id, title, schemaVersion, mode,
 // document, updatedAt }. The server never interprets `document` — it stores the
@@ -61,7 +61,8 @@ export default async function draftRoutes(fastify) {
     return toDraft(row)
   })
 
-  // POST /api/drafts  { ...envelope }  -> Draft   (upsert: new id if none supplied)
+  // POST /api/drafts  { ...envelope }  -> Draft
+  // Omitted id creates a draft; a supplied id updates only the current user's draft.
   fastify.post('/', async (request, reply) => {
     const b = request.body ?? {}
 
@@ -71,8 +72,13 @@ export default async function draftRoutes(fastify) {
       return reply.code(400).send({ error: '缺少草稿内容' })
     }
 
+    const hasId = Object.prototype.hasOwnProperty.call(b, 'id')
+    if (hasId && (typeof b.id !== 'string' || !b.id.trim())) {
+      return reply.code(400).send({ error: '无效的草稿 ID' })
+    }
+
     const row = {
-      id: b.id || randomUUID(),
+      id: hasId ? b.id.trim() : randomUUID(),
       user_id: request.user.sub,
       title: (typeof b.title === 'string' && b.title.trim()) || deriveTitle(mode, b.document),
       mode,
@@ -80,7 +86,13 @@ export default async function draftRoutes(fastify) {
       document: JSON.stringify(b.document),
       updated_at: Date.now(),
     }
-    stmts.upsertDraft.run(row)
+
+    if (hasId) {
+      const result = stmts.updateDraft.run(row)
+      if (result.changes === 0) return reply.code(404).send({ error: '草稿不存在' })
+    } else {
+      stmts.insertDraft.run(row)
+    }
     return toDraft(row)
   })
 

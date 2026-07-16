@@ -65,12 +65,15 @@ export const stmts = {
   // drafts (generic versioned envelope; `document` is opaque JSON to the server)
   listDrafts: db.prepare(`SELECT * FROM drafts WHERE user_id = ? ORDER BY updated_at DESC`),
   draftById: db.prepare(`SELECT * FROM drafts WHERE id = ? AND user_id = ?`),
-  upsertDraft: db.prepare(`
+  insertDraft: db.prepare(`
     INSERT INTO drafts (id, user_id, title, mode, schema_version, document, updated_at)
     VALUES (@id, @user_id, @title, @mode, @schema_version, @document, @updated_at)
-    ON CONFLICT(id) DO UPDATE SET
+  `),
+  updateDraft: db.prepare(`
+    UPDATE drafts SET
       title = @title, mode = @mode, schema_version = @schema_version,
       document = @document, updated_at = @updated_at
+    WHERE id = @id AND user_id = @user_id
   `),
   deleteDraft: db.prepare(`DELETE FROM drafts WHERE id = ? AND user_id = ?`),
 
