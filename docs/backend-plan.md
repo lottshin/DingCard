@@ -1,5 +1,7 @@
 # 叮卡 · 后端接入方案
 
+> 后端自动化测试：`npm --prefix server test`（覆盖数据库迁移、图片引用扫描与用户级资源锁）。
+
 把当前"纯浏览器存储"改造成真实后端,实现跨设备同步与真实账号。
 
 - **技术栈**:Node + Fastify + SQLite(better-sqlite3)

@@ -6,7 +6,8 @@
   "description": "叮卡后端 — Fastify + SQLite + JWT",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
