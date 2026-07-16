@@ -59,6 +59,24 @@ test('ensureImageLeaseSchema is idempotent and never shortens a future lease', (
   db.close()
 })
 
+test('ensureImageLeaseSchema does not renew an existing lease when time advances', () => {
+  const db = createLegacyImagesDb()
+  db.prepare(`
+    INSERT INTO images (id, user_id, path, mime, bytes, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run('image-3', 'user-1', '/uploads/image-3.png', 'image/png', 12, 100)
+  ensureImageLeaseSchema(db, 1_000, 500)
+  db.prepare('UPDATE images SET lease_expires_at = ? WHERE id = ?').run(1_200, 'image-3')
+
+  ensureImageLeaseSchema(db, 5_000, 500)
+
+  assert.equal(
+    db.prepare('SELECT lease_expires_at FROM images WHERE id = ?').pluck().get('image-3'),
+    1_200,
+  )
+  db.close()
+})
+
 test('ensureImageLeaseSchema migrates an empty legacy table', () => {
   const db = createLegacyImagesDb()
 

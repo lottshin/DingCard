@@ -13,7 +13,10 @@ export function ensureImageLeaseSchema(db, now, leaseMs) {
 
   const migrate = db.transaction(() => {
     const columns = db.prepare('PRAGMA table_info(images)').all()
-    if (!columns.some((column) => column.name === 'lease_expires_at')) {
+    const newlyAddedLeaseColumn = !columns.some(
+      (column) => column.name === 'lease_expires_at',
+    )
+    if (newlyAddedLeaseColumn) {
       db.exec('ALTER TABLE images ADD COLUMN lease_expires_at INTEGER')
     }
 
@@ -21,8 +24,8 @@ export function ensureImageLeaseSchema(db, now, leaseMs) {
     db.prepare(`
       UPDATE images
       SET lease_expires_at = ?
-      WHERE lease_expires_at IS NULL OR lease_expires_at < ?
-    `).run(leaseExpiresAt, leaseExpiresAt)
+      WHERE lease_expires_at IS NULL
+    `).run(leaseExpiresAt)
   })
 
   migrate()
