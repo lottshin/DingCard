@@ -5,10 +5,12 @@
 // Uses a throwaway temp DATA_DIR so it never touches real data.
 
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import Database from 'better-sqlite3'
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url))
 const dataDir = mkdtempSync(path.join(tmpdir(), 'dinka-smoke-'))
@@ -24,11 +26,14 @@ const server = spawn(process.execPath, ['src/index.js'], {
     DATA_DIR: dataDir,
     PORT: String(PORT),
     HOST: '127.0.0.1',
+    IMAGE_LEASE_MS: '60000',
+    USER_QUOTA_BYTES: '1024',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
 
 let failures = 0
+let directDb
 function check(name, cond, detail) {
   const mark = cond ? '✓' : '✗'
   if (!cond) failures++
@@ -246,6 +251,133 @@ async function main() {
     r.ok && bobListAfterRejectedUpdates.length === 0,
     bobListAfterRejectedUpdates,
   )
+
+  directDb = new Database(path.join(dataDir, 'data.db'))
+
+  // --- leased image lifecycle: upload, static GET, retain, ownership isolation ---
+  const tinyPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  )
+  let uploaded = await uploadImage(auth, tinyPng, 'tiny.png')
+  check('small PNG upload succeeds', uploaded.response.status === 200 && uploaded.body?.url, uploaded.body)
+  const aliceImage = uploaded.body
+  const aliceImageId = aliceImage.ref?.slice('img:'.length)
+  const aliceImageDiskPath = path.join(
+    dataDir,
+    'uploads',
+    path.basename(new URL(aliceImage.url, base).pathname),
+  )
+
+  r = await fetch(`${base}${aliceImage.url}`)
+  check('uploaded image URL is served by Fastify', r.status === 200, r.status)
+
+  r = await fetch(`${base}/api/images/retain`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...auth },
+    body: JSON.stringify({
+      urls: [aliceImage.url, `${base}${aliceImage.url}`, 'https://cdn.example/external.png'],
+    }),
+  })
+  body = await r.json()
+  check('owner retain accepts relative/absolute and ignores external URLs', r.ok && body.retained === 1, body)
+  const leaseAfterAliceRetain = directDb
+    .prepare('SELECT lease_expires_at FROM images WHERE id = ?')
+    .pluck()
+    .get(aliceImageId)
+
+  r = await fetch(`${base}/api/images/retain`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...bobAuth },
+    body: JSON.stringify({ urls: [`${base}${aliceImage.url}`] }),
+  })
+  check("bob retaining alice's image -> 409", r.status === 409, r.status)
+  const leaseAfterBobRetain = directDb
+    .prepare('SELECT lease_expires_at FROM images WHERE id = ?')
+    .pluck()
+    .get(aliceImageId)
+  check(
+    "bob's rejected retain does not partially renew alice's lease",
+    leaseAfterBobRetain === leaseAfterAliceRetain,
+    { leaseAfterAliceRetain, leaseAfterBobRetain },
+  )
+
+  // --- an expired image referenced by an absolute draft URL survives upload GC ---
+  r = await fetch(`${base}/api/drafts`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...auth },
+    body: JSON.stringify({
+      mode: 'markdown-card',
+      document: {
+        source: '# leased image',
+        images: { hero: `${base}${aliceImage.url}` },
+      },
+    }),
+  })
+  const imageDraft = await r.json()
+  check('draft with absolute managed image URL saves', r.ok && imageDraft.id, imageDraft)
+
+  directDb
+    .prepare('UPDATE images SET lease_expires_at = ? WHERE id = ?')
+    .run(Date.now() - 1, aliceImageId)
+  uploaded = await uploadImage(auth, tinyPng, 'gc-trigger.png')
+  check('next upload succeeds after running GC', uploaded.response.status === 200, uploaded.body)
+  check(
+    'expired image referenced by an absolute draft URL survives GC',
+    existsSync(aliceImageDiskPath)
+      && directDb.prepare('SELECT COUNT(*) FROM images WHERE id = ?').pluck().get(aliceImageId) === 1,
+    aliceImageDiskPath,
+  )
+
+  // --- deleting the final reference triggers GC inside the same user lock ---
+  r = await fetch(`${base}/api/drafts/${imageDraft.id}`, { method: 'DELETE', headers: auth })
+  body = await r.json()
+  check('deleting image draft remains idempotent', r.ok && body.ok === true, body)
+  check(
+    'expired orphan is removed from SQLite and disk after draft deletion',
+    !existsSync(aliceImageDiskPath)
+      && directDb.prepare('SELECT COUNT(*) FROM images WHERE id = ?').pluck().get(aliceImageId) === 0,
+    aliceImageDiskPath,
+  )
+
+  // --- same-user concurrent uploads cannot both pass a stale quota check ---
+  r = await fetch(`${base}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'charlie', password: 'secret' }),
+  })
+  const charlie = await r.json()
+  const charlieAuth = { authorization: `Bearer ${charlie.token}` }
+  const concurrentUploads = await Promise.all([
+    uploadImage(charlieAuth, Buffer.alloc(700, 1), 'one.png'),
+    uploadImage(charlieAuth, Buffer.alloc(700, 2), 'two.png'),
+  ])
+  const concurrentStatuses = concurrentUploads.map(({ response }) => response.status).sort()
+  check(
+    'two concurrent ~700B uploads under a 1024B quota yield exactly one 200 and one 413',
+    JSON.stringify(concurrentStatuses) === JSON.stringify([200, 413]),
+    concurrentStatuses,
+  )
+
+  r = await fetch(`${base}${uploaded.body.url}`)
+  check('alice existing small-image flow still serves the surviving upload', r.status === 200, r.status)
+}
+
+async function uploadImage(auth, bytes, filename = 'image.png') {
+  const form = new FormData()
+  form.append('file', new Blob([bytes], { type: 'image/png' }), filename)
+  const response = await fetch(`${base}/api/images`, {
+    method: 'POST',
+    headers: auth,
+    body: form,
+  })
+  let body
+  try {
+    body = await response.json()
+  } catch {
+    body = null
+  }
+  return { response, body }
 }
 
 main()
@@ -254,6 +386,7 @@ main()
     failures++
   })
   .finally(async () => {
+    directDb?.close()
     // Wait for the server process to fully exit before removing the temp dir.
     // On Windows the SQLite file handle lingers briefly after kill(), so an
     // immediate rmSync throws EPERM/EBUSY. Await 'exit', then retry the delete.

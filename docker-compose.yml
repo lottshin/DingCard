@@ -19,6 +19,7 @@ services:
       # 其余用镜像内默认值即可;需要时在 .env 覆盖。
       JWT_EXPIRY: ${JWT_EXPIRY:-7d}
       USER_QUOTA_BYTES: ${USER_QUOTA_BYTES:-524288000}
+      IMAGE_LEASE_MS: ${IMAGE_LEASE_MS:-86400000}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-6291456}
       # 同源部署,前后端经同一 Nginx,无需 CORS。
     volumes:

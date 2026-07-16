@@ -7,6 +7,7 @@ import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import { config } from './config.js'
+import { ensureImageLeaseSchema } from './dbMigrations.js'
 
 // Ensure data + uploads dirs exist before opening the db.
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true })
@@ -42,15 +43,41 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_drafts_user ON drafts(user_id, updated_at DESC);
 
   CREATE TABLE IF NOT EXISTS images (
-    id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    path        TEXT NOT NULL,
-    mime        TEXT NOT NULL,
-    bytes       INTEGER NOT NULL,
-    created_at  INTEGER NOT NULL
+    id               TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    path             TEXT NOT NULL,
+    mime             TEXT NOT NULL,
+    bytes            INTEGER NOT NULL,
+    created_at       INTEGER NOT NULL,
+    lease_expires_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_images_user ON images(user_id);
 `)
+
+// Existing deployments may have the pre-lease images table. The migration is
+// idempotent and backfills only rows whose lease is still NULL.
+ensureImageLeaseSchema(db, Date.now(), config.imageLeaseMs)
+
+const imageByUserPath = db.prepare(`SELECT * FROM images WHERE user_id = ? AND path = ?`)
+const renewImageLease = db.prepare(`
+  UPDATE images
+  SET lease_expires_at = ?
+  WHERE user_id = ? AND path = ?
+`)
+
+const renewImageLeases = db.transaction((userId, managedPaths, leaseExpiresAt) => {
+  for (const managedPath of managedPaths) {
+    if (!imageByUserPath.get(userId, managedPath)) {
+      return { ok: false, changes: 0 }
+    }
+  }
+
+  let changes = 0
+  for (const managedPath of managedPaths) {
+    changes += renewImageLease.run(leaseExpiresAt, userId, managedPath).changes
+  }
+  return { ok: true, changes }
+})
 
 // --- Prepared statements (compiled once, reused) ---------------------------
 
@@ -79,10 +106,15 @@ export const stmts = {
 
   // images
   insertImage: db.prepare(`
-    INSERT INTO images (id, user_id, path, mime, bytes, created_at)
-    VALUES (@id, @user_id, @path, @mime, @bytes, @created_at)
+    INSERT INTO images (id, user_id, path, mime, bytes, created_at, lease_expires_at)
+    VALUES (@id, @user_id, @path, @mime, @bytes, @created_at, @lease_expires_at)
   `),
   imageById: db.prepare(`SELECT * FROM images WHERE id = ? AND user_id = ?`),
+  imageByUserPath,
+  listImages: db.prepare(`SELECT * FROM images WHERE user_id = ? ORDER BY created_at ASC`),
+  listDraftDocuments: db.prepare(`SELECT document FROM drafts WHERE user_id = ?`),
+  renewImageLeases,
+  deleteImage: db.prepare(`DELETE FROM images WHERE id = ? AND user_id = ?`),
   userImageBytes: db.prepare(
     `SELECT COALESCE(SUM(bytes), 0) AS total FROM images WHERE user_id = ?`,
   ),

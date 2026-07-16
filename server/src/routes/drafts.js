@@ -45,18 +45,28 @@ function deriveTitle(mode, document) {
   return mode === 'freeform-slide' ? deriveFreeformTitle(document) : deriveMarkdownTitle(document)
 }
 
-export default async function draftRoutes(fastify) {
+export default async function draftRoutes(fastify, options = {}) {
+  if (typeof options.assetLock?.run !== 'function') {
+    throw new TypeError('options.assetLock.run must be a function')
+  }
+  if (typeof options.reclaimImages !== 'function') {
+    throw new TypeError('options.reclaimImages must be a function')
+  }
+
+  const routeStmts = options.stmts ?? stmts
+  const { assetLock, reclaimImages } = options
+
   // Everything here requires a logged-in user.
   fastify.addHook('preHandler', fastify.authenticate)
 
   // GET /api/drafts -> Draft[]  (newest first)
   fastify.get('/', async (request) => {
-    return stmts.listDrafts.all(request.user.sub).map(toDraft)
+    return routeStmts.listDrafts.all(request.user.sub).map(toDraft)
   })
 
   // GET /api/drafts/:id -> Draft
   fastify.get('/:id', async (request, reply) => {
-    const row = stmts.draftById.get(request.params.id, request.user.sub)
+    const row = routeStmts.draftById.get(request.params.id, request.user.sub)
     if (!row) return reply.code(404).send({ error: '草稿不存在' })
     return toDraft(row)
   })
@@ -87,18 +97,34 @@ export default async function draftRoutes(fastify) {
       updated_at: Date.now(),
     }
 
-    if (hasId) {
-      const result = stmts.updateDraft.run(row)
-      if (result.changes === 0) return reply.code(404).send({ error: '草稿不存在' })
-    } else {
-      stmts.insertDraft.run(row)
-    }
-    return toDraft(row)
+    return assetLock.run(request.user.sub, async () => {
+      if (hasId) {
+        const result = await routeStmts.updateDraft.run(row)
+        if (result.changes === 0) {
+          return reply.code(404).send({ error: '草稿不存在' })
+        }
+      } else {
+        await routeStmts.insertDraft.run(row)
+      }
+      return toDraft(row)
+    })
   })
 
   // DELETE /api/drafts/:id -> { ok: true }
   fastify.delete('/:id', async (request) => {
-    stmts.deleteDraft.run(request.params.id, request.user.sub)
-    return { ok: true }
+    const userId = request.user.sub
+    return assetLock.run(userId, async () => {
+      await routeStmts.deleteDraft.run(request.params.id, userId)
+      try {
+        await reclaimImages(userId)
+      } catch (err) {
+        try {
+          fastify.log.error({ err, userId }, 'image GC failed after draft deletion')
+        } catch {
+          // The completed draft deletion remains authoritative even if logging fails.
+        }
+      }
+      return { ok: true }
+    })
   })
 }

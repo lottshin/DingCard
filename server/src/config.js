@@ -7,6 +7,13 @@ import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 
 const DEV = process.env.NODE_ENV !== 'production'
+const DEFAULT_IMAGE_LEASE_MS = 86_400_000
+
+function nonNegativeNumber(value, fallback) {
+  if (value === undefined || value === '') return fallback
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
 
 // Where SQLite db + uploaded images live. In prod: /var/dinka.
 // Always resolved to an absolute path — @fastify/static (and sane file writes)
@@ -34,6 +41,10 @@ export const config = {
 
   // Per-user storage quota in bytes (images). Default 500 MB. 0 = unlimited.
   userQuotaBytes: Number(process.env.USER_QUOTA_BYTES || 500 * 1024 * 1024),
+
+  // Newly uploaded/retained images remain protected from GC for this long.
+  // Invalid or negative values fall back to one day; 0 is allowed for tests.
+  imageLeaseMs: nonNegativeNumber(process.env.IMAGE_LEASE_MS, DEFAULT_IMAGE_LEASE_MS),
 
   // Max single upload size in bytes (matches Nginx client_max_body_size).
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 6 * 1024 * 1024),

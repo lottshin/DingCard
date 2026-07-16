@@ -1,6 +1,6 @@
 # 叮卡 · 后端接入方案
 
-> 后端自动化测试：`npm --prefix server test`（覆盖数据库迁移、图片引用扫描与用户级资源锁）。
+> 后端自动化测试：`npm --prefix server test`（覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟：`node server/smoke-test.mjs`。
 
 把当前"纯浏览器存储"改造成真实后端,实现跨设备同步与真实账号。
 
@@ -10,23 +10,23 @@
 - **图片**:本机磁盘 + Nginx 直出(不上 CF)
 - **部署形态**:后端可选 —— 默认纯本地(零部署),配了后端地址才走服务器(见第 10 章)
 
-> 进度:后端已实现并通过冒烟测试(`server/`,认证 + 草稿双模式 + 图片上传)。
-> 前端接后端(双实现开关)与部署尚未开始。本文与代码保持同步。
+> 进度:后端、`src/storage/` 的 Local/Remote 双实现、远程联调与 Docker 部署均已落地。
+> 图片租约/回收与 retain API 已在后端实现；现有 RemoteStore 负责上传真实 URL，尚未主动调用 retain。本文与代码保持同步。
 
 ---
 
-## 1. 现状回顾
+## 1. 本地实现基线
 
-所有数据都在浏览器,换设备/清缓存即丢失:
+原有浏览器存储逻辑仍由 `src/storage/local.ts` 封装为默认 LocalStore；配置 `VITE_API_BASE` 时，`src/storage/index.ts` 改选 `src/storage/remote.ts`。本地模式的数据仍只在浏览器，换设备/清缓存即丢失：
 
 | 数据 | 现在存哪 | 相关文件 |
 |---|---|---|
-| 账号/密码/登录态 | `localStorage`,SHA-256(非加盐) | `src/auth.ts` |
-| 草稿 | `localStorage`,按 userId 分区 | `src/drafts.ts` |
-| 草稿内图片 | base64 内嵌进草稿 JSON | `src/drafts.ts` + `src/imageStore.ts` |
-| 会话图片缓存 | `sessionStorage` | `src/imageStore.ts` |
+| 账号/密码/登录态 | `localStorage`,SHA-256(非加盐) | `src/storage/local.ts` 包装 `src/auth.ts` |
+| 草稿 | `localStorage`,按 userId 分区 | `src/storage/local.ts` 包装 `src/drafts.ts` |
+| 草稿内图片 | base64 内嵌进草稿 JSON | `src/storage/local.ts` 包装 `src/drafts.ts` + `src/imageStore.ts` |
+| 会话图片缓存 | `sessionStorage` | `src/storage/local.ts` 包装 `src/imageStore.ts` |
 
-好在 `auth.ts` / `drafts.ts` 的接口本就设计成异步 API 形状,替换实现时 UI 代码几乎不动。
+`src/storage/types.ts` 定义统一异步契约，UI 只依赖 `store`。LocalStore 包装 `auth.ts` / `drafts.ts` / `imageStore.ts`，RemoteStore 通过 HTTP 调后端；切换模式不会自动把已有 localStorage 草稿或图片上传到服务器，需要用户显式导入。
 
 ---
 
@@ -52,6 +52,7 @@
 
 关键取舍:
 - **图片走 Nginx 直出,不进数据库、不进 Node**。SQLite 存二进制会撑爆库、拖垮备份;Node 转发静态文件是浪费。
+- Fastify 仍注册 `/uploads` 静态目录，供直连后端的开发、联调和冒烟测试使用；生产请求由 Nginx 优先直出，正常链路不经过 Fastify。
 - **100M 带宽足够**:单图 100–300KB,一个卡片集 ~1MB,首屏 ~0.1s,浏览器还会缓存回访。
 - 真到带宽瓶颈,只需把 `/uploads` 迁到国内 OSS+CDN,改图片 URL 前缀即可,其余不动。
 
@@ -71,7 +72,8 @@ CREATE TABLE users (
 );
 
 -- 草稿(通用版本化信封,一行一份)
--- 后端是「哑存储」:不解析 document 内部结构,整坨当 JSON 存、原样取回。
+-- 草稿 API 不解释 document 的业务结构,整坨当 JSON 存、原样取回；
+-- 图片 GC 仅递归扫描其中的托管图片 URL，不依赖 markdown/freeform schema。
 -- 这样无论前端草稿结构怎么演进(markdown-card / freeform-slide / 未来新模式),
 -- 表结构都不用改。
 CREATE TABLE drafts (
@@ -87,19 +89,21 @@ CREATE INDEX idx_drafts_user ON drafts(user_id, updated_at DESC);
 
 -- 图片元数据(文件本体在磁盘,库里只存指针)
 CREATE TABLE images (
-  id          TEXT PRIMARY KEY,        -- 即 img:<id> 里的 id
-  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  path        TEXT NOT NULL,           -- /uploads/<id>.jpg,前端直接当 src
-  mime        TEXT NOT NULL,
-  bytes       INTEGER NOT NULL,
-  created_at  INTEGER NOT NULL
+  id               TEXT PRIMARY KEY,        -- 即 img:<id> 里的 id
+  user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  path             TEXT NOT NULL,           -- /uploads/<id>.jpg,前端直接当 src
+  mime             TEXT NOT NULL,
+  bytes            INTEGER NOT NULL,
+  created_at       INTEGER NOT NULL,
+  lease_expires_at INTEGER NOT NULL          -- 到期后且无草稿引用才允许回收
 );
 CREATE INDEX idx_images_user ON images(user_id);
 ```
 
 要点:
 - **图片二进制永不进库**,只存 `path`。备份时 copy `data.db` + `uploads/` 目录两样东西即可。
-- **草稿 `document` 存不透明 JSON 字符串**,后端不解析其内部。markdown 和 freeform 两种模式共用同一张表,以后加新工作区模式也不用改表结构。
+- **草稿 `document` 存不透明 JSON 字符串**。草稿读写不解释业务字段；图片 GC 只做与 schema 无关的托管 URL 扫描。markdown 和 freeform 两种模式共用同一张表,以后加新工作区模式也不用改表结构。
+- 启动时会检查旧数据库的 `images` 表：缺少 `lease_expires_at` 就原地 `ALTER TABLE`，并把旧行回填为“迁移时刻 + 一个完整租约”。迁移幂等，不要求重建数据库。
 - 开启 WAL 模式(`PRAGMA journal_mode=WAL`)提升并发读性能;开 `foreign_keys=ON` 让级联删除生效。
 
 ---
@@ -126,17 +130,23 @@ POST   /api/drafts            { ...envelope }  → Draft   (upsert:带 id 覆盖
 DELETE /api/drafts/:id        → { ok: true }
 ```
 - 请求体是完整信封 `{ id?, title?, schemaVersion, mode, document }`。`mode` 只接受 `markdown-card` / `freeform-slide`,其余返回 400。
+- `document` 缺失或不是对象、`id` 存在但为空/不是字符串时返回 400；GET 查询不到草稿、或带 `id` 更新不存在/属于其他用户的草稿时返回 404。不带 `id` 才创建新草稿。
 - `title` 缺省时后端派生:markdown 取正文首行、freeform 取首页名。
-- `document` 原样存取,后端不解析内部结构。
+- `document` 原样存取；草稿 API 不解析内部业务结构，GC 只递归收集托管图片 URL。
 - 每个查询都带 `WHERE user_id = ?`,从 JWT 取 userId,**不信任前端传的 user_id**。
 
 ### 图片
 ```
 POST /api/images   (multipart/form-data, 字段 file)  → { ref: "img:<id>", url: "/uploads/<id>.jpg" }
+POST /api/images/retain   { urls: string[] }          → { retained: number }
 ```
-- 服务端限制:大小上限(如 5MB)、MIME 白名单(png/jpeg/webp)、随机文件名(不用原始名,防路径穿越)。
+- 上传限制：缺文件返回 400；MIME 不在 png/jpeg/webp 白名单返回 415；单图过大返回 413。随机文件名不使用客户端原始名，避免路径穿越。
+- 配额超限返回 413 + `IMAGE_QUOTA_EXCEEDED`。上传前会先尝试 GC，但 GC 只回收“租约已过期且没有任何草稿引用”的图片，因此删除草稿后释放空间可能延迟。
+- 新上传图片获得 `IMAGE_LEASE_MS` 租约；retain 对普通 `/uploads/...`、同 request origin 的绝对 URL 或协议相对 URL 续租，外部 origin/data URL 会忽略。
+- retain 的 `urls` 不是数组时返回 400 + `INVALID_IMAGE_RETAIN_REQUEST`；单次托管路径超过 500 条时返回 400 + `IMAGE_RETAIN_LIMIT_EXCEEDED`；任一路径不存在或不属于当前用户时整批返回 409 + `IMAGE_RETAIN_CONFLICT`，不会部分续租。
+- 同一用户的草稿写入/删除、retain、上传共用一把资源锁。上传临界区完整覆盖“GC → 配额检查 → 文件持久化 → SQLite insert”，避免并发上传都基于旧配额通过；删除草稿后也在同一锁内触发 GC。
 - **降采样仍在前端做**(现有 `downscaleDataUrl` 保留),上传前就压到 1200px,省带宽和磁盘。
-- 图片按 `/uploads/<id>.jpg` 存盘,`url` 直接可作 `<img src>`,由 Nginx 直出。
+- 图片按 `/uploads/<id>.jpg` 存盘,`url` 直接可作 `<img src>`。Fastify static 仅供后端直连开发/联调，生产由 Nginx 优先直出。
 
 ---
 
@@ -145,17 +155,17 @@ POST /api/images   (multipart/form-data, 字段 file)  → { ref: "img:<id>", ur
 因为项目要开源(见 §11),前端**不能硬编码成必须连后端**。做法:每个存储模块内部维护"本地 / 远程"两套实现,由一个开关选择,UI 层无感。
 
 **开关**:读环境变量 `VITE_API_BASE`。
-- 未配置 → `LocalAdapter`(现有 localStorage 实现,零部署、开箱即用,开源默认)
-- 配置了 → `RemoteAdapter`(fetch 后端,多设备同步 + 真账号)
+- 未配置 → `LocalStore`(现有 localStorage 实现,零部署、开箱即用,开源默认)
+- 配置了 → `RemoteStore`(fetch 后端,多设备同步 + 真账号)
 
-| 文件 | 改动 |
+| 文件 | 实际职责 |
 |---|---|
-| 新增 `src/api.ts` | 封装 fetch:base URL 读 `VITE_API_BASE`、自动带 JWT 头、统一错误处理。token 存 localStorage。导出 `hasBackend()` 供各模块判断走哪套实现。 |
-| `src/auth.ts` | 保留现有 localStorage 实现作为本地分支;新增远程分支调 `/api/auth/*`。导出的 `register/login/logout/current` 签名尽量不变。`current()` 远程分支需异步(读 `/me`),调用方跟着改 await。 |
-| `src/drafts.ts` | `listDrafts/saveDraft/deleteDraft` 增加远程分支调 `/api/drafts`。返回类型 `Draft`(信封)两套实现一致,不变。 |
-| `src/imageStore.ts` | 远程分支:`putImage` 先 `downscaleDataUrl` → `POST /api/images` → 返回 `img:<id>` ref;`resolveImage` 返回后端 `url`。本地分支保持现有 sessionStorage + base64 内嵌行为。 |
+| `src/storage/types.ts` | 定义 `AuthStore` / `DraftStore` / `ImageStore` / `Storage` 统一契约。 |
+| `src/storage/local.ts` | 包装现有 `auth.ts` / `drafts.ts` / `imageStore.ts`，保留浏览器本地数据与兼容逻辑。 |
+| `src/storage/remote.ts` | 封装 fetch、JWT、草稿 API 与图片上传；远程图片返回真实 URL。当前未主动调用 `/api/images/retain`。 |
+| `src/storage/index.ts` | 模块加载时读取 `VITE_API_BASE`，只在这里选择 LocalStore 或 RemoteStore。 |
 
-设计上刻意让**接口形状不变**,两套实现对 UI 完全一致,`App.tsx` 里除 `current()` 变异步这一处几乎无感。
+设计上刻意让**接口形状一致**，两套实现对 UI 基本无感。模式切换只改变之后的读写目标，**不会自动迁移**已有 localStorage 账号、草稿或图片；需要迁移时必须提供显式导入流程。
 
 > freeform 目前把图片 base64 内嵌进 `element.src`。远程模式下应改成走 `/api/images` 上传、element 只存 URL;本地模式维持内嵌。这是前端改造的活,后端不变。
 
@@ -221,6 +231,7 @@ compose 用到的键(其余用镜像内默认值即可):
 | `WEB_PORT` | 宿主暴露端口 | 8080 |
 | `JWT_EXPIRY` | 登录有效期 | 7d |
 | `USER_QUOTA_BYTES` | 每用户图片配额 | 500MB |
+| `IMAGE_LEASE_MS` | 新上传/续租图片的租约时长(毫秒) | 86400000(24 小时) |
 | `MAX_UPLOAD_BYTES` | 单图上限(与 Nginx `client_max_body_size` 一致) | 6MB |
 
 ### 6.4 上线步骤
@@ -384,26 +395,22 @@ POST /api/auth/reset           { token, password }    → { ok }   (校验 token
 ```
 src/storage/
   ├── types.ts          # AuthStore / DraftStore / ImageStore 接口
-  ├── local.ts          # localStorage 实现(现有 auth.ts/drafts.ts/imageStore.ts 逻辑搬进来)
-  ├── remote.ts         # fetch 后端实现
-  └── index.ts          # const store = API_BASE ? remote : local
+  ├── local.ts          # 包装现有 auth.ts/drafts.ts/imageStore.ts
+  ├── remote.ts         # fetch 后端、JWT、草稿与图片上传
+  └── index.ts          # 按 VITE_API_BASE 选择 LocalStore / RemoteStore
 ```
 
 ```ts
 // index.ts —— 唯一的开关
-const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+const API_BASE = (import.meta.env.VITE_API_BASE ?? '').trim()
 export const store = API_BASE ? createRemoteStore(API_BASE) : createLocalStore()
 ```
 
 UI 层只 import `store`,对两种模式无感。这正是之前"抽 StorageAdapter"那一步 —— 开源场景下它从"可选优化"变成**刚需**,因为它就是"后端可选"的实现载体。
 
-### 10.3 注意:本地模式没有"登录"
+### 10.3 模式边界与迁移
 
-本地模式下没有真账号。两种处理:
-- **A(简单)**:本地模式隐藏登录入口,草稿存在一个固定的本地命名空间下。
-- **B(一致)**:保留现有 localStorage 版"假登录"(多用户命名空间),行为和现在一样。
-
-建议 A —— 开源用户本地自用,登录是多余步骤;服务器模式才显示登录。
+当前 LocalStore 保留 localStorage 版账号与多用户命名空间；RemoteStore 使用后端真账号和 JWT。两者是独立数据源，设置或清空 `VITE_API_BASE` **不会自动迁移** localStorage 中的账号、草稿或图片，也不会静默覆盖服务器数据。需要转移数据时应提供用户显式触发、可核对结果的导入流程。
 
 ### 10.4 开源前检查清单
 
@@ -419,7 +426,7 @@ UI 层只 import `store`,对两种模式无感。这正是之前"抽 StorageAdap
 
 进度标记:✅ 已完成 / ⏭️ 待做
 
-1. ✅ **搭后端骨架** — Fastify + SQLite + 三张表 + 认证 + 草稿 API + 图片上传(冒烟测试 15 项通过)
+1. ✅ **搭后端骨架** — Fastify + SQLite + 三张表 + 认证 + 草稿 API + 图片上传、租约/GC 与 retain；单元/集成测试和后端冒烟均通过
 2. ✅ **草稿改通用信封** — 适配 markdown-card + freeform-slide 双模式
 3. ✅ **前端抽存储适配层** — `src/storage/` 三接口 + Local/Remote 双实现 + 环境变量开关(见第 10 章)
 4. ✅ **前端接后端联调** — `current()` 转异步;端到端联调测试(真后端 + 远程前端)通过
