@@ -16,6 +16,48 @@ marked.setOptions({
 })
 
 /**
+ * Collect image sources from parsed Markdown tokens.
+ *
+ * Traversing lexer output instead of matching source text keeps image-looking
+ * content inside code spans and fenced code blocks out of the result.
+ */
+export function collectMarkdownImageSources(source: string): string[] {
+  if (typeof source !== 'string' || !source.trim()) return []
+
+  try {
+    const sources: string[] = []
+    const seenSources = new Set<string>()
+    const seenNodes = new WeakSet<object>()
+
+    const visit = (value: unknown) => {
+      if (value === null || typeof value !== 'object' || seenNodes.has(value)) return
+      seenNodes.add(value)
+
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+        return
+      }
+
+      const token = value as Record<string, unknown>
+      if (token.type === 'image') {
+        const href = typeof token.href === 'string' ? token.href.trim() : ''
+        if (href && !seenSources.has(href)) {
+          seenSources.add(href)
+          sources.push(href)
+        }
+      }
+
+      Object.values(token).forEach(visit)
+    }
+
+    visit(marked.lexer(source))
+    return sources
+  } catch {
+    return []
+  }
+}
+
+/**
  * Custom image rendering so images can be resized by dragging in the preview.
  *
  * Width is stored in the markdown itself using an `alt|width` convention:
