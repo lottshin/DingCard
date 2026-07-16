@@ -173,6 +173,24 @@ describe('freeform image assets', () => {
     expect(upload).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['empty', ''],
+    ['whitespace', '   '],
+    ['undefined', undefined],
+  ])('rejects an %s upload result with a stable error', async (_label, uploadedUrl) => {
+    const input = document(slide('page-1', [
+      image('image-1', 'data:image/png;base64,invalid-result'),
+    ]))
+    const upload = vi.fn(async () => uploadedUrl as unknown as string)
+
+    await expect(uploadInlineFreeformImages(input, upload)).rejects.toThrow(
+      '图片上传未返回有效地址',
+    )
+    expect(collectFreeformImageSources(input)).toEqual([
+      'data:image/png;base64,invalid-result',
+    ])
+  })
+
   it('rejects img refs during remote preparation with a stable error', async () => {
     const input = document(slide('page-1', [
       image('image-1', 'data:image/png;base64,would-upload'),

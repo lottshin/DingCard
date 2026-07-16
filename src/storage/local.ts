@@ -7,6 +7,7 @@
 
 import * as authImpl from '../auth'
 import * as draftsImpl from '../drafts'
+import type { SaveDraftInput } from '../drafts'
 import { materializeLocalFreeformImages } from '../freeform/imageAssets'
 import * as imagesImpl from '../imageStore'
 import type { AuthStore, DraftStore, ImageStore, Storage } from './types'
@@ -28,15 +29,48 @@ const images: ImageStore = {
   collect: (source) => imagesImpl.collectImages(source),
 }
 
+function normalizeSaveInput(data: SaveDraftInput): SaveDraftInput {
+  if (typeof data !== 'object' || data === null) {
+    throw new Error('本地草稿内容无效')
+  }
+
+  const raw = data as unknown as Record<string, unknown>
+  if (raw.id !== undefined && typeof raw.id !== 'string') {
+    throw new Error('本地草稿内容无效')
+  }
+  if (raw.title !== undefined && typeof raw.title !== 'string') {
+    throw new Error('本地草稿内容无效')
+  }
+
+  const normalized = draftsImpl.normalizeDraftForRead({
+    id: raw.id ?? '__local-draft-validation__',
+    title: raw.title ?? '',
+    schemaVersion: 2,
+    updatedAt: 0,
+    mode: raw.mode,
+    document: raw.document,
+  })
+  if (!normalized) throw new Error('本地草稿内容无效')
+
+  const identity = {
+    ...(raw.id !== undefined ? { id: raw.id } : {}),
+    ...(raw.title !== undefined ? { title: raw.title } : {}),
+  }
+  return normalized.mode === 'freeform-slide'
+    ? { ...identity, mode: normalized.mode, document: normalized.document }
+    : { ...identity, mode: normalized.mode, document: normalized.document }
+}
+
 const drafts: DraftStore = {
   list: async (userId) => draftsImpl.listDrafts(userId),
   save: async (userId, data) => {
-    const prepared = data.mode === 'freeform-slide'
+    const validated = normalizeSaveInput(data)
+    const prepared = validated.mode === 'freeform-slide'
       ? {
-          ...data,
-          document: materializeLocalFreeformImages(data.document, images),
+          ...validated,
+          document: materializeLocalFreeformImages(validated.document, images),
         }
-      : data
+      : validated
     const saved = draftsImpl.saveDraft(userId, prepared)
     const normalized = draftsImpl.normalizeDraftForRead(saved)
     if (!normalized) throw new Error('本地草稿保存结果无效')

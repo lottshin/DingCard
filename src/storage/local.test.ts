@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { SaveDraftInput } from '../drafts'
 import type { FreeformDocument, FreeformImageElement, FreeformShapeElement } from '../freeform/types'
-import { createLocalStore } from './local'
 
 function image(src: string): FreeformImageElement & { legacyField?: string } {
   return {
@@ -52,11 +52,23 @@ function freeformDocument(src: string): FreeformDocument {
   }
 }
 
+function validStoredDraft(id: string) {
+  return {
+    id,
+    title: 'Existing',
+    schemaVersion: 2,
+    updatedAt: 1,
+    mode: 'freeform-slide',
+    document: freeformDocument('data:image/png;base64,existing'),
+  }
+}
+
 describe('LocalStore freeform image persistence', () => {
   let values: Map<string, string>
   let setItem: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    vi.resetModules()
     values = new Map()
     setItem = vi.fn((key: string, value: string) => values.set(key, value))
     vi.stubGlobal('localStorage', {
@@ -76,8 +88,9 @@ describe('LocalStore freeform image persistence', () => {
 
   it('does not overwrite an existing local draft when materialization fails', async () => {
     const key = 'slicer.drafts.user-1'
-    const existing = JSON.stringify([{ id: 'draft-1', title: 'Existing', untouched: true }])
+    const existing = JSON.stringify([validStoredDraft('draft-1')])
     values.set(key, existing)
+    const { createLocalStore } = await import('./local')
     const store = createLocalStore()
 
     await expect(store.drafts.save('user-1', {
@@ -90,9 +103,44 @@ describe('LocalStore freeform image persistence', () => {
     expect(values.get(key)).toBe(existing)
   })
 
+  it('rejects invalid freeform and markdown inputs before any local draft write', async () => {
+    const invalidInputs = [
+      {
+        id: 'draft-freeform',
+        mode: 'freeform-slide',
+        document: { documentVersion: 2, activeSlideId: 'missing', slides: [] },
+      },
+      {
+        id: 'draft-markdown',
+        mode: 'markdown-card',
+        document: { source: 42 },
+      },
+    ] as unknown as SaveDraftInput[]
+    const originals = invalidInputs.map((input, index) => {
+      const userId = `invalid-user-${index}`
+      const raw = JSON.stringify([validStoredDraft(input.id ?? `draft-${index}`)])
+      values.set(`slicer.drafts.${userId}`, raw)
+      return { userId, raw }
+    })
+    const { createLocalStore } = await import('./local')
+    const store = createLocalStore()
+
+    for (const [index, input] of invalidInputs.entries()) {
+      await expect(store.drafts.save(originals[index].userId, input)).rejects.toThrow(
+        '本地草稿内容无效',
+      )
+    }
+
+    expect(setItem).not.toHaveBeenCalled()
+    for (const { userId, raw } of originals) {
+      expect(values.get(`slicer.drafts.${userId}`)).toBe(raw)
+    }
+  })
+
   it('materializes before writing and returns the normalized saved draft', async () => {
     const ref = 'img:local-success'
     const dataUrl = 'data:image/png;base64,persisted'
+    const { createLocalStore } = await import('./local')
     const store = createLocalStore()
     store.images.register(ref, dataUrl)
     const input = freeformDocument(ref)

@@ -104,7 +104,12 @@ export async function uploadInlineFreeformImages(
 
     let pending = uploads.get(source)
     if (!pending) {
-      pending = upload(source)
+      pending = upload(source).then((uploadedUrl) => {
+        if (typeof uploadedUrl !== 'string' || uploadedUrl.trim() === '') {
+          throw new Error('图片上传未返回有效地址')
+        }
+        return uploadedUrl
+      })
       uploads.set(source, pending)
     }
     return pending
