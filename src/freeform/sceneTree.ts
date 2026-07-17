@@ -19,11 +19,13 @@ import {
 } from './sceneTransform'
 import type { Matrix2D, Point, SceneBounds } from './sceneTransform'
 import type {
+  ColorPaint,
   FreeformGroupNode,
   FreeformSceneLeaf,
   FreeformSceneNode,
   SceneIdFactory,
   ScenePath,
+  ShapeFill,
 } from './types'
 
 export type SceneVisitor = (
@@ -139,6 +141,20 @@ export type ScenePermissionRequest =
     }
   | { kind: 'insert'; parentPath: ScenePath }
 
+export interface ScenePathIndexEntry {
+  node: FreeformSceneNode
+  path: ScenePath
+  effectiveLocked: boolean
+  subtreeLocked: boolean
+}
+
+export type ScenePathIndex = ReadonlyMap<string, ScenePathIndexEntry>
+
+const scenePathIndexRoots = new WeakMap<
+  ScenePathIndex,
+  readonly FreeformSceneNode[]
+>()
+
 export type SceneSelectionValidation =
   | {
       ok: true
@@ -149,6 +165,51 @@ export type SceneSelectionValidation =
   | { ok: false; reason: SceneMutationError }
 
 export type SceneReorderDirection = 'forward' | 'backward' | 'front' | 'back'
+
+export function scenePathKey(path: ScenePath): string {
+  return JSON.stringify(path)
+}
+
+function indexSceneNode(
+  node: FreeformSceneNode,
+  parentPath: ScenePath,
+  ancestorLocked: boolean,
+  depth: number,
+  index: Map<string, ScenePathIndexEntry>,
+): boolean {
+  requireTraversalDepth(depth)
+  const path = [...parentPath, node.id]
+  const effectiveLocked = ancestorLocked || node.locked
+  let subtreeLocked = node.locked
+  if (node.type === 'group') {
+    for (const child of node.children) {
+      subtreeLocked =
+        indexSceneNode(child, path, effectiveLocked, depth + 1, index) || subtreeLocked
+    }
+  }
+  index.set(scenePathKey(path), { node, path, effectiveLocked, subtreeLocked })
+  return subtreeLocked
+}
+
+export function buildScenePathIndex(
+  nodes: readonly FreeformSceneNode[],
+): ScenePathIndex {
+  const index = new Map<string, ScenePathIndexEntry>()
+  for (const node of nodes) {
+    indexSceneNode(node, [], false, 1, index)
+  }
+  scenePathIndexRoots.set(index, nodes)
+  return index
+}
+
+function scenePathIndexForRoot(
+  nodes: readonly FreeformSceneNode[],
+  candidate?: ScenePathIndex,
+): ScenePathIndex {
+  return candidate && scenePathIndexRoots.get(candidate) === nodes
+    ? candidate
+    : buildScenePathIndex(nodes)
+}
 
 function sameNodeOrder(
   left: readonly FreeformSceneNode[],
@@ -204,6 +265,74 @@ export function updateNodeAtPath(
     next[index] = updated
     return next
   })
+}
+
+export type SceneNodePathUpdater = (node: FreeformSceneNode) => FreeformSceneNode
+
+export interface SceneBatchUpdateOptions {
+  recenterChangedGroups?: boolean
+}
+
+function updateNodeListAtPaths(
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  depth: number,
+  updaters: ReadonlyMap<string, SceneNodePathUpdater>,
+  options: SceneBatchUpdateOptions,
+): FreeformSceneNode[] | null {
+  requireTraversalDepth(depth)
+  let next: FreeformSceneNode[] | null = null
+
+  for (let index = 0; index < nodes.length; index += 1) {
+    const original = nodes[index]
+    const nodePath = [...parentPath, original.id]
+    const updater = updaters.get(scenePathKey(nodePath))
+    let updated = updater ? updater(original) : original
+    if (updated.id !== original.id || updated.type !== original.type) return null
+
+    if (updated.type === 'group') {
+      const children = updateNodeListAtPaths(
+        updated.children,
+        nodePath,
+        depth + 1,
+        updaters,
+        options,
+      )
+      if (!children) return null
+      if (children !== updated.children) {
+        updated = { ...updated, children }
+        if (options.recenterChangedGroups) {
+          const centered = recenterGroup(updated)
+          if (!centered) return null
+          updated = centered
+        }
+      }
+    }
+
+    if (updated !== original) {
+      next ??= [...nodes]
+      next[index] = updated
+    }
+  }
+
+  return next ?? (nodes as FreeformSceneNode[])
+}
+
+/**
+ * Apply an indexed batch in one tree walk. Geometry callers can request
+ * bottom-up group recentering; each changed ancestor is then centered once.
+ */
+export function updateNodesAtPaths(
+  nodes: FreeformSceneNode[],
+  updaters: ReadonlyMap<string, SceneNodePathUpdater>,
+  options: SceneBatchUpdateOptions = {},
+): FreeformSceneNode[] | null {
+  if (updaters.size === 0) return nodes
+  try {
+    return updateNodeListAtPaths(nodes, [], 1, updaters, options)
+  } catch {
+    return null
+  }
 }
 
 export function removeNodesAtPath(
@@ -273,6 +402,18 @@ function clonePaint<T extends object>(paint: T): T {
   return { ...paint }
 }
 
+function copyColorPaint(paint: ColorPaint): ColorPaint {
+  return paint.type === 'solid'
+    ? { type: 'solid', color: paint.color }
+    : { type: 'linear-gradient', from: paint.from, to: paint.to, angle: paint.angle }
+}
+
+function copyShapeFill(fill: ShapeFill): ShapeFill {
+  return fill.type === 'image'
+    ? { type: 'image', src: fill.src, fit: fill.fit }
+    : copyColorPaint(fill)
+}
+
 function cloneSceneNode(
   node: FreeformSceneNode,
   createId: SceneIdFactory,
@@ -300,17 +441,92 @@ function copySceneNodeValue(node: FreeformSceneNode, depth: number): FreeformSce
   requireTraversalDepth(depth)
   if (node.type === 'group') {
     return {
-      ...node,
+      id: node.id,
+      name: node.name,
+      locked: node.locked,
+      hidden: node.hidden,
+      type: 'group',
+      x: node.x,
+      y: node.y,
+      rotation: node.rotation,
+      scale: node.scale,
       children: node.children.map((child) => copySceneNodeValue(child, depth + 1)),
     }
   }
   if (node.type === 'text') {
-    return { ...node, textFill: clonePaint(node.textFill) }
+    return {
+      id: node.id,
+      name: node.name,
+      locked: node.locked,
+      hidden: node.hidden,
+      type: 'text',
+      x: node.x,
+      y: node.y,
+      width: node.width,
+      height: node.height,
+      rotation: node.rotation,
+      scale: node.scale,
+      text: node.text,
+      fontSize: node.fontSize,
+      fontFamily: node.fontFamily,
+      textFill: copyColorPaint(node.textFill),
+      align: node.align,
+      fontWeight: node.fontWeight,
+    }
+  }
+  if (node.type === 'image') {
+    return {
+      id: node.id,
+      name: node.name,
+      locked: node.locked,
+      hidden: node.hidden,
+      type: 'image',
+      x: node.x,
+      y: node.y,
+      width: node.width,
+      height: node.height,
+      rotation: node.rotation,
+      scale: node.scale,
+      src: node.src,
+      alt: node.alt,
+      fit: node.fit,
+    }
   }
   if (node.type === 'shape') {
-    return { ...node, fill: clonePaint(node.fill) }
+    return {
+      id: node.id,
+      name: node.name,
+      locked: node.locked,
+      hidden: node.hidden,
+      type: 'shape',
+      x: node.x,
+      y: node.y,
+      width: node.width,
+      height: node.height,
+      rotation: node.rotation,
+      scale: node.scale,
+      shape: node.shape,
+      fill: copyShapeFill(node.fill),
+      stroke: node.stroke,
+      strokeWidth: node.strokeWidth,
+    }
   }
-  return { ...node }
+  return {
+    id: node.id,
+    name: node.name,
+    locked: node.locked,
+    hidden: node.hidden,
+    type: 'line',
+    x: node.x,
+    y: node.y,
+    width: node.width,
+    height: node.height,
+    rotation: node.rotation,
+    scale: node.scale,
+    lineKind: node.lineKind,
+    stroke: node.stroke,
+    strokeWidth: node.strokeWidth,
+  }
 }
 
 function copySceneNodeValues(nodes: readonly FreeformSceneNode[]): FreeformSceneNode[] {
@@ -369,21 +585,6 @@ function nodesAlongPath(
   return result
 }
 
-function subtreeContainsOwnLock(node: FreeformSceneNode): boolean {
-  const pending: Array<{ node: FreeformSceneNode; depth: number }> = [{ node, depth: 1 }]
-  while (pending.length > 0) {
-    const current = pending.pop()!
-    requireTraversalDepth(current.depth)
-    if (current.node.locked) return true
-    if (current.node.type === 'group') {
-      for (const child of current.node.children) {
-        pending.push({ node: child, depth: current.depth + 1 })
-      }
-    }
-  }
-  return false
-}
-
 function parentIsEffectivelyLocked(
   nodes: readonly FreeformSceneNode[],
   parentPath: ScenePath,
@@ -408,20 +609,34 @@ function parentIsEffectivelyHidden(
 export function canApplySceneAction(
   nodes: readonly FreeformSceneNode[],
   request: ScenePermissionRequest,
+  pathIndex?: ScenePathIndex,
 ): boolean {
   if (request.kind === 'insert') {
-    return parentIsEffectivelyLocked(nodes, request.parentPath) === false
+    if (request.parentPath.length === 0) return true
+    let index: ScenePathIndex
+    try {
+      index = scenePathIndexForRoot(nodes, pathIndex)
+    } catch {
+      return false
+    }
+    const parent = index.get(scenePathKey(request.parentPath))
+    return Boolean(parent && parent.node.type === 'group' && !parent.effectiveLocked)
   }
   if (request.paths.length === 0) return false
+  let index: ScenePathIndex
+  try {
+    index = scenePathIndexForRoot(nodes, pathIndex)
+  } catch {
+    return false
+  }
   for (const nodePath of request.paths) {
-    const chain = nodesAlongPath(nodes, nodePath)
-    if (!chain) return false
+    const target = index.get(scenePathKey(nodePath))
+    if (!target) return false
     if (request.kind === 'metadata') continue
-    if (chain.some((node) => node.locked)) return false
-    const target = chain[chain.length - 1]
+    if (target.effectiveLocked) return false
     if (
       (request.kind === 'geometry' || request.kind === 'structure') &&
-      subtreeContainsOwnLock(target)
+      target.subtreeLocked
     ) {
       return false
     }
@@ -434,12 +649,43 @@ interface SceneValidationState {
   count: number
 }
 
-function isValidColorPaint(value: unknown): boolean {
+const SOLID_PAINT_KEYS = new Set(['type', 'color'])
+const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
+const IMAGE_FILL_KEYS = new Set(['type', 'src', 'fit'])
+const GROUP_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'rotation', 'scale', 'children',
+])
+const TEXT_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'text', 'fontSize', 'fontFamily', 'textFill', 'align', 'fontWeight',
+])
+const IMAGE_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'src', 'alt', 'fit',
+])
+const SHAPE_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'shape', 'fill', 'stroke', 'strokeWidth',
+])
+const LINE_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'lineKind', 'stroke', 'strokeWidth',
+])
+
+function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
+  const actualKeys = Object.keys(value)
+  return actualKeys.length === keys.size && actualKeys.every((key) => keys.has(key))
+}
+
+export function isValidSceneColorPaint(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const paint = value as Record<string, unknown>
-  if (paint.type === 'solid') return isHexColor(paint.color)
+  if (paint.type === 'solid') {
+    return hasExactKeys(paint, SOLID_PAINT_KEYS) && isHexColor(paint.color)
+  }
   return (
     paint.type === 'linear-gradient' &&
+    hasExactKeys(paint, GRADIENT_PAINT_KEYS) &&
     isHexColor(paint.from) &&
     isHexColor(paint.to) &&
     typeof paint.angle === 'number' &&
@@ -447,31 +693,37 @@ function isValidColorPaint(value: unknown): boolean {
   )
 }
 
-function isValidShapeFill(value: unknown): boolean {
-  if (isValidColorPaint(value)) return true
+export function isValidSceneShapeFill(value: unknown): boolean {
+  if (isValidSceneColorPaint(value)) return true
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const fill = value as Record<string, unknown>
   return (
     fill.type === 'image' &&
+    hasExactKeys(fill, IMAGE_FILL_KEYS) &&
     typeof fill.src === 'string' &&
     (fill.fit === 'cover' || fill.fit === 'contain')
   )
 }
 
-function hasValidLeafFields(node: FreeformSceneNode): boolean {
-  if (node.type === 'group') return true
+function hasValidNodeFields(node: FreeformSceneNode): boolean {
+  const record = node as unknown as Record<string, unknown>
+  if (node.type === 'group') {
+    return hasExactKeys(record, GROUP_NODE_KEYS) && Array.isArray(node.children)
+  }
   if (node.type === 'text') {
     return (
+      hasExactKeys(record, TEXT_NODE_KEYS) &&
       typeof node.text === 'string' &&
       Number.isFinite(node.fontSize) &&
       typeof node.fontFamily === 'string' &&
-      isValidColorPaint(node.textFill) &&
+      isValidSceneColorPaint(node.textFill) &&
       (node.align === 'left' || node.align === 'center' || node.align === 'right') &&
       (node.fontWeight === 'normal' || node.fontWeight === 'bold')
     )
   }
   if (node.type === 'image') {
     return (
+      hasExactKeys(record, IMAGE_NODE_KEYS) &&
       typeof node.src === 'string' &&
       typeof node.alt === 'string' &&
       (node.fit === 'cover' || node.fit === 'contain')
@@ -479,14 +731,16 @@ function hasValidLeafFields(node: FreeformSceneNode): boolean {
   }
   if (node.type === 'shape') {
     return (
+      hasExactKeys(record, SHAPE_NODE_KEYS) &&
       (node.shape === 'rect' || node.shape === 'ellipse' || node.shape === 'triangle') &&
-      isValidShapeFill(node.fill) &&
+      isValidSceneShapeFill(node.fill) &&
       typeof node.stroke === 'string' &&
       Number.isFinite(node.strokeWidth)
     )
   }
   if (node.type === 'line') {
     return (
+      hasExactKeys(record, LINE_NODE_KEYS) &&
       (node.lineKind === 'line' || node.lineKind === 'arrow') &&
       typeof node.stroke === 'string' &&
       Number.isFinite(node.strokeWidth)
@@ -511,7 +765,7 @@ function validateSceneNodeList(
       typeof node.name !== 'string' ||
       typeof node.locked !== 'boolean' ||
       typeof node.hidden !== 'boolean' ||
-      !hasValidLeafFields(node)
+      !hasValidNodeFields(node)
     ) {
       return 'invalid-node'
     }
@@ -636,7 +890,7 @@ function transformChildrenIntoParent(group: FreeformGroupNode): FreeformSceneNod
   for (const child of group.children) {
     const next = composeNodeWithMatrix(child, groupMatrix, group.scale * child.scale)
     if (!next) return null
-    transformed.push(next)
+    transformed.push(group.hidden && !next.hidden ? { ...next, hidden: true } : next)
   }
   return transformed
 }
@@ -647,24 +901,30 @@ function flattenGroupIntoParent(group: FreeformGroupNode): FreeformSceneNode[] |
     node: FreeformSceneNode,
     parentMatrix: Matrix2D,
     parentScale: number,
+    ancestorHidden: boolean,
     depth: number,
   ): boolean => {
     requireTraversalDepth(depth)
     const matrix = multiply(parentMatrix, sceneNodeLocalMatrix(node))
     const expectedScale = parentScale * node.scale
+    const effectiveHidden = ancestorHidden || node.hidden
     if (node.type === 'group') {
       return node.children.every((child) =>
-        visit(child, matrix, expectedScale, depth + 1),
+        visit(child, matrix, expectedScale, effectiveHidden, depth + 1),
       )
     }
     const transformed = sceneNodeWithLocalMatrix(node, matrix, expectedScale)
     if (!transformed) return false
-    flattened.push(transformed)
+    flattened.push(
+      effectiveHidden && !transformed.hidden
+        ? { ...transformed, hidden: true }
+        : transformed,
+    )
     return true
   }
   const parentMatrix = groupLocal(group.x, group.y, group.rotation, group.scale)
   for (const child of group.children) {
-    if (!visit(child, parentMatrix, group.scale, 2)) return null
+    if (!visit(child, parentMatrix, group.scale, group.hidden, 2)) return null
   }
   return flattened
 }
@@ -1047,11 +1307,11 @@ export function insertSceneChildren(
   index?: number,
 ): SceneMutationResult {
   if (inserted.length === 0) return { ok: false, reason: 'empty-selection' }
+  const children = getChildrenAtPath(nodes, parentPath)
+  if (!children) return { ok: false, reason: 'unknown-path' }
   if (!canApplySceneAction(nodes, { kind: 'insert', parentPath })) {
     return { ok: false, reason: 'locked-parent' }
   }
-  const children = getChildrenAtPath(nodes, parentPath)
-  if (!children) return { ok: false, reason: 'unknown-path' }
   const insertAt = index ?? children.length
   if (!Number.isInteger(insertAt) || insertAt < 0 || insertAt > children.length) {
     return { ok: false, reason: 'boundary' }
@@ -1072,6 +1332,13 @@ export function insertSceneChildren(
   ) {
     return { ok: false, reason: 'duplicate-id' }
   }
+  const candidateWithPayload = updateChildrenAtPath(nodes, parentPath, (current) => [
+    ...current.slice(0, insertAt),
+    ...inserted,
+    ...current.slice(insertAt),
+  ])
+  const payloadError = validateSceneNodesForMutation(candidateWithPayload)
+  if (payloadError) return { ok: false, reason: payloadError }
   const ownedInserted = copySceneNodeValues(inserted)
   const nextNodes = updateChildrenAtPath(nodes, parentPath, (current) => [
     ...current.slice(0, insertAt),

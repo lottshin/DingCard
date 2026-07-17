@@ -8,20 +8,22 @@ import {
   DEFAULT_PAGE_PAINT,
   DEFAULT_SHAPE_PAINT,
   DEFAULT_TEXT_PAINT,
-  isHexColor,
 } from './paint'
 import {
+  buildScenePathIndex,
   canApplySceneAction,
   cloneSceneNodes,
   cloneSceneNodesAtPath,
   createSceneGroup,
   deleteSceneNodes,
-  findNodeAtPath,
   insertSceneChildren,
-  recenterSceneAncestors,
+  isValidSceneColorPaint,
+  isValidSceneShapeFill,
   reorderNodesAtPath,
+  scenePathKey,
   ungroupSceneGroups,
   updateNodeAtPath,
+  updateNodesAtPaths,
   validateSceneNodesForMutation,
   validateSelectionForParent,
   walkScene,
@@ -328,6 +330,11 @@ function hasOnlyKeys(value: UnknownRecord, allowed: ReadonlySet<string>): boolea
   return Object.keys(value).every((key) => allowed.has(key))
 }
 
+function hasExactKeys(value: UnknownRecord, expected: ReadonlySet<string>): boolean {
+  const keys = Object.keys(value)
+  return keys.length === expected.size && keys.every((key) => expected.has(key))
+}
+
 function validScenePath(value: unknown): value is ScenePath {
   return (
     Array.isArray(value) &&
@@ -355,27 +362,28 @@ function paintEquals(left: unknown, right: unknown): boolean {
 }
 
 function cloneColorPaint(paint: ColorPaint): ColorPaint {
-  return { ...paint }
+  return paint.type === 'solid'
+    ? { type: 'solid', color: paint.color }
+    : { type: 'linear-gradient', from: paint.from, to: paint.to, angle: paint.angle }
+}
+
+function cloneShapeFill(fill: ShapeFill): ShapeFill {
+  return fill.type === 'image'
+    ? { type: 'image', src: fill.src, fit: fill.fit }
+    : cloneColorPaint(fill)
 }
 
 function cloneSlideBackground(background: SlideBackground): SlideBackground {
-  return { ...background }
-}
-
-function validColorPaint(value: unknown): value is ColorPaint {
-  if (!isRecord(value)) return false
-  if (value.type === 'solid') return isHexColor(value.color)
-  return (
-    value.type === 'linear-gradient' &&
-    isHexColor(value.from) &&
-    isHexColor(value.to) &&
-    typeof value.angle === 'number' &&
-    Number.isFinite(value.angle)
-  )
+  return background.type === 'transparent'
+    ? { type: 'transparent' }
+    : cloneColorPaint(background)
 }
 
 function validSlideBackground(value: unknown): value is SlideBackground {
-  return (isRecord(value) && value.type === 'transparent') || validColorPaint(value)
+  if (isRecord(value) && value.type === 'transparent') {
+    return hasExactKeys(value, new Set(['type']))
+  }
+  return isValidSceneColorPaint(value)
 }
 
 function withSlideV3(
@@ -478,6 +486,9 @@ function applyStylePatch(
   if (node.type === 'text') {
     const allowed = new Set(['fontSize', 'fontFamily', 'textFill', 'align', 'fontWeight'])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
+    if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {
+      return { ok: false, node }
+    }
     const next = {
       ...node,
       ...('fontSize' in patch ? { fontSize: patch.fontSize as number } : {}),
@@ -503,10 +514,13 @@ function applyStylePatch(
   if (node.type === 'shape') {
     const allowed = new Set(['shape', 'fill', 'stroke', 'strokeWidth'])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
+    if ('fill' in patch && !isValidSceneShapeFill(patch.fill)) {
+      return { ok: false, node }
+    }
     const next = {
       ...node,
       ...('shape' in patch ? { shape: patch.shape as typeof node.shape } : {}),
-      ...('fill' in patch ? { fill: { ...(patch.fill as ShapeFill) } } : {}),
+      ...('fill' in patch ? { fill: cloneShapeFill(patch.fill as ShapeFill) } : {}),
       ...('stroke' in patch ? { stroke: patch.stroke as string } : {}),
       ...('strokeWidth' in patch ? { strokeWidth: patch.strokeWidth as number } : {}),
     }
@@ -590,17 +604,27 @@ function reduceNodeUpdateBatch(
     if (!isRecord(update) || !validScenePath(update.path) || !isRecord(update.patch)) {
       return document
     }
-    const key = update.path.join('\u0000')
+    const key = scenePathKey(update.path)
     if (seenPaths.has(key)) return document
     seenPaths.add(key)
     paths.push(update.path)
   }
-  if (!canApplySceneAction(slide.nodes, { kind: category, paths })) return document
+  let pathIndex: ReturnType<typeof buildScenePathIndex>
+  try {
+    pathIndex = buildScenePathIndex(slide.nodes)
+  } catch {
+    return document
+  }
+  if (!canApplySceneAction(slide.nodes, { kind: category, paths }, pathIndex)) return document
 
-  let nodes = slide.nodes
-  const changedPaths: ScenePath[] = []
+  const updaters = new Map<
+    string,
+    (node: FreeformSceneNode) => FreeformSceneNode
+  >()
+  let invalidPatch = false
   for (const update of updates as Array<{ path: ScenePath; patch: UnknownRecord }>) {
-    const node = findNodeAtPath(nodes, update.path)
+    const key = scenePathKey(update.path)
+    const node = pathIndex.get(key)?.node
     if (!node) return document
     const result: NodePatchResult =
       category === 'content'
@@ -610,21 +634,26 @@ function reduceNodeUpdateBatch(
           : applyGeometryPatch(node, update.patch as FreeformNodeGeometryPatch)
     if (!result.ok) return document
     if (result.node === node) continue
-    const updatedNodes = updateNodeAtPath(nodes, update.path, () => result.node)
-    if (updatedNodes === nodes) return document
-    nodes = updatedNodes
-    changedPaths.push(update.path)
+    updaters.set(key, (current) => {
+      const currentResult: NodePatchResult =
+        category === 'content'
+          ? applyContentPatch(current, update.patch as FreeformNodeContentPatch)
+          : category === 'style'
+            ? applyStylePatch(current, update.patch as FreeformNodeStylePatch)
+            : applyGeometryPatch(current, update.patch as FreeformNodeGeometryPatch)
+      if (!currentResult.ok) {
+        invalidPatch = true
+        return current
+      }
+      return currentResult.node
+    })
   }
-  if (changedPaths.length === 0) return document
+  if (updaters.size === 0) return document
 
-  if (category === 'geometry') {
-    const deepestFirst = [...changedPaths].sort((left, right) => right.length - left.length)
-    for (const changedPath of deepestFirst) {
-      const centered = recenterSceneAncestors(nodes, changedPath)
-      if (!centered.ok) return document
-      nodes = centered.nodes
-    }
-  }
+  const nodes = updateNodesAtPaths(slide.nodes, updaters, {
+    recenterChangedGroups: category === 'geometry',
+  })
+  if (!nodes || invalidPatch || nodes === slide.nodes) return document
   if (validateSceneNodesForMutation(nodes)) return document
   return withSlideNodesV3(document, slideId, () => nodes)
 }
@@ -676,6 +705,7 @@ function adaptLegacyElement(element: unknown): FreeformSceneLeaf | null {
     scale: 1,
   }
   if (element.type === 'text') {
+    if (!isValidSceneColorPaint(element.textFill)) return null
     return {
       ...base,
       type: 'text',
@@ -697,11 +727,12 @@ function adaptLegacyElement(element: unknown): FreeformSceneLeaf | null {
     }
   }
   if (element.type === 'shape') {
+    if (!isValidSceneShapeFill(element.fill)) return null
     return {
       ...base,
       type: 'shape',
       shape: element.shape as 'rect' | 'ellipse' | 'triangle',
-      fill: { ...(element.fill as ShapeFill) },
+      fill: cloneShapeFill(element.fill as ShapeFill),
       stroke: element.stroke as string,
       strokeWidth: element.strokeWidth as number,
     }

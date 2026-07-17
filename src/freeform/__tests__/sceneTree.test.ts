@@ -6,7 +6,9 @@ import {
   MAX_SCENE_NODES_PER_SLIDE,
 } from '../constants'
 import { reduceFreeformDocumentV3 } from '../document'
+import { normalizeFreeformDocumentV3 } from '../sceneDocument'
 import {
+  buildScenePathIndex,
   canApplySceneAction,
   cloneSceneNodes,
   createSceneGroup,
@@ -378,6 +380,19 @@ describe('immutable scene path helpers', () => {
     expect(nodes).toEqual(snapshot)
   })
 
+  it('reports an unknown insertion parent before checking its lock permission', () => {
+    const nodes = [groupNode('known', [textLeaf('existing')])]
+
+    expect(insertSceneChildren(nodes, ['missing'], [textLeaf('new')])).toEqual({
+      ok: false,
+      reason: 'unknown-path',
+    })
+    expect(insertSceneChildren(nodes, ['known', 'missing'], [textLeaf('new')])).toEqual({
+      ok: false,
+      reason: 'unknown-path',
+    })
+  })
+
   it('deep-clones groups and leaves with deterministic fresh IDs and retained asset fields', () => {
     const source = [
       groupNode('group', [
@@ -416,6 +431,77 @@ describe('immutable scene path helpers', () => {
 })
 
 describe('lossless grouping and ungrouping', () => {
+  it('keeps children effectively hidden after one-level ungroup removes a hidden group', () => {
+    const nodes = [
+      groupNode(
+        'hidden-group',
+        [textLeaf('child-a'), shapeLeaf('child-b', { hidden: true })],
+        { hidden: true, rotation: 17, scale: 1.3 },
+      ),
+    ]
+    const before = snapshotLeaves(nodes)
+
+    const result = ungroupSceneGroups(nodes, [], ['hidden-group'], 'one-level')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.nodes.map((node) => ({ id: node.id, hidden: node.hidden }))).toEqual([
+      { id: 'child-a', hidden: true },
+      { id: 'child-b', hidden: true },
+    ])
+    expectSnapshotsEqual(snapshotLeaves(result.nodes), before)
+  })
+
+  it.each([
+    ['outer hidden', true, false],
+    ['inner hidden', false, true],
+  ])('accumulates hidden ancestry during all-level ungroup: %s', (_label, outerHidden, innerHidden) => {
+    const nodes = [
+      groupNode(
+        'outer',
+        [
+          groupNode('inner', [textLeaf('deep')], {
+            hidden: innerHidden,
+            x: -30,
+            y: 45,
+            rotation: -11,
+            scale: 0.8,
+          }),
+        ],
+        { hidden: outerHidden, x: 220, y: 170, rotation: 29, scale: 1.4 },
+      ),
+    ]
+    const before = snapshotLeaves(nodes)
+
+    const result = ungroupSceneGroups(nodes, [], ['outer'], 'all-level')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.nodes[0]).toMatchObject({ id: 'deep', hidden: true })
+    expectSnapshotsEqual(snapshotLeaves(result.nodes), before)
+  })
+
+  it('keeps a survivor hidden when deleting two siblings auto-dissolves its hidden group', () => {
+    const nodes = [
+      groupNode(
+        'hidden-group',
+        [textLeaf('survivor'), shapeLeaf('delete-a'), lineLeaf('delete-b')],
+        { hidden: true, x: 280, y: 210, rotation: 23, scale: 0.75 },
+      ),
+    ]
+    const before = snapshotLeaves(nodes).get('survivor')!
+
+    const result = deleteSceneNodes(nodes, ['hidden-group'], ['delete-a', 'delete-b'])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.nodes[0]).toMatchObject({ id: 'survivor', hidden: true })
+    expectSnapshotsEqual(
+      new Map([['survivor', snapshotLeaves(result.nodes).get('survivor')!]]),
+      new Map([['survivor', before]]),
+    )
+  })
+
   it('rejects arbitrary, non-finite, and non-positive expected scale overrides', () => {
     const node = textLeaf('override-guard', { scale: 2 })
     const matrix = leafLocal(
@@ -868,6 +954,83 @@ describe('lossless grouping and ungrouping', () => {
 })
 
 describe('v3 reducer permission and atomicity boundary', () => {
+  it('preserves ancestor and descendant geometry semantics in one batch', () => {
+    const nodes = [
+      groupNode(
+        'outer',
+        [
+          groupNode(
+            'inner',
+            [textLeaf('edited'), shapeLeaf('stable')],
+            { x: -30, y: 55, rotation: -17, scale: 0.8 },
+          ),
+        ],
+        { x: 260, y: 190, rotation: 21, scale: 1.2 },
+      ),
+    ]
+    const rawAncestorUpdate = updateNodeAtPath(nodes, ['outer'], (node) => ({
+      ...node,
+      rotation: 39,
+      scale: 1.45,
+    }))
+    const rawIntended = updateNodeAtPath(
+      rawAncestorUpdate,
+      ['outer', 'inner', 'edited'],
+      (node) =>
+        node.type === 'group'
+          ? node
+          : { ...node, x: node.x + 27, width: node.width + 35 },
+    )
+    const intended = snapshotLeaves(rawIntended)
+    const document = documentWith(nodes)
+
+    const result = reduceFreeformDocumentV3(document, {
+      type: 'node/update-geometry',
+      slideId: 'slide-1',
+      updates: [
+        { path: ['outer'], patch: { rotation: 39, scale: 1.45 } },
+        {
+          path: ['outer', 'inner', 'edited'],
+          patch: { x: 37, width: 155 },
+        },
+      ],
+    })
+
+    expect(result).not.toBe(document)
+    expect(result.slides[0].nodes[0]).toMatchObject({ rotation: 39, scale: 1.45 })
+    expectSnapshotsEqual(snapshotLeaves(result.slides[0].nodes), intended)
+  })
+
+  it('updates 1000 root geometries atomically without quadratic path scans', () => {
+    const leaves = Array.from({ length: 1000 }, (_, index) =>
+      textLeaf(`batch-${index}`, { x: index }),
+    )
+    const untouched = shapeLeaf('untouched')
+    const document = documentWith([...leaves, untouched])
+    const updates = leaves.map((node, index) => ({
+      path: [node.id],
+      patch: { x: index + 1000 },
+    }))
+
+    const startedAt = performance.now()
+    const result = reduceFreeformDocumentV3(document, {
+      type: 'node/update-geometry',
+      slideId: 'slide-1',
+      updates,
+    })
+    const duration = performance.now() - startedAt
+
+    expect(duration).toBeLessThan(1500)
+    expect(result).not.toBe(document)
+    expect(result.slides[0].nodes.slice(0, 1000).map((node) => node.x)).toEqual(
+      Array.from({ length: 1000 }, (_, index) => index + 1000),
+    )
+    expect(result.slides[0].nodes[1000]).toBe(untouched)
+    expect(document.slides[0].nodes.slice(0, 1000).map((node) => node.x)).toEqual(
+      Array.from({ length: 1000 }, (_, index) => index),
+    )
+  }, 15_000)
+
   it('allows lock, hide, and rename metadata through own, ancestor, and parent locks', () => {
     const nodes = [
       groupNode(
@@ -1057,6 +1220,122 @@ describe('v3 reducer permission and atomicity boundary', () => {
     })
   })
 
+  it.each([
+    [
+      'text paint',
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [
+          {
+            path: ['text'],
+            patch: {
+              textFill: {
+                type: 'solid',
+                color: '#112233',
+                extension: { source: 'plugin' },
+              },
+            },
+          },
+        ],
+      },
+    ],
+    [
+      'shape image fill',
+      {
+        type: 'element/update',
+        slideId: 'slide-1',
+        elementId: 'shape',
+        patch: {
+          fill: {
+            type: 'image',
+            src: 'img:extra-fill',
+            fit: 'cover',
+            metadata: { nested: true },
+          },
+        },
+      },
+    ],
+    [
+      'slide background',
+      {
+        type: 'slide/update',
+        slideId: 'slide-1',
+        patch: {
+          background: {
+            type: 'linear-gradient',
+            from: '#111111',
+            to: '#eeeeee',
+            angle: 30,
+            extension: { nested: true },
+          },
+        },
+      },
+    ],
+  ])('rejects extra nested schema fields in %s', (_label, rawAction) => {
+    const document = documentWith([textLeaf('text'), shapeLeaf('shape')])
+    const action = rawAction as unknown as FreeformActionV3
+
+    expect(reduceFreeformDocumentV3(document, action)).toBe(document)
+  })
+
+  it('keeps every accepted nested-schema result strict-readable and payload-owned', () => {
+    const original = documentWith([textLeaf('text'), shapeLeaf('shape')])
+    const textFill = {
+      type: 'linear-gradient' as const,
+      from: '#112233',
+      to: '#ddeeff',
+      angle: 25,
+    }
+    const shapeFill = {
+      type: 'image' as const,
+      src: 'img:strict-fill',
+      fit: 'contain' as const,
+    }
+    const background = {
+      type: 'linear-gradient' as const,
+      from: '#fff7ed',
+      to: '#fed7aa',
+      angle: 90,
+    }
+    const inserted = groupNode('inserted', [imageLeaf('nested-image')])
+
+    const textResult = reduceFreeformDocumentV3(original, {
+      type: 'node/update-style',
+      slideId: 'slide-1',
+      updates: [{ path: ['text'], patch: { textFill } }],
+    })
+    expect(normalizeFreeformDocumentV3(textResult)).toEqual(textResult)
+    const shapeResult = reduceFreeformDocumentV3(textResult, {
+      type: 'node/update-style',
+      slideId: 'slide-1',
+      updates: [{ path: ['shape'], patch: { fill: shapeFill } }],
+    })
+    expect(normalizeFreeformDocumentV3(shapeResult)).toEqual(shapeResult)
+    const backgroundResult = reduceFreeformDocumentV3(shapeResult, {
+      type: 'slide/update',
+      slideId: 'slide-1',
+      patch: { background },
+    })
+    expect(normalizeFreeformDocumentV3(backgroundResult)).toEqual(backgroundResult)
+    const insertResult = reduceFreeformDocumentV3(backgroundResult, {
+      type: 'node/insert-children',
+      slideId: 'slide-1',
+      parentPath: [],
+      nodes: [inserted],
+    })
+    expect(normalizeFreeformDocumentV3(insertResult)).toEqual(insertResult)
+
+    expect(
+      (insertResult.slides[0].nodes[0] as Extract<FreeformSceneLeaf, { type: 'text' }>).textFill,
+    ).not.toBe(textFill)
+    expect(
+      (insertResult.slides[0].nodes[1] as Extract<FreeformSceneLeaf, { type: 'shape' }>).fill,
+    ).not.toBe(shapeFill)
+    expect(insertResult.slides[0].background).not.toBe(background)
+    expect(insertResult.slides[0].nodes[2]).not.toBe(inserted)
+  })
+
   it('rejects insertion into a locked parent but allows housekeeping beside a locked descendant', () => {
     const lockedParent = groupNode('locked-parent', [textLeaf('existing')], { locked: true })
     const openParent = groupNode('open-parent', [
@@ -1167,6 +1446,27 @@ describe('v3 reducer permission and atomicity boundary', () => {
     expect(canApplySceneAction(nodes, { kind: 'insert', parentPath: ['outer'] })).toBe(true)
     expect(canApplySceneAction(nodes, { kind: 'insert', parentPath: ['missing'] })).toBe(false)
     expect(nodes).toEqual(snapshot)
+  })
+
+  it('does not trust a path index built for a different immutable scene root', () => {
+    const unlocked = [groupNode('outer', [textLeaf('child')])]
+    const foreignIndex = buildScenePathIndex(unlocked)
+    const locked = [groupNode('outer', [textLeaf('child')], { locked: true })]
+
+    expect(
+      canApplySceneAction(
+        locked,
+        { kind: 'geometry', paths: [['outer', 'child']] },
+        foreignIndex,
+      ),
+    ).toBe(false)
+    expect(
+      canApplySceneAction(
+        locked,
+        { kind: 'insert', parentPath: ['outer'] },
+        foreignIndex,
+      ),
+    ).toBe(false)
   })
 })
 
@@ -1324,6 +1624,45 @@ describe('v3 reducer safety limits and stable failures', () => {
       } as unknown as FreeformActionV3
       expect(reduceFreeformDocumentV3(original, action)).toBe(original)
     }
+  })
+
+  it.each([
+    [
+      'leaf top level',
+      {
+        ...textLeaf('extra-node'),
+        extension: { nested: true },
+      },
+    ],
+    [
+      'group top level',
+      {
+        ...groupNode('extra-group', [textLeaf('group-child')]),
+        pluginState: { nested: true },
+      },
+    ],
+    [
+      'nested paint',
+      {
+        ...shapeLeaf('extra-paint'),
+        fill: {
+          type: 'image',
+          src: 'img:extra',
+          fit: 'cover',
+          extension: { nested: true },
+        },
+      },
+    ],
+  ])('atomically rejects an inserted subtree with extra %s fields', (_label, node) => {
+    const original = documentWith([textLeaf('existing')])
+    const action = {
+      type: 'node/insert-children',
+      slideId: 'slide-1',
+      parentPath: [],
+      nodes: [node],
+    } as unknown as FreeformActionV3
+
+    expect(reduceFreeformDocumentV3(original, action)).toBe(original)
   })
 
   it('deep-owns inserted subtrees while preserving their provided IDs', () => {
