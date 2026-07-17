@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AuthModal } from '../AuthModal'
 import type { User } from '../auth'
 import { store } from '../storage'
@@ -27,6 +27,25 @@ export function AppShell() {
   const [authStatus, setAuthStatus] = useState<'checking' | 'ready' | 'error'>('checking')
   const [authNotice, setAuthNotice] = useState<AuthNotice | null>(null)
   const authCheckGeneration = useRef(0)
+  const authOpenerRef = useRef<HTMLElement | null>(null)
+  const authWasOpenRef = useRef(false)
+
+  const requestAuth = useCallback(() => {
+    const activeElement = document.activeElement
+    authOpenerRef.current =
+      activeElement instanceof HTMLElement && activeElement.isConnected ? activeElement : null
+    setShowAuth(true)
+  }, [])
+
+  useLayoutEffect(() => {
+    const authWasOpen = authWasOpenRef.current
+    authWasOpenRef.current = showAuth
+    if (!authWasOpen || showAuth) return
+
+    const opener = authOpenerRef.current
+    authOpenerRef.current = null
+    if (opener?.isConnected) opener.focus()
+  }, [showAuth])
 
   const checkCurrentSession = useCallback(async () => {
     const generation = ++authCheckGeneration.current
@@ -96,7 +115,7 @@ export function AppShell() {
         authStatus={authStatus}
         onModeChange={setWorkspaceMode}
         onToggleTheme={toggleAppTheme}
-        onRequestAuth={() => setShowAuth(true)}
+        onRequestAuth={requestAuth}
         onRetryAuth={() => void checkCurrentSession()}
         onLogout={() => void handleLogout()}
       />
@@ -121,7 +140,7 @@ export function AppShell() {
         <MarkdownWorkspace
           isActive={workspaceMode === 'markdown-card'}
           user={user}
-          requestAuth={() => setShowAuth(true)}
+          requestAuth={requestAuth}
         />
       </div>
       <div
@@ -134,7 +153,7 @@ export function AppShell() {
         <FreeformWorkspace
           isActive={workspaceMode === 'freeform-slide'}
           user={user}
-          requestAuth={() => setShowAuth(true)}
+          requestAuth={requestAuth}
         />
       </div>
 

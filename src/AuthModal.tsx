@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import type { User } from './auth'
 import { store } from './storage'
 
@@ -9,8 +9,29 @@ interface AuthModalProps {
 
 type Mode = 'login' | 'register'
 
+const FOCUSABLE_SELECTOR = [
+  'button',
+  'input',
+  'textarea',
+  'select',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+function focusableElements(dialog: HTMLElement): HTMLElement[] {
+  return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) =>
+      element.tabIndex >= 0 &&
+      !element.matches(':disabled') &&
+      !element.closest('[inert]') &&
+      element.getClientRects().length > 0 &&
+      window.getComputedStyle(element).visibility !== 'hidden',
+  )
+}
+
 /** Sign-in / sign-up dialog for the active LocalStore or RemoteStore backend. */
 export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [mode, setMode] = useState<Mode>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -34,9 +55,49 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
     }
   }
 
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+      return
+    }
+    if (event.key !== 'Tab') return
+
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const focusable = focusableElements(dialog)
+    if (focusable.length === 0) {
+      event.preventDefault()
+      return
+    }
+
+    const activeIndex = focusable.indexOf(document.activeElement as HTMLElement)
+    const nextIndex = event.shiftKey
+      ? activeIndex <= 0
+        ? focusable.length - 1
+        : activeIndex - 1
+      : activeIndex < 0 || activeIndex === focusable.length - 1
+        ? 0
+        : activeIndex + 1
+    event.preventDefault()
+    focusable[nextIndex]?.focus()
+  }
+
   return (
     <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
+        <h2 id={titleId} className="sr-only">
+          账户登录与注册
+        </h2>
         <div className="sheet-tabs">
           <button
             className={mode === 'login' ? 'sheet-tab on' : 'sheet-tab'}
@@ -81,7 +142,11 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
             />
           </label>
 
-          {error && <div className="form-error">{error}</div>}
+          {error && (
+            <div className="form-error" role="alert" aria-live="polite">
+              {error}
+            </div>
+          )}
 
           <p className="form-note">
             {store.remote

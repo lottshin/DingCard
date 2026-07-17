@@ -104,6 +104,19 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Theme-switch easing. We DON'T leave a transition on every element (it would
    drag out hovers and other interactions). Instead the toggle briefly adds
    `.theme-anim` to <html>, we ease colors for that window, then it's removed.
