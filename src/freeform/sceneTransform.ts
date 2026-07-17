@@ -1,3 +1,6 @@
+import { MAX_SCENE_DEPTH } from './constants'
+import type { FreeformSceneNode } from './types'
+
 export type Matrix2D = readonly [
   a: number,
   b: number,
@@ -293,4 +296,81 @@ export function matrixAlmostEqual(
     }
   }
   return true
+}
+
+/** Return a node's complete local transform in its direct parent space. */
+export function sceneNodeLocalMatrix(node: FreeformSceneNode): Matrix2D {
+  return node.type === 'group'
+    ? groupLocal(node.x, node.y, node.rotation, node.scale)
+    : leafLocal(node.x, node.y, node.width, node.height, node.rotation, node.scale)
+}
+
+/**
+ * Re-express a node through a similarity matrix without changing its content.
+ * Leaves store x/y as the unrotated top-left, so their transformed center must
+ * be converted back instead of treating matrix e/f as x/y.
+ */
+export function sceneNodeWithLocalMatrix(
+  node: FreeformSceneNode,
+  matrix: Matrix2D,
+): FreeformSceneNode | null {
+  const transform = decomposeSimilarity(matrix)
+  if (!transform) return null
+
+  if (node.type === 'group') {
+    return {
+      ...node,
+      x: transform.x,
+      y: transform.y,
+      rotation: transform.rotation,
+      scale: transform.scale,
+    }
+  }
+
+  const center = transformPoint(matrix, {
+    x: node.width / 2,
+    y: node.height / 2,
+  })
+  const x = center.x - node.width / 2
+  const y = center.y - node.height / 2
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  return {
+    ...node,
+    x,
+    y,
+    rotation: transform.rotation,
+    scale: transform.scale,
+  }
+}
+
+function collectLeafCorners(
+  node: FreeformSceneNode,
+  parentMatrix: Matrix2D,
+  points: Point[],
+  depth: number,
+): void {
+  if (!Number.isInteger(depth) || depth < 1 || depth > MAX_SCENE_DEPTH) {
+    throw new RangeError(`scene depth must be an integer from 1 to ${MAX_SCENE_DEPTH}`)
+  }
+  const matrix = multiply(parentMatrix, sceneNodeLocalMatrix(node))
+  if (node.type === 'group') {
+    for (const child of node.children) {
+      collectLeafCorners(child, matrix, points, depth + 1)
+    }
+    return
+  }
+
+  points.push(
+    transformPoint(matrix, { x: 0, y: 0 }),
+    transformPoint(matrix, { x: node.width, y: 0 }),
+    transformPoint(matrix, { x: node.width, y: node.height }),
+    transformPoint(matrix, { x: 0, y: node.height }),
+  )
+}
+
+/** Bounds of a node's complete leaf subtree in its direct parent space. */
+export function sceneNodeBoundsInParent(node: FreeformSceneNode): SceneBounds | null {
+  const points: Point[] = []
+  collectLeafCorners(node, identity(), points, 1)
+  return boundsFromPoints(points)
 }
