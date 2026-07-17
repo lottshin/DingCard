@@ -9,10 +9,24 @@ function optionDomId(listId: string, optionId: string) {
   return `${listId}-option-${encodedOptionId || 'empty'}`
 }
 
-function hasDisabledOrInertAncestor(target: Element) {
+function isWithinInertSubtree(target: Element) {
   let current: Element | null = target
   while (current) {
-    if (current.hasAttribute('inert') || current.matches(':disabled')) return true
+    if (current.hasAttribute('inert')) return true
+    current = current.parentElement
+  }
+  return false
+}
+
+function hasDisabledInteractiveAncestor(target: Element) {
+  let current = target.parentElement
+  while (current) {
+    if (
+      current.matches(':disabled') &&
+      !(current instanceof HTMLFieldSetElement)
+    ) {
+      return true
+    }
     current = current.parentElement
   }
   return false
@@ -33,11 +47,19 @@ function isMouseFocusable(element: HTMLElement) {
 }
 
 function findMouseFocusTarget(target: EventTarget | null) {
-  if (!(target instanceof Element) || hasDisabledOrInertAncestor(target)) return null
+  if (!(target instanceof Element) || isWithinInertSubtree(target)) return null
 
   let current: Element | null = target
   while (current) {
-    if (current instanceof HTMLElement && isMouseFocusable(current)) return current
+    if (current instanceof HTMLElement && isMouseFocusable(current)) {
+      if (
+        current.matches(':disabled') ||
+        hasDisabledInteractiveAncestor(target)
+      ) {
+        return null
+      }
+      return current
+    }
     current = current.parentElement
   }
   return null
