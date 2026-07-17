@@ -9,6 +9,40 @@ function optionDomId(listId: string, optionId: string) {
   return `${listId}-option-${encodedOptionId || 'empty'}`
 }
 
+function hasDisabledOrInertAncestor(target: Element) {
+  let current: Element | null = target
+  while (current) {
+    if (current.hasAttribute('inert') || current.matches(':disabled')) return true
+    current = current.parentElement
+  }
+  return false
+}
+
+function isMouseFocusable(element: HTMLElement) {
+  if (element.hasAttribute('tabindex') || element.isContentEditable) return true
+  if (element instanceof HTMLAnchorElement || element instanceof HTMLAreaElement) {
+    return element.hasAttribute('href')
+  }
+  if (element instanceof HTMLInputElement) return element.type !== 'hidden'
+  return (
+    element instanceof HTMLButtonElement ||
+    element instanceof HTMLSelectElement ||
+    element instanceof HTMLTextAreaElement ||
+    element.tagName === 'SUMMARY'
+  )
+}
+
+function findMouseFocusTarget(target: EventTarget | null) {
+  if (!(target instanceof Element) || hasDisabledOrInertAncestor(target)) return null
+
+  let current: Element | null = target
+  while (current) {
+    if (current instanceof HTMLElement && isMouseFocusable(current)) return current
+    current = current.parentElement
+  }
+  return null
+}
+
 export interface SelectOption {
   id: string
   label: string
@@ -52,6 +86,8 @@ export function Select({ value, options, onChange, title, testId, previewFonts }
     : requestedActiveIndex >= 0
       ? requestedActiveIndex
       : Math.max(0, selectedIndex)
+  const normalizedActiveOptionId =
+    currentActiveIndex >= 0 ? options[currentActiveIndex].id : null
 
   function clearTypeahead() {
     typeaheadBufferRef.current = ''
@@ -83,19 +119,7 @@ export function Select({ value, options, onChange, title, testId, previewFonts }
       if (!rootRef.current || rootRef.current.contains(e.target as Node)) return
 
       closeMenu()
-      let target = e.target instanceof Element ? e.target : null
-      let focusTarget: HTMLElement | null = null
-      while (target) {
-        if (
-          target instanceof HTMLElement &&
-          (target.tabIndex >= 0 || target.isContentEditable) &&
-          !target.matches(':disabled')
-        ) {
-          focusTarget = target
-          break
-        }
-        target = target.parentElement
-      }
+      const focusTarget = findMouseFocusTarget(e.target)
       if (!focusTarget) {
         e.preventDefault()
         triggerRef.current?.focus()
@@ -112,14 +136,12 @@ export function Select({ value, options, onChange, title, testId, previewFonts }
     setOpen(false)
   }, [hasOptions])
 
-  useEffect(
-    () => () => {
-      if (typeaheadTimerRef.current !== null) {
-        globalThis.clearTimeout(typeaheadTimerRef.current)
-      }
-    },
-    [],
-  )
+  useEffect(() => {
+    if (!isOpen || requestedActiveIndex >= 0 || normalizedActiveOptionId === null) return
+    setActiveOptionId(normalizedActiveOptionId)
+  }, [isOpen, normalizedActiveOptionId, requestedActiveIndex])
+
+  useEffect(() => () => clearTypeahead(), [])
 
   function choose(i: number) {
     const opt = options[i]

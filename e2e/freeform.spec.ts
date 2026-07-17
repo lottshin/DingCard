@@ -1831,6 +1831,8 @@ test('font menu preserves focus according to the outside click target', async ({
 })
 
 test('font menu keeps focus on external summary and contenteditable controls', async ({ page }) => {
+  const pageErrors: Error[] = []
+  page.on('pageerror', (error) => pageErrors.push(error))
   await openFreeform(page)
 
   await insertText(page)
@@ -1873,6 +1875,96 @@ test('font menu keeps focus on external summary and contenteditable controls', a
   await editable.click()
   await expect(page.getByRole('listbox')).toHaveCount(0)
   await expect(editable).toBeFocused()
+  expect(pageErrors).toEqual([])
+})
+
+test('font menu keeps focus on an external tabindex -1 button', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertText(page)
+  const trigger = page.getByTestId('freeform-font-select')
+  await page.evaluate(() => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.tabIndex = -1
+    button.dataset.testid = 'external-negative-tabindex-button'
+    button.textContent = 'External mouse focus target'
+    button.style.cssText = [
+      'position: fixed',
+      'left: 8px',
+      'bottom: 8px',
+      'z-index: 100',
+    ].join(';')
+    document.body.append(button)
+  })
+
+  const target = page.getByTestId('external-negative-tabindex-button')
+  await trigger.click()
+  await target.click()
+
+  await expect(page.getByRole('listbox')).toHaveCount(0)
+  await expect(target).toBeFocused()
+})
+
+test('font menu restores trigger focus for disabled or inert outside targets', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertText(page)
+  const trigger = page.getByTestId('freeform-font-select')
+  await page.evaluate(() => {
+    const host = document.createElement('div')
+    host.style.cssText = [
+      'position: fixed',
+      'left: 8px',
+      'bottom: 8px',
+      'z-index: 100',
+    ].join(';')
+
+    const disabledButton = document.createElement('button')
+    disabledButton.disabled = true
+    disabledButton.dataset.testid = 'external-disabled-target'
+    disabledButton.textContent = 'Disabled target'
+
+    const disabledAncestor = document.createElement('button')
+    disabledAncestor.disabled = true
+    const disabledDescendant = document.createElement('span')
+    disabledDescendant.tabIndex = 0
+    disabledDescendant.dataset.testid = 'external-disabled-descendant'
+    disabledDescendant.textContent = 'Disabled descendant'
+    disabledAncestor.append(disabledDescendant)
+
+    const inertButton = document.createElement('button')
+    inertButton.inert = true
+    inertButton.dataset.testid = 'external-inert-target'
+    inertButton.textContent = 'Inert target'
+
+    const inertAncestor = document.createElement('div')
+    inertAncestor.inert = true
+    const inertDescendant = document.createElement('button')
+    inertDescendant.dataset.testid = 'external-inert-descendant'
+    inertDescendant.textContent = 'Inert descendant'
+    inertAncestor.append(inertDescendant)
+
+    host.append(disabledButton, disabledAncestor, inertButton, inertAncestor)
+    document.body.append(host)
+  })
+
+  for (const testId of [
+    'external-disabled-target',
+    'external-disabled-descendant',
+    'external-inert-target',
+    'external-inert-descendant',
+  ]) {
+    await trigger.click()
+    const defaultPrevented = await page.getByTestId(testId).evaluate((target) => {
+      const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+      return event.defaultPrevented
+    })
+    expect(defaultPrevented).toBe(true)
+    await expect(page.getByRole('listbox')).toHaveCount(0)
+    await expect(trigger).toBeFocused()
+  }
 })
 
 test('font listbox exposes active options and isolates keyboard navigation from the canvas', async ({ page }) => {
@@ -2019,6 +2111,21 @@ test('font listbox keeps option identity across dynamic options and guards the e
   await expect(bravo).toHaveAttribute('id', bravoId!)
   await expect(trigger).toHaveAttribute('aria-activedescendant', charlieId!)
 
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('dynamic-select-options', { detail: 'shrunk' }))
+  })
+  await expect(charlie).toHaveCount(0)
+  await expect(trigger).toHaveAttribute('aria-activedescendant', bravoId!)
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('dynamic-select-options', { detail: 'initial' }))
+  })
+  await expect(charlie).toHaveCount(1)
+  await expect(trigger).toHaveAttribute('aria-activedescendant', bravoId!)
+  await page.keyboard.press('ArrowUp')
+  await expect(trigger).toHaveAttribute('aria-activedescendant', alphaId!)
+  await page.keyboard.press('ArrowDown')
+  await expect(trigger).toHaveAttribute('aria-activedescendant', bravoId!)
+
   await trigger.dispatchEvent('keydown', {
     key: 'C',
     bubbles: true,
@@ -2057,6 +2164,94 @@ test('font listbox keeps option identity across dynamic options and guards the e
   })
   await expect(page.getByRole('listbox')).toHaveCount(0)
   await expect(harness).toHaveAttribute('data-change-count', '0')
+})
+
+test('font listbox fully resets pending typeahead when unmounted', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(async () => {
+    const ReactModule = await import('/@id/react')
+    const React = ReactModule.default ?? ReactModule
+    const ReactDomClientModule = await import('/@id/react-dom/client')
+    const ReactDomClient = ReactDomClientModule.default ?? ReactDomClientModule
+    const { createRoot } = ReactDomClient
+    const { Select } = await import('/src/Select.tsx')
+
+    const host = document.createElement('div')
+    host.dataset.testid = 'unmount-select-harness'
+    document.body.replaceChildren(host)
+
+    const originalSetTimeout = globalThis.setTimeout.bind(globalThis)
+    const originalClearTimeout = globalThis.clearTimeout.bind(globalThis)
+    let trackedHandle: number | null = null
+    globalThis.setTimeout = ((
+      callback: (...args: unknown[]) => void,
+      delay?: number,
+      ...args: unknown[]
+    ) => {
+      const isTypeaheadTimer = delay === 500
+      const handle = originalSetTimeout(() => {
+        if (isTypeaheadTimer && handle === trackedHandle) {
+          host.dataset.timerExecuted = 'true'
+        }
+        callback(...args)
+      }, delay)
+      if (isTypeaheadTimer) {
+        trackedHandle = handle
+        host.dataset.timerScheduled = 'true'
+      }
+      return handle
+    }) as typeof globalThis.setTimeout
+    globalThis.clearTimeout = ((handle?: number) => {
+      if (handle === trackedHandle) {
+        host.dataset.timerCancelled = 'true'
+        host.dataset.timerClearStack = new Error().stack ?? ''
+      }
+      originalClearTimeout(handle)
+    }) as typeof globalThis.clearTimeout
+
+    const root = createRoot(host)
+    root.render(
+      React.createElement(Select, {
+        value: 'alpha',
+        options: [
+          { id: 'alpha', label: 'Alpha' },
+          { id: 'bravo', label: 'Bravo' },
+        ],
+        onChange: () => undefined,
+        title: 'Unmount select',
+        testId: 'unmount-font-select',
+      }),
+    )
+
+    window.addEventListener(
+      'unmount-dynamic-select',
+      () => {
+        root.unmount()
+        globalThis.setTimeout = originalSetTimeout
+        globalThis.clearTimeout = originalClearTimeout
+      },
+      { once: true },
+    )
+  })
+
+  const host = page.getByTestId('unmount-select-harness')
+  const trigger = page.getByTestId('unmount-font-select')
+  await trigger.click()
+  await trigger.dispatchEvent('keydown', {
+    key: 'B',
+    bubbles: true,
+    cancelable: true,
+  })
+  await expect(host).toHaveAttribute('data-timer-scheduled', 'true')
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('unmount-dynamic-select'))
+  })
+  await expect(trigger).toHaveCount(0)
+  await expect(host).toHaveAttribute('data-timer-cancelled', 'true')
+  await expect(host).toHaveAttribute('data-timer-clear-stack', /clearTypeahead/)
+  await page.waitForTimeout(550)
+  await expect(host).not.toHaveAttribute('data-timer-executed')
 })
 
 test('warms the selected web font before export is clicked', async ({ page }) => {
