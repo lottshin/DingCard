@@ -621,15 +621,20 @@ function unionNodeBounds(nodes: readonly FreeformSceneNode[]): SceneBounds | nul
 function composeNodeWithMatrix(
   node: FreeformSceneNode,
   parentMatrix: Matrix2D,
+  expectedScale: number,
 ): FreeformSceneNode | null {
-  return sceneNodeWithLocalMatrix(node, multiply(parentMatrix, sceneNodeLocalMatrix(node)))
+  return sceneNodeWithLocalMatrix(
+    node,
+    multiply(parentMatrix, sceneNodeLocalMatrix(node)),
+    expectedScale,
+  )
 }
 
 function transformChildrenIntoParent(group: FreeformGroupNode): FreeformSceneNode[] | null {
   const groupMatrix = groupLocal(group.x, group.y, group.rotation, group.scale)
   const transformed: FreeformSceneNode[] = []
   for (const child of group.children) {
-    const next = composeNodeWithMatrix(child, groupMatrix)
+    const next = composeNodeWithMatrix(child, groupMatrix, group.scale * child.scale)
     if (!next) return null
     transformed.push(next)
   }
@@ -638,20 +643,28 @@ function transformChildrenIntoParent(group: FreeformGroupNode): FreeformSceneNod
 
 function flattenGroupIntoParent(group: FreeformGroupNode): FreeformSceneNode[] | null {
   const flattened: FreeformSceneNode[] = []
-  const visit = (node: FreeformSceneNode, parentMatrix: Matrix2D, depth: number): boolean => {
+  const visit = (
+    node: FreeformSceneNode,
+    parentMatrix: Matrix2D,
+    parentScale: number,
+    depth: number,
+  ): boolean => {
     requireTraversalDepth(depth)
     const matrix = multiply(parentMatrix, sceneNodeLocalMatrix(node))
+    const expectedScale = parentScale * node.scale
     if (node.type === 'group') {
-      return node.children.every((child) => visit(child, matrix, depth + 1))
+      return node.children.every((child) =>
+        visit(child, matrix, expectedScale, depth + 1),
+      )
     }
-    const transformed = sceneNodeWithLocalMatrix(node, matrix)
+    const transformed = sceneNodeWithLocalMatrix(node, matrix, expectedScale)
     if (!transformed) return false
     flattened.push(transformed)
     return true
   }
   const parentMatrix = groupLocal(group.x, group.y, group.rotation, group.scale)
   for (const child of group.children) {
-    if (!visit(child, parentMatrix, 2)) return null
+    if (!visit(child, parentMatrix, group.scale, 2)) return null
   }
   return flattened
 }
@@ -718,7 +731,7 @@ export function createSceneGroup(
     const toGroup = translation(-center.x, -center.y)
     const children: FreeformSceneNode[] = []
     for (const selected of selection.selectedNodes) {
-      const child = composeNodeWithMatrix(selected, toGroup)
+      const child = composeNodeWithMatrix(selected, toGroup, selected.scale)
       if (!child) return { ok: false, reason: 'invalid-transform' }
       children.push(child)
     }
@@ -955,7 +968,7 @@ function recenterGroup(group: FreeformGroupNode): FreeformGroupNode | null {
   const shift = translation(-center.x, -center.y)
   const children: FreeformSceneNode[] = []
   for (const child of group.children) {
-    const shifted = composeNodeWithMatrix(child, shift)
+    const shifted = composeNodeWithMatrix(child, shift, child.scale)
     if (!shifted) return null
     children.push(shifted)
   }

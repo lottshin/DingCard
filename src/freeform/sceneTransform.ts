@@ -308,14 +308,27 @@ export function sceneNodeLocalMatrix(node: FreeformSceneNode): Matrix2D {
 /**
  * Re-express a node through a similarity matrix without changing its content.
  * Leaves store x/y as the unrotated top-left, so their transformed center must
- * be converted back instead of treating matrix e/f as x/y.
+ * be converted back instead of treating matrix e/f as x/y. Callers with known
+ * transform semantics may provide the exact logical scale; it is accepted only
+ * when the matrix-derived scale differs by machine-rounding noise.
  */
 export function sceneNodeWithLocalMatrix(
   node: FreeformSceneNode,
   matrix: Matrix2D,
+  expectedScale?: number,
 ): FreeformSceneNode | null {
   const transform = decomposeSimilarity(matrix)
   if (!transform) return null
+  let scale = transform.scale
+  if (expectedScale !== undefined) {
+    if (!Number.isFinite(expectedScale) || expectedScale <= 0) return null
+    const roundingTolerance =
+      Math.max(Math.abs(transform.scale), Math.abs(expectedScale)) *
+      Number.EPSILON *
+      64
+    if (Math.abs(transform.scale - expectedScale) > roundingTolerance) return null
+    scale = expectedScale
+  }
 
   if (node.type === 'group') {
     return {
@@ -323,7 +336,7 @@ export function sceneNodeWithLocalMatrix(
       x: transform.x,
       y: transform.y,
       rotation: transform.rotation,
-      scale: transform.scale,
+      scale,
     }
   }
 
@@ -339,7 +352,7 @@ export function sceneNodeWithLocalMatrix(
     x,
     y,
     rotation: transform.rotation,
-    scale: transform.scale,
+    scale,
   }
 }
 

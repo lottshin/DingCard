@@ -29,6 +29,7 @@ import {
   leafLocal,
   matrixAlmostEqual,
   multiply,
+  sceneNodeWithLocalMatrix,
   transformPoint,
   sceneNodeBoundsInParent,
 } from '../sceneTransform'
@@ -415,6 +416,123 @@ describe('immutable scene path helpers', () => {
 })
 
 describe('lossless grouping and ungrouping', () => {
+  it('rejects arbitrary, non-finite, and non-positive expected scale overrides', () => {
+    const node = textLeaf('override-guard', { scale: 2 })
+    const matrix = leafLocal(
+      node.x,
+      node.y,
+      node.width,
+      node.height,
+      node.rotation,
+      node.scale,
+    )
+
+    expect(sceneNodeWithLocalMatrix(node, matrix, 3)).toBeNull()
+    expect(sceneNodeWithLocalMatrix(node, matrix, Number.NaN)).toBeNull()
+    expect(sceneNodeWithLocalMatrix(node, matrix, -2)).toBeNull()
+  })
+
+  it('preserves the exact logical scale at the upper boundary during one-level ungroup', () => {
+    const boundaryLeaf = textLeaf('boundary-leaf', {
+      x: -40,
+      y: 25,
+      rotation: 0.1,
+      scale: 100_000,
+    })
+    const nodes = [
+      groupNode('boundary-group', [boundaryLeaf], {
+        x: 260,
+        y: 180,
+        rotation: 0.2,
+        scale: 0.1,
+      }),
+    ]
+    const before = snapshotLeaves(nodes)
+
+    const result = ungroupSceneGroups(nodes, [], ['boundary-group'], 'one-level')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.nodes[0].scale).toBe(10_000)
+    expectSnapshotsEqual(snapshotLeaves(result.nodes), before)
+  })
+
+  it('preserves the exact logical scale during automatic one-child cleanup', () => {
+    const boundaryLeaf = lineLeaf('boundary-leaf', {
+      x: -30,
+      y: 45,
+      rotation: 0.1,
+      scale: 100_000,
+    })
+    const nodes = [
+      groupNode(
+        'boundary-group',
+        [boundaryLeaf, shapeLeaf('delete-me', { x: 240, y: 180 })],
+        { x: 320, y: 210, rotation: 0.2, scale: 0.1 },
+      ),
+    ]
+    const before = snapshotLeaves(nodes).get('boundary-leaf')!
+
+    const result = deleteSceneNodes(nodes, ['boundary-group'], ['delete-me'])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.nodes[0]).toMatchObject({ id: 'boundary-leaf', scale: 10_000 })
+    expectSnapshotsEqual(
+      new Map([['boundary-leaf', snapshotLeaves(result.nodes).get('boundary-leaf')!]]),
+      new Map([['boundary-leaf', before]]),
+    )
+  })
+
+  it('accumulates exact logical scale through every level of all-level ungroup', () => {
+    const nodes = [
+      groupNode(
+        'outer-boundary',
+        [
+          groupNode(
+            'inner-boundary',
+            [textLeaf('deep-boundary', { rotation: 0.1, scale: 10_000 })],
+            { x: -35, y: 70, rotation: 0.2, scale: 10 },
+          ),
+        ],
+        { x: 300, y: 240, rotation: 0.2, scale: 0.1 },
+      ),
+    ]
+    const before = snapshotLeaves(nodes)
+
+    const result = ungroupSceneGroups(nodes, [], ['outer-boundary'], 'all-level')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.nodes[0]).toMatchObject({ id: 'deep-boundary', scale: 10_000 })
+    expectSnapshotsEqual(snapshotLeaves(result.nodes), before)
+  })
+
+  it('groups boundary-scale leaves inside a scaled parent without re-estimating their scale', () => {
+    const nodes = [
+      groupNode(
+        'parent',
+        [
+          textLeaf('a', { x: -80, y: 20, rotation: 0.2, scale: 100_000 }),
+          shapeLeaf('b', { x: 220, y: 160, rotation: 0.2, scale: 100_000 }),
+        ],
+        { x: 420, y: 300, rotation: 0.2, scale: 0.1 },
+      ),
+    ]
+    const before = snapshotLeaves(nodes)
+
+    const result = createSceneGroup(nodes, ['parent'], ['a', 'b'], {
+      id: 'boundary-wrapper',
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const parent = result.nodes[0] as FreeformGroupNode
+    const wrapper = parent.children[0] as FreeformGroupNode
+    expect(wrapper.children.map((node) => node.scale)).toEqual([100_000, 100_000])
+    expectSnapshotsEqual(snapshotLeaves(result.nodes), before)
+  })
+
   it('groups non-contiguous siblings at the highest selected layer in source order', () => {
     const low = textLeaf('low', { x: 0, y: 0 })
     const selectedLow = textLeaf('selected-low', { x: 20, y: 10, rotation: 12 })
