@@ -54,7 +54,7 @@ async function expectEditorControlsAccessible(page: Page) {
   }
 
   const controls = page.locator(
-    'button:visible, input:visible, textarea:visible, [role="button"]:visible, [role="combobox"]:visible',
+    'button:visible, input:visible, textarea:visible, [role="button"]:visible, [role="combobox"]:visible, [role="textbox"]:visible, [contenteditable="true"]:visible',
   )
   expect(await controls.count()).toBeGreaterThan(0)
   for (let index = 0; index < await controls.count(); index += 1) {
