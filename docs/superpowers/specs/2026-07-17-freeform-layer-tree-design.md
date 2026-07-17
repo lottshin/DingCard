@@ -2,7 +2,7 @@
 
 日期：2026-07-17
 分支：`feature/freeform-layer-tree`
-状态：方向已确认，三轮 spec review 已完成并修订，等待用户最终 review
+状态：用户授权自检后继续，三轮 spec review 问题已修订，设计定稿
 
 ## 1. 背景
 
