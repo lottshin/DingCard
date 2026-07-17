@@ -221,8 +221,12 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await fontSelect.click()
   await page.getByRole('option', { name: '思源宋体', exact: true }).click()
   await expect(page.getByRole('listbox')).toHaveCount(0)
+  await expect(fontSelect).toHaveText('思源宋体')
   await expect(textElement).toHaveAttribute('data-selected', 'true')
-  await expect(textBox).toHaveCSS('font-family', /Noto Serif SC|Noto Serif|serif/i)
+  await expect(textBox).toHaveCSS(
+    'font-family',
+    /^(?:"Noto Serif SC"|'Noto Serif SC'|Noto Serif SC)(?:\s*,|$)/,
+  )
 
   await expectEditorControlsAccessible(page)
   await expectNoDocumentOverflow(page)
@@ -252,9 +256,16 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await expect(draft).toContainText('自由编辑 · 1 页')
   await draft.click()
 
+  const restoredTextElement = page.getByTestId('freeform-element').last()
   const restoredTextBox = page.getByTestId('freeform-textbox').last()
+  await restoredTextElement.click()
+  await expect(restoredTextElement).toHaveAttribute('data-selected', 'true')
+  await expect(page.getByTestId('freeform-font-select')).toHaveText('思源宋体')
   await expect(restoredTextBox).toContainText(uniqueText)
-  await expect(restoredTextBox).toHaveCSS('font-family', /Noto Serif SC|Noto Serif|serif/i)
+  await expect(restoredTextBox).toHaveCSS(
+    'font-family',
+    /^(?:"Noto Serif SC"|'Noto Serif SC'|Noto Serif SC)(?:\s*,|$)/,
+  )
   await expect(restoredTextBox).toHaveCSS('background-image', /linear-gradient/)
   await expect(page.getByTestId('freeform-canvas')).toHaveCSS('background-image', /linear-gradient/)
   await expect(page.getByTestId('freeform-slide-size')).toHaveText('9:16 · 1080×1920px')
