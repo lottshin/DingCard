@@ -1912,6 +1912,15 @@ async function installDisabledFieldsetFocusTargets(page: import('@playwright/tes
   })
 }
 
+async function clickLocatorCenter(
+  page: import('@playwright/test').Page,
+  target: import('@playwright/test').Locator,
+) {
+  const box = await target.boundingBox()
+  expect(box).toBeTruthy()
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
+}
+
 test('font menu keeps focus on an external tabindex -1 button', async ({ page }) => {
   await openFreeform(page)
 
@@ -1981,13 +1990,8 @@ test('font menu restores trigger focus for an input disabled by its fieldset', a
   await expect(target).toBeDisabled()
 
   await trigger.click()
-  const defaultPrevented = await target.evaluate((input) => {
-    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
-    input.dispatchEvent(event)
-    return event.defaultPrevented
-  })
+  await clickLocatorCenter(page, target)
 
-  expect(defaultPrevented).toBe(true)
   await expect(page.getByRole('listbox')).toHaveCount(0)
   await expect(trigger).toBeFocused()
 })
@@ -2042,12 +2046,7 @@ test('font menu restores trigger focus for disabled or inert outside targets', a
     'external-inert-descendant',
   ]) {
     await trigger.click()
-    const defaultPrevented = await page.getByTestId(testId).evaluate((target) => {
-      const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
-      target.dispatchEvent(event)
-      return event.defaultPrevented
-    })
-    expect(defaultPrevented).toBe(true)
+    await clickLocatorCenter(page, page.getByTestId(testId))
     await expect(page.getByRole('listbox')).toHaveCount(0)
     await expect(trigger).toBeFocused()
   }

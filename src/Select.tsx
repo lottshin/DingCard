@@ -137,7 +137,7 @@ export function Select({ value, options, onChange, title, testId, previewFonts }
   // Close on any outside click while preserving the click target's natural focus behavior.
   useEffect(() => {
     if (!isOpen) return
-    const onDoc = (e: MouseEvent) => {
+    const onDoc = (e: PointerEvent) => {
       if (!rootRef.current || rootRef.current.contains(e.target as Node)) return
 
       closeMenu()
@@ -147,8 +147,8 @@ export function Select({ value, options, onChange, title, testId, previewFonts }
         triggerRef.current?.focus()
       }
     }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    document.addEventListener('pointerdown', onDoc)
+    return () => document.removeEventListener('pointerdown', onDoc)
   }, [isOpen])
 
   useEffect(() => {
