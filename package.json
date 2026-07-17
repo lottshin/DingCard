@@ -12,6 +12,7 @@
     "test:unit:watch": "vitest",
     "test:server": "npm --prefix server test",
     "test:e2e": "playwright test",
+    "test:acceptance": "playwright test e2e/editor-acceptance.spec.ts",
     "test:e2e:headed": "playwright test --headed",
     "test:integration": "playwright test --config playwright.integration.config.ts"
   },
