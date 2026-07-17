@@ -69,6 +69,54 @@ export type FreeformElement =
   | FreeformShapeElement
   | FreeformLineElement
 
+/**
+ * A scene path contains node IDs from a slide root to one node. The empty
+ * path represents the slide-root container rather than a node.
+ */
+export type ScenePath = readonly string[]
+
+export interface SceneNodeState {
+  id: string
+  name: string
+  locked: boolean
+  hidden: boolean
+}
+
+export type FreeformSceneLeaf = FreeformElement &
+  SceneNodeState & {
+    /** Internal uniform scale used to preserve visual lengths across groups. */
+    scale: number
+  }
+
+export interface FreeformGroupNode extends SceneNodeState {
+  type: 'group'
+  /** Group origin in its direct parent's coordinate system. */
+  x: number
+  y: number
+  rotation: number
+  scale: number
+  children: FreeformSceneNode[]
+}
+
+export type FreeformSceneNode = FreeformSceneLeaf | FreeformGroupNode
+
+/** Additive v3 model. The shipping FreeformSlide alias remains v2 for now. */
+export interface FreeformSlideV3 {
+  id: string
+  name: string
+  width: number
+  height: number
+  background: SlideBackground
+  nodes: FreeformSceneNode[]
+}
+
+/** Additive v3 model. The shipping FreeformDocument alias remains v2 for now. */
+export interface FreeformDocumentV3 {
+  documentVersion: 3
+  slides: FreeformSlideV3[]
+  activeSlideId: string
+}
+
 export type ShapeFill =
   | ColorPaint
   | { type: 'image'; src: string; fit: 'cover' | 'contain' }
