@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { User } from './auth'
 import { store } from './storage'
 
@@ -32,6 +32,9 @@ function focusableElements(dialog: HTMLElement): HTMLElement[] {
 export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
+  const submitButtonRef = useRef<HTMLButtonElement>(null)
+  const lastFocusedRef = useRef<HTMLElement | null>(null)
   const [mode, setMode] = useState<Mode>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -41,6 +44,9 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    if (document.activeElement === submitButtonRef.current) {
+      cancelButtonRef.current?.focus()
+    }
     setBusy(true)
     try {
       const user =
@@ -54,6 +60,38 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
       setBusy(false)
     }
   }
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement && dialog.contains(activeElement)) {
+      lastFocusedRef.current = activeElement
+    }
+
+    const containFocus = (event: FocusEvent) => {
+      const target = event.target
+      if (target instanceof HTMLElement && dialog.contains(target)) {
+        if (focusableElements(dialog).includes(target)) lastFocusedRef.current = target
+        return
+      }
+
+      const focusable = focusableElements(dialog)
+      const lastFocused = lastFocusedRef.current
+      const preferred = lastFocused && focusable.includes(lastFocused)
+        ? lastFocused
+        : focusable[0]
+      preferred?.focus()
+      if (!dialog.contains(document.activeElement)) {
+        focusable[0]?.focus()
+      }
+      if (!dialog.contains(document.activeElement)) dialog.focus()
+    }
+
+    document.addEventListener('focusin', containFocus)
+    return () => document.removeEventListener('focusin', containFocus)
+  }, [])
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape') {
@@ -90,6 +128,7 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
         ref={dialogRef}
         className="sheet"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
@@ -155,10 +194,10 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
           </p>
 
           <div className="sheet-foot">
-            <button type="button" className="ghost" onClick={onClose}>
+            <button ref={cancelButtonRef} type="button" className="ghost" onClick={onClose}>
               取消
             </button>
-            <button type="submit" className="accent" disabled={busy}>
+            <button ref={submitButtonRef} type="submit" className="accent" disabled={busy}>
               {busy ? '请稍候…' : mode === 'login' ? '登录' : '创建账号'}
             </button>
           </div>

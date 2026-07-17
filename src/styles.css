@@ -2792,6 +2792,10 @@ html.theme-anim * {
   animation: fade-in 0.15s ease-out;
 }
 
+.sheet-backdrop {
+  z-index: 80;
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
