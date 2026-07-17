@@ -16,7 +16,7 @@ import {
   translation,
   uniformScale,
 } from '../sceneTransform'
-import type { Matrix2D } from '../sceneTransform'
+import type { Matrix2D, Point } from '../sceneTransform'
 
 describe('scene similarity transforms', () => {
   it('composes column-vector transforms from right to left', () => {
@@ -92,6 +92,14 @@ describe('scene similarity transforms', () => {
     expect(matrixAlmostEqual(multiply(inverse!, highScaleMatrix), identity())).toBe(true)
   })
 
+  it('inverts a high-condition matrix when its direct determinant remains representable', () => {
+    const matrix: Matrix2D = [1e308, 0, 0, 1e-16, 0, 0]
+    const inverse = invert(matrix)
+
+    expect(inverse).not.toBeNull()
+    expect(matrixAlmostEqual(multiply(inverse!, matrix), identity())).toBe(true)
+  })
+
   it('calculates axis-aligned bounds from every transformed corner', () => {
     const matrix = leafLocal(10, 20, 100, 40, 90, 1)
     const corners = [
@@ -143,9 +151,27 @@ describe('scene similarity transforms', () => {
     expect(decomposeSimilarity([1e-4, 0, 1e-6, 1e-4, 0, 0])).toBeNull()
   })
 
+  it('does not underflow the positive mean when decomposing the smallest finite scale', () => {
+    const decomposition = decomposeSimilarity(uniformScale(Number.MIN_VALUE))
+
+    expect(decomposition).not.toBeNull()
+    expect(decomposition!.scale).toBe(Number.MIN_VALUE)
+  })
+
+  it.each([
+    ['absolute shear residual', [1e4, 0, 0.005, 1e4, 0, 0] as Matrix2D],
+    ['absolute non-uniform scale residual', [1e4, 0, 0, 9999.995, 0, 0] as Matrix2D],
+  ])('rejects a contract-scale matrix with %s above scene epsilon', (_label, matrix) => {
+    expect(decomposeSimilarity(matrix)).toBeNull()
+  })
+
   it('uses normalized axes to reject high-magnitude shear without arithmetic overflow', () => {
     const scale = 1e200
+    const trueSimilarity = decomposeSimilarity(groupLocal(0, 0, 37, scale))
 
+    expect(trueSimilarity).not.toBeNull()
+    expect(trueSimilarity!.rotation).toBeCloseTo(37)
+    expect(trueSimilarity!.scale / scale).toBeCloseTo(1)
     expect(decomposeSimilarity([scale, 0, 0, scale, 0, 0])?.scale).toBe(scale)
     expect(
       decomposeSimilarity([scale, 0, scale * 0.1, scale * Math.sqrt(0.99), 0, 0]),
@@ -193,6 +219,20 @@ describe('scene similarity transforms', () => {
     ['negative epsilon', () => matrixAlmostEqual(identity(), identity(), -SCENE_EPSILON)],
   ])('rejects invalid numeric input: %s', (_label, operation) => {
     expect(operation).toThrow(RangeError)
+  })
+
+  it.each([
+    [
+      'sparse',
+      () => matrixAlmostEqual(Array(6) as unknown as Matrix2D, identity()),
+    ],
+    ['null', () => invert(null as unknown as Matrix2D)],
+  ])('rejects a %s runtime matrix with RangeError', (_label, operation) => {
+    expect(operation).toThrow(RangeError)
+  })
+
+  it('rejects a null runtime point with RangeError', () => {
+    expect(() => transformPoint(identity(), null as unknown as Point)).toThrow(RangeError)
   })
 
   it('rejects non-finite points when calculating bounds', () => {

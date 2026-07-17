@@ -42,13 +42,18 @@ function requirePositive(value: number, name: string): void {
 }
 
 function validateMatrix(matrix: Matrix2D, name: string): void {
-  if (matrix.length !== 6) {
+  if (!Array.isArray(matrix) || matrix.length !== 6) {
     throw new RangeError(`${name} must contain exactly six components`)
   }
-  matrix.forEach((value, index) => requireFinite(value, `${name}[${index}]`))
+  for (let index = 0; index < 6; index += 1) {
+    requireFinite(matrix[index], `${name}[${index}]`)
+  }
 }
 
 function validatePoint(point: Point, name: string): void {
+  if (point === null || typeof point !== 'object') {
+    throw new RangeError(`${name} must be a point`)
+  }
   requireFinite(point.x, `${name}.x`)
   requireFinite(point.y, `${name}.y`)
 }
@@ -98,6 +103,29 @@ export function uniformScale(scale: number): Matrix2D {
 export function invert(matrix: Matrix2D): Matrix2D | null {
   validateMatrix(matrix, 'matrix')
   const [a, b, c, d, e, f] = matrix
+  const buildInverse = (
+    inverseA: number,
+    inverseB: number,
+    inverseC: number,
+    inverseD: number,
+  ): Matrix2D => {
+    const result: Matrix2D = [
+      inverseA,
+      inverseB,
+      inverseC,
+      inverseD,
+      -(inverseA * e + inverseC * f),
+      -(inverseB * e + inverseD * f),
+    ]
+    validateMatrix(result, 'inverse matrix')
+    return result
+  }
+  const determinant = a * d - b * c
+
+  if (Number.isFinite(determinant) && determinant !== 0) {
+    return buildInverse(d / determinant, -b / determinant, -c / determinant, a / determinant)
+  }
+
   const linearScale = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Math.abs(d))
 
   if (linearScale === 0) {
@@ -119,16 +147,7 @@ export function invert(matrix: Matrix2D): Matrix2D | null {
   const inverseB = -scaledB * inverseFactor
   const inverseC = -scaledC * inverseFactor
   const inverseD = scaledA * inverseFactor
-  const result: Matrix2D = [
-    inverseA,
-    inverseB,
-    inverseC,
-    inverseD,
-    -(inverseA * e + inverseC * f),
-    -(inverseB * e + inverseD * f),
-  ]
-  validateMatrix(result, 'inverse matrix')
-  return result
+  return buildInverse(inverseA, inverseB, inverseC, inverseD)
 }
 
 export function transformPoint(matrix: Matrix2D, point: Point): Point {
@@ -206,20 +225,24 @@ export function decomposeSimilarity(matrix: Matrix2D): SimilarityTransform | nul
   const secondAxisY = d / secondAxisScale
   const normalizedDotProduct = firstAxisX * secondAxisX + firstAxisY * secondAxisY
   const normalizedDeterminant = firstAxisX * secondAxisY - firstAxisY * secondAxisX
+  const absoluteStructureResidual = Math.max(Math.abs(a - d), Math.abs(b + c))
 
   if (
     relativeScaleDifference > SCENE_EPSILON ||
     Math.abs(normalizedDotProduct) > SCENE_EPSILON ||
-    normalizedDeterminant <= 0
+    normalizedDeterminant <= 0 ||
+    absoluteStructureResidual > SCENE_EPSILON
   ) {
     return null
   }
 
+  const scale = firstAxisScale + (secondAxisScale - firstAxisScale) / 2
+  requirePositive(scale, 'similarity scale')
   return {
     x,
     y,
     rotation: (Math.atan2(b, a) * 180) / Math.PI,
-    scale: firstAxisScale / 2 + secondAxisScale / 2,
+    scale,
   }
 }
 
@@ -264,5 +287,10 @@ export function matrixAlmostEqual(
     throw new RangeError('epsilon must be greater than or equal to zero')
   }
 
-  return left.every((value, index) => Math.abs(value - right[index]) <= epsilon)
+  for (let index = 0; index < 6; index += 1) {
+    if (Math.abs(left[index] - right[index]) > epsilon) {
+      return false
+    }
+  }
+  return true
 }
