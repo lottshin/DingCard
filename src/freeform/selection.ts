@@ -1,3 +1,4 @@
+import { sceneNodeBoundsInParent } from './sceneTransform'
 import type { FreeformElement, FreeformSlide } from './types'
 
 export interface Rect {
@@ -65,6 +66,15 @@ function normalizeRect(rect: Rect): Bounds {
 }
 
 function elementBounds(element: FreeformElement): Bounds {
+  const visual = sceneNodeBoundsInParent(element)
+  if (visual) {
+    return {
+      left: visual.x,
+      top: visual.y,
+      right: visual.x + visual.width,
+      bottom: visual.y + visual.height,
+    }
+  }
   return {
     left: element.x,
     top: element.y,

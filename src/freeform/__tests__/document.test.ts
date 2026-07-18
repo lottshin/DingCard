@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   createFreeformDocument,
+  createImageElement,
+  createLineElement,
+  createShapeElement,
   createSlide,
   createTextElement,
   freeformReducer,
@@ -18,15 +21,30 @@ describe('freeform document', () => {
     expect(doc.activeSlideId).toBe(doc.slides[0].id)
   })
 
-  it('creates v2 documents with shared paint defaults', () => {
+  it('creates v3 documents and strict leaves with shared defaults', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(2)
+    expect(doc.documentVersion).toBe(3)
+    expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
     const text = createTextElement(doc.slides[0])
+    const image = createImageElement(doc.slides[0], '/image.png')
+    const shape = createShapeElement(doc.slides[0], 'rect')
+    const line = createLineElement(doc.slides[0], 'arrow')
 
     expect(text.textFill).toEqual({ type: 'solid', color: '#18181b' })
+    expect([text, image, shape, line].map((leaf) => ({
+      name: leaf.name,
+      locked: leaf.locked,
+      hidden: leaf.hidden,
+      scale: leaf.scale,
+    }))).toEqual([
+      { name: '文本', locked: false, hidden: false, scale: 1 },
+      { name: '图片', locked: false, hidden: false, scale: 1 },
+      { name: '形状', locked: false, hidden: false, scale: 1 },
+      { name: '箭头', locked: false, hidden: false, scale: 1 },
+    ])
     expect('color' in text).toBe(false)
   })
 

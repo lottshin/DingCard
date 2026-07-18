@@ -5,7 +5,7 @@
 // invalidation, draft normalization, and managed-image lease renewal.
 
 import type { User } from '../auth'
-import { normalizeDraftForRead } from '../drafts'
+import { normalizeDraftForRead, normalizeDraftForWrite } from '../drafts'
 import type { SaveDraftInput } from '../drafts'
 import {
   collectFreeformImageSources,
@@ -81,35 +81,9 @@ function isUser(value: unknown): value is User {
 }
 
 function normalizeSaveInput(data: SaveDraftInput): SaveDraftInput {
-  if (typeof data !== 'object' || data === null) {
-    throw new ApiError('远程草稿内容无效', null)
-  }
-
-  const raw = data as unknown as Record<string, unknown>
-  if (raw.id !== undefined && typeof raw.id !== 'string') {
-    throw new ApiError('远程草稿内容无效', null)
-  }
-  if (raw.title !== undefined && typeof raw.title !== 'string') {
-    throw new ApiError('远程草稿内容无效', null)
-  }
-
-  const normalized = normalizeDraftForRead({
-    id: raw.id ?? '__remote-draft-validation__',
-    title: raw.title ?? '',
-    schemaVersion: 2,
-    updatedAt: 0,
-    mode: raw.mode,
-    document: raw.document,
-  })
+  const normalized = normalizeDraftForWrite(data)
   if (!normalized) throw new ApiError('远程草稿内容无效', null)
-
-  const identity = {
-    ...(raw.id !== undefined ? { id: raw.id } : {}),
-    ...(raw.title !== undefined ? { title: raw.title } : {}),
-  }
-  return normalized.mode === 'freeform-slide'
-    ? { ...identity, mode: normalized.mode, document: normalized.document }
-    : { ...identity, mode: normalized.mode, document: normalized.document }
+  return normalized
 }
 
 interface ApiRequestInit extends RequestInit {

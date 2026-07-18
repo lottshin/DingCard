@@ -32,35 +32,9 @@ const images: ImageStore = {
 }
 
 function normalizeSaveInput(data: SaveDraftInput): SaveDraftInput {
-  if (typeof data !== 'object' || data === null) {
-    throw new Error('本地草稿内容无效')
-  }
-
-  const raw = data as unknown as Record<string, unknown>
-  if (raw.id !== undefined && typeof raw.id !== 'string') {
-    throw new Error('本地草稿内容无效')
-  }
-  if (raw.title !== undefined && typeof raw.title !== 'string') {
-    throw new Error('本地草稿内容无效')
-  }
-
-  const normalized = draftsImpl.normalizeDraftForRead({
-    id: raw.id ?? '__local-draft-validation__',
-    title: raw.title ?? '',
-    schemaVersion: 2,
-    updatedAt: 0,
-    mode: raw.mode,
-    document: raw.document,
-  })
+  const normalized = draftsImpl.normalizeDraftForWrite(data)
   if (!normalized) throw new Error('本地草稿内容无效')
-
-  const identity = {
-    ...(raw.id !== undefined ? { id: raw.id } : {}),
-    ...(raw.title !== undefined ? { title: raw.title } : {}),
-  }
-  return normalized.mode === 'freeform-slide'
-    ? { ...identity, mode: normalized.mode, document: normalized.document }
-    : { ...identity, mode: normalized.mode, document: normalized.document }
+  return normalized
 }
 
 const drafts: DraftStore = {

@@ -1682,26 +1682,46 @@ describe('v3 reducer safety limits and stable failures', () => {
     const added = reduceFreeformDocumentV3(original, {
       type: 'element/add',
       slideId: 'slide-1',
+      element: textLeaf('adapter-added', {
+        x: 30,
+        y: 40,
+        width: 180,
+        height: 60,
+        text: 'Adapter',
+        fontSize: 32,
+      }),
+    })
+
+    expect(added).not.toBe(original)
+    expect(added.slides[0].nodes[added.slides[0].nodes.length - 1]).toMatchObject({
+      id: 'adapter-added',
+      name: 'Text adapter-added',
+      locked: false,
+      hidden: false,
+      scale: 1,
+    })
+
+    const legacyAdded = reduceFreeformDocumentV3(original, {
+      type: 'element/add',
+      slideId: 'slide-1',
       element: {
-        id: 'adapter-added',
+        id: 'legacy-adapter-added',
         type: 'text',
         x: 30,
         y: 40,
         width: 180,
         height: 60,
         rotation: 0,
-        text: 'Adapter',
+        text: 'Legacy adapter',
         fontSize: 32,
         fontFamily: 'system-ui',
         textFill: { type: 'solid', color: '#18181b' },
         align: 'left',
         fontWeight: 'normal',
       },
-    })
-
-    expect(added).not.toBe(original)
-    expect(added.slides[0].nodes[added.slides[0].nodes.length - 1]).toMatchObject({
-      id: 'adapter-added',
+    } as unknown as FreeformActionV3)
+    expect(legacyAdded.slides[0].nodes[legacyAdded.slides[0].nodes.length - 1]).toMatchObject({
+      id: 'legacy-adapter-added',
       name: '文本',
       locked: false,
       hidden: false,

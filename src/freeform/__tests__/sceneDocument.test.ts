@@ -200,9 +200,9 @@ function nestedGroups(depth: number): unknown {
 }
 
 describe('additive freeform v3 types and limits', () => {
-  it('keeps the shipping document aliases on v2 while exposing additive v3 types', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<2>()
-    expectTypeOf<FreeformSlide>().toHaveProperty('elements')
+  it('uses v3 scene types for the shipping aliases and compatibility names', () => {
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<3>()
+    expectTypeOf<FreeformSlide>().toHaveProperty('nodes')
     expectTypeOf<FreeformDocumentV3['documentVersion']>().toEqualTypeOf<3>()
     expectTypeOf<FreeformSlideV3>().toHaveProperty('nodes')
     expectTypeOf<FreeformSceneLeaf>().toHaveProperty('scale')

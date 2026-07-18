@@ -3,24 +3,8 @@
 // Drafts are namespaced by user id so two accounts in the same browser don't
 // see each other's work. This is client-only and does not sync across devices.
 
-import {
-  DEFAULT_PAGE_PAINT,
-  DEFAULT_SHAPE_PAINT,
-  DEFAULT_TEXT_PAINT,
-  normalizeColorPaint,
-} from './freeform/paint'
-import type {
-  ColorPaint,
-  FreeformDocument,
-  FreeformElement,
-  FreeformImageElement,
-  FreeformLineElement,
-  FreeformShapeElement,
-  FreeformSlide,
-  FreeformTextElement,
-  ShapeFill,
-  SlideBackground,
-} from './freeform/types'
+import { normalizeFreeformDocumentToV3 } from './freeform/sceneDocument'
+import type { FreeformDocumentV3 } from './freeform/types'
 import { collectImages } from './imageStore'
 import type { Profile } from './theme'
 import type { WorkspaceMode } from './workspaces/types'
@@ -54,7 +38,7 @@ export type MarkdownDraft = DraftEnvelopeBase & {
 
 export type FreeformDraft = DraftEnvelopeBase & {
   mode: 'freeform-slide'
-  document: FreeformDocument
+  document: FreeformDocumentV3
 }
 
 export type Draft = MarkdownDraft | FreeformDraft
@@ -71,7 +55,7 @@ export type SaveDraftInput = {
     }
   | {
       mode: 'freeform-slide'
-      document: FreeformDocument
+      document: FreeformDocumentV3
     }
 )
 
@@ -127,172 +111,6 @@ function isMarkdownDocument(value: unknown): value is MarkdownCardDocument {
   )
 }
 
-function isAlign(value: unknown): value is FreeformTextElement['align'] {
-  return value === 'left' || value === 'center' || value === 'right'
-}
-
-function isFontWeight(value: unknown): value is FreeformTextElement['fontWeight'] {
-  return value === 'normal' || value === 'bold'
-}
-
-function isFit(value: unknown): value is FreeformImageElement['fit'] {
-  return value === 'cover' || value === 'contain'
-}
-
-function isShapeKind(value: unknown): value is FreeformShapeElement['shape'] {
-  return value === 'rect' || value === 'ellipse' || value === 'triangle'
-}
-
-function isLineKind(value: unknown): value is FreeformLineElement['lineKind'] {
-  return value === 'line' || value === 'arrow'
-}
-
-function normalizeSlideBackground(value: unknown): SlideBackground {
-  if (isRecord(value) && value.type === 'transparent') return { type: 'transparent' }
-  return normalizeColorPaint(value, DEFAULT_PAGE_PAINT)
-}
-
-function normalizeShapeFill(value: unknown): ShapeFill {
-  if (isRecord(value) && value.type === 'image' && isString(value.src) && isFit(value.fit)) {
-    return { type: 'image', src: value.src, fit: value.fit }
-  }
-  return normalizeColorPaint(value, DEFAULT_SHAPE_PAINT)
-}
-
-function normalizeTextFill(element: Record<string, unknown>): ColorPaint {
-  const rawFill = isRecord(element.textFill)
-    ? element.textFill
-    : isString(element.color)
-      ? { type: 'solid', color: element.color }
-      : undefined
-  return normalizeColorPaint(rawFill, DEFAULT_TEXT_PAINT)
-}
-
-function normalizeFreeformElement(value: unknown): FreeformElement | null {
-  if (!isRecord(value)) return null
-  if (
-    !isString(value.id) ||
-    !isString(value.type) ||
-    !isNumber(value.x) ||
-    !isNumber(value.y) ||
-    !isNumber(value.width) ||
-    !isNumber(value.height) ||
-    !isNumber(value.rotation)
-  ) {
-    return null
-  }
-
-  const base = {
-    id: value.id,
-    x: value.x,
-    y: value.y,
-    width: value.width,
-    height: value.height,
-    rotation: value.rotation,
-  }
-
-  if (value.type === 'text') {
-    if (!isString(value.text) || !isNumber(value.fontSize) || !isString(value.fontFamily)) return null
-    return {
-      ...base,
-      type: 'text',
-      text: value.text,
-      fontSize: value.fontSize,
-      fontFamily: value.fontFamily,
-      textFill: normalizeTextFill(value),
-      align: isAlign(value.align) ? value.align : 'left',
-      fontWeight: isFontWeight(value.fontWeight) ? value.fontWeight : 'normal',
-    }
-  }
-
-  if (value.type === 'image') {
-    if (!isString(value.src)) return null
-    return {
-      ...base,
-      type: 'image',
-      src: value.src,
-      alt: isString(value.alt) ? value.alt : 'Image',
-      fit: isFit(value.fit) ? value.fit : 'cover',
-    }
-  }
-
-  if (value.type === 'shape') {
-    if (!isShapeKind(value.shape) || !isString(value.stroke) || !isNumber(value.strokeWidth)) return null
-    return {
-      ...base,
-      type: 'shape',
-      shape: value.shape,
-      fill: normalizeShapeFill(value.fill),
-      stroke: value.stroke,
-      strokeWidth: value.strokeWidth,
-    }
-  }
-
-  if (value.type === 'line') {
-    if (!isLineKind(value.lineKind) || !isString(value.stroke) || !isNumber(value.strokeWidth)) return null
-    return {
-      ...base,
-      type: 'line',
-      lineKind: value.lineKind,
-      stroke: value.stroke,
-      strokeWidth: value.strokeWidth,
-    }
-  }
-
-  return null
-}
-
-function normalizeFreeformSlide(value: unknown): FreeformSlide | null {
-  if (!isRecord(value)) return null
-  if (
-    !isString(value.id) ||
-    !isString(value.name) ||
-    !isNumber(value.width) ||
-    !isNumber(value.height) ||
-    !Array.isArray(value.elements)
-  ) {
-    return null
-  }
-
-  return {
-    id: value.id,
-    name: value.name,
-    width: value.width,
-    height: value.height,
-    background: normalizeSlideBackground(value.background),
-    elements: value.elements
-      .map(normalizeFreeformElement)
-      .filter((element): element is FreeformElement => element !== null),
-  }
-}
-
-function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
-  if (!isRecord(value)) return null
-  if (
-    (value.documentVersion !== 1 && value.documentVersion !== 2) ||
-    !Array.isArray(value.slides) ||
-    !isString(value.activeSlideId)
-  ) {
-    return null
-  }
-
-  const slides = value.slides
-    .map(normalizeFreeformSlide)
-    .filter((slide): slide is FreeformSlide => slide !== null)
-
-  if (slides.length === 0) return null
-
-  const activeSlideId = slides.some((slide) => slide.id === value.activeSlideId)
-    ? value.activeSlideId
-    : slides[0].id
-
-  return {
-    documentVersion: 2,
-    activeSlideId,
-    slides,
-  }
-}
-
 function normalizeMarkdownDocument(raw: Record<string, unknown>): MarkdownCardDocument | null {
   const document = {
     source: raw.source,
@@ -328,7 +146,7 @@ export function normalizeDraftForRead(raw: unknown): Draft | null {
       }
     }
     if (raw.mode === 'freeform-slide') {
-      const document = normalizeFreeformDocument(raw.document)
+      const document = normalizeFreeformDocumentToV3(raw.document)
       if (!document) return null
       return {
         id: raw.id,
@@ -356,6 +174,31 @@ export function normalizeDraftForRead(raw: unknown): Draft | null {
   }
 
   return null
+}
+
+/** Validate save input through the same document normalizers used by reads. */
+export function normalizeDraftForWrite(raw: unknown): SaveDraftInput | null {
+  if (!isRecord(raw)) return null
+  if (raw.id !== undefined && !isString(raw.id)) return null
+  if (raw.title !== undefined && !isString(raw.title)) return null
+
+  const normalized = normalizeDraftForRead({
+    id: raw.id ?? '__draft-validation__',
+    title: raw.title ?? '',
+    schemaVersion: 2,
+    updatedAt: 0,
+    mode: raw.mode,
+    document: raw.document,
+  })
+  if (!normalized) return null
+
+  const identity = {
+    ...(raw.id !== undefined ? { id: raw.id } : {}),
+    ...(raw.title !== undefined ? { title: raw.title } : {}),
+  }
+  return normalized.mode === 'freeform-slide'
+    ? { ...identity, mode: normalized.mode, document: normalized.document }
+    : { ...identity, mode: normalized.mode, document: normalized.document }
 }
 
 export function listDrafts(userId: string): Draft[] {
@@ -386,7 +229,7 @@ function deriveMarkdownTitle(source: string): string {
   return line.length > 24 ? line.slice(0, 24) + '…' : line
 }
 
-function deriveFreeformTitle(document: FreeformDocument): string {
+function deriveFreeformTitle(document: FreeformDocumentV3): string {
   return document.slides[0]?.name?.trim() || '自由编辑作品'
 }
 
@@ -402,6 +245,9 @@ function deriveTitle(data: SaveDraftInput): string {
  * draft (with a fresh id/timestamp/title filled in).
  */
 export function saveDraft(userId: string, data: SaveDraftInput): Draft {
+  const normalized = normalizeDraftForWrite(data)
+  if (!normalized) throw new Error('草稿内容无效')
+  data = normalized
   const drafts = listDrafts(userId)
   const base = {
     id: data.id ?? crypto.randomUUID(),

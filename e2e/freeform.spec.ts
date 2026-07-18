@@ -12,6 +12,204 @@ const TEST_PNG = Buffer.from(
   'base64',
 )
 
+function nestedV3Draft() {
+  return {
+    id: 'nested-v3-draft',
+    title: 'Nested v3 scene',
+    schemaVersion: 2,
+    mode: 'freeform-slide',
+    updatedAt: Date.now(),
+    document: {
+      documentVersion: 3,
+      activeSlideId: 'nested-slide',
+      slides: [{
+        id: 'nested-slide',
+        name: 'Nested scene',
+        width: 800,
+        height: 600,
+        background: { type: 'solid', color: '#ffffff' },
+        nodes: [{
+          id: 'underlay',
+          name: 'Underlay',
+          locked: false,
+          hidden: false,
+          type: 'shape',
+          x: 40,
+          y: 40,
+          width: 460,
+          height: 320,
+          rotation: 0,
+          scale: 1,
+          shape: 'rect',
+          fill: { type: 'solid', color: '#fca5a5' },
+          stroke: '#991b1b',
+          strokeWidth: 0,
+        }, {
+          id: 'outer',
+          name: 'Outer group',
+          locked: false,
+          hidden: false,
+          type: 'group',
+          x: 300,
+          y: 200,
+          rotation: 0,
+          scale: 1.25,
+          children: [{
+            id: 'visible-leaf',
+            name: 'Visible leaf',
+            locked: false,
+            hidden: false,
+            type: 'shape',
+            x: -80,
+            y: -60,
+            width: 80,
+            height: 40,
+            rotation: 0,
+            scale: 1,
+            shape: 'rect',
+            fill: { type: 'solid', color: '#22c55e' },
+            stroke: '#166534',
+            strokeWidth: 0,
+          }, {
+            id: 'scope-text',
+            name: 'Scope text',
+            locked: false,
+            hidden: false,
+            type: 'text',
+            x: -80,
+            y: 0,
+            width: 100,
+            height: 40,
+            rotation: 0,
+            scale: 1,
+            text: 'Enter group to edit',
+            fontSize: 20,
+            fontFamily: 'system-ui',
+            textFill: { type: 'solid', color: '#111111' },
+            align: 'left',
+            fontWeight: 'normal',
+          }, {
+            id: 'locked-inner',
+            name: 'Locked inner',
+            locked: true,
+            hidden: false,
+            type: 'group',
+            x: 40,
+            y: 20,
+            rotation: 0,
+            scale: 0.5,
+            children: [{
+              id: 'locked-text',
+              name: 'Locked text',
+              locked: false,
+              hidden: false,
+              type: 'text',
+              x: 0,
+              y: 0,
+              width: 200,
+              height: 80,
+              rotation: 0,
+              scale: 1,
+              text: 'Read only nested text',
+              fontSize: 24,
+              fontFamily: 'system-ui',
+              textFill: { type: 'solid', color: '#111111' },
+              align: 'left',
+              fontWeight: 'normal',
+            }],
+          }, {
+            id: 'hidden-inner',
+            name: 'Hidden inner',
+            locked: false,
+            hidden: true,
+            type: 'group',
+            x: 0,
+            y: 0,
+            rotation: 0,
+            scale: 1,
+            children: [{
+              id: 'hidden-leaf',
+              name: 'Hidden leaf',
+              locked: false,
+              hidden: false,
+              type: 'shape',
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 100,
+              rotation: 0,
+              scale: 1,
+              shape: 'ellipse',
+              fill: { type: 'solid', color: '#2563eb' },
+              stroke: '#1e3a8a',
+              strokeWidth: 0,
+            }],
+          }],
+        }, {
+          id: 'scaled-root',
+          name: 'Scaled root leaf',
+          locked: false,
+          hidden: false,
+          type: 'shape',
+          x: 520,
+          y: 400,
+          width: 100,
+          height: 80,
+          rotation: 0,
+          scale: 1.5,
+          shape: 'rect',
+          fill: { type: 'solid', color: '#facc15' },
+          stroke: '#854d0e',
+          strokeWidth: 0,
+        }, {
+          id: 'locked-root-leaf',
+          name: 'Locked root leaf',
+          locked: true,
+          hidden: false,
+          type: 'shape',
+          x: 680,
+          y: 20,
+          width: 80,
+          height: 50,
+          rotation: 0,
+          scale: 1,
+          shape: 'rect',
+          fill: { type: 'solid', color: '#94a3b8' },
+          stroke: '#334155',
+          strokeWidth: 0,
+        }, {
+          id: 'locked-root-group',
+          name: 'Locked root group',
+          locked: true,
+          hidden: false,
+          type: 'group',
+          x: 650,
+          y: 100,
+          rotation: 0,
+          scale: 1,
+          children: [{
+            id: 'locked-root-group-leaf',
+            name: 'Locked root group leaf',
+            locked: false,
+            hidden: false,
+            type: 'shape',
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 60,
+            rotation: 0,
+            scale: 1,
+            shape: 'ellipse',
+            fill: { type: 'solid', color: '#cbd5e1' },
+            stroke: '#475569',
+            strokeWidth: 0,
+          }],
+        }],
+      }],
+    },
+  }
+}
+
 function readPngSize(buffer: Buffer) {
   expect(buffer.subarray(1, 4).toString('ascii')).toBe('PNG')
   return {
@@ -375,6 +573,30 @@ async function setSelectedElementBox(
 async function openFreeform(page: import('@playwright/test').Page) {
   await page.goto('/')
   await page.getByTestId('workspace-tab-freeform').click()
+}
+
+async function openNestedV3Draft(
+  page: import('@playwright/test').Page,
+  username: string,
+) {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+  await registerUser(page, username)
+  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('\u5df2\u4fdd\u5b58')
+
+  await page.evaluate((draft) => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    if (!key) throw new Error('draft storage key missing')
+    localStorage.setItem(key, JSON.stringify([draft]))
+  }, nestedV3Draft())
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByRole('button', { name: /^\u8349\u7a3f(?: · \d+)?$/ }).click()
+  await page.locator('.draft-item', { hasText: 'Nested v3 scene' }).click()
 }
 
 async function insertText(page: import('@playwright/test').Page) {
@@ -2857,6 +3079,396 @@ test('exports identical artwork pixels across app themes and preview zooms', asy
     expect(await samplePngPixel(page, lightPath, x, y)).toEqual(
       await samplePngPixel(page, darkPath, x, y),
     )
+  }
+})
+
+test('renders nested v3 scene with inherited visibility lock and root selection', async ({ page }) => {
+  await openNestedV3Draft(page, `nested-v3-${Date.now()}`)
+
+  const leaves = page.locator('[data-scene-leaf="true"]')
+  await expect(leaves).toHaveCount(7)
+  await expect(page.locator('[data-scene-node-id="hidden-leaf"]')).toHaveCount(0)
+
+  const logicalBoxes = await leaves.evaluateAll((nodes) => {
+    const canvas = document.querySelector<HTMLElement>('[data-testid="freeform-canvas"]')
+    if (!canvas) throw new Error('canvas missing')
+    const canvasRect = canvas.getBoundingClientRect()
+    const scale = canvasRect.width / 800
+    return Object.fromEntries(nodes.map((node) => {
+      const element = node as HTMLElement
+      const rect = element.getBoundingClientRect()
+      return [element.dataset.sceneNodeId, {
+        x: (rect.left - canvasRect.left) / scale,
+        y: (rect.top - canvasRect.top) / scale,
+        width: rect.width / scale,
+        height: rect.height / scale,
+      }]
+    }))
+  }) as Record<string, { x: number; y: number; width: number; height: number }>
+  const expectedBoxes = {
+    underlay: { x: 40, y: 40, width: 460, height: 320 },
+    'visible-leaf': { x: 200, y: 125, width: 100, height: 50 },
+    'scope-text': { x: 200, y: 200, width: 125, height: 50 },
+    'locked-text': { x: 350, y: 225, width: 125, height: 50 },
+    'scaled-root': { x: 495, y: 380, width: 150, height: 120 },
+  }
+  for (const [id, expectedBox] of Object.entries(expectedBoxes)) {
+    expect(logicalBoxes[id], id).toBeDefined()
+    expect(logicalBoxes[id].x, `${id} x`).toBeCloseTo(expectedBox.x, 1)
+    expect(logicalBoxes[id].y, `${id} y`).toBeCloseTo(expectedBox.y, 1)
+    expect(logicalBoxes[id].width, `${id} width`).toBeCloseTo(expectedBox.width, 1)
+    expect(logicalBoxes[id].height, `${id} height`).toBeCloseTo(expectedBox.height, 1)
+  }
+
+  const lockedText = page.locator('[data-scene-node-id="locked-text"] [role="textbox"]')
+  await expect(lockedText).toHaveAttribute('contenteditable', 'false')
+  await expect(lockedText).toHaveAttribute('aria-readonly', 'true')
+  const scopeText = page.locator('[data-scene-node-id="scope-text"] [role="textbox"]')
+  await expect(scopeText).toHaveAttribute('contenteditable', 'false')
+  await expect(scopeText).toHaveAttribute('aria-readonly', 'true')
+
+  const rootOrder = async () => page.locator(
+    '.freeform-artwork-clip > [data-scene-root-node="true"]',
+  ).evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.sceneNodeId))
+  const beforeOrder = await rootOrder()
+  expect(beforeOrder).toEqual([
+    'underlay',
+    'outer',
+    'scaled-root',
+    'locked-root-leaf',
+    'locked-root-group',
+  ])
+
+  await page.locator('[data-scene-node-id="visible-leaf"]').click()
+  await expect(page.locator('[data-scene-node-id="outer"]')).toHaveAttribute('data-selected', 'true')
+  await expect(page.locator('[data-scene-node-id="visible-leaf"]')).toHaveAttribute(
+    'data-selected',
+    'false',
+  )
+  expect(await rootOrder()).toEqual(beforeOrder)
+
+  const scaledRoot = page.locator('[data-scene-node-id="scaled-root"]')
+  await scaledRoot.click()
+  const selectionBox = page.getByTestId('freeform-selection-box')
+  await expect(selectionBox).toHaveAttribute('data-element-id', 'scaled-root')
+
+  const beforeArtwork = await scaledRoot.boundingBox()
+  const beforeOverlay = await selectionBox.boundingBox()
+  expect(beforeArtwork).toBeTruthy()
+  expect(beforeOverlay).toBeTruthy()
+  const expectBoxesToMatch = (
+    actual: NonNullable<typeof beforeArtwork>,
+    expected: NonNullable<typeof beforeArtwork>,
+    label: string,
+  ) => {
+    for (const key of ['x', 'y', 'width', 'height'] as const) {
+      expect.soft(
+        Math.abs(actual[key] - expected[key]),
+        `${label} ${key}`,
+      ).toBeLessThanOrEqual(1)
+    }
+  }
+  expectBoxesToMatch(beforeOverlay!, beforeArtwork!, 'initial selection overlay')
+
+  const moveHandle = page.getByTestId('freeform-selection-move')
+  const resizeHandle = page.getByTestId('freeform-selection-resize')
+  for (const [label, handle] of [
+    ['move', moveHandle],
+    ['resize', resizeHandle],
+  ] as const) {
+    const box = await handle.boundingBox()
+    expect(box, `${label} handle missing`).toBeTruthy()
+    expect(box!.width, `${label} handle width`).toBeGreaterThanOrEqual(28)
+    expect(box!.height, `${label} handle height`).toBeGreaterThanOrEqual(28)
+    expect(
+      await locatorOwnsPoint(handle, box!.x + box!.width / 2, box!.y + box!.height / 2),
+      `${label} handle center hit target`,
+    ).toBe(true)
+  }
+
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+  expect(Number.isInteger(historyBefore)).toBe(true)
+  const interactionScale = await freeformCanvasScale(page)
+  const initialLogicalGeometry = await scaledRoot.evaluate((node) => {
+    const element = node as HTMLElement
+    return {
+      x: Number.parseFloat(element.style.left),
+      y: Number.parseFloat(element.style.top),
+      width: Number.parseFloat(element.style.width),
+      height: Number.parseFloat(element.style.height),
+    }
+  })
+  const resizeStartBox = await resizeHandle.boundingBox()
+  expect(resizeStartBox).toBeTruthy()
+  const resizeStart = {
+    x: resizeStartBox!.x + resizeStartBox!.width / 2,
+    y: resizeStartBox!.y + resizeStartBox!.height / 2,
+  }
+  await page.mouse.move(resizeStart.x, resizeStart.y)
+  await page.mouse.down()
+  await page.mouse.move(resizeStart.x + 60, resizeStart.y + 45)
+  await page.mouse.up()
+
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+  const resizedArtwork = await scaledRoot.boundingBox()
+  const resizedOverlay = await selectionBox.boundingBox()
+  const resizedHandle = await resizeHandle.boundingBox()
+  const resizedLogicalGeometry = await scaledRoot.evaluate((node) => {
+    const element = node as HTMLElement
+    return {
+      x: Number.parseFloat(element.style.left),
+      y: Number.parseFloat(element.style.top),
+      width: Number.parseFloat(element.style.width),
+      height: Number.parseFloat(element.style.height),
+    }
+  })
+  expect(resizedArtwork).toBeTruthy()
+  expect(resizedOverlay).toBeTruthy()
+  expect(resizedHandle).toBeTruthy()
+  expect(resizedArtwork!.width).toBeGreaterThan(beforeArtwork!.width)
+  expect(resizedArtwork!.height).toBeGreaterThan(beforeArtwork!.height)
+  const expectedWidth = initialLogicalGeometry.width + 60 / interactionScale / 1.5
+  const expectedHeight = initialLogicalGeometry.height + 45 / interactionScale / 1.5
+  expect(resizedLogicalGeometry.width).toBeCloseTo(expectedWidth, 3)
+  expect(resizedLogicalGeometry.height).toBeCloseTo(expectedHeight, 3)
+  expect(resizedLogicalGeometry.x).toBeCloseTo(
+    initialLogicalGeometry.x + (expectedWidth - initialLogicalGeometry.width) / 4,
+    3,
+  )
+  expect(resizedLogicalGeometry.y).toBeCloseTo(
+    initialLogicalGeometry.y + (expectedHeight - initialLogicalGeometry.height) / 4,
+    3,
+  )
+  expect.soft(Math.abs(resizedArtwork!.x - beforeArtwork!.x), 'resize visual left').toBeLessThanOrEqual(1)
+  expect.soft(Math.abs(resizedArtwork!.y - beforeArtwork!.y), 'resize visual top').toBeLessThanOrEqual(1)
+  expectBoxesToMatch(resizedOverlay!, resizedArtwork!, 'resized selection overlay')
+  expect.soft(
+    Math.abs(
+      resizedHandle!.x + resizedHandle!.width / 2 - (resizedArtwork!.x + resizedArtwork!.width),
+    ),
+    'resize handle follows visual right',
+  ).toBeLessThanOrEqual(1)
+  expect.soft(
+    Math.abs(
+      resizedHandle!.y + resizedHandle!.height / 2 - (resizedArtwork!.y + resizedArtwork!.height),
+    ),
+    'resize handle follows visual bottom',
+  ).toBeLessThanOrEqual(1)
+
+  await page.getByRole('button', { name: '\u64a4\u9500', exact: true }).click()
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore))
+  await expect.poll(async () => {
+    const restored = await scaledRoot.boundingBox()
+    if (!restored) return Number.POSITIVE_INFINITY
+    return Math.max(
+      ...(['x', 'y', 'width', 'height'] as const).map((key) => (
+        Math.abs(restored[key] - beforeArtwork![key])
+      )),
+    )
+  }).toBeLessThanOrEqual(1)
+
+  const canvas = page.getByTestId('freeform-canvas')
+  const canvasBox = await canvas.boundingBox()
+  expect(canvasBox).toBeTruthy()
+  const canvasScale = await freeformCanvasScale(page)
+  await page.mouse.move(
+    canvasBox!.x + 490 * canvasScale,
+    canvasBox!.y + 370 * canvasScale,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    canvasBox!.x + 510 * canvasScale,
+    canvasBox!.y + 390 * canvasScale,
+  )
+  await page.mouse.up()
+  await expect(scaledRoot).toHaveAttribute('data-selected', 'true')
+
+  const moveHistoryBefore = Number(await workspace.getAttribute('data-history-depth'))
+  const moveStartBox = await moveHandle.boundingBox()
+  expect(moveStartBox).toBeTruthy()
+  const moveStart = {
+    x: moveStartBox!.x + moveStartBox!.width / 2,
+    y: moveStartBox!.y + moveStartBox!.height / 2,
+  }
+  await page.mouse.move(moveStart.x, moveStart.y)
+  await page.mouse.down()
+  await page.mouse.move(moveStart.x + 300, moveStart.y + 160)
+  await page.mouse.up()
+
+  await expect(workspace).toHaveAttribute('data-history-depth', String(moveHistoryBefore + 1))
+  const movedArtwork = await scaledRoot.boundingBox()
+  expect(movedArtwork).toBeTruthy()
+  expect(Math.abs(movedArtwork!.x + movedArtwork!.width - canvasBox!.x - canvasBox!.width))
+    .toBeLessThanOrEqual(1)
+  expect(Math.abs(movedArtwork!.y + movedArtwork!.height - canvasBox!.y - canvasBox!.height))
+    .toBeLessThanOrEqual(1)
+
+  await page.getByRole('button', { name: '\u64a4\u9500', exact: true }).click()
+  await expect(workspace).toHaveAttribute('data-history-depth', String(moveHistoryBefore))
+  await expect.poll(async () => {
+    const restored = await scaledRoot.boundingBox()
+    if (!restored) return Number.POSITIVE_INFINITY
+    return Math.max(
+      ...(['x', 'y', 'width', 'height'] as const).map((key) => (
+        Math.abs(restored[key] - beforeArtwork![key])
+      )),
+    )
+  }).toBeLessThanOrEqual(1)
+})
+
+test('locked canvas hits preserve an existing selection', async ({ page }) => {
+  await openNestedV3Draft(page, `locked-hit-${Date.now()}`)
+
+  const selectedSceneNodeIds = () => page.locator(
+    '[data-scene-node-id][data-selected="true"]',
+  ).evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.sceneNodeId))
+  const unlocked = page.locator('[data-scene-node-id="scaled-root"]')
+  const lockedRootLeaf = page.locator('[data-scene-node-id="locked-root-leaf"]')
+  const lockedRootDescendant = page.locator('[data-scene-node-id="locked-root-group-leaf"]')
+  const effectiveLockedDescendant = page.locator('[data-scene-node-id="locked-text"]')
+
+  const expectLockedHitToKeepSelection = async (
+    hit: import('@playwright/test').Locator,
+    modifiers?: ('Shift')[],
+  ) => {
+    await unlocked.click()
+    await expect(unlocked).toHaveAttribute('data-selected', 'true')
+    await hit.click(modifiers ? { modifiers } : undefined)
+    expect.soft(await selectedSceneNodeIds()).toEqual(['scaled-root'])
+  }
+
+  await expectLockedHitToKeepSelection(lockedRootLeaf)
+  await expectLockedHitToKeepSelection(lockedRootDescendant)
+  await expectLockedHitToKeepSelection(lockedRootDescendant, ['Shift'])
+  await expectLockedHitToKeepSelection(effectiveLockedDescendant)
+})
+
+test('live move ignores ArrowRight before pointerup and commits one history entry', async ({ page }) => {
+  await openNestedV3Draft(page, `live-move-up-${Date.now()}`)
+
+  const workspace = page.locator('.freeform-workspace')
+  await expect(workspace).toHaveAttribute('data-history-depth', '0')
+  const element = page.locator('[data-scene-node-id="scaled-root"]')
+  await element.click()
+  const before = await element.boundingBox()
+  expect(before).toBeTruthy()
+  const handle = page.getByTestId('freeform-selection-move')
+  const handleBox = await handle.boundingBox()
+  expect(handleBox).toBeTruthy()
+  const start = {
+    x: handleBox!.x + handleBox!.width / 2,
+    y: handleBox!.y + handleBox!.height / 2,
+  }
+
+  await handle.dispatchEvent('pointerdown', {
+    pointerId: 71,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 71,
+      pointerType: 'touch',
+      clientX: x + 80,
+      clientY: y + 30,
+    }))
+  }, start)
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+  await expect.poll(async () => (await element.boundingBox())?.x).not.toBeCloseTo(before!.x, 1)
+
+  await page.keyboard.press('ArrowRight')
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: 71,
+      pointerType: 'touch',
+    }))
+  })
+
+  await expect.soft(workspace).toHaveAttribute('data-history-depth', '1')
+  const undo = page.getByRole('button', { name: '\u64a4\u9500', exact: true })
+  await undo.click()
+  await expect.poll(async () => {
+    const restored = await element.boundingBox()
+    if (!restored) return Number.POSITIVE_INFINITY
+    return Math.max(
+      ...(['x', 'y', 'width', 'height'] as const).map((key) => Math.abs(restored[key] - before![key])),
+    )
+  }).toBeLessThanOrEqual(1)
+  await expect.soft(undo).toBeDisabled()
+})
+
+test('live move ignores ArrowRight before pointercancel and restores complete history', async ({ page }) => {
+  await openNestedV3Draft(page, `live-move-cancel-${Date.now()}`)
+
+  const workspace = page.locator('.freeform-workspace')
+  await expect(workspace).toHaveAttribute('data-history-depth', '0')
+  const element = page.locator('[data-scene-node-id="scaled-root"]')
+  await element.click()
+  const before = await element.boundingBox()
+  expect(before).toBeTruthy()
+  const handle = page.getByTestId('freeform-selection-move')
+  const handleBox = await handle.boundingBox()
+  expect(handleBox).toBeTruthy()
+  const start = {
+    x: handleBox!.x + handleBox!.width / 2,
+    y: handleBox!.y + handleBox!.height / 2,
+  }
+
+  await handle.dispatchEvent('pointerdown', {
+    pointerId: 72,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 72,
+      pointerType: 'touch',
+      clientX: x + 80,
+      clientY: y + 30,
+    }))
+  }, start)
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+  await expect.poll(async () => (await element.boundingBox())?.x).not.toBeCloseTo(before!.x, 1)
+
+  await page.keyboard.press('ArrowRight')
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 72,
+      pointerType: 'touch',
+    }))
+  })
+
+  const geometryDistanceFromStart = async () => {
+    const current = await element.boundingBox()
+    if (!current) return Number.POSITIVE_INFINITY
+    return Math.max(
+      ...(['x', 'y', 'width', 'height'] as const).map((key) => Math.abs(current[key] - before![key])),
+    )
+  }
+  await expect.poll(geometryDistanceFromStart).toBeLessThanOrEqual(1)
+  await expect.soft(workspace).toHaveAttribute('data-history-depth', '0')
+  const undo = page.getByRole('button', { name: '\u64a4\u9500', exact: true })
+  await expect.soft(undo).toBeDisabled()
+  if (await undo.isEnabled()) {
+    await undo.click()
+    await expect.poll(geometryDistanceFromStart).toBeLessThanOrEqual(1)
   }
 })
 

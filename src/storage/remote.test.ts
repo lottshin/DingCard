@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SaveDraftInput } from '../drafts'
+import { normalizeFreeformDocumentV3 } from '../freeform/sceneDocument'
+import type { FreeformDocumentV3 } from '../freeform/types'
 
 const API_BASE = 'https://api.example'
 const TOKEN_KEY = 'slicer.token.v1'
@@ -43,7 +45,7 @@ function deferred<T>() {
 
 function freeformDocument() {
   return {
-    documentVersion: 2 as const,
+    documentVersion: 3 as const,
     activeSlideId: 'page-1',
     slides: [
       {
@@ -52,27 +54,35 @@ function freeformDocument() {
         width: 1080,
         height: 1440,
         background: { type: 'solid' as const, color: '#ffffff' },
-        elements: [
+        nodes: [
           {
             id: 'existing-image',
+            name: 'Existing image',
+            locked: false,
+            hidden: false,
             type: 'image' as const,
             x: 10,
             y: 20,
             width: 300,
             height: 200,
             rotation: 0,
+            scale: 1,
             src: `${API_BASE}/uploads/existing.png`,
             alt: 'existing',
             fit: 'cover' as const,
           },
           {
             id: 'historical-fill',
+            name: 'Historical fill',
+            locked: false,
+            hidden: false,
             type: 'shape' as const,
             x: 30,
             y: 40,
             width: 240,
             height: 160,
             rotation: 0,
+            scale: 1,
             shape: 'rect' as const,
             fill: { type: 'image' as const, src: INLINE_IMAGE, fit: 'contain' as const },
             stroke: '#000000',
@@ -84,7 +94,127 @@ function freeformDocument() {
   }
 }
 
-function savedFreeformDraft(document: ReturnType<typeof freeformDocument>) {
+function nestedFreeformDocument(): FreeformDocumentV3 {
+  return {
+    documentVersion: 3,
+    activeSlideId: 'page-1',
+    slides: [{
+      id: 'page-1',
+      name: 'Page 1',
+      width: 1080,
+      height: 1440,
+      background: { type: 'solid', color: '#ffffff' },
+      nodes: [{
+        id: 'outer',
+        name: 'Outer',
+        locked: false,
+        hidden: false,
+        type: 'group',
+        x: 0,
+        y: 0,
+        rotation: 0,
+        scale: 1,
+        children: [{
+          id: 'existing-image',
+          name: 'Existing image',
+          locked: false,
+          hidden: false,
+          type: 'image',
+          x: 10,
+          y: 20,
+          width: 300,
+          height: 200,
+          rotation: 0,
+          scale: 1,
+          src: `${API_BASE}/uploads/existing.png`,
+          alt: 'existing',
+          fit: 'cover',
+        }, {
+          id: 'hidden-inner',
+          name: 'Hidden inner',
+          locked: false,
+          hidden: true,
+          type: 'group',
+          x: 0,
+          y: 0,
+          rotation: 0,
+          scale: 1,
+          children: [{
+            id: 'historical-fill',
+            name: 'Historical fill',
+            locked: false,
+            hidden: false,
+            type: 'shape',
+            x: 30,
+            y: 40,
+            width: 240,
+            height: 160,
+            rotation: 0,
+            scale: 1,
+            shape: 'rect',
+            fill: { type: 'image', src: INLINE_IMAGE, fit: 'contain' },
+            stroke: '#000000',
+            strokeWidth: 0,
+          }],
+        }],
+      }],
+    }],
+  }
+}
+
+function strictText(id: string) {
+  return {
+    id,
+    name: id,
+    locked: false,
+    hidden: false,
+    type: 'text' as const,
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    rotation: 0,
+    scale: 1,
+    text: id,
+    fontSize: 12,
+    fontFamily: 'system-ui',
+    textFill: { type: 'solid' as const, color: '#111111' },
+    align: 'left' as const,
+    fontWeight: 'normal' as const,
+  }
+}
+
+function strictSlide(id: string, nodes: unknown[] = []) {
+  return {
+    id,
+    name: id,
+    width: 1024,
+    height: 768,
+    background: { type: 'solid' as const, color: '#ffffff' },
+    nodes,
+  }
+}
+
+function nestedGroups(depth: number): unknown {
+  let node: unknown = strictText(`node-${depth}`)
+  for (let level = depth - 1; level >= 1; level -= 1) {
+    node = {
+      id: `node-${level}`,
+      name: `Group ${level}`,
+      locked: false,
+      hidden: false,
+      type: 'group',
+      x: 0,
+      y: 0,
+      rotation: 0,
+      scale: 1,
+      children: [node],
+    }
+  }
+  return node
+}
+
+function savedFreeformDraft(document: unknown) {
   return {
     id: 'draft-1',
     title: 'Page 1',
@@ -490,14 +620,16 @@ describe('RemoteStore draft normalization and image retention', () => {
       ['legacy-markdown', 'markdown-card', 2],
       ['freeform-v1', 'freeform-slide', 2],
     ])
-    expect(drafts[1].mode === 'freeform-slide' && drafts[1].document.documentVersion).toBe(2)
+    expect(drafts[1].mode === 'freeform-slide' && drafts[1].document.documentVersion).toBe(3)
+    if (drafts[1].mode !== 'freeform-slide') throw new Error('Expected freeform draft')
+    expect(drafts[1].document.slides[0].nodes).toEqual([])
   })
 
   it('rejects an invalid saved draft response instead of returning it to the workspace', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'broken-response' }))
     const store = await createStore()
     const document = freeformDocument()
-    document.slides[0].elements = []
+    document.slides[0].nodes = []
 
     await expectApiError(store.drafts.save('user-1', {
       mode: 'freeform-slide',
@@ -510,7 +642,11 @@ describe('RemoteStore draft normalization and image retention', () => {
     const invalid = {
       id: 'invalid-freeform',
       mode: 'freeform-slide',
-      document: { documentVersion: 2, activeSlideId: 'missing', slides: [] },
+      document: {
+        documentVersion: 3,
+        activeSlideId: 'missing',
+        slides: [strictSlide('slide-1')],
+      },
     } as unknown as SaveDraftInput
 
     await expectApiError(
@@ -519,6 +655,147 @@ describe('RemoteStore draft normalization and image retention', () => {
       '远程草稿内容无效',
     )
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects every strict v3 boundary violation before any remote mutation', async () => {
+    const invalidDocuments = [
+      {
+        documentVersion: 3,
+        activeSlideId: 'slide-0',
+        slides: Array.from({ length: 501 }, (_, index) => strictSlide(`slide-${index}`)),
+      },
+      {
+        documentVersion: 3,
+        activeSlideId: 'slide-1',
+        slides: [strictSlide(
+          'slide-1',
+          Array.from({ length: 5001 }, (_, index) => strictText(`node-${index}`)),
+        )],
+      },
+      {
+        documentVersion: 3,
+        activeSlideId: 'slide-1',
+        slides: [strictSlide('slide-1', [{ ...strictText('text-1'), scale: Number.NaN }])],
+      },
+      {
+        documentVersion: 3,
+        activeSlideId: 'slide-1',
+        slides: [strictSlide('slide-1', [nestedGroups(33)])],
+      },
+      {
+        documentVersion: 3,
+        activeSlideId: 'missing',
+        slides: [strictSlide('slide-1')],
+      },
+    ]
+    const store = await createStore()
+
+    for (const [index, document] of invalidDocuments.entries()) {
+      await expectApiError(store.drafts.save('user-1', {
+        id: `invalid-${index}`,
+        mode: 'freeform-slide',
+        document,
+      } as unknown as SaveDraftInput), null, '远程草稿内容无效')
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('migrates a v2 save before serialization and returns strict v3', async () => {
+    const legacy = {
+      documentVersion: 2,
+      activeSlideId: 'page-1',
+      slides: [{
+        id: 'page-1',
+        name: 'Page 1',
+        width: 1024,
+        height: 768,
+        background: { type: 'solid', color: '#ffffff' },
+        elements: [],
+      }],
+    }
+    let submitted: Record<string, unknown> | undefined
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      const url = requestUrl(args)
+      if (url !== `${API_BASE}/api/drafts`) throw new Error(`Unexpected request: ${url}`)
+      submitted = jsonRequestBody(args)
+      return jsonResponse({
+        id: 'legacy-draft',
+        title: 'Page 1',
+        schemaVersion: 2,
+        updatedAt: 10,
+        ...submitted,
+      })
+    })
+    const store = await createStore()
+
+    const saved = await store.drafts.save('user-1', {
+      id: 'legacy-draft',
+      mode: 'freeform-slide',
+      document: legacy,
+    } as unknown as SaveDraftInput)
+
+    expect(submitted?.document).toMatchObject({ documentVersion: 3 })
+    expect(JSON.stringify(submitted?.document)).not.toContain('"elements"')
+    expect(saved.mode).toBe('freeform-slide')
+    if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
+    expect(normalizeFreeformDocumentV3(saved.document)).toEqual(saved.document)
+  })
+
+  it('uploads and retains nested hidden v3 image sources atomically', async () => {
+    const events: string[] = []
+    const retentionBodies: unknown[] = []
+    let submitted: Record<string, unknown> | undefined
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      const url = requestUrl(args)
+      if (url === INLINE_IMAGE) {
+        events.push('decode-inline')
+        return responseForDataUrl()
+      }
+      if (url === `${API_BASE}/api/images/retain`) {
+        events.push('retain')
+        retentionBodies.push(jsonRequestBody(args).urls)
+        return jsonResponse({ retained: 1 })
+      }
+      if (url === `${API_BASE}/api/images`) {
+        events.push('upload-inline')
+        return jsonResponse({ ref: 'img:new', url: '/uploads/new.png' })
+      }
+      if (url === `${API_BASE}/api/drafts`) {
+        events.push('post-draft')
+        submitted = jsonRequestBody(args)
+        return jsonResponse({
+          id: 'nested-draft',
+          title: 'Page 1',
+          schemaVersion: 2,
+          updatedAt: 10,
+          ...submitted,
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const store = await createStore()
+    const input = nestedFreeformDocument()
+    const snapshot = structuredClone(input)
+
+    const saved = await store.drafts.save('user-1', {
+      id: 'nested-draft',
+      mode: 'freeform-slide',
+      document: input,
+    })
+
+    expect(events).toEqual(['retain', 'decode-inline', 'upload-inline', 'retain', 'post-draft'])
+    expect(retentionBodies[0]).toContain(`${API_BASE}/uploads/existing.png`)
+    expect(retentionBodies[1]).toEqual(expect.arrayContaining([
+      `${API_BASE}/uploads/existing.png`,
+      `${API_BASE}/uploads/new.png`,
+    ]))
+    expect(input).toEqual(snapshot)
+    expect(JSON.stringify(submitted)).not.toContain('data:image/')
+    expect(JSON.stringify(submitted)).toContain('"hidden":true')
+    expect(saved.mode).toBe('freeform-slide')
+    if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
+    expect(normalizeFreeformDocumentV3(saved.document)).toEqual(saved.document)
   })
 
   it('does not request retention for empty or external-only URLs and forwards same-origin candidates once', async () => {

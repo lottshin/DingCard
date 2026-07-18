@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { SetStateAction } from 'react'
 import { toBlob } from 'html-to-image'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
@@ -23,6 +24,10 @@ import {
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
 import {
+  FreeformSceneNodeView,
+  type SceneNodePointerState,
+} from './FreeformSceneNodeView'
+import {
   FreeformSelectionOverlay,
   type SelectionOverlayInteraction,
 } from './FreeformSelectionOverlay'
@@ -41,17 +46,20 @@ import {
 } from './fontRequests'
 import { collectFreeformImageSources } from './imageAssets'
 import { ColorPickerButton, PaintField } from './PaintField'
-import { PlainTextEditable } from './PlainTextEditable'
 import {
   DEFAULT_PAGE_PAINT,
   DEFAULT_SHAPE_PAINT,
   DEFAULT_TEXT_PAINT,
-  shapeFillToStyle,
   slideBackgroundToCss,
-  textFillToStyle,
 } from './paint'
 import {
-  filterLiveSelectionIds,
+  directChildPathForScope,
+  fallbackScenePath,
+  normalizeSceneSelection,
+  sceneLogicalBounds,
+} from './sceneSelection'
+import { cloneSceneNodes, findNodeAtPath, getChildrenAtPath, scenePathKey } from './sceneTree'
+import {
   getElementsInMarquee,
   moveElementsWithinSlide,
   type Rect,
@@ -64,9 +72,11 @@ import type {
   FreeformElement,
   FreeformImageElement,
   FreeformLineElement,
+  FreeformSceneNode,
   FreeformShapeElement,
   FreeformSlide,
   FreeformTextElement,
+  ScenePath,
   ShapeFill,
   SlideBackground,
 } from './types'
@@ -99,7 +109,9 @@ const FITS: Array<{ id: 'cover' | 'contain'; label: string }> = [
 ]
 
 function activeSlideOf(doc: FreeformDocument): FreeformSlide {
-  return doc.slides.find((slide) => slide.id === doc.activeSlideId) ?? doc.slides[0]
+  const slide = doc.slides.find((candidate) => candidate.id === doc.activeSlideId)
+  if (!slide) throw new Error('Freeform document has no valid active slide')
+  return slide
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -152,12 +164,12 @@ function hasMixedSlideSizes(slides: FreeformSlide[]): boolean {
   return slides.some((slide) => slide.width !== first.width || slide.height !== first.height)
 }
 
-function cloneElementForPaste(element: FreeformElement, slide: FreeformSlide): FreeformElement {
+function offsetNodeForPaste(node: FreeformSceneNode, slide: FreeformSlide): FreeformSceneNode {
+  if (node.type === 'group') return { ...node, x: node.x + 16, y: node.y + 16 }
   return {
-    ...element,
-    id: crypto.randomUUID(),
-    x: Math.min(Math.max(0, element.x + 16), Math.max(0, slide.width - element.width)),
-    y: Math.min(Math.max(0, element.y + 16), Math.max(0, slide.height - element.height)),
+    ...node,
+    x: Math.min(Math.max(0, node.x + 16), Math.max(0, slide.width - node.width)),
+    y: Math.min(Math.max(0, node.y + 16), Math.max(0, slide.height - node.height)),
   }
 }
 
@@ -200,9 +212,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   )
   const doc = history.current
   const activeSlide = activeSlideOf(doc)
+  const rootElements = useMemo(
+    () => activeSlide.nodes.filter(
+      (node): node is FreeformElement => node.type !== 'group' && !node.hidden,
+    ),
+    [activeSlide.nodes],
+  )
   const selectedElementIds = useRef<string[]>([])
-  const [selection, setSelection] = useState<string[]>([])
-  const [clipboard, setClipboard] = useState<FreeformElement[]>([])
+  const [activeGroupPath, setActiveGroupPath] = useState<ScenePath>([])
+  const [requestedSelectionPaths, setRequestedSelectionPaths] = useState<ScenePath[]>([])
+  const [clipboard, setClipboard] = useState<FreeformSceneNode[]>([])
   const [zoomPercent, setZoomPercent] = useState(DEFAULT_ZOOM_PERCENT)
   const [fitScale, setFitScale] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -217,7 +236,27 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
   const [activeInteraction, setActiveInteraction] = useState<SelectionOverlayInteraction>(null)
+  const activeInteractionRef = useRef<SelectionOverlayInteraction>(null)
   const renderScale = calculateRenderScale(fitScale, zoomPercent)
+  const selectionPaths = useMemo(
+    () => normalizeSceneSelection(activeSlide.nodes, activeGroupPath, requestedSelectionPaths),
+    [activeGroupPath, activeSlide.nodes, requestedSelectionPaths],
+  )
+  const selection = useMemo(
+    () => selectionPaths.map((path) => path[path.length - 1]),
+    [selectionPaths],
+  )
+  const setSelection = useCallback((update: SetStateAction<string[]>) => {
+    setRequestedSelectionPaths((currentPaths) => {
+      const currentIds = normalizeSceneSelection(
+        activeSlide.nodes,
+        activeGroupPath,
+        currentPaths,
+      ).map((path) => path[path.length - 1])
+      const nextIds = typeof update === 'function' ? update(currentIds) : update
+      return nextIds.map((id) => [...activeGroupPath, id])
+    })
+  }, [activeGroupPath, activeSlide.nodes])
 
   const stageScrollRef = useRef<HTMLDivElement>(null)
   const artboardRef = useRef<HTMLDivElement>(null)
@@ -241,13 +280,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setDraftId(nextDraftId)
   }, [])
 
-  const liveSelection = useMemo(
-    () => filterLiveSelectionIds(activeSlide.elements, selection),
-    [activeSlide.elements, selection],
-  )
+  const liveSelection = selection
   const selectedElement = useMemo(
-    () => activeSlide.elements.find((element) => element.id === liveSelection[0]),
-    [activeSlide.elements, liveSelection],
+    () => {
+      const node = selectionPaths[0]
+        ? findNodeAtPath(activeSlide.nodes, selectionPaths[0])
+        : undefined
+      return node?.type === 'group' ? undefined : node
+    },
+    [activeSlide.nodes, selectionPaths],
   )
 
   const canUndo = history.past.length > 0
@@ -364,9 +405,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }, [loadDrafts, updateDraftId, user])
 
   useEffect(() => {
-    const liveIds = new Set(activeSlide.elements.map((element) => element.id))
-    setSelection((ids) => ids.filter((id) => liveIds.has(id)))
-  }, [activeSlide.id, activeSlide.elements])
+    const nextParentPath = fallbackScenePath(activeSlide.nodes, activeGroupPath)
+    if (scenePathKey(nextParentPath) !== scenePathKey(activeGroupPath)) {
+      setActiveGroupPath(nextParentPath)
+    }
+    setRequestedSelectionPaths((current) => {
+      const next = normalizeSceneSelection(activeSlide.nodes, nextParentPath, current)
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next
+    })
+  }, [activeGroupPath, activeSlide.id, activeSlide.nodes])
 
   useEffect(() => {
     if (activeFontRequests.length === 0) return
@@ -385,19 +432,26 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }, [documentFontRequests])
 
   const applyAction = useCallback((action: FreeformAction) => {
+    const start = currentDocumentRef.current
+    const next = freeformReducer(start, action)
+    if (Object.is(next, start)) return false
+    currentDocumentRef.current = next
     setHistory((current) => {
-      const next = freeformReducer(current.current, action)
-      if (Object.is(next, current.current)) return current
-      return pushHistory(current, next)
+      if (Object.is(current.current, start)) return pushHistory(current, next)
+      const rebased = freeformReducer(current.current, action)
+      currentDocumentRef.current = rebased
+      return Object.is(rebased, current.current) ? current : pushHistory(current, rebased)
     })
     setSavedAt(null)
+    return true
   }, [])
 
   const replaceCurrent = useCallback((action: FreeformAction) => {
-    setHistory((current) => ({
-      ...current,
-      current: freeformReducer(current.current, action),
-    }))
+    setHistory((current) => {
+      const next = freeformReducer(current.current, action)
+      currentDocumentRef.current = next
+      return Object.is(next, current.current) ? current : { ...current, current: next }
+    })
   }, [])
 
   const commitLiveEdit = useCallback((startDocument: FreeformDocument) => {
@@ -434,20 +488,23 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function addText() {
     const element = createTextElement(activeSlide)
-    applyAction({ type: 'element/add', slideId: activeSlide.id, element })
-    setSelection([element.id])
+    if (applyAction({ type: 'element/add', slideId: activeSlide.id, element })) {
+      setSelection([element.id])
+    }
   }
 
   function addShape(shape: FreeformShapeElement['shape']) {
     const element = createShapeElement(activeSlide, shape)
-    applyAction({ type: 'element/add', slideId: activeSlide.id, element })
-    setSelection([element.id])
+    if (applyAction({ type: 'element/add', slideId: activeSlide.id, element })) {
+      setSelection([element.id])
+    }
   }
 
   function addLine(lineKind: FreeformLineElement['lineKind']) {
     const element = createLineElement(activeSlide, lineKind)
-    applyAction({ type: 'element/add', slideId: activeSlide.id, element })
-    setSelection([element.id])
+    if (applyAction({ type: 'element/add', slideId: activeSlide.id, element })) {
+      setSelection([element.id])
+    }
   }
 
   async function addImageFromFile(file: File) {
@@ -456,8 +513,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const downscaled = await downscaleDataUrl(raw, 1800)
     const src = await store.images.put(downscaled)
     const element = createImageElement(activeSlide, src, file.name)
-    applyAction({ type: 'element/add', slideId: activeSlide.id, element })
-    setSelection([element.id])
+    if (applyAction({ type: 'element/add', slideId: activeSlide.id, element })) {
+      setSelection([element.id])
+    }
   }
 
   async function handleImageInput(files: FileList | null) {
@@ -509,33 +567,29 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function deleteSelection() {
     if (selection.length === 0) return
-    applyAction({ type: 'element/delete', slideId: activeSlide.id, elementIds: selection })
-    setSelection([])
+    if (applyAction({ type: 'element/delete', slideId: activeSlide.id, elementIds: selection })) {
+      setSelection([])
+    }
   }
 
   function copySelection() {
     if (selection.length === 0) return
-    const selected = activeSlide.elements.filter((element) => selection.includes(element.id))
-    setClipboard(selected.map((element) => ({ ...element })))
+    const children = getChildrenAtPath(activeSlide.nodes, activeGroupPath) ?? []
+    const selected = children.filter((node) => selection.includes(node.id))
+    setClipboard(structuredClone(selected))
   }
 
   function pasteClipboard() {
     if (clipboard.length === 0) return
-    const pasted = clipboard.map((element) => cloneElementForPaste(element, activeSlide))
-    setHistory((current) => {
-      const next = pasted.reduce(
-        (docSoFar, element) =>
-          freeformReducer(docSoFar, {
-            type: 'element/add',
-            slideId: activeSlide.id,
-            element,
-          }),
-        current.current,
-      )
-      return pushHistory(current, next)
-    })
-    setSelection(pasted.map((element) => element.id))
-    setSavedAt(null)
+    const pasted = cloneSceneNodes(clipboard).map((node) => offsetNodeForPaste(node, activeSlide))
+    if (applyAction({
+      type: 'node/insert-children',
+      slideId: activeSlide.id,
+      parentPath: activeGroupPath,
+      nodes: pasted,
+    })) {
+      setSelection(pasted.map((node) => node.id))
+    }
   }
 
   function reorderSelection(direction: 'forward' | 'backward' | 'front' | 'back') {
@@ -549,81 +603,84 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function alignSelection(alignment: Alignment) {
-    const selectedElements = activeSlide.elements.filter((element) => selection.includes(element.id))
+    const selectedElements = rootElements.filter((element) => selection.includes(element.id))
     if (selectedElements.length < 2) return
+    const entries = selectedElements.flatMap((element) => {
+      const path = [...activeGroupPath, element.id]
+      const bounds = sceneLogicalBounds(activeSlide.nodes, path)
+      return bounds ? [{ element, path, bounds }] : []
+    })
+    if (entries.length !== selectedElements.length) return
 
-    const left = Math.min(...selectedElements.map((element) => element.x))
-    const right = Math.max(...selectedElements.map((element) => element.x + element.width))
-    const top = Math.min(...selectedElements.map((element) => element.y))
-    const bottom = Math.max(...selectedElements.map((element) => element.y + element.height))
+    const left = Math.min(...entries.map(({ bounds }) => bounds.x))
+    const right = Math.max(...entries.map(({ bounds }) => bounds.x + bounds.width))
+    const top = Math.min(...entries.map(({ bounds }) => bounds.y))
+    const bottom = Math.max(...entries.map(({ bounds }) => bounds.y + bounds.height))
     const horizontalCenter = Math.round((left + right) / 2)
     const verticalCenter = Math.round((top + bottom) / 2)
-
-    setHistory((current) => {
-      const next = selectedElements.reduce((docSoFar, element) => {
-        const patch: Partial<FreeformElement> =
-          alignment === 'left'
-            ? { x: left }
-            : alignment === 'h-center'
-              ? { x: horizontalCenter - Math.round(element.width / 2) }
-              : alignment === 'right'
-                ? { x: right - element.width }
-                : alignment === 'top'
-                  ? { y: top }
-                  : alignment === 'v-center'
-                    ? { y: verticalCenter - Math.round(element.height / 2) }
-                    : { y: bottom - element.height }
-
-        return freeformReducer(docSoFar, {
-          type: 'element/update',
-          slideId: activeSlide.id,
-          elementId: element.id,
-          patch,
-        })
-      }, current.current)
-
-      return pushHistory(current, next)
+    applyAction({
+      type: 'node/update-geometry',
+      slideId: activeSlide.id,
+      updates: entries.map(({ element, path, bounds }) => {
+        const dx = alignment === 'left'
+          ? left - bounds.x
+          : alignment === 'h-center'
+            ? horizontalCenter - (bounds.x + bounds.width / 2)
+            : alignment === 'right'
+              ? right - (bounds.x + bounds.width)
+              : 0
+        const dy = alignment === 'top'
+          ? top - bounds.y
+          : alignment === 'v-center'
+            ? verticalCenter - (bounds.y + bounds.height / 2)
+            : alignment === 'bottom'
+              ? bottom - (bounds.y + bounds.height)
+              : 0
+        return { path, patch: { x: element.x + dx, y: element.y + dy } }
+      }),
     })
-    setSavedAt(null)
   }
 
   function distributeSelection(distribution: Distribution) {
-    const selectedElements = activeSlide.elements.filter((element) => selection.includes(element.id))
+    const selectedElements = rootElements.filter((element) => selection.includes(element.id))
     if (selectedElements.length < 3) return
 
-    const sorted = [...selectedElements].sort((a, b) =>
-      distribution === 'horizontal' ? a.x - b.x : a.y - b.y,
+    const entries = selectedElements.flatMap((element) => {
+      const path = [...activeGroupPath, element.id]
+      const bounds = sceneLogicalBounds(activeSlide.nodes, path)
+      return bounds ? [{ element, path, bounds }] : []
+    })
+    if (entries.length !== selectedElements.length) return
+    const sorted = [...entries].sort((a, b) =>
+      distribution === 'horizontal' ? a.bounds.x - b.bounds.x : a.bounds.y - b.bounds.y,
     )
     const first = sorted[0]
     const last = sorted[sorted.length - 1]
 
-    const start = distribution === 'horizontal' ? first.x : first.y
+    const start = distribution === 'horizontal' ? first.bounds.x : first.bounds.y
     const end =
-      distribution === 'horizontal' ? last.x + last.width : last.y + last.height
+      distribution === 'horizontal'
+        ? last.bounds.x + last.bounds.width
+        : last.bounds.y + last.bounds.height
     const totalSize = sorted.reduce(
-      (sum, element) => sum + (distribution === 'horizontal' ? element.width : element.height),
+      (sum, entry) => sum + (
+        distribution === 'horizontal' ? entry.bounds.width : entry.bounds.height
+      ),
       0,
     )
     const gap = (end - start - totalSize) / (sorted.length - 1)
-
-    setHistory((current) => {
-      let cursor = start
-      const next = sorted.reduce((docSoFar, element) => {
-        const patch: Partial<FreeformElement> =
-          distribution === 'horizontal' ? { x: Math.round(cursor) } : { y: Math.round(cursor) }
-        cursor += (distribution === 'horizontal' ? element.width : element.height) + gap
-
-        return freeformReducer(docSoFar, {
-          type: 'element/update',
-          slideId: activeSlide.id,
-          elementId: element.id,
-          patch,
-        })
-      }, current.current)
-
-      return pushHistory(current, next)
+    let cursor = start
+    const updates = sorted.map(({ element, path, bounds }) => {
+      const delta = cursor - (distribution === 'horizontal' ? bounds.x : bounds.y)
+      cursor += (distribution === 'horizontal' ? bounds.width : bounds.height) + gap
+      return {
+        path,
+        patch: distribution === 'horizontal'
+          ? { x: element.x + delta }
+          : { y: element.y + delta },
+      }
     })
-    setSavedAt(null)
+    applyAction({ type: 'node/update-geometry', slideId: activeSlide.id, updates })
   }
 
   function applySlideSize(width: number, height: number) {
@@ -645,8 +702,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const selectedIds = selectedElementIds.current
     if (selectedIds.length === 0) return
 
-    const elementById = new Map(activeSlide.elements.map((element) => [element.id, element]))
-    const patches = moveElementsWithinSlide(activeSlide, activeSlide.elements, selectedIds, dx, dy).filter(
+    const elementById = new Map(rootElements.map((element) => [element.id, element]))
+    const patches = moveElementsWithinSlide(activeSlide, rootElements, selectedIds, dx, dy).filter(
       ({ elementId, patch }) => {
         const element = elementById.get(elementId)
         return element && (element.x !== patch.x || element.y !== patch.y)
@@ -654,30 +711,37 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     )
 
     if (patches.length === 0) return
-
-    setHistory((current) => {
-      const next = patches.reduce(
-        (docSoFar, { elementId, patch }) =>
-          freeformReducer(docSoFar, {
-            type: 'element/update',
-            slideId: activeSlide.id,
-            elementId,
-            patch,
-          }),
-        current.current,
-      )
-
-      if (Object.is(next, current.current)) return current
-      return pushHistory(current, next)
+    applyAction({
+      type: 'node/update-geometry',
+      slideId: activeSlide.id,
+      updates: patches.map(({ elementId, patch }) => ({
+        path: [...activeGroupPath, elementId],
+        patch,
+      })),
     })
-    setSavedAt(null)
   }
 
   useEffect(() => {
     if (!isActive) return
     const onKey = (event: KeyboardEvent) => {
-      if (isTypingTarget(event.target)) return
       const key = event.key.toLowerCase()
+      const isDocumentShortcut = (
+        ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'v'].includes(key)) ||
+        [
+          'arrowleft',
+          'arrowright',
+          'arrowup',
+          'arrowdown',
+          'delete',
+          'backspace',
+          'escape',
+        ].includes(key)
+      )
+      if (activeInteractionRef.current && isDocumentShortcut) {
+        event.preventDefault()
+        return
+      }
+      if (isTypingTarget(event.target)) return
       if ((event.ctrlKey || event.metaKey) && key === 'z') {
         event.preventDefault()
         if (event.shiftKey) redoDocument()
@@ -729,8 +793,51 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  function onSceneNodePointerDown(
+    event: React.PointerEvent<HTMLDivElement>,
+    leaf: FreeformElement,
+    hitPath: ScenePath,
+    state: SceneNodePointerState,
+  ) {
+    const directPath = directChildPathForScope(activeSlide.nodes, activeGroupPath, hitPath)
+    if (!directPath) return
+    const directNode = findNodeAtPath(activeSlide.nodes, directPath)
+    if (!directNode) return
+    const id = directPath[directPath.length - 1]
+
+    if (state.locked) {
+      event.preventDefault()
+      event.stopPropagation()
+      blurActiveTypingTarget()
+      return
+    }
+
+    if (event.shiftKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      blurActiveTypingTarget()
+      setSelection((ids) => ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id])
+      return
+    }
+
+    if (directNode.type === 'group') {
+      event.preventDefault()
+      event.stopPropagation()
+      blurActiveTypingTarget()
+      setSelection([id])
+      return
+    }
+    onElementPointerDown(event, leaf)
+  }
+
   function onElementPointerDown(event: React.PointerEvent, element: FreeformElement) {
     if (renderScale === null) return
+    if (element.locked || element.hidden) {
+      event.preventDefault()
+      event.stopPropagation()
+      blurActiveTypingTarget()
+      return
+    }
     const interactionScale = renderScale
     const pointerId = event.pointerId
     if (event.shiftKey) {
@@ -756,9 +863,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
 
     const startDocument = doc
-    const startElements = activeSlide.elements
+    const startElements = rootElements
     const startX = event.clientX
     const startY = event.clientY
+    activeInteractionRef.current = 'move'
     setActiveInteraction('move')
 
     const onMove = (moveEvent: PointerEvent) => {
@@ -769,21 +877,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       const patches = moveElementsWithinSlide(activeSlide, startElements, draggingIds, snap.dx, snap.dy)
       setSnapLines(snap.lines)
       setHistory((current) => {
-        const next = patches.reduce(
-          (docSoFar, { elementId, patch }) =>
-            freeformReducer(docSoFar, {
-              type: 'element/update',
-              slideId: activeSlide.id,
-              elementId,
-              patch,
-            }),
-          current.current,
-        )
+        const next = freeformReducer(current.current, {
+          type: 'node/update-geometry',
+          slideId: activeSlide.id,
+          updates: patches.map(({ elementId, patch }) => ({
+            path: [...activeGroupPath, elementId],
+            patch,
+          })),
+        })
+        currentDocumentRef.current = next
 
-        return {
-          ...current,
-          current: next,
-        }
+        return Object.is(next, current.current) ? current : { ...current, current: next }
       })
     }
 
@@ -792,6 +896,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
       window.removeEventListener('blur', onBlur)
+      activeInteractionRef.current = null
       setSnapLines([])
       setActiveInteraction(null)
     }
@@ -803,6 +908,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
     const cancelDrag = () => {
       cleanupDrag()
+      currentDocumentRef.current = startDocument
       setHistory((current) =>
         Object.is(current.current, startDocument)
           ? current
@@ -876,7 +982,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         return
       }
 
-      setSelection(getElementsInMarquee(activeSlide.elements, rect))
+      setSelection(getElementsInMarquee(
+        rootElements.filter((element) => !element.locked),
+        rect,
+      ))
     }
 
     window.addEventListener('pointermove', onMove)
@@ -885,6 +994,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function onResizePointerDown(event: React.PointerEvent, element: FreeformElement) {
     if (renderScale === null) return
+    if (element.locked || element.hidden) {
+      event.preventDefault()
+      event.stopPropagation()
+      blurActiveTypingTarget()
+      return
+    }
     const interactionScale = renderScale
     const pointerId = event.pointerId
     event.preventDefault()
@@ -894,21 +1009,32 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const startDocument = doc
     const startX = event.clientX
     const startY = event.clientY
-    const startW = element.width
-    const startH = element.height
+    const startW = element.width * element.scale
+    const startH = element.height * element.scale
+    activeInteractionRef.current = 'resize'
     setActiveInteraction('resize')
 
     const onMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return
       const dx = (moveEvent.clientX - startX) / interactionScale
       const dy = (moveEvent.clientY - startY) / interactionScale
-      const width = Math.round(clamp(startW + dx, 40, activeSlide.width - element.x))
-      const height = Math.round(clamp(startH + dy, 40, activeSlide.height - element.y))
+      const visualLeft = element.x + (element.width - startW) / 2
+      const visualTop = element.y + (element.height - startH) / 2
+      const visualRight = visualLeft + startW
+      const visualBottom = visualTop + startH
+      const visualWidth = startW + clamp(dx, 40 - startW, activeSlide.width - visualRight)
+      const visualHeight = startH + clamp(dy, 40 - startH, activeSlide.height - visualBottom)
+      const width = visualWidth / element.scale
+      const height = visualHeight / element.scale
+      const widthDelta = width - element.width
+      const heightDelta = height - element.height
+      const x = element.x + ((element.scale - 1) * widthDelta) / 2
+      const y = element.y + ((element.scale - 1) * heightDelta) / 2
       replaceCurrent({
         type: 'element/update',
         slideId: activeSlide.id,
         elementId: element.id,
-        patch: { width, height },
+        patch: { x, y, width, height },
       })
     }
 
@@ -917,6 +1043,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
       window.removeEventListener('blur', onBlur)
+      activeInteractionRef.current = null
       setSnapLines([])
       setActiveInteraction(null)
     }
@@ -928,6 +1055,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
     const cancelResize = () => {
       cleanupResize()
+      currentDocumentRef.current = startDocument
       setHistory((current) =>
         Object.is(current.current, startDocument)
           ? current
@@ -1351,28 +1479,33 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                     className="freeform-artwork-clip"
                     onPointerDown={onArtboardPointerDown}
                   >
-                    {activeSlide.elements.map((element) => (
-                      <div
-                        key={element.id}
-                        className="freeform-element"
-                        data-testid="freeform-element"
-                        data-selected={selection.includes(element.id) ? 'true' : 'false'}
-                        onPointerDown={(event) => onElementPointerDown(event, element)}
-                        style={{
-                          left: element.x,
-                          top: element.y,
-                          width: element.width,
-                          height: element.height,
-                          transform: `rotate(${element.rotation}deg)`,
-                        }}
-                      >
-                        <FreeformElementContent
-                          element={element}
-                          onTextChange={(text) => updateElement(element.id, { text })}
-                          onTextFocus={() => setSelection([element.id])}
-                        />
-                      </div>
-                    ))}
+                    <FreeformSceneNodeView
+                      nodes={activeSlide.nodes}
+                      activeParentPath={activeGroupPath}
+                      selectedPaths={selectionPaths}
+                      onNodePointerDown={onSceneNodePointerDown}
+                      onTextChange={(path, text) => {
+                        const directPath = directChildPathForScope(
+                          activeSlide.nodes,
+                          activeGroupPath,
+                          path,
+                        )
+                        if (!directPath || scenePathKey(directPath) !== scenePathKey(path)) return
+                        applyAction({
+                          type: 'node/update-content',
+                          slideId: activeSlide.id,
+                          updates: [{ path, patch: { text } }],
+                        })
+                      }}
+                      onTextFocus={(path) => {
+                        const directPath = directChildPathForScope(
+                          activeSlide.nodes,
+                          activeGroupPath,
+                          path,
+                        )
+                        if (directPath) setSelection([directPath[directPath.length - 1]])
+                      }}
+                    />
                     {marqueeRect && (
                       <div
                         className="freeform-ui-only freeform-marquee"
@@ -1394,7 +1527,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                     ))}
                   </div>
                   <FreeformSelectionOverlay
-                    elements={activeSlide.elements}
+                    elements={rootElements.filter((element) => !element.locked)}
                     selectedIds={liveSelection}
                     renderScale={renderScale}
                     activeInteraction={activeInteraction}
@@ -1802,99 +1935,5 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         </div>
       )}
     </div>
-  )
-}
-
-interface FreeformElementContentProps {
-  element: FreeformElement
-  onTextChange: (text: string) => void
-  onTextFocus: () => void
-}
-
-function FreeformElementContent({ element, onTextChange, onTextFocus }: FreeformElementContentProps) {
-  if (element.type === 'text') {
-    return (
-      <PlainTextEditable
-        className="freeform-textbox"
-        ariaLabel="文本内容"
-        value={element.text}
-        onFocus={onTextFocus}
-        onChange={onTextChange}
-        style={{
-          fontFamily: element.fontFamily,
-          fontSize: element.fontSize,
-          ...textFillToStyle(element.textFill),
-          textAlign: element.align,
-          fontWeight: element.fontWeight,
-        }}
-      />
-    )
-  }
-
-  if (element.type === 'image') {
-    return (
-      <img
-        className="freeform-image"
-        src={store.images.resolve(element.src)}
-        alt={element.alt}
-        draggable={false}
-        style={{ objectFit: element.fit }}
-      />
-    )
-  }
-
-  if (element.type === 'line') {
-    const markerId = `arrow-${element.id}`
-    return (
-      <svg
-        className="freeform-line"
-        data-testid={element.lineKind === 'arrow' ? 'freeform-arrow' : 'freeform-line'}
-        viewBox={`0 0 ${element.width} ${element.height}`}
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        {element.lineKind === 'arrow' && (
-          <defs>
-            <marker
-              id={markerId}
-              markerWidth="12"
-              markerHeight="12"
-              refX="10"
-              refY="6"
-              orient="auto"
-              markerUnits="strokeWidth"
-            >
-              <path d="M 0 0 L 12 6 L 0 12 z" fill={element.stroke} />
-            </marker>
-          </defs>
-        )}
-        <line
-          x1={element.strokeWidth}
-          y1={element.height / 2}
-          x2={element.width - element.strokeWidth * 2}
-          y2={element.height / 2}
-          stroke={element.stroke}
-          strokeWidth={element.strokeWidth}
-          strokeLinecap="round"
-          markerEnd={element.lineKind === 'arrow' ? `url(#${markerId})` : undefined}
-        />
-      </svg>
-    )
-  }
-
-  return (
-    <div
-      className={`freeform-shape shape-${element.shape}`}
-      data-testid={element.fill.type === 'image' ? 'freeform-shape-image-fill' : 'freeform-shape'}
-      style={{
-        ...shapeFillToStyle(
-          element.fill.type === 'image'
-            ? { ...element.fill, src: store.images.resolve(element.fill.src) }
-            : element.fill,
-        ),
-        borderColor: element.stroke,
-        borderWidth: element.strokeWidth,
-      }}
-    />
   )
 }

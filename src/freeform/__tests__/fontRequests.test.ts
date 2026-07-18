@@ -21,12 +21,16 @@ function text(
 ): FreeformTextElement {
   return {
     id,
+    name: id,
+    locked: false,
+    hidden: false,
     type: 'text',
     x: 0,
     y: 0,
     width: 200,
     height: 100,
     rotation: 0,
+    scale: 1,
     text: value,
     fontSize: 32,
     fontFamily,
@@ -36,14 +40,14 @@ function text(
   }
 }
 
-function slide(id: string, elements: FreeformTextElement[]): FreeformSlide {
+function slide(id: string, nodes: FreeformTextElement[]): FreeformSlide {
   return {
     id,
     name: id,
     width: 1080,
     height: 1440,
     background: { type: 'solid', color: '#ffffff' },
-    elements,
+    nodes,
   }
 }
 
@@ -55,10 +59,7 @@ function sceneText(
 ): FreeformSceneLeaf {
   return {
     ...text(id, value, fontFamily, fontWeight),
-    name: id,
-    locked: false,
     hidden: true,
-    scale: 1,
   }
 }
 

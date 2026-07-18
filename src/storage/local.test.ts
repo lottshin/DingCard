@@ -1,17 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SaveDraftInput } from '../drafts'
-import type { FreeformDocument, FreeformImageElement, FreeformShapeElement } from '../freeform/types'
+import { normalizeFreeformDocumentV3 } from '../freeform/sceneDocument'
+import type {
+  FreeformDocumentV3,
+  FreeformGroupNode,
+  FreeformSceneLeaf,
+  FreeformSceneNode,
+} from '../freeform/types'
 
-function image(src: string): FreeformImageElement & { legacyField?: string } {
+function image(id: string, src: string): FreeformSceneLeaf & { legacyField?: string } {
   return {
-    id: 'image-1',
+    id,
+    name: id,
+    locked: false,
+    hidden: false,
     type: 'image',
     x: 10,
     y: 20,
     width: 300,
     height: 200,
     rotation: 0,
+    scale: 1,
     src,
     alt: 'photo',
     fit: 'cover',
@@ -19,15 +29,19 @@ function image(src: string): FreeformImageElement & { legacyField?: string } {
   }
 }
 
-function imageShape(src: string): FreeformShapeElement {
+function imageShape(id: string, src: string): FreeformSceneLeaf {
   return {
-    id: 'shape-1',
+    id,
+    name: id,
+    locked: false,
+    hidden: false,
     type: 'shape',
     x: 30,
     y: 40,
     width: 240,
     height: 160,
     rotation: 0,
+    scale: 1,
     shape: 'rect',
     fill: { type: 'image', src, fit: 'contain' },
     stroke: '#000000',
@@ -35,21 +49,119 @@ function imageShape(src: string): FreeformShapeElement {
   }
 }
 
-function freeformDocument(src: string): FreeformDocument {
+function group(
+  id: string,
+  children: FreeformSceneNode[],
+  hidden = false,
+): FreeformGroupNode {
+  return {
+    id,
+    name: id,
+    locked: false,
+    hidden,
+    type: 'group',
+    x: 0,
+    y: 0,
+    rotation: 0,
+    scale: 1,
+    children,
+  }
+}
+
+function freeformDocument(imageSrc: string, shapeSrc = imageSrc): FreeformDocumentV3 {
+  return {
+    documentVersion: 3,
+    activeSlideId: 'page-1',
+    slides: [{
+      id: 'page-1',
+      name: 'Page 1',
+      width: 1080,
+      height: 1440,
+      background: { type: 'solid', color: '#ffffff' },
+      nodes: [group('outer', [
+        image('image-1', imageSrc),
+        group('inner', [imageShape('shape-1', shapeSrc)], true),
+      ])],
+    }],
+  }
+}
+
+function legacyFreeformDocument() {
   return {
     documentVersion: 2,
     activeSlideId: 'page-1',
-    slides: [
-      {
-        id: 'page-1',
-        name: 'Page 1',
-        width: 1080,
-        height: 1440,
-        background: { type: 'solid', color: '#ffffff' },
-        elements: [image(src), imageShape(src)],
-      },
-    ],
+    slides: [{
+      id: 'page-1',
+      name: 'Page 1',
+      width: 1080,
+      height: 1440,
+      background: { type: 'solid', color: '#ffffff' },
+      elements: [{
+        id: 'legacy-image',
+        type: 'image',
+        x: 10,
+        y: 20,
+        width: 300,
+        height: 200,
+        rotation: 0,
+        src: 'data:image/png;base64,legacy',
+        alt: 'legacy',
+        fit: 'cover',
+      }],
+    }],
   }
+}
+
+function textNode(id: string) {
+  return {
+    id,
+    name: id,
+    locked: false,
+    hidden: false,
+    type: 'text' as const,
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    rotation: 0,
+    scale: 1,
+    text: id,
+    fontSize: 12,
+    fontFamily: 'system-ui',
+    textFill: { type: 'solid' as const, color: '#111111' },
+    align: 'left' as const,
+    fontWeight: 'normal' as const,
+  }
+}
+
+function strictSlide(id: string, nodes: unknown[] = []) {
+  return {
+    id,
+    name: id,
+    width: 1024,
+    height: 768,
+    background: { type: 'solid' as const, color: '#ffffff' },
+    nodes,
+  }
+}
+
+function nestedGroups(depth: number): unknown {
+  let node: unknown = textNode(`node-${depth}`)
+  for (let level = depth - 1; level >= 1; level -= 1) {
+    node = {
+      id: `node-${level}`,
+      name: `Group ${level}`,
+      locked: false,
+      hidden: false,
+      type: 'group',
+      x: 0,
+      y: 0,
+      rotation: 0,
+      scale: 1,
+      children: [node],
+    }
+  }
+  return node
 }
 
 function validStoredDraft(id: string) {
@@ -86,18 +198,19 @@ describe('LocalStore freeform image persistence', () => {
     vi.unstubAllGlobals()
   })
 
-  it('does not overwrite an existing local draft when materialization fails', async () => {
+  it('does not overwrite an existing local draft when nested materialization fails', async () => {
     const key = 'slicer.drafts.user-1'
     const existing = JSON.stringify([validStoredDraft('draft-1')])
     values.set(key, existing)
     const { createLocalStore } = await import('./local')
     const store = createLocalStore()
+    store.images.register('img:available-local-ref', 'data:image/png;base64,available')
 
     await expect(store.drafts.save('user-1', {
       id: 'draft-1',
       mode: 'freeform-slide',
-      document: freeformDocument('img:missing-local-ref'),
-    })).rejects.toThrow('本地图片引用无法解析：img:missing-local-ref')
+      document: freeformDocument('img:available-local-ref', 'img:missing-local-ref'),
+    })).rejects.toThrow(/img:missing-local-ref/)
 
     expect(setItem).not.toHaveBeenCalled()
     expect(values.get(key)).toBe(existing)
@@ -108,7 +221,50 @@ describe('LocalStore freeform image persistence', () => {
       {
         id: 'draft-freeform',
         mode: 'freeform-slide',
-        document: { documentVersion: 2, activeSlideId: 'missing', slides: [] },
+        document: {
+          documentVersion: 3,
+          activeSlideId: 'missing',
+          slides: [strictSlide('slide-1')],
+        },
+      },
+      {
+        id: 'too-many-slides',
+        mode: 'freeform-slide',
+        document: {
+          documentVersion: 3,
+          activeSlideId: 'slide-0',
+          slides: Array.from({ length: 501 }, (_, index) => strictSlide(`slide-${index}`)),
+        },
+      },
+      {
+        id: 'too-many-nodes',
+        mode: 'freeform-slide',
+        document: {
+          documentVersion: 3,
+          activeSlideId: 'slide-1',
+          slides: [strictSlide(
+            'slide-1',
+            Array.from({ length: 5001 }, (_, index) => textNode(`node-${index}`)),
+          )],
+        },
+      },
+      {
+        id: 'non-finite-transform',
+        mode: 'freeform-slide',
+        document: {
+          documentVersion: 3,
+          activeSlideId: 'slide-1',
+          slides: [strictSlide('slide-1', [{ ...textNode('text-1'), rotation: Infinity }])],
+        },
+      },
+      {
+        id: 'too-deep',
+        mode: 'freeform-slide',
+        document: {
+          documentVersion: 3,
+          activeSlideId: 'slide-1',
+          slides: [strictSlide('slide-1', [nestedGroups(33)])],
+        },
       },
       {
         id: 'draft-markdown',
@@ -137,13 +293,17 @@ describe('LocalStore freeform image persistence', () => {
     }
   })
 
-  it('materializes before writing and returns the normalized saved draft', async () => {
-    const ref = 'img:local-success'
-    const dataUrl = 'data:image/png;base64,persisted'
+  it('materializes nested images before writing and returns strict v3', async () => {
+    const imageRef = 'img:local-image'
+    const shapeRef = 'img:local-shape'
+    const imageDataUrl = 'data:image/png;base64,image'
+    const shapeDataUrl = 'data:image/png;base64,shape'
     const { createLocalStore } = await import('./local')
     const store = createLocalStore()
-    store.images.register(ref, dataUrl)
-    const input = freeformDocument(ref)
+    store.images.register(imageRef, imageDataUrl)
+    store.images.register(shapeRef, shapeDataUrl)
+    const input = freeformDocument(imageRef, shapeRef)
+    const snapshot = structuredClone(input)
 
     const saved = await store.drafts.save('user-1', {
       id: 'draft-success',
@@ -153,22 +313,54 @@ describe('LocalStore freeform image persistence', () => {
 
     expect(setItem).toHaveBeenCalledTimes(1)
     const persisted = values.get('slicer.drafts.user-1') ?? ''
-    expect(persisted).toContain(dataUrl)
-    expect(persisted).not.toContain(ref)
-    expect(input.slides[0].elements.map((element) => (
-      element.type === 'image'
-        ? element.src
-        : element.type === 'shape' && element.fill.type === 'image'
-          ? element.fill.src
-          : null
-    ))).toEqual([ref, ref])
+    expect(persisted).toContain(imageDataUrl)
+    expect(persisted).toContain(shapeDataUrl)
+    expect(persisted).not.toContain(imageRef)
+    expect(persisted).not.toContain(shapeRef)
+    expect(input).toEqual(snapshot)
 
     expect(saved.mode).toBe('freeform-slide')
     if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    const savedImage = saved.document.slides[0].elements[0]
+    expect(normalizeFreeformDocumentV3(saved.document)).toEqual(saved.document)
+    const outer = saved.document.slides[0].nodes[0]
+    expect(outer.type).toBe('group')
+    if (outer.type !== 'group') throw new Error('Expected outer group')
+    const savedImage = outer.children[0]
     expect(savedImage.type).toBe('image')
     if (savedImage.type !== 'image') throw new Error('Expected image element')
-    expect(savedImage.src).toBe(dataUrl)
+    expect(savedImage.src).toBe(imageDataUrl)
     expect(savedImage).not.toHaveProperty('legacyField')
+    const inner = outer.children[1]
+    expect(inner.type).toBe('group')
+    if (inner.type !== 'group') throw new Error('Expected inner group')
+    const savedShape = inner.children[0]
+    expect(savedShape.type).toBe('shape')
+    if (savedShape.type !== 'shape' || savedShape.fill.type !== 'image') {
+      throw new Error('Expected image-filled shape')
+    }
+    expect(savedShape.fill.src).toBe(shapeDataUrl)
+  })
+
+  it('migrates a v2 save and every later local read to strict v3', async () => {
+    const { createLocalStore } = await import('./local')
+    const store = createLocalStore()
+
+    const saved = await store.drafts.save('migration-user', {
+      id: 'legacy-draft',
+      mode: 'freeform-slide',
+      document: legacyFreeformDocument(),
+    } as unknown as SaveDraftInput)
+    const listed = await store.drafts.list('migration-user')
+
+    expect(saved.mode).toBe('freeform-slide')
+    expect(listed).toHaveLength(1)
+    if (saved.mode !== 'freeform-slide' || listed[0]?.mode !== 'freeform-slide') {
+      throw new Error('Expected freeform drafts')
+    }
+    expect(saved.document.documentVersion).toBe(3)
+    expect(saved.document.slides[0].nodes).toHaveLength(1)
+    expect(saved.document.slides[0]).not.toHaveProperty('elements')
+    expect(listed[0].document).toEqual(saved.document)
+    expect(normalizeFreeformDocumentV3(listed[0].document)).toEqual(listed[0].document)
   })
 })

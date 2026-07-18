@@ -49,9 +49,9 @@ export function collectFreeformFontRequests(slides: FreeformSlide[]): FreeformFo
   const groups = new Map<string, FontRequestGroup>()
 
   for (const slide of slides) {
-    for (const element of slide.elements) {
-      if (element.type === 'text') addFontText(groups, element)
-    }
+    walkScene(slide.nodes, (node) => {
+      if (node.type === 'text') addFontText(groups, node)
+    })
   }
 
   return finishFontRequests(groups)
@@ -61,13 +61,7 @@ export function collectFreeformFontRequests(slides: FreeformSlide[]): FreeformFo
 export function collectFreeformFontRequestsV3(
   slides: readonly FreeformSlideV3[],
 ): FreeformFontRequest[] {
-  const groups = new Map<string, FontRequestGroup>()
-  for (const slide of slides) {
-    walkScene(slide.nodes, (node) => {
-      if (node.type === 'text') addFontText(groups, node)
-    })
-  }
-  return finishFontRequests(groups)
+  return collectFreeformFontRequests([...slides])
 }
 
 export async function buildFreeformFontCSS(

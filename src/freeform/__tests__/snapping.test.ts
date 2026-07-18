@@ -11,6 +11,9 @@ const rect = (
   height = 100,
 ): FreeformElement => ({
   id,
+  name: id,
+  locked: false,
+  hidden: false,
   type: 'shape',
   shape: 'rect',
   x,
@@ -18,6 +21,7 @@ const rect = (
   width,
   height,
   rotation: 0,
+  scale: 1,
   fill: { type: 'solid', color: '#fff' },
   stroke: '#000',
   strokeWidth: 0,
@@ -45,6 +49,17 @@ it('snaps a dragged element to the page left edge', () => {
   })
 })
 
+it('snaps a scaled visual edge to the page edge', () => {
+  const slide = { width: 1000, height: 800 }
+  const elements = [{ ...rect('a', 100, 100, 100, 100), scale: 2 }]
+
+  expect(snapDrag(slide, elements, ['a'], -45, 0)).toEqual({
+    dx: -50,
+    dy: 0,
+    lines: [{ axis: 'x', position: 0, source: 'page' }],
+  })
+})
+
 it('snaps a dragged element to another element left edge', () => {
   const slide = { width: 1200, height: 800 }
   const elements = [rect('a', 100, 100), rect('b', 400, 120, 140, 100)]
@@ -53,6 +68,20 @@ it('snaps a dragged element to another element left edge', () => {
     dx: 300,
     dy: 0,
     lines: [{ axis: 'x', position: 400, source: 'element' }],
+  })
+})
+
+it('uses a scaled unselected element as a visual snap reference', () => {
+  const slide = { width: 1200, height: 800 }
+  const elements = [
+    rect('a', 100, 100),
+    { ...rect('b', 400, 120), scale: 2 },
+  ]
+
+  expect(snapDrag(slide, elements, ['a'], 145, 0)).toEqual({
+    dx: 150,
+    dy: 0,
+    lines: [{ axis: 'x', position: 350, source: 'element' }],
   })
 })
 

@@ -13,6 +13,9 @@ expectTypeOf(moveElementsWithinSlide)
 
 const element = (id: string, x: number, y: number, width = 100, height = 100): FreeformElement => ({
   id,
+  name: id,
+  locked: false,
+  hidden: false,
   type: 'shape',
   shape: 'rect',
   x,
@@ -20,6 +23,7 @@ const element = (id: string, x: number, y: number, width = 100, height = 100): F
   width,
   height,
   rotation: 0,
+  scale: 1,
   fill: { type: 'solid', color: '#fff' },
   stroke: '#000',
   strokeWidth: 0,
@@ -60,6 +64,15 @@ it('does not select elements that only touch the marquee edge', () => {
   const elements = [element('a', 100, 100)]
 
   expect(getElementsInMarquee(elements, { x: 200, y: 100, width: 80, height: 100 })).toEqual([])
+})
+
+it('uses scaled visual bounds when testing marquee intersections', () => {
+  const scaled = { ...element('scaled', 200, 100), scale: 2 }
+
+  expect(getElementsInMarquee(
+    [scaled],
+    { x: 140, y: 80, width: 20, height: 40 },
+  )).toEqual(['scaled'])
 })
 
 it('returns no patches for an empty selection', () => {
@@ -129,5 +142,27 @@ it('moves selected elements together while keeping the group inside the slide', 
   expect(moveElementsWithinSlide(slide, elements, ['a', 'b'], 120, 0)).toEqual([
     { elementId: 'a', patch: { x: 60, y: 80 } },
     { elementId: 'b', patch: { x: 360, y: 120 } },
+  ])
+})
+
+it('clamps scaled and rotated elements by their visual bounds', () => {
+  const slide = { width: 500, height: 400 }
+  const scaled = { ...element('scaled', 300, 100), scale: 2 }
+  const rotated = {
+    ...element('rotated', 200, 200, 100, 50),
+    rotation: 90,
+  }
+
+  expect(moveElementsWithinSlide(slide, [scaled], ['scaled'], 100, 0)).toEqual([
+    { elementId: 'scaled', patch: { x: 350, y: 100 } },
+  ])
+  expect(moveElementsWithinSlide(
+    { width: 300, height: 300 },
+    [rotated],
+    ['rotated'],
+    100,
+    100,
+  )).toEqual([
+    { elementId: 'rotated', patch: { x: 225, y: 225 } },
   ])
 })

@@ -57,8 +57,10 @@ export function FreeformSelectionOverlay({
             top: element.y,
             width: element.width,
             height: element.height,
-            transform: `rotate(${element.rotation}deg)`,
-            '--freeform-inverse-scale': inverseScale,
+            transform: `rotate(${element.rotation}deg) scale(${element.scale})`,
+            '--freeform-inverse-scale': element.scale > 0
+              ? inverseScale / element.scale
+              : inverseScale,
           }
 
           return (

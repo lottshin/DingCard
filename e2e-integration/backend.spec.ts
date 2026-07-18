@@ -646,12 +646,31 @@ test.describe('remote backend integration', () => {
     await expect(saveButton).toBeEnabled()
     await expect(page.getByTestId('freeform-slide-meta')).not.toContainText('已保存')
 
+    const secondSaveResponsePromise = page.waitForResponse((response) => (
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/drafts'
+    ))
     await saveButton.click()
+    const secondSaveResponse = await secondSaveResponsePromise
+    expect(secondSaveResponse.ok()).toBe(true)
     await expect.poll(() => postBodies.length).toBe(2)
     const secondDocument = postBodies[1].document as {
-      slides: Array<{ elements: unknown[] }>
+      documentVersion: unknown
+      slides: Array<{ nodes: unknown[]; elements?: unknown }>
     }
-    expect(secondDocument.slides[0].elements).toHaveLength(2)
+    expect(secondDocument.documentVersion).toBe(3)
+    expect(secondDocument.slides[0]).not.toHaveProperty('elements')
+    expect(secondDocument.slides[0].nodes).toHaveLength(2)
+
+    const secondSavedDraft = await secondSaveResponse.json() as {
+      document: {
+        documentVersion: unknown
+        slides: Array<{ nodes: unknown[]; elements?: unknown }>
+      }
+    }
+    expect(secondSavedDraft.document.documentVersion).toBe(3)
+    expect(secondSavedDraft.document.slides[0]).not.toHaveProperty('elements')
+    expect(secondSavedDraft.document.slides[0].nodes).toHaveLength(2)
   })
 
   test('clears the saved marker after deleting the active freeform draft', async ({ page }) => {

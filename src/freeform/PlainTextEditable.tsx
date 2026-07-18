@@ -6,6 +6,7 @@ interface PlainTextEditableProps {
   className?: string
   style?: CSSProperties
   ariaLabel: string
+  readOnly?: boolean
   onFocus: () => void
   onChange: (value: string) => void
 }
@@ -15,6 +16,7 @@ export function PlainTextEditable({
   className,
   style,
   ariaLabel,
+  readOnly = false,
   onFocus,
   onChange,
 }: PlainTextEditableProps) {
@@ -29,10 +31,12 @@ export function PlainTextEditable({
   }, [value])
 
   function publish() {
+    if (readOnly) return
     onChange(ref.current?.textContent ?? '')
   }
 
   function insertPlainText(text: string) {
+    if (readOnly) return
     const root = ref.current
     if (!root) return
 
@@ -59,7 +63,8 @@ export function PlainTextEditable({
       data-testid="freeform-textbox"
       role="textbox"
       aria-label={ariaLabel}
-      contentEditable
+      aria-readonly={readOnly}
+      contentEditable={!readOnly}
       suppressContentEditableWarning
       spellCheck={false}
       style={style}
@@ -69,18 +74,21 @@ export function PlainTextEditable({
       }}
       onBlur={() => {
         focusedRef.current = false
-        publish()
+        if (!readOnly) publish()
       }}
-      onInput={publish}
+      onInput={() => {
+        if (!readOnly) publish()
+      }}
       onCompositionStart={() => {
-        composingRef.current = true
+        if (!readOnly) composingRef.current = true
       }}
       onCompositionEnd={() => {
         composingRef.current = false
-        publish()
+        if (!readOnly) publish()
       }}
       onPaste={(event) => {
         event.preventDefault()
+        if (readOnly) return
         insertPlainText(event.clipboardData.getData('text/plain'))
         publish()
       }}

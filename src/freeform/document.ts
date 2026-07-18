@@ -86,14 +86,14 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
     width,
     height,
     background: { ...DEFAULT_PAGE_PAINT },
-    elements: [],
+    nodes: [],
   }
 }
 
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 2,
+    documentVersion: 3,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -111,9 +111,13 @@ function centerBox(slide: FreeformSlide, width: number, height: number) {
 export function createTextElement(slide: FreeformSlide): FreeformTextElement {
   return {
     id: crypto.randomUUID(),
+    name: '文本',
+    locked: false,
+    hidden: false,
     type: 'text',
     ...centerBox(slide, Math.min(520, Math.round(slide.width * 0.55)), 150),
     rotation: 0,
+    scale: 1,
     text: '双击编辑文本',
     fontSize: 48,
     fontFamily: 'PingFang SC, Microsoft YaHei, system-ui, sans-serif',
@@ -130,9 +134,13 @@ export function createImageElement(
 ): FreeformImageElement {
   return {
     id: crypto.randomUUID(),
+    name: '图片',
+    locked: false,
+    hidden: false,
     type: 'image',
     ...centerBox(slide, Math.min(560, Math.round(slide.width * 0.58)), 360),
     rotation: 0,
+    scale: 1,
     src,
     alt,
     fit: 'cover',
@@ -145,9 +153,13 @@ export function createShapeElement(
 ): FreeformShapeElement {
   return {
     id: crypto.randomUUID(),
+    name: '形状',
+    locked: false,
+    hidden: false,
     type: 'shape',
     ...centerBox(slide, 360, 240),
     rotation: 0,
+    scale: 1,
     shape,
     fill: { ...DEFAULT_SHAPE_PAINT },
     stroke: '#c2410c',
@@ -161,162 +173,16 @@ export function createLineElement(
 ): FreeformLineElement {
   return {
     id: crypto.randomUUID(),
+    name: lineKind === 'arrow' ? '箭头' : '直线',
+    locked: false,
+    hidden: false,
     type: 'line',
     lineKind,
     ...centerBox(slide, Math.min(520, Math.round(slide.width * 0.55)), 80),
     rotation: 0,
+    scale: 1,
     stroke: '#18181b',
     strokeWidth: 6,
-  }
-}
-
-function withSlide(
-  document: FreeformDocument,
-  slideId: string,
-  update: (slide: FreeformSlide) => FreeformSlide,
-): FreeformDocument {
-  return {
-    ...document,
-    slides: document.slides.map((slide) => (slide.id === slideId ? update(slide) : slide)),
-  }
-}
-
-function cloneSlide(slide: FreeformSlide): FreeformSlide {
-  return {
-    ...slide,
-    id: crypto.randomUUID(),
-    name: `${slide.name} copy`,
-    background: { ...slide.background },
-    elements: slide.elements.map((element) => ({ ...element })),
-  }
-}
-
-function reorderElements(
-  elements: FreeformElement[],
-  elementIds: string[],
-  direction: 'forward' | 'backward' | 'front' | 'back',
-): FreeformElement[] {
-  const selected = new Set(elementIds)
-  if (selected.size === 0) return elements
-
-  if (direction === 'front') {
-    return [...elements.filter((element) => !selected.has(element.id)), ...elements.filter((element) => selected.has(element.id))]
-  }
-  if (direction === 'back') {
-    return [...elements.filter((element) => selected.has(element.id)), ...elements.filter((element) => !selected.has(element.id))]
-  }
-
-  const next = [...elements]
-  if (direction === 'forward') {
-    for (let i = next.length - 2; i >= 0; i--) {
-      if (selected.has(next[i].id) && !selected.has(next[i + 1].id)) {
-        ;[next[i], next[i + 1]] = [next[i + 1], next[i]]
-      }
-    }
-  } else {
-    for (let i = 1; i < next.length; i++) {
-      if (selected.has(next[i].id) && !selected.has(next[i - 1].id)) {
-        ;[next[i - 1], next[i]] = [next[i], next[i - 1]]
-      }
-    }
-  }
-  return next
-}
-
-export function freeformReducer(document: FreeformDocument, action: FreeformAction): FreeformDocument {
-  switch (action.type) {
-    case 'slide/add-after-active': {
-      const activeIndex = document.slides.findIndex((slide) => slide.id === document.activeSlideId)
-      const activeSlide = document.slides[activeIndex] ?? document.slides[0]
-      const slide = {
-        ...createSlide({ inheritFrom: activeSlide }),
-        name: `Page ${document.slides.length + 1}`,
-      }
-      const insertAt = activeIndex >= 0 ? activeIndex + 1 : document.slides.length
-      return {
-        ...document,
-        activeSlideId: slide.id,
-        slides: [
-          ...document.slides.slice(0, insertAt),
-          slide,
-          ...document.slides.slice(insertAt),
-        ],
-      }
-    }
-    case 'slide/duplicate': {
-      const index = document.slides.findIndex((slide) => slide.id === action.slideId)
-      if (index < 0) return document
-      const slide = cloneSlide(document.slides[index])
-      return {
-        ...document,
-        activeSlideId: slide.id,
-        slides: [
-          ...document.slides.slice(0, index + 1),
-          slide,
-          ...document.slides.slice(index + 1),
-        ],
-      }
-    }
-    case 'slide/delete': {
-      if (document.slides.length <= 1) return document
-      const index = document.slides.findIndex((slide) => slide.id === action.slideId)
-      if (index < 0) return document
-      const slides = document.slides.filter((slide) => slide.id !== action.slideId)
-      const fallback = slides[Math.min(index, slides.length - 1)]
-      return {
-        ...document,
-        activeSlideId:
-          document.activeSlideId === action.slideId ? fallback.id : document.activeSlideId,
-        slides,
-      }
-    }
-    case 'slide/select':
-      return document.slides.some((slide) => slide.id === action.slideId)
-        ? { ...document, activeSlideId: action.slideId }
-        : document
-    case 'slide/update':
-      return withSlide(document, action.slideId, (slide) => ({
-        ...slide,
-        ...action.patch,
-      }))
-    case 'slide/resize': {
-      if (!validatePageSize(action.width, action.height).ok) return document
-      const slide = document.slides.find((candidate) => candidate.id === action.slideId)
-      if (!slide || (slide.width === action.width && slide.height === action.height)) {
-        return document
-      }
-      return withSlide(document, action.slideId, (slide) => ({
-        ...slide,
-        width: action.width,
-        height: action.height,
-      }))
-    }
-    case 'element/add':
-      return withSlide(document, action.slideId, (slide) => ({
-        ...slide,
-        elements: [...slide.elements, action.element],
-      }))
-    case 'element/update':
-      return withSlide(document, action.slideId, (slide) => ({
-        ...slide,
-        elements: slide.elements.map((element) =>
-          element.id === action.elementId ? ({ ...element, ...action.patch } as FreeformElement) : element,
-        ),
-      }))
-    case 'element/delete': {
-      const selected = new Set(action.elementIds)
-      return withSlide(document, action.slideId, (slide) => ({
-        ...slide,
-        elements: slide.elements.filter((element) => !selected.has(element.id)),
-      }))
-    }
-    case 'element/reorder':
-      return withSlide(document, action.slideId, (slide) => ({
-        ...slide,
-        elements: reorderElements(slide.elements, action.elementIds, action.direction),
-      }))
-    default:
-      return document
   }
 }
 
@@ -667,6 +533,10 @@ function defaultSceneNodeName(element: FreeformElement): string {
 
 function adaptLegacyElement(element: unknown): FreeformSceneLeaf | null {
   if (!isRecord(element)) return null
+  const sceneStateKeys = ['name', 'locked', 'hidden', 'scale']
+  const sceneStateKeyCount = sceneStateKeys.filter((key) => key in element).length
+  if (sceneStateKeyCount !== 0 && sceneStateKeyCount !== sceneStateKeys.length) return null
+  const hasSceneState = sceneStateKeyCount === sceneStateKeys.length
   const commonKeys = [
     'id',
     'type',
@@ -675,6 +545,7 @@ function adaptLegacyElement(element: unknown): FreeformSceneLeaf | null {
     'width',
     'height',
     'rotation',
+    ...sceneStateKeys,
   ]
   const typeKeys: Record<string, string[]> = {
     text: [
@@ -694,15 +565,17 @@ function adaptLegacyElement(element: unknown): FreeformSceneLeaf | null {
 
   const base = {
     id: element.id as string,
-    name: defaultSceneNodeName(element as unknown as FreeformElement),
-    locked: false,
-    hidden: false,
+    name: hasSceneState
+      ? (element.name as string)
+      : defaultSceneNodeName(element as unknown as FreeformElement),
+    locked: hasSceneState ? (element.locked as boolean) : false,
+    hidden: hasSceneState ? (element.hidden as boolean) : false,
     x: element.x as number,
     y: element.y as number,
     width: element.width as number,
     height: element.height as number,
     rotation: element.rotation as number,
-    scale: 1,
+    scale: hasSceneState ? (element.scale as number) : 1,
   }
   if (element.type === 'text') {
     if (!isValidSceneColorPaint(element.textFill)) return null
@@ -809,7 +682,7 @@ function applyMutationToSlide(
 }
 
 /**
- * Final additive v3 reducer boundary. Every accepted node mutation passes
+ * Final v3 reducer boundary. Every accepted node mutation passes
  * typed permission classification, runtime patch whitelists, and complete
  * scene validation before a new document snapshot is returned.
  */
@@ -1134,4 +1007,12 @@ export function reduceFreeformDocumentV3(
   } catch {
     return document
   }
+}
+
+/** Shipping reducer alias: the runtime document is v3 from this task onward. */
+export function freeformReducer(
+  document: FreeformDocument,
+  action: FreeformAction,
+): FreeformDocument {
+  return reduceFreeformDocumentV3(document, action)
 }

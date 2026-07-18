@@ -24,12 +24,16 @@ import type {
 function image(id: string, src: string): FreeformImageElement {
   return {
     id,
+    name: id,
+    locked: false,
+    hidden: false,
     type: 'image',
     x: 10,
     y: 20,
     width: 300,
     height: 200,
     rotation: 0,
+    scale: 1,
     src,
     alt: id,
     fit: 'cover',
@@ -39,12 +43,16 @@ function image(id: string, src: string): FreeformImageElement {
 function imageShape(id: string, src: string): FreeformShapeElement {
   return {
     id,
+    name: id,
+    locked: false,
+    hidden: false,
     type: 'shape',
     x: 30,
     y: 40,
     width: 240,
     height: 160,
     rotation: 0,
+    scale: 1,
     shape: 'rect',
     fill: { type: 'image', src, fit: 'contain' },
     stroke: '#000000',
@@ -52,38 +60,32 @@ function imageShape(id: string, src: string): FreeformShapeElement {
   }
 }
 
-function slide(id: string, elements: FreeformElement[]): FreeformSlide {
+function slide(id: string, nodes: FreeformElement[]): FreeformSlide {
   return {
     id,
     name: id,
     width: 1080,
     height: 1440,
     background: { type: 'solid', color: '#ffffff' },
-    elements,
+    nodes,
   }
 }
 
 function document(...slides: FreeformSlide[]): FreeformDocument {
-  return { documentVersion: 2, activeSlideId: slides[0].id, slides }
+  return { documentVersion: 3, activeSlideId: slides[0].id, slides }
 }
 
 function sceneImage(id: string, src: string): FreeformSceneLeaf {
   return {
     ...image(id, src),
-    name: id,
-    locked: false,
     hidden: true,
-    scale: 1,
   }
 }
 
 function sceneImageShape(id: string, src: string): FreeformSceneLeaf {
   return {
     ...imageShape(id, src),
-    name: id,
-    locked: false,
     hidden: true,
-    scale: 1,
   }
 }
 
@@ -153,10 +155,10 @@ describe('freeform image assets', () => {
 
     expect(output).not.toBe(input)
     expect(output.slides[0]).not.toBe(input.slides[0])
-    expect(output.slides[0].elements[0]).not.toBe(input.slides[0].elements[0])
-    expect(output.slides[0].elements[1]).not.toBe(input.slides[0].elements[1])
-    const outputShape = output.slides[0].elements[1]
-    const inputShape = input.slides[0].elements[1]
+    expect(output.slides[0].nodes[0]).not.toBe(input.slides[0].nodes[0])
+    expect(output.slides[0].nodes[1]).not.toBe(input.slides[0].nodes[1])
+    const outputShape = output.slides[0].nodes[1]
+    const inputShape = input.slides[0].nodes[1]
     if (outputShape.type !== 'shape' || inputShape.type !== 'shape') throw new Error('Expected shapes')
     expect(outputShape.fill).not.toBe(inputShape.fill)
     expect(collectFreeformImageSources(output)).toEqual([

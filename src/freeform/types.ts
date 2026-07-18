@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 2
+  documentVersion: 3
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -10,7 +10,7 @@ export interface FreeformSlide {
   width: number
   height: number
   background: SlideBackground
-  elements: FreeformElement[]
+  nodes: FreeformSceneNode[]
 }
 
 export type ColorPaint =
@@ -21,14 +21,22 @@ export type SlideBackground =
   | ColorPaint
   | { type: 'transparent' }
 
-export interface FreeformElementBase {
+export interface SceneNodeState {
   id: string
+  name: string
+  locked: boolean
+  hidden: boolean
+}
+
+export interface FreeformElementBase extends SceneNodeState {
   type: 'text' | 'image' | 'shape' | 'line'
   x: number
   y: number
   width: number
   height: number
   rotation: number
+  /** Internal uniform scale used to preserve visual lengths across groups. */
+  scale: number
 }
 
 export interface FreeformTextElement extends FreeformElementBase {
@@ -75,18 +83,7 @@ export type FreeformElement =
  */
 export type ScenePath = readonly string[]
 
-export interface SceneNodeState {
-  id: string
-  name: string
-  locked: boolean
-  hidden: boolean
-}
-
-export type FreeformSceneLeaf = FreeformElement &
-  SceneNodeState & {
-    /** Internal uniform scale used to preserve visual lengths across groups. */
-    scale: number
-  }
+export type FreeformSceneLeaf = FreeformElement
 
 export interface FreeformGroupNode extends SceneNodeState {
   type: 'group'
@@ -100,22 +97,9 @@ export interface FreeformGroupNode extends SceneNodeState {
 
 export type FreeformSceneNode = FreeformSceneLeaf | FreeformGroupNode
 
-/** Additive v3 model. The shipping FreeformSlide alias remains v2 for now. */
-export interface FreeformSlideV3 {
-  id: string
-  name: string
-  width: number
-  height: number
-  background: SlideBackground
-  nodes: FreeformSceneNode[]
-}
-
-/** Additive v3 model. The shipping FreeformDocument alias remains v2 for now. */
-export interface FreeformDocumentV3 {
-  documentVersion: 3
-  slides: FreeformSlideV3[]
-  activeSlideId: string
-}
+/** Compatibility aliases retained for code written during the additive v3 phase. */
+export type FreeformSlideV3 = FreeformSlide
+export type FreeformDocumentV3 = FreeformDocument
 
 export type SceneIdFactory = () => string
 
@@ -163,10 +147,7 @@ export interface FreeformNodeGeometryUpdate {
   patch: FreeformNodeGeometryPatch
 }
 
-/**
- * Additive path-based action model for the recursive v3 scene runtime. The
- * shipping v2 reducer remains separate until the runtime cut-over task.
- */
+/** Path-based action model for the shipping recursive v3 scene runtime. */
 export type FreeformActionV3 =
   | { type: 'slide/add-after-active'; slideId?: string }
   | {
@@ -226,7 +207,7 @@ export type FreeformActionV3 =
       groupIds: string[]
       mode: 'one-level' | 'all-level'
     }
-  /** Temporary root-leaf adapters used by the current v2 workspace at cut-over. */
+  /** Root-leaf compatibility adapters retained for existing workspace actions. */
   | { type: 'element/add'; slideId: string; element: FreeformElement }
   | {
       type: 'element/update'
@@ -246,19 +227,4 @@ export type ShapeFill =
   | ColorPaint
   | { type: 'image'; src: string; fit: 'cover' | 'contain' }
 
-export type FreeformAction =
-  | { type: 'slide/add-after-active' }
-  | { type: 'slide/duplicate'; slideId: string }
-  | { type: 'slide/delete'; slideId: string }
-  | { type: 'slide/select'; slideId: string }
-  | { type: 'slide/update'; slideId: string; patch: Partial<Pick<FreeformSlide, 'name' | 'background'>> }
-  | { type: 'slide/resize'; slideId: string; width: number; height: number }
-  | { type: 'element/add'; slideId: string; element: FreeformElement }
-  | { type: 'element/update'; slideId: string; elementId: string; patch: Partial<FreeformElement> }
-  | { type: 'element/delete'; slideId: string; elementIds: string[] }
-  | {
-      type: 'element/reorder'
-      slideId: string
-      elementIds: string[]
-      direction: 'forward' | 'backward' | 'front' | 'back'
-    }
+export type FreeformAction = FreeformActionV3
