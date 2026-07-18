@@ -13,6 +13,14 @@ import {
   isHexColor,
   normalizeColorPaint,
 } from './paint'
+import {
+  mapSceneLeaves,
+  mapSceneLeavesAsync,
+} from './sceneTree'
+import type {
+  AsyncSceneLeafMapper,
+  SceneLeafMapper,
+} from './sceneTree'
 import type {
   ColorPaint,
   FreeformDocumentV3,
@@ -590,4 +598,58 @@ export function normalizeFreeformDocumentToV3(value: unknown): FreeformDocumentV
     return migrateLegacyFreeformDocumentToV3(value)
   }
   return null
+}
+
+function copySlideBackgroundValue(background: SlideBackground): SlideBackground {
+  if (background.type === 'transparent') return { type: 'transparent' }
+  if (background.type === 'solid') return { type: 'solid', color: background.color }
+  return {
+    type: 'linear-gradient',
+    from: background.from,
+    to: background.to,
+    angle: background.angle,
+  }
+}
+
+/** Map all v3 leaves into a fresh document without changing page structure. */
+export function mapFreeformDocumentV3Leaves(
+  document: FreeformDocumentV3,
+  mapper: SceneLeafMapper,
+): FreeformDocumentV3 {
+  return {
+    documentVersion: 3,
+    activeSlideId: document.activeSlideId,
+    slides: document.slides.map((slide) => ({
+      id: slide.id,
+      name: slide.name,
+      width: slide.width,
+      height: slide.height,
+      background: copySlideBackgroundValue(slide.background),
+      nodes: mapSceneLeaves(slide.nodes, mapper),
+    })),
+  }
+}
+
+/**
+ * Async v3 leaf mapping. Work happens only on owned clones, so a rejection
+ * leaves the source untouched and no partially mapped document is returned.
+ */
+export async function mapFreeformDocumentV3LeavesAsync(
+  document: FreeformDocumentV3,
+  mapper: AsyncSceneLeafMapper,
+): Promise<FreeformDocumentV3> {
+  const slides = await Promise.all(document.slides.map(async (slide) => ({
+    id: slide.id,
+    name: slide.name,
+    width: slide.width,
+    height: slide.height,
+    background: copySlideBackgroundValue(slide.background),
+    nodes: await mapSceneLeavesAsync(slide.nodes, mapper),
+  })))
+
+  return {
+    documentVersion: 3,
+    activeSlideId: document.activeSlideId,
+    slides,
+  }
 }

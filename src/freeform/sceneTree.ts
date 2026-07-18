@@ -533,6 +533,118 @@ function copySceneNodeValues(nodes: readonly FreeformSceneNode[]): FreeformScene
   return nodes.map((node) => copySceneNodeValue(node, 1))
 }
 
+export type SceneLeafMapper = (
+  leaf: FreeformSceneLeaf,
+  path: ScenePath,
+  depth: number,
+) => FreeformSceneLeaf
+
+export type AsyncSceneLeafMapper = (
+  leaf: FreeformSceneLeaf,
+  path: ScenePath,
+  depth: number,
+) => Promise<FreeformSceneLeaf>
+
+function ownMappedSceneLeaf(
+  source: FreeformSceneLeaf,
+  mapped: FreeformSceneLeaf,
+  depth: number,
+): FreeformSceneLeaf {
+  if (
+    !mapped ||
+    typeof mapped !== 'object' ||
+    mapped.id !== source.id ||
+    mapped.type !== source.type
+  ) {
+    throw new TypeError('scene leaf mapper must preserve leaf id and type')
+  }
+
+  const ownedLeaf = copySceneNodeValue(mapped, depth)
+  if (ownedLeaf.type === 'group') {
+    throw new TypeError('scene leaf mapper must preserve leaf id and type')
+  }
+  return ownedLeaf
+}
+
+function mapSceneNode(
+  node: FreeformSceneNode,
+  mapper: SceneLeafMapper,
+  depth: number,
+  parentPath: ScenePath,
+): FreeformSceneNode {
+  requireTraversalDepth(depth)
+  const path = [...parentPath, node.id]
+  if (node.type === 'group') {
+    return {
+      id: node.id,
+      name: node.name,
+      locked: node.locked,
+      hidden: node.hidden,
+      type: 'group',
+      x: node.x,
+      y: node.y,
+      rotation: node.rotation,
+      scale: node.scale,
+      children: node.children.map((child) => mapSceneNode(child, mapper, depth + 1, path)),
+    }
+  }
+
+  const ownedLeaf = copySceneNodeValue(node, depth)
+  if (ownedLeaf.type === 'group') throw new TypeError('expected a scene leaf')
+  return ownMappedSceneLeaf(node, mapper(ownedLeaf, path, depth), depth)
+}
+
+async function mapSceneNodeAsync(
+  node: FreeformSceneNode,
+  mapper: AsyncSceneLeafMapper,
+  depth: number,
+  parentPath: ScenePath,
+): Promise<FreeformSceneNode> {
+  requireTraversalDepth(depth)
+  const path = [...parentPath, node.id]
+  if (node.type === 'group') {
+    return {
+      id: node.id,
+      name: node.name,
+      locked: node.locked,
+      hidden: node.hidden,
+      type: 'group',
+      x: node.x,
+      y: node.y,
+      rotation: node.rotation,
+      scale: node.scale,
+      children: await Promise.all(
+        node.children.map((child) => mapSceneNodeAsync(child, mapper, depth + 1, path)),
+      ),
+    }
+  }
+
+  const ownedLeaf = copySceneNodeValue(node, depth)
+  if (ownedLeaf.type === 'group') throw new TypeError('expected a scene leaf')
+  return ownMappedSceneLeaf(node, await mapper(ownedLeaf, path, depth), depth)
+}
+
+/**
+ * Map every scene leaf into a freshly owned tree. Groups, order, IDs and paths
+ * stay intact; hidden state deliberately does not prune asset-retention work.
+ */
+export function mapSceneLeaves(
+  nodes: readonly FreeformSceneNode[],
+  mapper: SceneLeafMapper,
+): FreeformSceneNode[] {
+  requireTraversalDepth(1)
+  return nodes.map((node) => mapSceneNode(node, mapper, 1, []))
+}
+
+/** Async counterpart to mapSceneLeaves; rejection never exposes a partial tree. */
+export async function mapSceneLeavesAsync(
+  nodes: readonly FreeformSceneNode[],
+  mapper: AsyncSceneLeafMapper,
+): Promise<FreeformSceneNode[]> {
+  requireTraversalDepth(1)
+  return Promise.all(nodes.map((node) => mapSceneNodeAsync(node, mapper, 1, [])))
+}
+
 /** Deep-clone every group and leaf ID while retaining image/font source fields. */
 export function cloneSceneNodes(
   nodes: readonly FreeformSceneNode[],

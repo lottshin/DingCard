@@ -15,6 +15,8 @@ import {
   deleteSceneNodes,
   getChildrenAtPath,
   insertSceneChildren,
+  mapSceneLeaves,
+  mapSceneLeavesAsync,
   recenterSceneAncestors,
   removeNodesAtPath,
   reorderNodesAtPath,
@@ -427,6 +429,140 @@ describe('immutable scene path helpers', () => {
     expect(
       ((clone[0] as FreeformGroupNode).children[1] as FreeformGroupNode).children[0],
     ).toMatchObject({ fill: { type: 'image', src: 'img:shape-kept', fit: 'contain' } })
+  })
+
+  it('maps every nested leaf into a fully owned tree while retaining hierarchy and order', () => {
+    const source = [
+      groupNode('outer', [
+        imageLeaf('photo', { src: 'img:photo', hidden: true }),
+        groupNode('inner', [
+          shapeLeaf('texture', {
+            hidden: true,
+            fill: { type: 'image', src: 'img:texture', fit: 'contain' },
+          }),
+          textLeaf('caption', { fontFamily: "'Noto Serif SC', serif" }),
+        ], { hidden: true }),
+      ], { hidden: true }),
+    ]
+    const snapshot = structuredClone(source)
+    const visits: Array<{ id: string; path: ScenePath; depth: number }> = []
+
+    const mapped = mapSceneLeaves(source, (leaf, leafPath, depth) => {
+      visits.push({ id: leaf.id, path: leafPath, depth })
+      if (leaf.type === 'image') return { ...leaf, src: 'data:image/png;base64,photo' }
+      if (leaf.type === 'shape' && leaf.fill.type === 'image') {
+        return {
+          ...leaf,
+          fill: { ...leaf.fill, src: 'data:image/webp;base64,texture' },
+        }
+      }
+      return leaf
+    })
+
+    expect(visits).toEqual([
+      { id: 'photo', path: ['outer', 'photo'], depth: 2 },
+      { id: 'texture', path: ['outer', 'inner', 'texture'], depth: 3 },
+      { id: 'caption', path: ['outer', 'inner', 'caption'], depth: 3 },
+    ])
+    expect(mapped.map((node) => node.id)).toEqual(['outer'])
+    expect(mapped[0]).not.toBe(source[0])
+    expect((mapped[0] as FreeformGroupNode).children[0]).not.toBe(
+      (source[0] as FreeformGroupNode).children[0],
+    )
+    expect((mapped[0] as FreeformGroupNode).children.map((node) => node.id)).toEqual([
+      'photo',
+      'inner',
+    ])
+    expect(source).toEqual(snapshot)
+  })
+
+  it('rejects a failed async nested-leaf mapping without exposing a partial tree', async () => {
+    const source = [groupNode('outer', [
+      imageLeaf('photo'),
+      groupNode('inner', [shapeLeaf('texture')]),
+    ])]
+    const snapshot = structuredClone(source)
+    let exposed: FreeformSceneNode[] | undefined
+
+    await expect(
+      mapSceneLeavesAsync(source, async (leaf) => {
+        if (leaf.id === 'texture') throw new Error('mapping failed')
+        return leaf.type === 'image' ? { ...leaf, src: '/uploads/photo.png' } : leaf
+      }).then((nodes) => {
+        exposed = nodes
+        return nodes
+      }),
+    ).rejects.toThrow('mapping failed')
+
+    expect(exposed).toBeUndefined()
+    expect(source).toEqual(snapshot)
+  })
+
+  it.each([
+    ['different ID', (leaf: FreeformSceneLeaf) => ({ ...leaf, id: 'changed-id' })],
+    ['different leaf type', (leaf: FreeformSceneLeaf) => shapeLeaf(leaf.id)],
+  ])('rejects a mapped leaf with a %s', (_label, mapper) => {
+    const source = [imageLeaf('photo')]
+
+    expect(() => mapSceneLeaves(source, mapper)).toThrow(
+      'scene leaf mapper must preserve leaf id and type',
+    )
+  })
+
+  it('deep-owns a mapped external leaf and its nested paint', () => {
+    const source = [shapeLeaf('texture')]
+    const external = shapeLeaf('texture', {
+      fill: { type: 'linear-gradient', from: '#111111', to: '#eeeeee', angle: 25 },
+    })
+
+    const mapped = mapSceneLeaves(source, () => external)
+    const output = mapped[0]
+
+    expect(output).not.toBe(external)
+    expect(output.type).toBe('shape')
+    if (output.type !== 'shape' || external.type !== 'shape') throw new Error('Expected shapes')
+    expect(output.fill).not.toBe(external.fill)
+    external.fill = { type: 'solid', color: '#000000' }
+    expect(output.fill).toEqual({
+      type: 'linear-gradient',
+      from: '#111111',
+      to: '#eeeeee',
+      angle: 25,
+    })
+  })
+
+  it('enforces async mapper identity and ownership contracts', async () => {
+    const source = [shapeLeaf('texture')]
+    const external = shapeLeaf('texture', {
+      fill: { type: 'image', src: 'img:external', fit: 'contain' },
+    })
+
+    await expect(
+      mapSceneLeavesAsync(source, async (leaf) => ({ ...leaf, id: 'changed-id' })),
+    ).rejects.toThrow('scene leaf mapper must preserve leaf id and type')
+
+    const mapped = await mapSceneLeavesAsync(source, async () => external)
+    expect(mapped[0]).not.toBe(external)
+    if (mapped[0].type !== 'shape' || external.type !== 'shape') throw new Error('Expected shapes')
+    expect(mapped[0].fill).not.toBe(external.fill)
+  })
+
+  it('enforces the shared depth limit for sync and async leaf mapping', async () => {
+    const nestedScene = (depth: number): FreeformSceneNode[] => {
+      let node: FreeformSceneNode = textLeaf(`leaf-${depth}`)
+      for (let level = depth - 1; level >= 1; level -= 1) {
+        node = groupNode(`group-${level}`, [node])
+      }
+      return [node]
+    }
+    const atLimit = nestedScene(MAX_SCENE_DEPTH)
+    const overLimit = nestedScene(MAX_SCENE_DEPTH + 1)
+
+    expect(mapSceneLeaves(atLimit, (leaf) => leaf)).toHaveLength(1)
+    expect(() => mapSceneLeaves(overLimit, (leaf) => leaf)).toThrow(RangeError)
+    await expect(
+      mapSceneLeavesAsync(overLimit, async (leaf) => leaf),
+    ).rejects.toThrow(RangeError)
   })
 })
 
@@ -1700,38 +1836,71 @@ describe('v3 reducer safety limits and stable failures', () => {
     expect((result.slides[0].nodes[1] as FreeformGroupNode).children).toHaveLength(1)
   })
 
-  it('duplicates a slide with fresh recursive IDs and retained nested fields', () => {
+  it('duplicates a slide with fresh recursive IDs, stable order, and retained nested fields', () => {
     const original = documentWith([
       groupNode('group', [
-        imageLeaf('image', { src: 'img:retained' }),
+        imageLeaf('image', {
+          src: 'img:retained',
+          alt: 'Retained image',
+          fit: 'cover',
+          hidden: true,
+        }),
         groupNode('nested', [
           shapeLeaf('shape', {
             fill: { type: 'image', src: 'img:fill-retained', fit: 'contain' },
+            stroke: '#123456',
           }),
-        ]),
-      ]),
+        ], { rotation: 23, scale: 1.4 }),
+      ], { name: 'Named group', x: 47, y: 93, rotation: -11, scale: 0.8 }),
+      lineLeaf('root-line', { lineKind: 'arrow', stroke: '#abcdef' }),
     ])
+    const snapshot = structuredClone(original)
 
     const duplicated = reduceFreeformDocumentV3(original, {
       type: 'slide/duplicate',
       slideId: 'slide-1',
       duplicateSlideId: 'slide-copy',
-      nodeIdFactory: makeIdFactory(['group-copy', 'image-copy', 'nested-copy', 'shape-copy']),
+      nodeIdFactory: makeIdFactory([
+        'group-copy',
+        'image-copy',
+        'nested-copy',
+        'shape-copy',
+        'root-line-copy',
+      ]),
     })
 
     expect(duplicated).not.toBe(original)
     expect(duplicated.activeSlideId).toBe('slide-copy')
     expect(duplicated.slides.map((candidate) => candidate.id)).toEqual(['slide-1', 'slide-copy'])
     const copy = duplicated.slides[1]
-    expect(copy.nodes[0].id).toBe('group-copy')
+    expect(copy.nodes.map((node) => node.id)).toEqual(['group-copy', 'root-line-copy'])
     const copiedGroup = copy.nodes[0] as FreeformGroupNode
     expect(copiedGroup.children.map((node) => node.id)).toEqual(['image-copy', 'nested-copy'])
-    expect(copiedGroup.children[0]).toMatchObject({ src: 'img:retained' })
+    expect(copiedGroup).toMatchObject({
+      name: 'Named group',
+      x: 47,
+      y: 93,
+      rotation: -11,
+      scale: 0.8,
+    })
+    expect(copiedGroup.children[0]).toMatchObject({
+      src: 'img:retained',
+      alt: 'Retained image',
+      fit: 'cover',
+      hidden: true,
+    })
+    expect(copiedGroup.children[1]).toMatchObject({ rotation: 23, scale: 1.4 })
     expect((copiedGroup.children[1] as FreeformGroupNode).children[0]).toMatchObject({
       id: 'shape-copy',
       fill: { type: 'image', src: 'img:fill-retained', fit: 'contain' },
+      stroke: '#123456',
     })
-    expect(original.slides).toHaveLength(1)
+    expect(copy.nodes[1]).toMatchObject({ lineKind: 'arrow', stroke: '#abcdef' })
+    expect(copy.nodes).not.toBe(original.slides[0].nodes)
+    expect(copiedGroup.children).not.toBe(
+      (original.slides[0].nodes[0] as FreeformGroupNode).children,
+    )
+    expect(original).toEqual(snapshot)
   })
 
   it('rejects duplicate-page factories that reuse or permute any source node ID', () => {

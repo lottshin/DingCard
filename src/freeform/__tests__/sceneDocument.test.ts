@@ -8,6 +8,8 @@ import {
   MIN_EFFECTIVE_SCALE,
 } from '../constants'
 import {
+  mapFreeformDocumentV3Leaves,
+  mapFreeformDocumentV3LeavesAsync,
   migrateLegacyFreeformDocumentToV3,
   normalizeFreeformDocumentToV3,
   normalizeFreeformDocumentV3,
@@ -753,5 +755,67 @@ describe('basic scene tree queries', () => {
     expect(flattenSceneLeaves(atLimit)).toHaveLength(1)
     expect(findNodeAtPath(atLimit, Array(MAX_SCENE_DEPTH + 1).fill('missing'))).toBeUndefined()
     expect(getChildrenAtPath(atLimit, Array(MAX_SCENE_DEPTH + 1).fill('missing'))).toBeUndefined()
+  })
+})
+
+describe('immutable v3 document leaf mapping', () => {
+  it('maps nested leaves across slides while owning slides, backgrounds, groups, and leaves', () => {
+    const source = v3Document([
+      v3Slide('slide-1', [
+        groupNode('outer', [
+          imageLeaf('photo', { src: 'img:photo', hidden: true }),
+          groupNode('inner', [
+            shapeLeaf('texture', {
+              hidden: true,
+              fill: { type: 'image', src: 'img:texture', fit: 'contain' },
+            }),
+          ], { hidden: true }),
+        ], { hidden: true }),
+      ]),
+      v3Slide('slide-2', [textLeaf('caption')], {
+        background: {
+          type: 'linear-gradient',
+          from: '#111111',
+          to: '#222222',
+          angle: 45,
+        },
+      }),
+    ]) as FreeformDocumentV3
+    const snapshot = structuredClone(source)
+
+    const output = mapFreeformDocumentV3Leaves(source, (leaf) => (
+      leaf.type === 'image' ? { ...leaf, src: 'data:image/png;base64,photo' } : leaf
+    ))
+
+    expect(output).not.toBe(source)
+    expect(output.slides[0]).not.toBe(source.slides[0])
+    expect(output.slides[1].background).not.toBe(source.slides[1].background)
+    expect(output.slides[0].nodes[0]).not.toBe(source.slides[0].nodes[0])
+    expect(
+      ((output.slides[0].nodes[0] as FreeformGroupNode).children[0] as FreeformSceneLeaf),
+    ).toMatchObject({ src: 'data:image/png;base64,photo' })
+    expect(normalizeFreeformDocumentV3(output)).toEqual(output)
+    expect(source).toEqual(snapshot)
+  })
+
+  it('rejects async mapping atomically and leaves the source document unchanged', async () => {
+    const source = v3Document([v3Slide('slide-1', [
+      groupNode('outer', [imageLeaf('photo'), shapeLeaf('failing')]),
+    ])]) as FreeformDocumentV3
+    const snapshot = structuredClone(source)
+    let exposed: FreeformDocumentV3 | undefined
+
+    await expect(
+      mapFreeformDocumentV3LeavesAsync(source, async (leaf) => {
+        if (leaf.id === 'failing') throw new Error('conversion failed')
+        return leaf
+      }).then((document) => {
+        exposed = document
+        return document
+      }),
+    ).rejects.toThrow('conversion failed')
+
+    expect(exposed).toBeUndefined()
+    expect(source).toEqual(snapshot)
   })
 })

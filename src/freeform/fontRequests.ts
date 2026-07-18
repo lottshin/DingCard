@@ -1,5 +1,6 @@
 import { buildFontEmbedCSS } from '../fontEmbed'
-import type { FreeformSlide, FreeformTextElement } from './types'
+import { walkScene } from './sceneTree'
+import type { FreeformSlide, FreeformSlideV3, FreeformTextElement } from './types'
 
 export interface FreeformFontRequest {
   fontFamily: string
@@ -13,34 +14,60 @@ export type FontCSSBuilder = (
   fontWeights: Iterable<string | number>,
 ) => Promise<string>
 
-export function collectFreeformFontRequests(slides: FreeformSlide[]): FreeformFontRequest[] {
-  const groups = new Map<
-    string,
-    { fontFamily: string; texts: string[]; fontWeights: Set<FreeformTextElement['fontWeight']> }
-  >()
+interface FontRequestGroup {
+  fontFamily: string
+  texts: string[]
+  fontWeights: Set<FreeformTextElement['fontWeight']>
+}
 
-  for (const slide of slides) {
-    for (const element of slide.elements) {
-      if (element.type !== 'text' || element.fontFamily.trim().length === 0) continue
-      let group = groups.get(element.fontFamily)
-      if (!group) {
-        group = {
-          fontFamily: element.fontFamily,
-          texts: [],
-          fontWeights: new Set(),
-        }
-        groups.set(element.fontFamily, group)
-      }
-      group.texts.push(element.text)
-      group.fontWeights.add(element.fontWeight)
+type FontText = Pick<FreeformTextElement, 'fontFamily' | 'fontWeight' | 'text'>
+
+function addFontText(groups: Map<string, FontRequestGroup>, text: FontText): void {
+  if (text.fontFamily.trim().length === 0) return
+  let group = groups.get(text.fontFamily)
+  if (!group) {
+    group = {
+      fontFamily: text.fontFamily,
+      texts: [],
+      fontWeights: new Set(),
     }
+    groups.set(text.fontFamily, group)
   }
+  group.texts.push(text.text)
+  group.fontWeights.add(text.fontWeight)
+}
 
+function finishFontRequests(groups: Map<string, FontRequestGroup>): FreeformFontRequest[] {
   return Array.from(groups.values(), (group) => ({
     fontFamily: group.fontFamily,
     text: group.texts.join('\n'),
     fontWeights: Array.from(group.fontWeights),
   }))
+}
+
+export function collectFreeformFontRequests(slides: FreeformSlide[]): FreeformFontRequest[] {
+  const groups = new Map<string, FontRequestGroup>()
+
+  for (const slide of slides) {
+    for (const element of slide.elements) {
+      if (element.type === 'text') addFontText(groups, element)
+    }
+  }
+
+  return finishFontRequests(groups)
+}
+
+/** Collect v3 font requests recursively, including text under hidden groups. */
+export function collectFreeformFontRequestsV3(
+  slides: readonly FreeformSlideV3[],
+): FreeformFontRequest[] {
+  const groups = new Map<string, FontRequestGroup>()
+  for (const slide of slides) {
+    walkScene(slide.nodes, (node) => {
+      if (node.type === 'text') addFontText(groups, node)
+    })
+  }
+  return finishFontRequests(groups)
 }
 
 export async function buildFreeformFontCSS(

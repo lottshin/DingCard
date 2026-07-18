@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildFreeformFontCSS, collectFreeformFontRequests } from '../fontRequests'
-import type { FreeformSlide, FreeformTextElement } from '../types'
+import {
+  buildFreeformFontCSS,
+  collectFreeformFontRequests,
+  collectFreeformFontRequestsV3,
+} from '../fontRequests'
+import type {
+  FreeformGroupNode,
+  FreeformSceneLeaf,
+  FreeformSceneNode,
+  FreeformSlide,
+  FreeformSlideV3,
+  FreeformTextElement,
+} from '../types'
 
 function text(
   id: string,
@@ -33,6 +44,47 @@ function slide(id: string, elements: FreeformTextElement[]): FreeformSlide {
     height: 1440,
     background: { type: 'solid', color: '#ffffff' },
     elements,
+  }
+}
+
+function sceneText(
+  id: string,
+  value: string,
+  fontFamily: string,
+  fontWeight: FreeformTextElement['fontWeight'],
+): FreeformSceneLeaf {
+  return {
+    ...text(id, value, fontFamily, fontWeight),
+    name: id,
+    locked: false,
+    hidden: true,
+    scale: 1,
+  }
+}
+
+function hiddenGroup(id: string, children: FreeformSceneNode[]): FreeformGroupNode {
+  return {
+    id,
+    name: id,
+    locked: false,
+    hidden: true,
+    type: 'group',
+    x: 0,
+    y: 0,
+    rotation: 0,
+    scale: 1,
+    children,
+  }
+}
+
+function sceneSlide(nodes: FreeformGroupNode[]): FreeformSlideV3 {
+  return {
+    id: 'scene-page',
+    name: 'Scene page',
+    width: 1080,
+    height: 1440,
+    background: { type: 'solid', color: '#ffffff' },
+    nodes,
   }
 }
 
@@ -76,5 +128,24 @@ describe('collectFreeformFontRequests', () => {
       '@font-face { font-family: ZCOOL XiaoWei; }',
     )
     expect(builder).toHaveBeenCalledTimes(2)
+  })
+
+  it('collects web-font text recursively even below hidden v3 ancestors', () => {
+    const requests = collectFreeformFontRequestsV3([
+      sceneSlide([
+        hiddenGroup('outer', [
+          hiddenGroup('inner', [
+            sceneText('title', '隐藏标题', "'Noto Serif SC', serif", 'bold'),
+            sceneText('body', '隐藏正文', "'Noto Serif SC', serif", 'normal'),
+          ]),
+        ]),
+      ]),
+    ])
+
+    expect(requests).toEqual([{
+      fontFamily: "'Noto Serif SC', serif",
+      text: '隐藏标题\n隐藏正文',
+      fontWeights: ['bold', 'normal'],
+    }])
   })
 })
