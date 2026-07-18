@@ -119,7 +119,7 @@ interface FreeformGroupNode extends SceneNodeState {
 
 现有文本、图片、形状和线条元素继续保存 `x/y/width/height/rotation`，并增加 `name/locked/hidden/scale`。根节点元素的 `x/y` 仍是页面内左上角坐标；组内叶子元素的 `x/y` 是相对父组原点的左上角坐标。叶子旋转和等比缩放都围绕自身中心。
 
-叶子 `scale` 不是可见的独立属性控件，而是无损保留组合变换的内部字段。它会同时缩放尺寸、字号、描边、箭头、内边距和圆角等所有视觉长度，避免组缩放后解组改变像素外观。几何输入按第 7.4 节显示父局部坐标与沿叶子本地轴的缩放后尺寸；用户修改宽高时只通过叶子 scale 换算回基础 `width/height`。v1/v2 元素迁移时 `scale=1`。
+叶子 `scale` 不是可见的独立属性控件，而是无损保留组合变换的内部字段。它会同时缩放尺寸、字号、描边、箭头、内边距和圆角等所有视觉长度，避免组缩放后解组改变像素外观。持久化字段继续使用父局部坐标；属性面板按第 7.4 节通过矩阵适配器显示稳定的页面坐标与沿叶子本地轴的世界有效尺寸。用户修改宽高时通过完整世界有效 scale 反算基础 `width/height`，叶子局部 scale 保持不变。v1/v2 元素迁移时 `scale=1`。
 
 ### 5.2 变换与矩阵契约
 
@@ -242,15 +242,25 @@ groupPosition' = groupPosition + linear(R(rotation) * S(scale)) * c
 
 ### 7.4 属性面板坐标语义
 
-属性面板不把旋转后的世界 AABB 冒充节点宽高。所有可编辑值都相对于直接父容器，面包屑明确显示“页面”或“组内”：
+属性面板不把旋转后的世界 AABB 冒充节点宽高。文档仍存父局部变换，但 Inspector 的可见几何统一从完整 `World(node)` 分解为页面像素属性；祖先重心化、组合和解组只要不改变世界几何，就不得让这些属性跳变。面包屑用于说明节点路径，而不是切换坐标系：
 
-- 叶子 `X/Y`：父局部坐标中的未旋转基础矩形左上角。
-- 叶子 `宽/高`：沿叶子自身局部轴的缩放后尺寸，即 `width * leaf.scale`、`height * leaf.scale`，不乘祖先 scale，也不受 rotation 改变。编辑宽或高时分别反算基础 `width/height`，叶子 scale 不变。
-- 叶子 `旋转`：相对直接父容器的本地 rotation。叶子 scale 不直接暴露；字号和描边等视觉输入显示并编辑 `baseValue * leaf.scale`，写入时除以 leaf scale。
-- 组 `中心 X/Y`：组原点在直接父坐标系中的位置。
-- 组 `宽/高`：组局部后代联合包围盒乘本组 scale 后，沿组自身局部轴的尺寸；两者保持比例联动。编辑任一项只调整组 scale，另一项自动更新。
-- 组 `旋转` 与 `缩放 %`：相对直接父容器的本地值。缩放输入通过全部后代的世界有效缩放范围校验。
-- 旋转后的世界 AABB 只用于命中、框选、吸附和 overlay，不在属性输入中展示。
+- 叶子先从完整世界矩阵得到世界中心、世界 rotation 和世界有效 scale。`X/Y` 是以该世界中心和未旋转的世界有效宽高构成的页面矩形左上角；它不是旋转后的可见角点或世界 AABB 左上角。
+- 叶子 `宽/高`：沿叶子自身局部轴的世界有效尺寸，即 `width * worldEffectiveScale`、`height * worldEffectiveScale`，不受 rotation 改变。编辑位置或尺寸时保留未编辑的页面属性，反算目标世界中心，再经 `inverse(ParentWorld)` 得到父局部中心和基础 `x/y/width/height`；叶子局部 scale 不变。
+- 叶子 `旋转`：完整世界 rotation，Inspector 统一规范到 `[0, 360)`。写入时先规范化请求角度，再减去父世界 rotation 并把本地 rotation 同样规范到 `[0, 360)`。叶子 scale 不直接暴露；字号和描边等视觉输入显示并编辑 `baseValue * worldEffectiveScale`，写入时除以同一世界有效 scale。
+- 组 `中心 X/Y`：先取当前组局部后代联合包围盒中心，再乘完整组世界矩阵得到页面坐标。不能假设读取到的 v3 组已经以原点为中心，也不能在只读适配时静默重写旧文档。
+- 编辑组中心时，把页面位移通过 `inverse(ParentWorld)` 的线性部分换算为父局部位移并修改组 `x/y`。编辑组旋转或 scale 时补偿组 `x/y`，使上述页面中心保持不动。
+- 组 `宽/高`：组局部后代联合包围盒乘组的世界有效 scale 后，沿组自身局部轴的页面尺寸；两者保持比例联动。编辑任一项只调整组局部 scale，另一项自动更新。隐藏后代仍参与这一几何边界，与祖先重心化规则保持一致，切换可见性不得改变组中心或尺寸。
+- 组 `旋转` 与 `缩放 %`：规范到 `[0, 360)` 的完整世界 rotation 与世界有效 scale。写入时先用父世界变换反算并规范化本地 rotation。设祖先世界 scale 为 `a`，组内每个节点相对所选组的 scale 乘积（所选组本身取 1）为 `r_i`，则最终本地组 scale 必须先计算为 `s = clamp(requestedLocalScale, max_i(MIN_EFFECTIVE_SCALE / (a * r_i)), min_i(MAX_EFFECTIVE_SCALE / (a * r_i)))`。宽高换算、返回值和中心补偿全部使用最终 `s`，再交给 reducer 做最终校验。
+- 旋转后的世界 AABB 只用于命中、框选、吸附和 overlay，不在属性输入中展示。UI 最多显示两位小数，未提交的格式化不得写回或损失存储精度。
+- 所有 Inspector 内容、样式和几何更新都携带完整 `ScenePath`，不得回退到只支持根节点 ID 的 `element/update` 兼容动作。
+
+异步属性操作还必须捕获工作区文档身份代次、原始 `slideId` 和完整 `ScenePath`。同一文档内切换选区或活动页面时，结果仍写回原对象；切换草稿、账号或新建文档，同一对象的上传已被更晚操作取代，或原路径已删除/改变类型时，丢弃迟到的文档 mutation，已上传资产由现有孤儿回收流程处理。不同草稿允许复用相同 slide/node ID，因此不能只比较 ID 路径。
+
+属性可编辑性分为三态：节点有效锁定时显示锁定来源与解锁入口；未有效锁定但组选区含锁定后代时显示“包含锁定图层”的结构只读状态；其余状态可编辑。第三种状态不得伪装成可编辑后再依赖 reducer 静默拒绝。
+
+`scenePropertiesForPath` 的稳定失败原因是 `unknown-path`、`invalid-scene` 或 `invalid-transform`。`scenePropertyMutation` 另可返回 `invalid-value`、`unsupported-property`、`locked` 或 `locked-descendant`。成功结果返回最终规范化/夹取后的 `resolvedValue`；合法但按该最终值与当前属性等价的编辑返回成功且 `update=null`，调用方不得创建历史。角度闭环和 no-op 按 `[0, 360)` 规范值判断。这些原因属于内部类型契约，不映射为 HTTP 状态码。
+
+属性适配必须用闭环测试证明：`scenePropertiesForPath -> scenePropertyMutation -> reduceFreeformDocumentV3 -> scenePropertiesForPath` 后，请求属性等于最终读取值（夹取时等于最终夹取值），未编辑页面轴与组中心保持不变；祖先重心化前后未编辑叶子的世界四角误差不超过 `SCENE_EPSILON`。
 
 ## 8. 锁定与隐藏
 

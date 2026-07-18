@@ -636,19 +636,24 @@ git commit -m "feat(freeform): enforce layer lock and visibility"
 **Files:**
 - Create: `src/freeform/sceneProperties.ts`
 - Create: `src/freeform/__tests__/sceneProperties.test.ts`
+- Create: `src/freeform/InspectorNumberInput.tsx`
 - Modify: `src/freeform/FreeformWorkspace.tsx`
 - Modify: `src/freeform/InspectorSection.tsx` if a shared linked-field primitive is justified
 - Modify: `e2e/freeform.spec.ts`
 
 - [ ] **Step 1: Write failing property conversion unit tests**
 
-For a leaf with `scale=1.5` inside a rotated/scaled parent, assert the property adapter reports parent-local `x/y`, local-axis `width*leaf.scale` and `height*leaf.scale`, local rotation, and visual font/stroke values multiplied only by leaf scale. Editing each value must produce the inverse base-field update without using world AABB dimensions.
+For a leaf with `scale=1.5` inside a rotated/scaled parent, assert the property adapter reports a page-space unrotated rectangle from the full world center/effective scale, world rotation, and visual font/stroke values multiplied by world effective scale. Editing one page axis or dimension must preserve the other page properties while inverse-transforming parent-local geometry; no field may use the rotated world AABB.
 
-For a group, assert center `x/y`, linked local-axis width/height from local descendant bounds, local rotation and scale percent. Editing width or height changes uniform scale and the other dimension proportionally; invalid effective-scale results are clamped before reducer dispatch.
+For a group, assert page-space visual center `x/y`, linked page width/height from local descendant bounds and world effective scale, world rotation and world scale percent. Include a valid but non-centered v3 group: reads must not mutate or canonicalize it. Editing center, rotation, width, height or scale keeps its page center stable where applicable; compute the final clamped local scale before width/height conversion and center compensation. Cover editable, effectively locked and unlocked-with-locked-descendant states, including hidden descendants in bounds.
+
+Drive every accepted pure mutation through the real reducer and read it back through the adapter. Cover rotated/scaled ancestors, leaf single-axis edits, non-centered group edits, effective-scale endpoints and clamps, ancestor recentering, no-op updates and unchanged world corners for sibling nodes not targeted by the edit. Normalize rotation to `[0, 360)` and cover `-180/180/270/360/720` plus a parent rotation that crosses the boundary.
 
 - [ ] **Step 2: Write failing property E2E tests**
 
-Open a rotated/scaled nested fixture through a draft. Assert the inspector breadcrumb labels 页面/组内 correctly, leaf fields show local values, group width/height stay linked, rotation/scale inputs work by keyboard, locked leaf and group property adapters reject edits, and each accepted edit creates exactly one undoable history entry. Recheck that the Task 7 lock banner's unlock action restores editing through the shared reducer action.
+Open a rotated/scaled nested fixture through a draft. Assert the inspector breadcrumb shows the full page/group path, nested leaf fields show stable page properties, group width/height stay linked, and rotation/scale inputs work by keyboard. Compare preconstructed grouped and flattened drafts with equivalent world geometry; Task 8 owns the same assertion through the real group/ungroup UI. Number fields buffer invalid/partial input and commit at most one undoable history entry on blur or Enter. Locked nodes and unlocked groups with locked descendants are visibly read-only. Recheck that the Task 7 lock banner's unlock action restores editing through the shared reducer action.
+
+Exercise numeric state boundaries: empty string, sign/decimal intermediate state, NaN/infinity rejection, zero/negative dimensions, Enter followed by blur deduplication, Escape cancellation, unchanged rounded display preserving stored precision, a clamp back to the current value, and an external undo or draft identity switch while editing.
 
 - [ ] **Step 3: Verify RED**
 
@@ -663,11 +668,13 @@ Expected: FAIL because the current inspector treats geometry as flat element fie
 
 - [ ] **Step 4: Implement pure read/write adapters**
 
-Export discriminated leaf/group property models. Keep all matrix and scale math outside JSX. Adapters return either a typed scene mutation or a stable rejection reason; they never round stored values.
+Export `scenePropertiesForPath` and `scenePropertyMutation` with discriminated leaf/group property models and explicit editability state. Keep all matrix and scale math outside JSX. Adapters return either a typed path-based scene mutation or a stable rejection reason; reads never mutate and writes never round stored values.
 
 - [ ] **Step 5: Wire inspector fields and breadcrumb**
 
-Display at most two decimals but preserve full numbers on unchanged blur. Use labels `X/Y` for leaf parent-local top-left and `中心 X/Y` for groups. Group width/height edits dispatch one uniform-scale action; expose group local rotation and scale percentage.
+Display at most two decimals but preserve full numbers on unchanged blur. Use labels `X/Y` for the leaf page rectangle and `中心 X/Y` for the group page center. Group width/height edits dispatch one uniform-scale action; expose world rotation and world scale percentage while writing local fields. Migrate every single-selection content, style and geometry control from the root-only compatibility action to full-path updates.
+
+The path-update E2E matrix must include nested text content, font, font size, text fill, shape type/fill, image fit, line kind, stroke color and stroke width. Asynchronous shape-image fill captures a document-identity generation, the original `slideId` and full `ScenePath`: selection or active-slide changes within the same document still update that original shape; draft/user/new-document identity changes, a newer upload, or removal/type change of the original path discard the late document mutation and leave the uploaded asset for existing GC. Test both same-document routing and a second draft that deliberately reuses the same slide/path IDs. Task 7A hides align/distribute controls for unsupported nested/group selections; Task 9 enables their full world-space behavior.
 
 - [ ] **Step 6: Verify GREEN**
 
