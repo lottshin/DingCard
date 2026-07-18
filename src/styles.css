@@ -1180,8 +1180,14 @@ html.theme-anim * {
 
 .freeform-artboard {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   transform-origin: top left;
+}
+
+.freeform-artwork-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 .freeform-element {
@@ -1190,16 +1196,30 @@ html.theme-anim * {
   user-select: none;
 }
 
-.freeform-element.selected {
-  z-index: 5;
-}
-
 .element-outline {
   position: absolute;
   inset: -2px;
   border: 2px solid var(--accent);
   border-radius: 4px;
   pointer-events: none;
+}
+
+.freeform-selection-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.freeform-selection-item {
+  position: absolute;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.freeform-selection-item .element-outline {
+  inset: calc(-2px * var(--freeform-inverse-scale, 1));
+  border-width: calc(2px * var(--freeform-inverse-scale, 1));
 }
 
 .freeform-marquee {
@@ -1235,32 +1255,66 @@ html.theme-anim * {
 
 .element-resize {
   position: absolute;
-  right: -8px;
-  bottom: -8px;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--surface);
+  right: calc(-16px * var(--freeform-inverse-scale, 1));
+  bottom: calc(-16px * var(--freeform-inverse-scale, 1));
+  width: calc(32px * var(--freeform-inverse-scale, 1));
+  height: calc(32px * var(--freeform-inverse-scale, 1));
+  padding: 0;
+  border: 0;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: var(--shadow-sm);
+  background: transparent;
   cursor: nwse-resize;
   touch-action: none;
+  pointer-events: auto;
 }
 
 .element-drag {
   position: absolute;
-  top: -16px;
+  top: 0;
   left: 50%;
-  width: 28px;
-  height: 12px;
+  width: calc(32px * var(--freeform-inverse-scale, 1));
+  height: calc(32px * var(--freeform-inverse-scale, 1));
   padding: 0;
-  border: 2px solid var(--surface);
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: var(--shadow-sm);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   cursor: move;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   touch-action: none;
+  pointer-events: auto;
+}
+
+.freeform-selection-move::before,
+.freeform-selection-resize::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-sm);
+  transform: translate(-50%, -50%) scale(var(--freeform-inverse-scale, 1));
+  pointer-events: none;
+}
+
+.freeform-selection-move::before {
+  width: 18px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.freeform-selection-resize::before {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.freeform-selection-item button:focus,
+.freeform-selection-item button:focus-visible {
+  outline: calc(2px * var(--freeform-inverse-scale, 1)) solid var(--accent);
+  outline-offset: calc(2px * var(--freeform-inverse-scale, 1));
+  box-shadow: 0 0 0 calc(4px * var(--freeform-inverse-scale, 1)) var(--accent-weak);
 }
 
 .freeform-textbox {

@@ -22,6 +22,10 @@ import {
 } from './document'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
+import {
+  FreeformSelectionOverlay,
+  type SelectionOverlayInteraction,
+} from './FreeformSelectionOverlay'
 import { InspectorSection } from './InspectorSection'
 import {
   createHistory,
@@ -212,6 +216,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [operationNotice, setOperationNotice] = useState<string | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
+  const [activeInteraction, setActiveInteraction] = useState<SelectionOverlayInteraction>(null)
   const renderScale = calculateRenderScale(fitScale, zoomPercent)
 
   const stageScrollRef = useRef<HTMLDivElement>(null)
@@ -727,6 +732,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   function onElementPointerDown(event: React.PointerEvent, element: FreeformElement) {
     if (renderScale === null) return
     const interactionScale = renderScale
+    const pointerId = event.pointerId
     if (event.shiftKey) {
       event.preventDefault()
       event.stopPropagation()
@@ -753,8 +759,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const startElements = activeSlide.elements
     const startX = event.clientX
     const startY = event.clientY
+    setActiveInteraction('move')
 
     const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
       const rawDx = Math.round((moveEvent.clientX - startX) / interactionScale)
       const rawDy = Math.round((moveEvent.clientY - startY) / interactionScale)
       const snap = snapDrag(activeSlide, startElements, draggingIds, rawDx, rawDy)
@@ -783,8 +791,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
-      window.removeEventListener('blur', onCancel)
+      window.removeEventListener('blur', onBlur)
       setSnapLines([])
+      setActiveInteraction(null)
     }
 
     const finishDrag = () => {
@@ -792,13 +801,27 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       commitLiveEdit(startDocument)
     }
 
-    const onUp = () => finishDrag()
-    const onCancel = () => finishDrag()
+    const cancelDrag = () => {
+      cleanupDrag()
+      setHistory((current) =>
+        Object.is(current.current, startDocument)
+          ? current
+          : { ...current, current: startDocument },
+      )
+    }
+
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId === pointerId) finishDrag()
+    }
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId === pointerId) cancelDrag()
+    }
+    const onBlur = () => cancelDrag()
 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onCancel)
-    window.addEventListener('blur', onCancel)
+    window.addEventListener('blur', onBlur)
   }
 
   function artboardPointFromClient(clientX: number, clientY: number) {
@@ -863,6 +886,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   function onResizePointerDown(event: React.PointerEvent, element: FreeformElement) {
     if (renderScale === null) return
     const interactionScale = renderScale
+    const pointerId = event.pointerId
     event.preventDefault()
     event.stopPropagation()
     setSelection([element.id])
@@ -872,8 +896,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const startY = event.clientY
     const startW = element.width
     const startH = element.height
+    setActiveInteraction('resize')
 
     const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
       const dx = (moveEvent.clientX - startX) / interactionScale
       const dy = (moveEvent.clientY - startY) / interactionScale
       const width = Math.round(clamp(startW + dx, 40, activeSlide.width - element.x))
@@ -886,14 +912,41 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       })
     }
 
-    const onUp = () => {
+    const cleanupResize = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onBlur)
+      setSnapLines([])
+      setActiveInteraction(null)
+    }
+
+    const finishResize = () => {
+      cleanupResize()
       commitLiveEdit(startDocument)
     }
 
+    const cancelResize = () => {
+      cleanupResize()
+      setHistory((current) =>
+        Object.is(current.current, startDocument)
+          ? current
+          : { ...current, current: startDocument },
+      )
+    }
+
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId === pointerId) finishResize()
+    }
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId === pointerId) cancelResize()
+    }
+    const onBlur = () => cancelResize()
+
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onBlur)
   }
 
   async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS: string): Promise<Blob | null> {
@@ -1067,7 +1120,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   return (
-    <div className="freeform-workspace" aria-label="自由编辑工作区">
+    <div
+      className="freeform-workspace"
+      aria-label="自由编辑工作区"
+      data-history-depth={history.past.length}
+    >
       <WorkspaceToolbar
         testId="freeform-toolbar"
         label="自由编辑工具栏"
@@ -1283,7 +1340,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                   ref={artboardRef}
                   className="freeform-artboard"
                   data-testid="freeform-canvas"
-                  onPointerDown={onArtboardPointerDown}
                   style={{
                     width: activeSlide.width,
                     height: activeSlide.height,
@@ -1291,65 +1347,60 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                     background: slideBackgroundToCss(activeSlide.background),
                   }}
                 >
-                  {activeSlide.elements.map((element) => (
-                    <div
-                      key={element.id}
-                      className={selection.includes(element.id) ? 'freeform-element selected' : 'freeform-element'}
-                      data-testid="freeform-element"
-                      data-selected={selection.includes(element.id) ? 'true' : 'false'}
-                      onPointerDown={(event) => onElementPointerDown(event, element)}
-                      style={{
-                        left: element.x,
-                        top: element.y,
-                        width: element.width,
-                        height: element.height,
-                        transform: `rotate(${element.rotation}deg)`,
-                      }}
-                    >
-                      <FreeformElementContent
-                        element={element}
-                        onTextChange={(text) => updateElement(element.id, { text })}
-                        onTextFocus={() => setSelection([element.id])}
+                  <div
+                    className="freeform-artwork-clip"
+                    onPointerDown={onArtboardPointerDown}
+                  >
+                    {activeSlide.elements.map((element) => (
+                      <div
+                        key={element.id}
+                        className="freeform-element"
+                        data-testid="freeform-element"
+                        data-selected={selection.includes(element.id) ? 'true' : 'false'}
+                        onPointerDown={(event) => onElementPointerDown(event, element)}
+                        style={{
+                          left: element.x,
+                          top: element.y,
+                          width: element.width,
+                          height: element.height,
+                          transform: `rotate(${element.rotation}deg)`,
+                        }}
+                      >
+                        <FreeformElementContent
+                          element={element}
+                          onTextChange={(text) => updateElement(element.id, { text })}
+                          onTextFocus={() => setSelection([element.id])}
+                        />
+                      </div>
+                    ))}
+                    {marqueeRect && (
+                      <div
+                        className="freeform-ui-only freeform-marquee"
+                        style={{
+                          left: Math.min(marqueeRect.x, marqueeRect.x + marqueeRect.width),
+                          top: Math.min(marqueeRect.y, marqueeRect.y + marqueeRect.height),
+                          width: Math.abs(marqueeRect.width),
+                          height: Math.abs(marqueeRect.height),
+                        }}
                       />
-                      {selection.includes(element.id) && (
-                        <>
-                          <span className="freeform-ui-only element-outline" />
-                          <button
-                            className="freeform-ui-only element-drag"
-                            type="button"
-                            aria-label="移动对象"
-                            title="拖拽移动"
-                            onPointerDown={(event) => onElementPointerDown(event, element)}
-                          />
-                          <button
-                            className="freeform-ui-only element-resize"
-                            type="button"
-                            aria-label="调整大小"
-                            onPointerDown={(event) => onResizePointerDown(event, element)}
-                          />
-                        </>
-                      )}
-                    </div>
-                  ))}
-                  {marqueeRect && (
-                    <div
-                      className="freeform-ui-only freeform-marquee"
-                      style={{
-                        left: Math.min(marqueeRect.x, marqueeRect.x + marqueeRect.width),
-                        top: Math.min(marqueeRect.y, marqueeRect.y + marqueeRect.height),
-                        width: Math.abs(marqueeRect.width),
-                        height: Math.abs(marqueeRect.height),
-                      }}
-                    />
-                  )}
-                  {snapLines.map((line) => (
-                    <div
-                      key={`${line.axis}-${line.position}-${line.source}`}
-                      className={`freeform-ui-only freeform-snap-line freeform-snap-line-${line.axis}`}
-                      data-testid="freeform-snap-line"
-                      style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
-                    />
-                  ))}
+                    )}
+                    {snapLines.map((line) => (
+                      <div
+                        key={`${line.axis}-${line.position}-${line.source}`}
+                        className={`freeform-ui-only freeform-snap-line freeform-snap-line-${line.axis}`}
+                        data-testid="freeform-snap-line"
+                        style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
+                      />
+                    ))}
+                  </div>
+                  <FreeformSelectionOverlay
+                    elements={activeSlide.elements}
+                    selectedIds={liveSelection}
+                    renderScale={renderScale}
+                    activeInteraction={activeInteraction}
+                    onMovePointerDown={onElementPointerDown}
+                    onResizePointerDown={onResizePointerDown}
+                  />
                 </div>
               </div>
             )}

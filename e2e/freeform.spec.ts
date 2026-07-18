@@ -122,6 +122,17 @@ async function freeformCanvasScale(page: import('@playwright/test').Page) {
   })
 }
 
+async function locatorOwnsPoint(
+  locator: import('@playwright/test').Locator,
+  x: number,
+  y: number,
+) {
+  return locator.evaluate((node, point) => {
+    const hit = document.elementFromPoint(point.x, point.y)
+    return Boolean(hit && (hit === node || node.contains(hit)))
+  }, { x, y })
+}
+
 async function freeformStageMetrics(page: import('@playwright/test').Page) {
   return page.locator('.freeform-stage-scroll').evaluate((stage) => {
     const canvas = stage.querySelector<HTMLElement>('[data-testid="freeform-canvas"]')
@@ -3001,6 +3012,297 @@ test('multi-selects elements and aligns them left', async ({ page }) => {
   ])
 })
 
+test('selection keeps artwork order', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertShape(page)
+  await setSelectedElementBox(page, 100, 100, 220, 220)
+  await insertShape(page)
+  await setSelectedElementBox(page, 180, 180, 220, 220)
+
+  const canvas = page.getByTestId('freeform-canvas')
+  const canvasBox = await canvas.boundingBox()
+  expect(canvasBox).toBeTruthy()
+  const scale = await freeformCanvasScale(page)
+  const point = {
+    x: canvasBox!.x + 280 * scale,
+    y: canvasBox!.y + 280 * scale,
+  }
+  const topArtworkIsSelected = () => page.evaluate(({ x, y }) => {
+    const hit = document.elementsFromPoint(x, y)
+      .map((node) => node.closest<HTMLElement>('[data-testid="freeform-element"]'))
+      .find((node): node is HTMLElement => Boolean(node))
+    return hit?.getAttribute('data-selected') === 'true'
+  }, point)
+
+  expect(await topArtworkIsSelected()).toBe(true)
+
+  await page.mouse.click(
+    canvasBox!.x + 120 * scale,
+    canvasBox!.y + 120 * scale,
+  )
+  await expect(page.getByTestId('freeform-element').first()).toHaveAttribute(
+    'data-selected',
+    'true',
+  )
+
+  expect(await topArtworkIsSelected()).toBe(false)
+})
+
+test('selection overlay hit targets stay accessible across zooms', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  await setSelectedElementBox(page, 240, 260, 180, 140)
+
+  const controls = [
+    {
+      testId: 'freeform-selection-move',
+      name: '\u79fb\u52a8\u5bf9\u8c61',
+    },
+    {
+      testId: 'freeform-selection-resize',
+      name: '\u8c03\u6574\u5927\u5c0f',
+    },
+  ] as const
+
+  for (const zoom of [50, 100, 150]) {
+    await setFreeformZoom(page, zoom)
+    for (const control of controls) {
+      const handle = page.getByTestId(control.testId)
+      await expect(handle).toHaveAccessibleName(control.name)
+      const box = await handle.boundingBox()
+      expect(box, `${control.testId} missing at ${zoom}%`).toBeTruthy()
+      expect(box!.width, `${control.testId} width at ${zoom}%`).toBeGreaterThanOrEqual(28)
+      expect(box!.height, `${control.testId} height at ${zoom}%`).toBeGreaterThanOrEqual(28)
+
+      await handle.focus()
+      await expect(handle).toBeFocused()
+      expect(await handle.evaluate((node) => {
+        const style = getComputedStyle(node)
+        const hasOutline = style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) > 0
+        return hasOutline || (style.boxShadow !== 'none' && style.boxShadow !== '')
+      }), `${control.testId} focus ring at ${zoom}%`).toBe(true)
+    }
+  }
+})
+
+test('selection overlay edge handles keep a real 28px hit span', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+
+  await setSelectedElementBox(page, 0, 0, 180, 140)
+  const moveHandle = page.getByTestId('freeform-selection-move')
+  const moveBox = await moveHandle.boundingBox()
+  expect(moveBox).toBeTruthy()
+  const moveX = moveBox!.x + moveBox!.width / 2
+  expect(await locatorOwnsPoint(moveHandle, moveX, moveBox!.y + 2)).toBe(true)
+  expect(await locatorOwnsPoint(moveHandle, moveX, moveBox!.y + 29)).toBe(true)
+
+  await setSelectedElementBox(page, 900, 1300, 180, 140)
+  const resizeHandle = page.getByTestId('freeform-selection-resize')
+  const resizeBox = await resizeHandle.boundingBox()
+  expect(resizeBox).toBeTruthy()
+  const resizeCenterX = resizeBox!.x + resizeBox!.width / 2
+  const resizeCenterY = resizeBox!.y + resizeBox!.height / 2
+  expect(await locatorOwnsPoint(resizeHandle, resizeBox!.x + 2, resizeCenterY)).toBe(true)
+  expect(await locatorOwnsPoint(resizeHandle, resizeBox!.x + 29, resizeCenterY)).toBe(true)
+  expect(await locatorOwnsPoint(resizeHandle, resizeCenterX, resizeBox!.y + 2)).toBe(true)
+  expect(await locatorOwnsPoint(resizeHandle, resizeCenterX, resizeBox!.y + 29)).toBe(true)
+})
+
+test('leaf pointercancel cleanup move ignores foreign pointer streams', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  await setSelectedElementBox(page, 100, 100, 100, 100)
+
+  const before = await freeformElementBoxes(page)
+  const handle = page.getByTestId('freeform-selection-move')
+  const box = await handle.boundingBox()
+  expect(box).toBeTruthy()
+  const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+
+  await handle.dispatchEvent('pointerdown', {
+    pointerId: 41,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 42,
+      pointerType: 'touch',
+      clientX: x + 80,
+      clientY: y + 60,
+    }))
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: 42,
+      pointerType: 'touch',
+      clientX: x + 80,
+      clientY: y + 60,
+    }))
+  }, start)
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 41,
+      pointerType: 'touch',
+      clientX: x + 80,
+      clientY: y + 60,
+    }))
+  }, start)
+  await expect.poll(() => freeformElementBoxes(page)).not.toEqual(before)
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 42,
+      pointerType: 'touch',
+    }))
+  })
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 41,
+      pointerType: 'touch',
+    }))
+  })
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+})
+
+test('leaf pointercancel cleanup resize ignores foreign pointer streams', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  await setSelectedElementBox(page, 100, 100, 100, 100)
+
+  const before = await freeformElementBoxes(page)
+  const handle = page.getByTestId('freeform-selection-resize')
+  const box = await handle.boundingBox()
+  expect(box).toBeTruthy()
+  const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+
+  await handle.dispatchEvent('pointerdown', {
+    pointerId: 51,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 52,
+      pointerType: 'touch',
+      clientX: x + 80,
+      clientY: y + 60,
+    }))
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 52,
+      pointerType: 'touch',
+    }))
+  }, start)
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'resize',
+  )
+
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 51,
+      pointerType: 'touch',
+      clientX: x + 80,
+      clientY: y + 60,
+    }))
+  }, start)
+  await expect.poll(() => freeformElementBoxes(page)).not.toEqual(before)
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 51,
+      pointerType: 'touch',
+    }))
+  })
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+})
+
+test('leaf pointercancel cleanup move', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  await setSelectedElementBox(page, 100, 100, 100, 100)
+
+  const workspace = page.locator('.freeform-workspace')
+  const historyDepth = await workspace.getAttribute('data-history-depth')
+  expect(historyDepth).not.toBeNull()
+  const before = await freeformElementBoxes(page)
+  const elementBox = await page.getByTestId('freeform-element').boundingBox()
+  expect(elementBox).toBeTruthy()
+  const scale = await freeformCanvasScale(page)
+  const start = {
+    x: elementBox!.x + elementBox!.width / 2,
+    y: elementBox!.y + elementBox!.height / 2,
+  }
+
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + (390 - 5) * scale, start.y)
+  const overlay = page.getByTestId('freeform-selection-overlay')
+  await expect(overlay).toHaveAttribute('data-live-interaction', 'move')
+  await expect(page.getByTestId('freeform-snap-line')).toHaveCount(1)
+
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })))
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+  await expect(page.getByTestId('freeform-snap-line')).toHaveCount(0)
+  await expect(overlay).not.toHaveAttribute('data-live-interaction', /.+/)
+  await expect(workspace).toHaveAttribute('data-history-depth', historyDepth!)
+  await page.mouse.up()
+})
+
+test('leaf pointercancel cleanup resize', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  await setSelectedElementBox(page, 100, 100, 100, 100)
+
+  const workspace = page.locator('.freeform-workspace')
+  const historyDepth = await workspace.getAttribute('data-history-depth')
+  expect(historyDepth).not.toBeNull()
+  const before = await freeformElementBoxes(page)
+  const resizeHandle = page.getByTestId('freeform-selection-resize')
+  const handleBox = await resizeHandle.boundingBox()
+  expect(handleBox).toBeTruthy()
+  const scale = await freeformCanvasScale(page)
+  const start = {
+    x: handleBox!.x + handleBox!.width / 2,
+    y: handleBox!.y + handleBox!.height / 2,
+  }
+
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + 80 * scale, start.y + 60 * scale)
+  const overlay = page.getByTestId('freeform-selection-overlay')
+  await expect(overlay).toHaveAttribute('data-live-interaction', 'resize')
+  await expect.poll(() => freeformElementBoxes(page)).not.toEqual(before)
+
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })))
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+  await expect(page.getByTestId('freeform-snap-line')).toHaveCount(0)
+  await expect(overlay).not.toHaveAttribute('data-live-interaction', /.+/)
+  await expect(workspace).toHaveAttribute('data-history-depth', historyDepth!)
+  await page.mouse.up()
+})
+
 test('drags selected elements together', async ({ page }) => {
   await openFreeform(page)
 
@@ -3123,7 +3425,7 @@ test('snapping hides guides when pointer drag is canceled', async ({ page }) => 
   await page.mouse.move(start.x + (390 - 5) * scale, start.y)
   await expect(page.getByTestId('freeform-snap-line')).toHaveCount(1)
 
-  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel')))
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })))
   await expect(page.getByTestId('freeform-snap-line')).toHaveCount(0)
   await page.mouse.up()
 })
