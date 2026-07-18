@@ -19,6 +19,7 @@ import {
   insertSceneChildren,
   isValidSceneColorPaint,
   isValidSceneShapeFill,
+  reorderNodesAboveAtPath,
   reorderNodesAtPath,
   scenePathKey,
   ungroupSceneGroups,
@@ -886,6 +887,42 @@ export function reduceFreeformDocumentV3(
           action.parentPath,
           action.nodeIds,
           action.direction,
+        )
+        if (nodes === slide.nodes || validateSceneNodesForMutation(nodes)) return document
+        return withSlideNodesV3(document, action.slideId, () => nodes)
+      }
+      case 'node/reorder-above': {
+        if (
+          !validContainerPath(action.parentPath) ||
+          !validIdList(action.nodeIds) ||
+          typeof action.targetNodeId !== 'string' ||
+          action.targetNodeId.length === 0 ||
+          action.nodeIds.includes(action.targetNodeId)
+        ) {
+          return document
+        }
+        const slide = document.slides.find((candidate) => candidate.id === action.slideId)
+        if (!slide) return document
+        const selection = validateSelectionForParent(
+          slide.nodes,
+          action.parentPath,
+          action.nodeIds,
+        )
+        if (
+          !selection.ok ||
+          !selection.children.some((node) => node.id === action.targetNodeId) ||
+          !canApplySceneAction(slide.nodes, {
+            kind: 'structure',
+            paths: selection.selectedNodes.map((node) => [...action.parentPath, node.id]),
+          })
+        ) {
+          return document
+        }
+        const nodes = reorderNodesAboveAtPath(
+          slide.nodes,
+          action.parentPath,
+          action.nodeIds,
+          action.targetNodeId,
         )
         if (nodes === slide.nodes || validateSceneNodesForMutation(nodes)) return document
         return withSlideNodesV3(document, action.slideId, () => nodes)

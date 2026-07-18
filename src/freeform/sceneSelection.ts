@@ -5,13 +5,25 @@ import {
   sceneNodeLocalMatrix,
   transformPoint,
 } from './sceneTransform'
-import { findNodeAtPath, getChildrenAtPath } from './sceneTree'
+import { findNodeAtPath, getChildrenAtPath, scenePathKey } from './sceneTree'
 import type { Matrix2D, Point, SceneBounds } from './sceneTransform'
 import type { FreeformSceneNode, ScenePath } from './types'
 
 export interface EffectiveSceneState {
   locked: boolean
   hidden: boolean
+}
+
+export interface SceneUiIdentity {
+  activeSlideId: string
+  draftId: string | null
+  userId: string | null
+}
+
+export interface SceneUiState {
+  activeGroupPath: ScenePath
+  selectionPaths: readonly ScenePath[]
+  identity: SceneUiIdentity
 }
 
 function isPathPrefix(prefix: ScenePath, path: ScenePath): boolean {
@@ -98,6 +110,44 @@ export function fallbackScenePath(
     if (findNodeAtPath(nodes, candidate)?.type === 'group') return candidate
   }
   return []
+}
+
+/**
+ * Reconcile non-persisted selection state after any document/UI snapshot.
+ * Identity changes start a fresh editing context; ordinary document changes
+ * retain surviving paths but atomically fall back and filter stale selections.
+ */
+export function reconcileSceneUiState(
+  nodes: readonly FreeformSceneNode[],
+  state: SceneUiState,
+  identity: SceneUiIdentity,
+): SceneUiState {
+  const identityChanged =
+    state.identity.activeSlideId !== identity.activeSlideId ||
+    state.identity.draftId !== identity.draftId ||
+    state.identity.userId !== identity.userId
+  if (identityChanged) {
+    return {
+      activeGroupPath: [],
+      selectionPaths: [],
+      identity: { ...identity },
+    }
+  }
+
+  const activeGroupPath = fallbackScenePath(nodes, state.activeGroupPath)
+  const selectionPaths = normalizeSceneSelection(nodes, activeGroupPath, state.selectionPaths)
+  const activePathUnchanged = scenePathKey(activeGroupPath) === scenePathKey(state.activeGroupPath)
+  const selectionUnchanged =
+    selectionPaths.length === state.selectionPaths.length &&
+    selectionPaths.every(
+      (path, index) => scenePathKey(path) === scenePathKey(state.selectionPaths[index]),
+    )
+  if (activePathUnchanged && selectionUnchanged) return state
+  return {
+    activeGroupPath: [...activeGroupPath],
+    selectionPaths: selectionPaths.map((path) => [...path]),
+    identity: { ...identity },
+  }
 }
 
 function parentWorldForPath(

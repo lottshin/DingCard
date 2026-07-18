@@ -699,7 +699,7 @@ async function insertTwoRectanglesLeavingInspectorFocused(page: import('@playwri
 }
 
 test('inspector hierarchy shows only context-relevant sections in contract order', async ({ page }) => {
-  const inspector = page.locator('.freeform-inspector')
+  const inspector = page.locator('.freeform-properties-tabpanel')
   const sectionIds = () =>
     inspector.locator(':scope > [data-testid^="inspector-"]').evaluateAll((sections) =>
       sections.map((section) => section.getAttribute('data-testid')),
@@ -776,7 +776,7 @@ test('inspector hierarchy never commits stale object sections while undo clears 
   await openFreeform(page)
   await insertShape(page)
 
-  const inspector = page.locator('.freeform-inspector')
+  const inspector = page.locator('.freeform-properties-tabpanel')
   await expect(page.getByTestId('inspector-geometry')).toBeVisible()
   await inspector.evaluate((node) => {
     const snapshots: string[][] = []
@@ -4191,3 +4191,407 @@ test('distributes selected elements horizontally', async ({ page }) => {
     { x: 800, y: 160 },
   ])
 })
+
+test('layers tab exposes a reverse accessible tree with roving keyboard focus', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-tree-${Date.now()}`)
+
+  const tablist = page.getByRole('tablist', { name: '自由编辑面板' })
+  await expect(tablist).toBeVisible()
+  await expect(tablist.getByRole('tab')).toHaveCount(2)
+  await tablist.getByRole('tab', { name: '图层', exact: true }).click()
+
+  const panel = page.getByRole('tabpanel', { name: '图层' })
+  const tree = panel.getByRole('tree', { name: '图层树' })
+  await expect(tree).toBeVisible()
+  const rows = tree.getByRole('treeitem')
+  await expect(rows).toHaveCount(12)
+  await expect(rows.first()).toHaveAttribute('aria-label', 'Locked root group')
+  await expect(rows.last()).toHaveAttribute('aria-label', 'Underlay')
+  await expect(tree.getByRole('treeitem', { name: 'Scope text' })).toHaveAttribute('aria-level', '2')
+  await expect(tree.getByRole('treeitem', { name: 'Locked text' })).toHaveAttribute('aria-level', '3')
+  const outerGroup = tree.getByRole('treeitem', { name: 'Outer group' })
+  const ownedGroupId = await outerGroup.getAttribute('aria-owns')
+  expect(ownedGroupId).toBeTruthy()
+  await expect(tree.locator(`[id="${ownedGroupId}"]`)).toHaveAttribute('role', 'group')
+  await expect(tree.locator('[tabindex="0"]')).toHaveCount(1)
+
+  await rows.first().focus()
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
+    .toBe('Locked root group')
+  await page.keyboard.press('ArrowDown')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
+    .toBe('Locked root group leaf')
+  await page.keyboard.press('Home')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
+    .toBe('Locked root group')
+  await page.keyboard.press('End')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
+    .toBe('Underlay')
+})
+
+test('layers tab keeps independent panel linkage and tree state across tab switches', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-tab-state-${Date.now()}`)
+
+  const tablist = page.getByRole('tablist', { name: '自由编辑面板' })
+  const propertiesTab = tablist.getByRole('tab', { name: '属性', exact: true })
+  const layersTab = tablist.getByRole('tab', { name: '图层', exact: true })
+  const propertiesPanelId = await propertiesTab.getAttribute('aria-controls')
+  const layersPanelId = await layersTab.getAttribute('aria-controls')
+  expect(propertiesPanelId).toBeTruthy()
+  expect(layersPanelId).toBeTruthy()
+  expect(propertiesPanelId).not.toBe(layersPanelId)
+  await expect(page.locator(`#${propertiesPanelId}`)).toHaveAttribute('aria-labelledby', await propertiesTab.getAttribute('id'))
+  await expect(page.locator(`#${layersPanelId}`)).toHaveAttribute('aria-labelledby', await layersTab.getAttribute('id'))
+
+  await layersTab.click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const outer = tree.getByRole('treeitem', { name: 'Outer group' })
+  await outer.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(tree.getByRole('treeitem', { name: 'Visible leaf' })).toHaveCount(0)
+
+  await propertiesTab.click()
+  await expect(page.getByRole('tabpanel', { name: '属性' })).toBeVisible()
+  await layersTab.click()
+  await expect(page.getByRole('tabpanel', { name: '图层' })).toBeVisible()
+  await expect(tree.getByRole('treeitem', { name: 'Visible leaf' })).toHaveCount(0)
+  await expect(outer).toHaveAttribute('tabindex', '0')
+})
+
+test('layers tree selects deep nodes in their parent scope and rejects cross-parent toggles', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-selection-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  const deepRow = tree.getByRole('treeitem', { name: 'Scope text' })
+  await deepRow.click()
+  await expect(deepRow).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', 'outer')
+  await expect(page.locator('[data-scene-node-id="scope-text"][data-selected="true"]')).toHaveCount(1)
+
+  const sibling = tree.getByRole('treeitem', { name: 'Visible leaf' })
+  await sibling.focus()
+  await page.keyboard.press('Space')
+  await expect(deepRow).toHaveAttribute('aria-selected', 'true')
+  await expect(sibling).toHaveAttribute('aria-selected', 'true')
+
+  const rootRow = tree.getByRole('treeitem', { name: 'Underlay' })
+  await rootRow.focus()
+  await page.keyboard.press('Space')
+  await expect(deepRow).toHaveAttribute('aria-selected', 'true')
+  await expect(sibling).toHaveAttribute('aria-selected', 'true')
+  await expect(panelLiveRegion(page)).toContainText('只能同时选择同一组内的图层')
+})
+
+test('layers tree renames with F2 and reorders siblings with Alt arrows', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-edit-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const scopeRow = tree.getByRole('treeitem', { name: 'Scope text' })
+  await scopeRow.focus()
+  await page.keyboard.press('F2')
+  const renameInput = page.getByRole('textbox', { name: '重命名图层' })
+  await expect(renameInput).toBeVisible()
+  await renameInput.fill('')
+  await page.keyboard.press('Enter')
+  await expect(tree.getByRole('treeitem', { name: '文本' })).toBeVisible()
+
+  const underlay = tree.getByRole('treeitem', { name: 'Underlay' })
+  await underlay.focus()
+  await page.keyboard.press('Alt+ArrowUp')
+  const rootLabels = await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  expect(rootLabels.indexOf('Underlay')).toBe(3)
+  await expect(panelLiveRegion(page)).toContainText('Underlay')
+})
+
+test('layers tabs and tree directional keys stay in the panel without canvas nudges', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-keyboard-${Date.now()}`)
+
+  const tablist = page.getByRole('tablist', { name: '自由编辑面板' })
+  const propertiesTab = tablist.getByRole('tab', { name: '属性', exact: true })
+  const layersTab = tablist.getByRole('tab', { name: '图层', exact: true })
+  await propertiesTab.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(layersTab).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator(`#${await layersTab.getAttribute('aria-controls')}`)).toHaveAttribute(
+    'aria-labelledby',
+    await layersTab.getAttribute('id'),
+  )
+  await page.keyboard.press('Home')
+  await expect(propertiesTab).toHaveAttribute('aria-selected', 'true')
+  await propertiesTab.focus()
+  await page.keyboard.press('End')
+  await expect(layersTab).toHaveAttribute('aria-selected', 'true')
+
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const outer = tree.getByRole('treeitem', { name: 'Outer group' })
+  await outer.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(tree.getByRole('treeitem', { name: 'Visible leaf' })).toHaveCount(0)
+  await page.keyboard.press('ArrowRight')
+  await expect(tree.getByRole('treeitem', { name: 'Visible leaf' })).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
+    .toBe('Hidden inner')
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('ArrowLeft')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
+    .toBe('Outer group')
+
+  const scaled = tree.getByRole('treeitem', { name: 'Scaled root leaf' })
+  await scaled.click()
+  const before = await page.locator('[data-scene-node-id="scaled-root"]').getAttribute('style')
+  await scaled.focus()
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.locator('[data-scene-node-id="scaled-root"]')).toHaveAttribute('style', before ?? '')
+})
+
+test('layers selection reconciles after delete, undo, and switching the active page', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-reconcile-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const scopeRow = tree.getByRole('treeitem', { name: 'Scope text' })
+  await scopeRow.click()
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', 'outer')
+
+  await page.keyboard.press('Delete')
+  await expect(tree.getByRole('treeitem', { name: 'Scope text' })).toHaveCount(0)
+  await expect(page.locator('[data-scene-node-id="scope-text"][data-selected="true"]')).toHaveCount(0)
+
+  await page.keyboard.press('Control+z')
+  await expect(tree.getByRole('treeitem', { name: 'Scope text' })).toBeVisible()
+  await expect(page.locator('[data-scene-node-id="scope-text"][data-selected="true"]')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '复制页面', exact: true }).click()
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
+  await expect(page.locator('[data-scene-node-id="scope-text"][data-selected="true"]')).toHaveCount(0)
+})
+
+test('layers selection resets when another draft opens in the same workspace mount', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-draft-identity-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  await tree.getByRole('treeitem', { name: 'Scope text' }).click()
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', 'outer')
+
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    if (!key) throw new Error('draft storage key missing')
+    const drafts = JSON.parse(localStorage.getItem(key) ?? '[]')
+    const source = structuredClone(drafts[0])
+    source.id = 'other-freeform-draft'
+    source.title = 'Other freeform draft'
+    source.updatedAt += 1
+    source.document.activeSlideId = 'other-slide'
+    source.document.slides = [{
+      ...source.document.slides[0],
+      id: 'other-slide',
+      name: 'Other slide',
+      nodes: [source.document.slides[0].nodes[0]],
+    }]
+    localStorage.setItem(key, JSON.stringify([...drafts, source]))
+  })
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.locator('.draft-item', { hasText: 'Other freeform draft' }).click()
+
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
+  await expect(page.locator('[data-scene-node-id][data-selected="true"]')).toHaveCount(0)
+  await expect(page.getByRole('tree', { name: '图层树' }).getByRole('treeitem')).toHaveCount(1)
+})
+
+test('layers reorder keeps a stable same-parent selection and does not write history at boundaries', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-reorder-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const underlay = tree.getByRole('treeitem', { name: 'Underlay' })
+  const scaled = tree.getByRole('treeitem', { name: 'Scaled root leaf' })
+  await underlay.click()
+  await scaled.focus()
+  await page.keyboard.press('Space')
+  await expect(underlay).toHaveAttribute('aria-selected', 'true')
+  await expect(scaled).toHaveAttribute('aria-selected', 'true')
+
+  const rootIdsBefore = await page.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  await underlay.focus()
+  await page.keyboard.press('Alt+ArrowUp')
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeEnabled()
+  await expect(underlay).toHaveAttribute('aria-selected', 'true')
+  await expect(scaled).toHaveAttribute('aria-selected', 'true')
+  const rootIdsAfterMove = await page.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  expect(rootIdsAfterMove).not.toEqual(rootIdsBefore)
+  expect(rootIdsAfterMove.filter((name) => name === 'Underlay' || name === 'Scaled root leaf')).toEqual([
+    'Scaled root leaf',
+    'Underlay',
+  ])
+
+  await page.keyboard.press('Control+z')
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled()
+  const rootIdsAfterUndo = await page.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  expect(rootIdsAfterUndo).toEqual(rootIdsBefore)
+
+  await page.keyboard.press('Control+y')
+  const rootIdsAfterRedo = await page.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  expect(rootIdsAfterRedo).toEqual(rootIdsAfterMove)
+  await expect(page.getByRole('button', { name: '重做', exact: true })).toBeDisabled()
+  await expect(panelLiveRegion(page)).toContainText(/第 \d+ 层/)
+  await page.keyboard.press('Control+z')
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled()
+
+  await underlay.click()
+  await underlay.focus()
+  await page.keyboard.press('Alt+ArrowDown')
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled()
+})
+
+test('layers drag reorders adjacent siblings and rejects cross-parent drops', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-drag-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const underlay = tree.getByRole('treeitem', { name: 'Underlay' })
+  const outer = tree.getByRole('treeitem', { name: 'Outer group' })
+  await underlay.dragTo(outer)
+  const rootsAfterDrop = await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  expect(rootsAfterDrop.slice(-2)).toEqual(['Underlay', 'Outer group'])
+
+  const scope = tree.getByRole('treeitem', { name: 'Scope text' })
+  await scope.dragTo(underlay)
+  await expect(panelLiveRegion(page)).toContainText('图层只能在同一组内排序')
+  const rootsAfterRejectedDrop = await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  expect(rootsAfterRejectedDrop).toEqual(rootsAfterDrop)
+})
+
+test('layers drag moves a non-adjacent sibling to the exact visual drop position', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-drag-distance-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const source = tree.getByRole('treeitem', { name: 'Underlay' })
+  const target = tree.getByRole('treeitem', { name: 'Locked root group', exact: true })
+  const initialRootLabels = await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  await source.dragTo(target)
+
+  const visualRootLabels = await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  expect(visualRootLabels.slice(0, 2)).toEqual(['Underlay', 'Locked root group'])
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeEnabled()
+  await page.keyboard.press('Control+z')
+  const rootsAfterUndo = await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  expect(rootsAfterUndo).toEqual(initialRootLabels)
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled()
+})
+
+test('layers drag inserts a non-contiguous selection as one block and ignores selected targets', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-drag-selection-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const scaled = tree.getByRole('treeitem', { name: 'Scaled root leaf' })
+  const underlay = tree.getByRole('treeitem', { name: 'Underlay' })
+  const target = tree.getByRole('treeitem', { name: 'Locked root leaf', exact: true })
+  await scaled.click()
+  await underlay.focus()
+  await page.keyboard.press('Space')
+
+  const initialRootLabels = await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )
+  await underlay.dragTo(scaled)
+  expect(await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )).toEqual(initialRootLabels)
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled()
+
+  await underlay.dragTo(target)
+  expect(await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )).toEqual([
+    'Locked root group',
+    'Scaled root leaf',
+    'Underlay',
+    'Locked root leaf',
+    'Outer group',
+  ])
+  await expect(panelLiveRegion(page)).toContainText('已移动 2 个图层至 Locked root leaf 上方')
+  await page.keyboard.press('Control+z')
+  expect(await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
+    items.map((item) => item.getAttribute('aria-label')),
+  )).toEqual(initialRootLabels)
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled()
+})
+
+test('layer rename by double click is one undoable and redoable edit', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-rename-history-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const row = tree.getByRole('treeitem', { name: 'Scope text' })
+  await row.locator('.freeform-layer-name').dblclick()
+  const input = page.getByRole('textbox', { name: '重命名图层' })
+  await input.fill('Caption layer')
+  await page.keyboard.press('Enter')
+  await expect(tree.getByRole('treeitem', { name: 'Caption layer' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeEnabled()
+
+  await page.keyboard.press('Control+z')
+  await expect(tree.getByRole('treeitem', { name: 'Scope text' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled()
+  await page.keyboard.press('Control+y')
+  await expect(tree.getByRole('treeitem', { name: 'Caption layer' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '重做', exact: true })).toBeDisabled()
+})
+
+test('layer rename does not submit while an IME composition is active', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-rename-ime-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  await tree.getByRole('treeitem', { name: 'Scope text' }).press('F2')
+  const input = page.getByRole('textbox', { name: '重命名图层' })
+  await input.dispatchEvent('compositionstart')
+  await input.fill('输入中')
+  await input.press('Enter')
+  await expect(input).toBeVisible()
+  await input.dispatchEvent('compositionend')
+  await input.press('Enter')
+  await expect(tree.getByRole('treeitem', { name: '输入中' })).toBeVisible()
+})
+
+test('layer tree restores deterministic row focus after delete and collapse', async ({ page }) => {
+  await openNestedV3Draft(page, `layers-focus-fallback-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const scope = tree.getByRole('treeitem', { name: 'Scope text' })
+  await scope.click()
+  await scope.focus()
+  await page.keyboard.press('Delete')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
+    .toBe('Visible leaf')
+
+  const outer = tree.getByRole('treeitem', { name: 'Outer group' })
+  await outer.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
+    .toBe('Outer group')
+  await expect(tree.getByRole('treeitem', { name: 'Visible leaf' })).toHaveCount(0)
+})
+
+function panelLiveRegion(page: import('@playwright/test').Page) {
+  return page.locator('[data-testid="freeform-layer-live"]')
+}

@@ -398,6 +398,32 @@ export function reorderNodesAtPath(
   )
 }
 
+export function reorderNodesAboveAtPath(
+  nodes: FreeformSceneNode[],
+  parentPath: ScenePath,
+  nodeIds: readonly string[],
+  targetNodeId: string,
+): FreeformSceneNode[] {
+  if (nodeIds.length === 0 || typeof targetNodeId !== 'string' || targetNodeId.length === 0) {
+    return nodes
+  }
+  const selected = new Set(nodeIds)
+  if (selected.size !== nodeIds.length || selected.has(targetNodeId)) return nodes
+  return updateChildrenAtPath(nodes, parentPath, (children) => {
+    const moving = children.filter((node) => selected.has(node.id))
+    if (moving.length !== selected.size) return children
+    const remaining = children.filter((node) => !selected.has(node.id))
+    const targetIndex = remaining.findIndex((node) => node.id === targetNodeId)
+    if (targetIndex < 0) return children
+    const next = [
+      ...remaining.slice(0, targetIndex + 1),
+      ...moving,
+      ...remaining.slice(targetIndex + 1),
+    ]
+    return sameNodeOrder(children, next) ? children : next
+  })
+}
+
 function clonePaint<T extends object>(paint: T): T {
   return { ...paint }
 }

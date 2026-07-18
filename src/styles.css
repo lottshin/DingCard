@@ -919,7 +919,9 @@ html.theme-anim * {
 .freeform-rail,
 .freeform-slide-list,
 .freeform-stage-scroll,
-.freeform-inspector {
+.freeform-inspector,
+.freeform-right-tabpanel,
+.freeform-layer-tree {
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;
 }
@@ -928,7 +930,9 @@ html.theme-anim * {
 .freeform-rail::-webkit-scrollbar,
 .freeform-slide-list::-webkit-scrollbar,
 .freeform-stage-scroll::-webkit-scrollbar,
-.freeform-inspector::-webkit-scrollbar {
+.freeform-inspector::-webkit-scrollbar,
+.freeform-right-tabpanel::-webkit-scrollbar,
+.freeform-layer-tree::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
@@ -937,7 +941,9 @@ html.theme-anim * {
 .freeform-rail::-webkit-scrollbar-track,
 .freeform-slide-list::-webkit-scrollbar-track,
 .freeform-stage-scroll::-webkit-scrollbar-track,
-.freeform-inspector::-webkit-scrollbar-track {
+.freeform-inspector::-webkit-scrollbar-track,
+.freeform-right-tabpanel::-webkit-scrollbar-track,
+.freeform-layer-tree::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -945,7 +951,9 @@ html.theme-anim * {
 .freeform-rail::-webkit-scrollbar-thumb,
 .freeform-slide-list::-webkit-scrollbar-thumb,
 .freeform-stage-scroll::-webkit-scrollbar-thumb,
-.freeform-inspector::-webkit-scrollbar-thumb {
+.freeform-inspector::-webkit-scrollbar-thumb,
+.freeform-right-tabpanel::-webkit-scrollbar-thumb,
+.freeform-layer-tree::-webkit-scrollbar-thumb {
   min-height: 44px;
   border: 3px solid transparent;
   border-radius: 999px;
@@ -957,7 +965,9 @@ html.theme-anim * {
 .freeform-rail::-webkit-scrollbar-thumb:hover,
 .freeform-slide-list::-webkit-scrollbar-thumb:hover,
 .freeform-stage-scroll::-webkit-scrollbar-thumb:hover,
-.freeform-inspector::-webkit-scrollbar-thumb:hover {
+.freeform-inspector::-webkit-scrollbar-thumb:hover,
+.freeform-right-tabpanel::-webkit-scrollbar-thumb:hover,
+.freeform-layer-tree::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
   background-clip: content-box;
 }
@@ -966,7 +976,9 @@ html.theme-anim * {
 .freeform-rail::-webkit-scrollbar-button,
 .freeform-slide-list::-webkit-scrollbar-button,
 .freeform-stage-scroll::-webkit-scrollbar-button,
-.freeform-inspector::-webkit-scrollbar-button {
+.freeform-inspector::-webkit-scrollbar-button,
+.freeform-right-tabpanel::-webkit-scrollbar-button,
+.freeform-layer-tree::-webkit-scrollbar-button {
   display: none;
   width: 0;
   height: 0;
@@ -976,7 +988,9 @@ html.theme-anim * {
 .freeform-rail::-webkit-scrollbar-corner,
 .freeform-slide-list::-webkit-scrollbar-corner,
 .freeform-stage-scroll::-webkit-scrollbar-corner,
-.freeform-inspector::-webkit-scrollbar-corner {
+.freeform-inspector::-webkit-scrollbar-corner,
+.freeform-right-tabpanel::-webkit-scrollbar-corner,
+.freeform-layer-tree::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -1362,6 +1376,250 @@ html.theme-anim * {
 
 .freeform-inspector {
   overflow-y: auto;
+}
+
+.freeform-right-panel {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.freeform-right-tabpanel {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.freeform-right-tabpanel[hidden] {
+  display: none;
+}
+
+.freeform-layers-tabpanel {
+  overflow: hidden;
+}
+
+.freeform-right-tabs {
+  flex: 0 0 44px;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 5px 8px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.freeform-right-tab {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.freeform-right-tab:hover,
+.freeform-right-tab:focus-visible {
+  outline: none;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.freeform-right-tab:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.freeform-right-tab.is-active {
+  color: var(--accent-text);
+  background: var(--accent-weak);
+}
+
+.freeform-right-tab.is-active::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.freeform-layers-panel {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.freeform-layers-heading {
+  flex: 0 0 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.freeform-layers-count {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.freeform-layer-tree {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 6px 6px 14px;
+}
+
+.freeform-layer-branch {
+  min-width: 0;
+}
+
+.freeform-layer-children {
+  min-width: 0;
+}
+
+.freeform-layer-row {
+  min-width: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 4px;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
+  cursor: default;
+  user-select: none;
+}
+
+.freeform-layer-children .freeform-layer-row {
+  padding-left: 14px;
+}
+
+.freeform-layer-row:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.freeform-layer-row:focus-visible {
+  outline: 2px solid var(--text-2);
+  outline-offset: -2px;
+}
+
+.freeform-layer-row.is-selected {
+  border-left-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--text);
+}
+
+.freeform-layer-expand,
+.freeform-layer-expand-spacer {
+  width: 24px;
+  height: 28px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.freeform-layer-expand {
+  cursor: pointer;
+}
+
+.freeform-layer-expand:hover,
+.freeform-layer-expand:focus-visible {
+  outline: none;
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.freeform-layer-expand-icon {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.freeform-layer-type {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+}
+
+.freeform-layer-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.freeform-layer-type-mark {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.freeform-layer-name,
+.freeform-layer-rename {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  line-height: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-layer-rename {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+  outline: none;
+  background: var(--surface);
+  font-family: var(--sans);
+}
+
+.freeform-layer-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .freeform-inspector .freeform-panel-head {

@@ -19,6 +19,7 @@ import {
   mapSceneLeavesAsync,
   recenterSceneAncestors,
   removeNodesAtPath,
+  reorderNodesAboveAtPath,
   reorderNodesAtPath,
   ungroupSceneGroups,
   updateChildrenAtPath,
@@ -360,6 +361,57 @@ describe('immutable scene path helpers', () => {
     expect(reorderNodesAtPath(nodes, [], [], 'front')).toBe(nodes)
     expect(reorderNodesAtPath(nodes, [], ['missing'], 'front')).toBe(nodes)
     expect(reorderNodesAtPath(nodes, ['missing'], ['a'], 'front')).toBe(nodes)
+  })
+
+  it('atomically inserts a non-contiguous sibling selection above an unselected target', () => {
+    const nodes = ['a', 'b', 'c', 'd', 'e'].map((id) => textLeaf(id))
+
+    const reordered = reorderNodesAboveAtPath(nodes, [], ['a', 'c'], 'd')
+
+    expect(reordered.map((node) => node.id)).toEqual(['b', 'd', 'a', 'c', 'e'])
+    expect(reorderNodesAboveAtPath(nodes, [], ['a', 'c'], 'c')).toBe(nodes)
+    expect(reorderNodesAboveAtPath(nodes, [], ['a', 'missing'], 'd')).toBe(nodes)
+    expect(reorderNodesAboveAtPath(nodes, [], ['a'], 'missing')).toBe(nodes)
+    expect(reorderNodesAboveAtPath(nodes, ['missing'], ['a'], 'd')).toBe(nodes)
+  })
+
+  it('reduces an exact deep reorder above atomically and preserves untouched branches', () => {
+    const untouched = textLeaf('untouched')
+    const original = documentWith([
+      groupNode('group', ['a', 'b', 'c', 'd'].map((id) => textLeaf(id))),
+      untouched,
+    ])
+
+    const reordered = reduceFreeformDocumentV3(original, {
+      type: 'node/reorder-above',
+      slideId: 'slide-1',
+      parentPath: ['group'],
+      nodeIds: ['a', 'c'],
+      targetNodeId: 'd',
+    })
+
+    expect(reordered).not.toBe(original)
+    expect(getChildrenAtPath(reordered.slides[0].nodes, ['group'])?.map((node) => node.id)).toEqual([
+      'b',
+      'd',
+      'a',
+      'c',
+    ])
+    expect(reordered.slides[0].nodes[1]).toBe(untouched)
+    expect(reduceFreeformDocumentV3(original, {
+      type: 'node/reorder-above',
+      slideId: 'slide-1',
+      parentPath: ['group'],
+      nodeIds: ['a', 'c'],
+      targetNodeId: 'missing',
+    })).toBe(original)
+    expect(reduceFreeformDocumentV3(original, {
+      type: 'node/reorder-above',
+      slideId: 'slide-1',
+      parentPath: ['group'],
+      nodeIds: ['a', 'c'],
+      targetNodeId: 'c',
+    })).toBe(original)
   })
 
   it('validates only direct same-parent selections without mutating input', () => {
@@ -1237,6 +1289,13 @@ describe('v3 reducer permission and atomicity boundary', () => {
         parentPath: [],
         nodeIds: ['locked-leaf'],
         direction: 'front',
+      },
+      {
+        type: 'node/reorder-above',
+        slideId: 'slide-1',
+        parentPath: [],
+        nodeIds: ['locked-leaf'],
+        targetNodeId: 'free',
       },
       {
         type: 'node/clone',

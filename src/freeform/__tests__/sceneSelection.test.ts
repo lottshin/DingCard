@@ -6,6 +6,7 @@ import {
   effectiveSceneState,
   fallbackScenePath,
   normalizeSceneSelection,
+  reconcileSceneUiState,
   sceneLogicalBounds,
 } from '../sceneSelection'
 import type {
@@ -61,6 +62,58 @@ function group(
 }
 
 describe('scene selection', () => {
+  it('reconciles stale paths when a document snapshot replaces a nested branch', () => {
+    const current = {
+      activeGroupPath: ['outer', 'inner'],
+      selectionPaths: [['outer', 'inner', 'leaf']],
+      identity: { activeSlideId: 'slide-1', draftId: 'draft-1', userId: 'user-1' },
+    } as const
+    const replacement = [group('outer', [textLeaf('sibling')])]
+
+    expect(reconcileSceneUiState(replacement, current, current.identity)).toEqual({
+      activeGroupPath: ['outer'],
+      selectionPaths: [],
+      identity: current.identity,
+    })
+  })
+
+  it.each([
+    ['active slide', 'slide-2', 'draft-1', 'user-1'],
+    ['draft', 'slide-1', 'draft-2', 'user-1'],
+    ['user', 'slide-1', 'draft-1', 'user-2'],
+  ])('clears editing scope and selection when %s identity changes', (_label, activeSlideId, draftId, userId) => {
+    const previous = {
+      activeGroupPath: ['outer'],
+      selectionPaths: [['outer', 'leaf']],
+      identity: { activeSlideId: 'slide-1', draftId: 'draft-1', userId: 'user-1' },
+    } as const
+    const nextIdentity = { activeSlideId, draftId, userId }
+
+    expect(reconcileSceneUiState([group('outer', [textLeaf('leaf')])], previous, nextIdentity)).toEqual({
+      activeGroupPath: [],
+      selectionPaths: [],
+      identity: nextIdentity,
+    })
+  })
+
+  it('keeps valid paths and filters selection atomically for an unchanged identity', () => {
+    const state = {
+      activeGroupPath: ['outer'],
+      selectionPaths: [['outer', 'first'], ['outer', 'missing']],
+      identity: { activeSlideId: 'slide-1', draftId: null, userId: null },
+    } as const
+
+    expect(reconcileSceneUiState(
+      [group('outer', [textLeaf('first'), textLeaf('second')])],
+      state,
+      state.identity,
+    )).toEqual({
+      activeGroupPath: ['outer'],
+      selectionPaths: [['outer', 'first']],
+      identity: state.identity,
+    })
+  })
+
   it('inherits effective lock and hide independently without rewriting child state', () => {
     const leaf = textLeaf('leaf', { locked: false, hidden: false })
     const nodes = [

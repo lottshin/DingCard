@@ -22,7 +22,9 @@ import {
   freeformReducer,
 } from './document'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
+import { FreeformLayersPanel } from './FreeformLayersPanel'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
+import { FreeformRightPanel } from './FreeformRightPanel'
 import {
   FreeformSceneNodeView,
   type SceneNodePointerState,
@@ -54,9 +56,11 @@ import {
 } from './paint'
 import {
   directChildPathForScope,
-  fallbackScenePath,
   normalizeSceneSelection,
+  reconcileSceneUiState,
   sceneLogicalBounds,
+  type SceneUiIdentity,
+  type SceneUiState,
 } from './sceneSelection'
 import { cloneSceneNodes, findNodeAtPath, getChildrenAtPath, scenePathKey } from './sceneTree'
 import {
@@ -219,8 +223,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     [activeSlide.nodes],
   )
   const selectedElementIds = useRef<string[]>([])
-  const [activeGroupPath, setActiveGroupPath] = useState<ScenePath>([])
-  const [requestedSelectionPaths, setRequestedSelectionPaths] = useState<ScenePath[]>([])
+  const initialSceneIdentity: SceneUiIdentity = {
+    activeSlideId: activeSlide.id,
+    draftId: null,
+    userId: user?.id ?? null,
+  }
+  const [sceneUiState, setSceneUiState] = useState<SceneUiState>(() => ({
+    activeGroupPath: [],
+    selectionPaths: [],
+    identity: initialSceneIdentity,
+  }))
+  const activeGroupPath = sceneUiState.activeGroupPath
+  const requestedSelectionPaths = sceneUiState.selectionPaths
   const [clipboard, setClipboard] = useState<FreeformSceneNode[]>([])
   const [zoomPercent, setZoomPercent] = useState(DEFAULT_ZOOM_PERCENT)
   const [fitScale, setFitScale] = useState<number | null>(null)
@@ -247,16 +261,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     [selectionPaths],
   )
   const setSelection = useCallback((update: SetStateAction<string[]>) => {
-    setRequestedSelectionPaths((currentPaths) => {
+    setSceneUiState((current) => {
       const currentIds = normalizeSceneSelection(
         activeSlide.nodes,
-        activeGroupPath,
-        currentPaths,
+        current.activeGroupPath,
+        current.selectionPaths,
       ).map((path) => path[path.length - 1])
       const nextIds = typeof update === 'function' ? update(currentIds) : update
-      return nextIds.map((id) => [...activeGroupPath, id])
+      return {
+        ...current,
+        selectionPaths: nextIds.map((id) => [...current.activeGroupPath, id]),
+      }
     })
-  }, [activeGroupPath, activeSlide.nodes])
+  }, [activeSlide.nodes])
 
   const stageScrollRef = useRef<HTMLDivElement>(null)
   const artboardRef = useRef<HTMLDivElement>(null)
@@ -405,15 +422,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }, [loadDrafts, updateDraftId, user])
 
   useEffect(() => {
-    const nextParentPath = fallbackScenePath(activeSlide.nodes, activeGroupPath)
-    if (scenePathKey(nextParentPath) !== scenePathKey(activeGroupPath)) {
-      setActiveGroupPath(nextParentPath)
+    const identity: SceneUiIdentity = {
+      activeSlideId: activeSlide.id,
+      draftId,
+      userId: user?.id ?? null,
     }
-    setRequestedSelectionPaths((current) => {
-      const next = normalizeSceneSelection(activeSlide.nodes, nextParentPath, current)
-      return JSON.stringify(next) === JSON.stringify(current) ? current : next
-    })
-  }, [activeGroupPath, activeSlide.id, activeSlide.nodes])
+    setSceneUiState((current) => reconcileSceneUiState(activeSlide.nodes, current, identity))
+  }, [activeSlide.id, activeSlide.nodes, draftId, user?.id])
 
   useEffect(() => {
     if (activeFontRequests.length === 0) return
@@ -567,7 +582,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function deleteSelection() {
     if (selection.length === 0) return
-    if (applyAction({ type: 'element/delete', slideId: activeSlide.id, elementIds: selection })) {
+    if (applyAction({
+      type: 'node/delete',
+      slideId: activeSlide.id,
+      parentPath: activeGroupPath,
+      nodeIds: selection,
+    })) {
       setSelection([])
     }
   }
@@ -595,10 +615,84 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   function reorderSelection(direction: 'forward' | 'backward' | 'front' | 'back') {
     if (selection.length === 0) return
     applyAction({
-      type: 'element/reorder',
+      type: 'node/reorder',
       slideId: activeSlide.id,
-      elementIds: selection,
+      parentPath: activeGroupPath,
+      nodeIds: selection,
       direction,
+    })
+  }
+
+  function selectLayerPath(path: ScenePath, options: { toggle: boolean }): boolean {
+    if (path.length === 0 || !findNodeAtPath(activeSlide.nodes, path)) return false
+    const parentPath = path.slice(0, -1)
+    if (
+      options.toggle &&
+      selectionPaths.length > 0 &&
+      scenePathKey(activeGroupPath) !== scenePathKey(parentPath)
+    ) return false
+
+    setSceneUiState((current) => {
+      if (!options.toggle) return {
+        ...current,
+        activeGroupPath: [...parentPath],
+        selectionPaths: [[...path]],
+      }
+      const existing = normalizeSceneSelection(activeSlide.nodes, parentPath, current.selectionPaths)
+      const key = scenePathKey(path)
+      const hasPath = existing.some((candidate) => scenePathKey(candidate) === key)
+      return {
+        ...current,
+        activeGroupPath: [...parentPath],
+        selectionPaths: hasPath
+          ? existing.filter((candidate) => scenePathKey(candidate) !== key)
+          : [...existing, [...path]],
+      }
+    })
+    return true
+  }
+
+  function renameLayer(path: ScenePath, name: string): boolean {
+    return applyAction({ type: 'node/rename', slideId: activeSlide.id, path, name })
+  }
+
+  function reorderLayers(
+    parentPath: ScenePath,
+    nodeIds: readonly string[],
+    direction: 'forward' | 'backward' | 'front' | 'back',
+  ): boolean {
+    const selectedAtParent = selectionPaths.filter(
+      (path) => scenePathKey(path.slice(0, -1)) === scenePathKey(parentPath),
+    )
+    const selectedIds = selectedAtParent.map((path) => path[path.length - 1])
+    const useSelection = nodeIds.every((id) => selectedIds.includes(id))
+    return applyAction({
+      type: 'node/reorder',
+      slideId: activeSlide.id,
+      parentPath,
+      nodeIds: useSelection && selectedIds.length > 0 ? selectedIds : [...nodeIds],
+      direction,
+    })
+  }
+
+  function reorderLayersAbove(
+    parentPath: ScenePath,
+    nodeIds: readonly string[],
+    targetNodeId: string,
+  ): boolean {
+    const selectedAtParent = selectionPaths.filter(
+      (path) => scenePathKey(path.slice(0, -1)) === scenePathKey(parentPath),
+    )
+    const selectedIds = selectedAtParent.map((path) => path[path.length - 1])
+    const useSelection = nodeIds.every((id) => selectedIds.includes(id))
+    const movingIds = useSelection && selectedIds.length > 0 ? selectedIds : [...nodeIds]
+    if (movingIds.includes(targetNodeId)) return false
+    return applyAction({
+      type: 'node/reorder-above',
+      slideId: activeSlide.id,
+      parentPath,
+      nodeIds: movingIds,
+      targetNodeId,
     })
   }
 
@@ -1468,6 +1562,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                   ref={artboardRef}
                   className="freeform-artboard"
                   data-testid="freeform-canvas"
+                  data-active-group-path={activeGroupPath.join('/')}
                   style={{
                     width: activeSlide.width,
                     height: activeSlide.height,
@@ -1540,7 +1635,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           </div>
         </section>
 
-        <aside className="freeform-inspector" aria-label="属性面板">
+        <FreeformRightPanel
+          layers={(
+            <FreeformLayersPanel
+              nodes={activeSlide.nodes}
+              selectedPaths={selectionPaths}
+              onSelect={selectLayerPath}
+              onRename={renameLayer}
+              onReorder={reorderLayers}
+              onDropReorder={reorderLayersAbove}
+            />
+          )}
+        >
           <div className="freeform-panel-head">
             <span>属性</span>
           </div>
@@ -1896,7 +2002,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               )}
             </>
           )}
-        </aside>
+        </FreeformRightPanel>
       </main>
 
       {showDrafts && (

@@ -179,6 +179,13 @@ export type FreeformActionV3 =
       direction: 'forward' | 'backward' | 'front' | 'back'
     }
   | {
+      type: 'node/reorder-above'
+      slideId: string
+      parentPath: ScenePath
+      nodeIds: string[]
+      targetNodeId: string
+    }
+  | {
       type: 'node/clone'
       slideId: string
       parentPath: ScenePath

@@ -537,7 +537,7 @@ Render siblings in reverse array order, groups recursively, SVG type/expand icon
 
 - [ ] **Step 6: Implement rename and same-parent ordering**
 
-Wire path-based reducer actions. Translate visual list positions to bottom-to-top array indices exactly as the spec states. Mouse drag is an enhancement; keyboard order must be complete first.
+Wire path-based reducer actions. Keyboard ordering uses `node/reorder`; an exact mouse drop uses one atomic `node/reorder-above` action so non-contiguous selected siblings are removed and reinserted as a stable block without creating multiple history entries. Translate visual list positions to bottom-to-top array indices exactly as the spec states. A selected drop target is a no-op. Mouse drag is an enhancement; keyboard order must be complete first.
 
 - [ ] **Step 7: Verify GREEN and responsive layout**
 
