@@ -56,6 +56,8 @@ import {
 } from './paint'
 import {
   directChildPathForScope,
+  effectiveSceneState,
+  nearestLockedSourcePathForSelection,
   normalizeSceneSelection,
   reconcileSceneUiState,
   sceneLogicalBounds,
@@ -185,6 +187,9 @@ function operationErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback
 }
 
+const LOCKED_OPERATION_NOTICE = '图层已锁定，先解锁后再编辑'
+const ACTIVE_INTERACTION_NOTICE = '请先结束当前变换'
+
 function toRect(marquee: MarqueeState): Rect {
   return {
     x: marquee.startX,
@@ -277,6 +282,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   const stageScrollRef = useRef<HTMLDivElement>(null)
   const artboardRef = useRef<HTMLDivElement>(null)
+  const propertiesTabRef = useRef<HTMLButtonElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
   const previousUserId = useRef<string | null>(user?.id ?? null)
@@ -307,6 +313,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     },
     [activeSlide.nodes, selectionPaths],
   )
+  const effectiveLockedSelection = useMemo(() => {
+    const unlockPath = nearestLockedSourcePathForSelection(activeSlide.nodes, selectionPaths)
+    if (!unlockPath) return null
+    const unlockNode = findNodeAtPath(activeSlide.nodes, unlockPath)
+    if (!unlockNode) return null
+    return {
+      unlockPath,
+      unlockName: unlockNode.name,
+    }
+  }, [activeSlide.nodes, selectionPaths])
 
   const canUndo = history.past.length > 0
   const canRedo = history.future.length > 0
@@ -322,6 +338,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const imageSources = useMemo(() => collectFreeformImageSources(doc), [doc])
   const showOperationError = useCallback((error: unknown, fallback: string) => {
     setOperationNotice(operationErrorMessage(error, fallback))
+  }, [])
+  const showLockedOperationNotice = useCallback(() => {
+    setOperationNotice(LOCKED_OPERATION_NOTICE)
   }, [])
   const handleImageLeaseError = useCallback((error: unknown) => {
     showOperationError(error, '图片续租失败，请检查网络后重试')
@@ -582,13 +601,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function deleteSelection() {
     if (selection.length === 0) return
-    if (applyAction({
+    const changed = applyAction({
       type: 'node/delete',
       slideId: activeSlide.id,
       parentPath: activeGroupPath,
       nodeIds: selection,
-    })) {
+    })
+    if (changed) {
       setSelection([])
+    } else if (effectiveLockedSelection) {
+      showLockedOperationNotice()
     }
   }
 
@@ -602,25 +624,32 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   function pasteClipboard() {
     if (clipboard.length === 0) return
     const pasted = cloneSceneNodes(clipboard).map((node) => offsetNodeForPaste(node, activeSlide))
-    if (applyAction({
+    const changed = applyAction({
       type: 'node/insert-children',
       slideId: activeSlide.id,
       parentPath: activeGroupPath,
       nodes: pasted,
-    })) {
+    })
+    if (changed) {
       setSelection(pasted.map((node) => node.id))
+    } else if (
+      effectiveLockedSelection ||
+      effectiveSceneState(activeSlide.nodes, activeGroupPath)?.locked
+    ) {
+      showLockedOperationNotice()
     }
   }
 
   function reorderSelection(direction: 'forward' | 'backward' | 'front' | 'back') {
     if (selection.length === 0) return
-    applyAction({
+    const changed = applyAction({
       type: 'node/reorder',
       slideId: activeSlide.id,
       parentPath: activeGroupPath,
       nodeIds: selection,
       direction,
     })
+    if (!changed && effectiveLockedSelection) showLockedOperationNotice()
   }
 
   function selectLayerPath(path: ScenePath, options: { toggle: boolean }): boolean {
@@ -654,6 +683,22 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function renameLayer(path: ScenePath, name: string): boolean {
     return applyAction({ type: 'node/rename', slideId: activeSlide.id, path, name })
+  }
+
+  function setLayerLocked(path: ScenePath, locked: boolean): boolean {
+    if (activeInteractionRef.current) {
+      setOperationNotice(ACTIVE_INTERACTION_NOTICE)
+      return false
+    }
+    return applyAction({ type: 'node/set-locked', slideId: activeSlide.id, path, locked })
+  }
+
+  function setLayerHidden(path: ScenePath, hidden: boolean): boolean {
+    if (activeInteractionRef.current) {
+      setOperationNotice(ACTIVE_INTERACTION_NOTICE)
+      return false
+    }
+    return applyAction({ type: 'node/set-hidden', slideId: activeSlide.id, path, hidden })
   }
 
   function reorderLayers(
@@ -804,8 +849,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       },
     )
 
-    if (patches.length === 0) return
-    applyAction({
+    if (patches.length === 0) {
+      if (effectiveLockedSelection) showLockedOperationNotice()
+      return
+    }
+    const changed = applyAction({
       type: 'node/update-geometry',
       slideId: activeSlide.id,
       updates: patches.map(({ elementId, patch }) => ({
@@ -813,6 +861,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         patch,
       })),
     })
+    if (!changed && effectiveLockedSelection) showLockedOperationNotice()
   }
 
   useEffect(() => {
@@ -903,6 +952,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       event.preventDefault()
       event.stopPropagation()
       blurActiveTypingTarget()
+      showLockedOperationNotice()
       return
     }
 
@@ -930,6 +980,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       event.preventDefault()
       event.stopPropagation()
       blurActiveTypingTarget()
+      if (element.locked) showLockedOperationNotice()
       return
     }
     const interactionScale = renderScale
@@ -1092,6 +1143,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       event.preventDefault()
       event.stopPropagation()
       blurActiveTypingTarget()
+      if (element.locked) showLockedOperationNotice()
       return
     }
     const interactionScale = renderScale
@@ -1636,14 +1688,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         </section>
 
         <FreeformRightPanel
+          propertiesTabRef={propertiesTabRef}
           layers={(
             <FreeformLayersPanel
               nodes={activeSlide.nodes}
               selectedPaths={selectionPaths}
+              hasEffectiveLockedSelection={Boolean(effectiveLockedSelection)}
               onSelect={selectLayerPath}
               onRename={renameLayer}
               onReorder={reorderLayers}
               onDropReorder={reorderLayersAbove}
+              onSetLocked={setLayerLocked}
+              onSetHidden={setLayerHidden}
             />
           )}
         >
@@ -1688,7 +1744,42 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             </>
           ) : (
             <>
-              {liveSelection.length === 1 && selectedElement && (
+              {effectiveLockedSelection && (
+                <div
+                  className="freeform-lock-banner"
+                  data-testid="freeform-lock-banner"
+                  role="note"
+                  aria-label="锁定状态"
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <rect x="4" y="8" width="12" height="9" rx="2" />
+                    <path d="M7 8V6a3 3 0 0 1 6 0v2" />
+                  </svg>
+                  <div className="freeform-lock-banner-copy">
+                    <strong>已锁定</strong>
+                    <span>锁定来源：{effectiveLockedSelection.unlockName}</span>
+                  </div>
+                  <button
+                    className="ghost freeform-lock-banner-action"
+                    type="button"
+                    aria-label={`解锁 ${effectiveLockedSelection.unlockName}`}
+                    title={`解锁 ${effectiveLockedSelection.unlockName}`}
+                    onClick={() => {
+                      if (setLayerLocked(effectiveLockedSelection.unlockPath, false)) {
+                        requestAnimationFrame(() => propertiesTabRef.current?.focus())
+                      }
+                    }}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <rect x="4" y="8" width="12" height="9" rx="2" />
+                      <path d="M7 8V6a3 3 0 0 1 5.7-1.3" />
+                    </svg>
+                    <span>解锁</span>
+                  </button>
+                </div>
+              )}
+
+              {!effectiveLockedSelection && liveSelection.length === 1 && selectedElement && (
                 <>
                   <InspectorSection title="位置与尺寸" testId="inspector-geometry">
                     <div className="field-grid">
@@ -1936,64 +2027,66 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 </>
               )}
 
-              <InspectorSection title="排列" testId="inspector-arrange">
-                {liveSelection.length > 1 && (
-                  <>
-                    <div className="field-label">对齐与分布</div>
-                    <div className="inspector-actions">
-                      <button className="ghost" type="button" onClick={() => alignSelection('left')}>
-                        左对齐
-                      </button>
-                      <button className="ghost" type="button" onClick={() => alignSelection('h-center')}>
-                        水平居中
-                      </button>
-                      <button className="ghost" type="button" onClick={() => alignSelection('right')}>
-                        右对齐
-                      </button>
-                      <button className="ghost" type="button" onClick={() => alignSelection('top')}>
-                        顶对齐
-                      </button>
-                      <button className="ghost" type="button" onClick={() => alignSelection('v-center')}>
-                        垂直居中
-                      </button>
-                      <button className="ghost" type="button" onClick={() => alignSelection('bottom')}>
-                        底对齐
-                      </button>
-                      <button
-                        className="ghost"
-                        type="button"
-                        onClick={() => distributeSelection('horizontal')}
-                      >
-                        水平均分
-                      </button>
-                      <button
-                        className="ghost"
-                        type="button"
-                        onClick={() => distributeSelection('vertical')}
-                      >
-                        垂直均分
-                      </button>
+              {!effectiveLockedSelection && (
+                <InspectorSection title="排列" testId="inspector-arrange">
+                  {liveSelection.length > 1 && (
+                    <>
+                      <div className="field-label">对齐与分布</div>
+                      <div className="inspector-actions">
+                        <button className="ghost" type="button" onClick={() => alignSelection('left')}>
+                          左对齐
+                        </button>
+                        <button className="ghost" type="button" onClick={() => alignSelection('h-center')}>
+                          水平居中
+                        </button>
+                        <button className="ghost" type="button" onClick={() => alignSelection('right')}>
+                          右对齐
+                        </button>
+                        <button className="ghost" type="button" onClick={() => alignSelection('top')}>
+                          顶对齐
+                        </button>
+                        <button className="ghost" type="button" onClick={() => alignSelection('v-center')}>
+                          垂直居中
+                        </button>
+                        <button className="ghost" type="button" onClick={() => alignSelection('bottom')}>
+                          底对齐
+                        </button>
+                        <button
+                          className="ghost"
+                          type="button"
+                          onClick={() => distributeSelection('horizontal')}
+                        >
+                          水平均分
+                        </button>
+                        <button
+                          className="ghost"
+                          type="button"
+                          onClick={() => distributeSelection('vertical')}
+                        >
+                          垂直均分
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  <div className="field-label with-gap">层级</div>
+                  <div className="inspector-actions">
+                    <button className="ghost" type="button" onClick={() => reorderSelection('backward')}>
+                      后移
+                    </button>
+                    <button className="ghost" type="button" onClick={() => reorderSelection('forward')}>
+                      前移
+                    </button>
+                    <button className="ghost" type="button" onClick={() => reorderSelection('back')}>
+                      置底
+                    </button>
+                    <button className="ghost" type="button" onClick={() => reorderSelection('front')}>
+                      置顶
+                    </button>
                     </div>
-                  </>
-                )}
-                <div className="field-label with-gap">层级</div>
-                <div className="inspector-actions">
-                  <button className="ghost" type="button" onClick={() => reorderSelection('backward')}>
-                    后移
-                  </button>
-                  <button className="ghost" type="button" onClick={() => reorderSelection('forward')}>
-                    前移
-                  </button>
-                  <button className="ghost" type="button" onClick={() => reorderSelection('back')}>
-                    置底
-                  </button>
-                  <button className="ghost" type="button" onClick={() => reorderSelection('front')}>
-                    置顶
-                  </button>
-                </div>
-              </InspectorSection>
+                </InspectorSection>
+              )}
 
-              {liveSelection.length === 1 && (
+              {!effectiveLockedSelection && liveSelection.length === 1 && (
                 <InspectorSection title="删除" testId="inspector-danger" tone="danger">
                   <button className="ghost inspector-delete" type="button" onClick={deleteSelection}>
                     删除

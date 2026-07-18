@@ -5,7 +5,12 @@ import {
   sceneNodeLocalMatrix,
   transformPoint,
 } from './sceneTransform'
-import { findNodeAtPath, getChildrenAtPath, scenePathKey } from './sceneTree'
+import {
+  buildScenePathIndex,
+  findNodeAtPath,
+  getChildrenAtPath,
+  scenePathKey,
+} from './sceneTree'
 import type { Matrix2D, Point, SceneBounds } from './sceneTransform'
 import type { FreeformSceneNode, ScenePath } from './types'
 
@@ -51,6 +56,54 @@ export function effectiveSceneState(
     }
   }
   return { locked, hidden }
+}
+
+/** Return the closest node on a valid path whose own lock flag is set. */
+export function nearestLockedNodePath(
+  nodes: readonly FreeformSceneNode[],
+  path: ScenePath,
+): ScenePath | null {
+  if (path.length === 0) return null
+
+  let children = nodes
+  let nearest: ScenePath | null = null
+  for (let index = 0; index < path.length; index += 1) {
+    const node = children.find((candidate) => candidate.id === path[index])
+    if (!node) return null
+    if (node.locked) nearest = path.slice(0, index + 1)
+    if (index < path.length - 1) {
+      if (node.type !== 'group') return null
+      children = node.children
+    }
+  }
+  return nearest
+}
+
+/** Resolve the first selected effective lock and its nearest own-lock source in one index pass. */
+export function nearestLockedSourcePathForSelection(
+  nodes: readonly FreeformSceneNode[],
+  selectionPaths: readonly ScenePath[],
+): ScenePath | null {
+  if (selectionPaths.length === 0) return null
+  let pathIndex: ReturnType<typeof buildScenePathIndex>
+  try {
+    pathIndex = buildScenePathIndex(nodes)
+  } catch {
+    return null
+  }
+
+  for (const path of selectionPaths) {
+    if (path.length === 0) continue
+    const selected = pathIndex.get(scenePathKey(path))
+    if (!selected?.effectiveLocked) continue
+
+    for (let length = path.length; length > 0; length -= 1) {
+      const candidatePath = path.slice(0, length)
+      if (pathIndex.get(scenePathKey(candidatePath))?.node.locked) return candidatePath
+    }
+  }
+
+  return null
 }
 
 /** Map a deep canvas hit to the direct child selectable in one editing scope. */

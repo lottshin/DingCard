@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 
 interface PlainTextEditableProps {
@@ -24,14 +24,22 @@ export function PlainTextEditable({
   const composingRef = useRef(false)
   const focusedRef = useRef(false)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = ref.current
-    if (!node || composingRef.current || focusedRef.current) return
+    if (!node) return
+    if (readOnly) {
+      composingRef.current = false
+      focusedRef.current = false
+      node.blur()
+      if (node.textContent !== value) node.textContent = value
+      return
+    }
+    if (composingRef.current || focusedRef.current) return
     if (node.textContent !== value) node.textContent = value
-  }, [value])
+  }, [readOnly, value])
 
   function publish() {
-    if (readOnly) return
+    if (readOnly || composingRef.current) return
     onChange(ref.current?.textContent ?? '')
   }
 

@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react'
+import { MAX_SCENE_DEPTH } from './constants'
 import { scenePathKey } from './sceneTree'
 import type { FreeformSceneNode, ScenePath } from './types'
 
@@ -18,6 +19,7 @@ export interface LayerSelectionOptions {
 export interface FreeformLayersPanelProps {
   nodes: readonly FreeformSceneNode[]
   selectedPaths: readonly ScenePath[]
+  hasEffectiveLockedSelection: boolean
   onSelect: (path: ScenePath, options: LayerSelectionOptions) => boolean | void
   onRename: (path: ScenePath, name: string) => boolean | void
   onReorder: (
@@ -30,6 +32,8 @@ export interface FreeformLayersPanelProps {
     nodeIds: readonly string[],
     targetNodeId: string,
   ) => boolean | void
+  onSetLocked: (path: ScenePath, locked: boolean) => boolean | void
+  onSetHidden: (path: ScenePath, hidden: boolean) => boolean | void
 }
 
 interface VisibleRow {
@@ -40,12 +44,21 @@ interface VisibleRow {
 }
 
 const ROOT_LAYER_INDENT_PX = 4
-const LAYER_INDENT_STEP_PX = 12
-const MAX_VISUAL_LAYER_DEPTH = 6
+const LAYER_INDENT_STEP_PX = 8
+const MAX_VISUAL_LAYER_DEPTH = 4
 
 export function layerIndentPx(level: number): number {
   if (!Number.isInteger(level) || level < 1) return ROOT_LAYER_INDENT_PX
   return ROOT_LAYER_INDENT_PX + Math.min(level - 1, MAX_VISUAL_LAYER_DEPTH) * LAYER_INDENT_STEP_PX
+}
+
+export function layerDepthLabel(level: number): string | null {
+  if (
+    !Number.isInteger(level) ||
+    level <= MAX_VISUAL_LAYER_DEPTH + 1 ||
+    level > MAX_SCENE_DEPTH
+  ) return null
+  return String(level)
 }
 
 function defaultNodeName(node: FreeformSceneNode): string {
@@ -127,14 +140,46 @@ function expandIcon(expanded: boolean) {
   )
 }
 
-/** Accessible recursive layer tree. Visibility/lock actions intentionally live in Task 7. */
+function visibilityIcon(visible: boolean) {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="freeform-layer-action-icon">
+      <path d="M2.5 10s2.8-5 7.5-5 7.5 5 7.5 5-2.8 5-7.5 5-7.5-5-7.5-5Z" />
+      <circle cx="10" cy="10" r="2.2" />
+      {!visible && <path d="m3 3 14 14" />}
+    </svg>
+  )
+}
+
+function lockIcon(locked: boolean) {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="freeform-layer-action-icon">
+      <rect x="4" y="8" width="12" height="9" rx="2" />
+      <path d={locked ? 'M7 8V6a3 3 0 0 1 6 0v2' : 'M7 8V6a3 3 0 0 1 5.7-1.3'} />
+    </svg>
+  )
+}
+
+function inheritedStateIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="freeform-layer-inherited-icon">
+      <path d="M6.2 9.8 4.8 11.2a2.1 2.1 0 0 1-3-3l2.1-2.1a2.1 2.1 0 0 1 3 0" />
+      <path d="m9.8 6.2 1.4-1.4a2.1 2.1 0 0 1 3 3l-2.1 2.1a2.1 2.1 0 0 1-3 0" />
+      <path d="m5.6 10.4 4.8-4.8" />
+    </svg>
+  )
+}
+
+/** Accessible recursive layer tree with own-state visibility and lock controls. */
 export function FreeformLayersPanel({
   nodes,
   selectedPaths,
+  hasEffectiveLockedSelection,
   onSelect,
   onRename,
   onReorder,
   onDropReorder,
+  onSetLocked,
+  onSetHidden,
 }: FreeformLayersPanelProps) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
     () => new Set(collectGroupKeys(nodes)),
@@ -270,7 +315,46 @@ export function FreeformLayersPanel({
     if (accepted === false) announce('只能同时选择同一组内的图层')
   }
 
-  function handleTreeKeyDown(row: VisibleRow, event: KeyboardEvent<HTMLDivElement>) {
+  function focusAfterHide(row: VisibleRow) {
+    const siblings = rows.filter(
+      (candidate) => scenePathKey(candidate.parentPath) === scenePathKey(row.parentPath),
+    )
+    const index = siblings.findIndex(
+      (candidate) => scenePathKey(candidate.path) === scenePathKey(row.path),
+    )
+    const fallback = siblings[index + 1]
+      ?? siblings[index - 1]
+      ?? (row.parentPath.length > 0 ? rowByKey.get(scenePathKey(row.parentPath)) : undefined)
+    if (fallback) focusRow(scenePathKey(fallback.path))
+  }
+
+  function setRowHidden(row: VisibleRow, hidden: boolean, inheritedHidden: boolean) {
+    const changed = onSetHidden(row.path, hidden)
+    if (changed === false) return
+    announce(
+      inheritedHidden
+        ? `${row.node.name}${hidden ? ' 已设为自身隐藏' : ' 已取消自身隐藏'}，仍受父级隐藏影响`
+        : `${row.node.name}${hidden ? ' 已隐藏' : ' 已显示'}`,
+    )
+    if (hidden && !inheritedHidden) focusAfterHide(row)
+  }
+
+  function setRowLocked(row: VisibleRow, locked: boolean, inheritedLocked: boolean) {
+    const changed = onSetLocked(row.path, locked)
+    if (changed === false) return
+    announce(
+      inheritedLocked
+        ? `${row.node.name}${locked ? ' 已设为自身锁定' : ' 已取消自身锁定'}，仍受父级锁定影响`
+        : `${row.node.name}${locked ? ' 已锁定' : ' 已解锁'}`,
+    )
+    focusRow(scenePathKey(row.path))
+  }
+
+  function handleTreeKeyDown(
+    row: VisibleRow,
+    event: KeyboardEvent<HTMLDivElement>,
+    effectiveLocked: boolean,
+  ) {
     const key = event.key
     const rowKey = scenePathKey(row.path)
     if (renamingKey === rowKey) return
@@ -293,6 +377,10 @@ export function FreeformLayersPanel({
         )
         announce(`${row.node.name} 已移至第 ${nextIndex + 1} 层`)
         focusRow(rowKey)
+      } else if (effectiveLocked || (
+        selectedKeys.has(rowKey) && hasEffectiveLockedSelection
+      )) {
+        announce('图层已锁定，无法调整层级')
       }
       return
     }
@@ -394,6 +482,8 @@ export function FreeformLayersPanel({
           ? `已移动 ${movingCount} 个图层至 ${row.node.name} 上方`
           : `${sourceRow.node.name} 已移至第 ${targetIndex + 1} 层`,
       )
+    } else if (sourceSelected && hasEffectiveLockedSelection) {
+      announce('图层已锁定，无法调整层级')
     }
   }
 
@@ -401,7 +491,17 @@ export function FreeformLayersPanel({
     return `freeform-${treeId}-group-${encodeURIComponent(scenePathKey(path))}`
   }
 
-  function renderRows(children: readonly FreeformSceneNode[], parentPath: ScenePath, level: number) {
+  function rowStatusId(path: ScenePath): string {
+    return `freeform-${treeId}-status-${encodeURIComponent(scenePathKey(path))}`
+  }
+
+  function renderRows(
+    children: readonly FreeformSceneNode[],
+    parentPath: ScenePath,
+    level: number,
+    inheritedLocked = false,
+    inheritedHidden = false,
+  ) {
     return [...children].reverse().map((node) => {
       const path = [...parentPath, node.id]
       const key = scenePathKey(path)
@@ -409,6 +509,30 @@ export function FreeformLayersPanel({
       const expanded = node.type === 'group' && expandedKeys.has(key)
       const selected = selectedKeys.has(key)
       const editing = renamingKey === key
+      const depthLabel = layerDepthLabel(level)
+      const effectiveLocked = inheritedLocked || node.locked
+      const effectiveHidden = inheritedHidden || node.hidden
+      const rowClassName = [
+        'freeform-layer-row',
+        selected ? 'is-selected' : '',
+        effectiveLocked ? 'is-effectively-locked' : '',
+        effectiveHidden ? 'is-effectively-hidden' : '',
+      ].filter(Boolean).join(' ')
+      const statusId = rowStatusId(path)
+      const statusText = [
+        node.hidden ? '自身隐藏' : '自身可见',
+        inheritedHidden ? '受父级隐藏影响，当前隐藏' : `当前${node.hidden ? '隐藏' : '可见'}`,
+        node.locked ? '自身锁定' : '自身未锁定',
+        inheritedLocked ? '受父级锁定影响，当前锁定' : `当前${node.locked ? '锁定' : '未锁定'}`,
+      ].join('；')
+      const visibilityLabel = `隐藏图层 ${node.name}`
+      const visibilityTitle = `${node.hidden ? '显示' : '隐藏'} ${node.name}`
+      const lockLabel = `锁定图层 ${node.name}`
+      const lockTitle = `${node.locked ? '解锁' : '锁定'} ${node.name}`
+      const inheritedStateTitle = [
+        inheritedHidden ? '隐藏' : '',
+        inheritedLocked ? '锁定' : '',
+      ].filter(Boolean).join('和')
       return (
         <div key={key} className="freeform-layer-branch">
           <div
@@ -416,15 +540,18 @@ export function FreeformLayersPanel({
               if (element) rowRefs.current.set(key, element)
               else rowRefs.current.delete(key)
             }}
-            className={selected ? 'freeform-layer-row is-selected' : 'freeform-layer-row'}
+            className={rowClassName}
             role="treeitem"
             aria-label={node.name}
             aria-level={level}
             aria-selected={selected}
             aria-expanded={node.type === 'group' ? expanded : undefined}
             aria-owns={node.type === 'group' && expanded ? childGroupId(path) : undefined}
+            aria-describedby={statusId}
+            data-effective-locked={effectiveLocked ? 'true' : 'false'}
+            data-effective-hidden={effectiveHidden ? 'true' : 'false'}
             tabIndex={focusedKey === key ? 0 : -1}
-            draggable={!editing}
+            draggable={!editing && !effectiveLocked}
             style={{ paddingLeft: layerIndentPx(level) }}
             onFocus={() => setFocusedKey(key)}
             onClick={(event: MouseEvent<HTMLDivElement>) => {
@@ -436,13 +563,23 @@ export function FreeformLayersPanel({
               event.stopPropagation()
               beginRename(row)
             }}
-            onKeyDown={(event) => handleTreeKeyDown(row, event)}
+            onKeyDown={(event) => handleTreeKeyDown(row, event, effectiveLocked)}
             onDragStart={() => {
+              if (effectiveLocked) return
               dragPathRef.current = row.path
             }}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => handleDrop(row, event)}
           >
+            {depthLabel && (
+              <span
+                className="freeform-layer-depth"
+                aria-hidden="true"
+                title={`第 ${depthLabel} 层`}
+              >
+                {depthLabel}
+              </span>
+            )}
             {node.type === 'group' ? (
               <button
                 className="freeform-layer-expand"
@@ -459,7 +596,17 @@ export function FreeformLayersPanel({
                 {expandIcon(expanded)}
               </button>
             ) : <span className="freeform-layer-expand-spacer" aria-hidden="true" />}
-            <span className="freeform-layer-type" aria-hidden="true">{typeIcon(node)}</span>
+            <span className="freeform-layer-type" aria-hidden="true">
+              {typeIcon(node)}
+              {(inheritedHidden || inheritedLocked) && (
+                <span
+                  className="freeform-layer-inherited-state"
+                  title={`受父级${inheritedStateTitle}影响`}
+                >
+                  {inheritedStateIcon()}
+                </span>
+              )}
+            </span>
             {editing ? (
               <input
                 className="freeform-layer-rename"
@@ -500,6 +647,65 @@ export function FreeformLayersPanel({
                 {node.name}
               </span>
             )}
+            <span id={statusId} className="sr-only">{statusText}</span>
+            <span className="freeform-layer-actions">
+              <button
+                className="freeform-layer-action"
+                type="button"
+                aria-label={visibilityLabel}
+                aria-pressed={node.hidden}
+                title={visibilityTitle}
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                onDragStart={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  if (event.detail > 1) return
+                  setRowHidden(row, !node.hidden, inheritedHidden)
+                }}
+              >
+                {visibilityIcon(!node.hidden)}
+              </button>
+              <button
+                className="freeform-layer-action"
+                type="button"
+                aria-label={lockLabel}
+                aria-pressed={node.locked}
+                title={lockTitle}
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                onDragStart={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  if (event.detail > 1) return
+                  setRowLocked(row, !node.locked, inheritedLocked)
+                }}
+              >
+                {lockIcon(node.locked)}
+              </button>
+            </span>
           </div>
           {node.type === 'group' && expanded && (
             <div
@@ -507,7 +713,13 @@ export function FreeformLayersPanel({
               className="freeform-layer-children"
               role="group"
             >
-              {renderRows(node.children, path, level + 1)}
+              {renderRows(
+                node.children,
+                path,
+                level + 1,
+                effectiveLocked,
+                effectiveHidden,
+              )}
             </div>
           )}
         </div>

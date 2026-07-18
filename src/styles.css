@@ -20,6 +20,7 @@
   --freeform-stage-sink: #f1efec;
   --surface: #ffffff;     /* panels, bars, modals */
   --surface-2: #fafafa;   /* subtle inset fills */
+  --surface-3: #eeeef0;   /* active and pressed controls */
   --text: #18181b;        /* primary text */
   --text-2: #52525b;      /* secondary text */
   --text-3: #a1a1aa;      /* tertiary / hints */
@@ -50,6 +51,7 @@
   --freeform-stage-sink: #12110f;
   --surface: #161619;
   --surface-2: #1c1c20;
+  --surface-3: #26262b;
   --text: #f4f4f5;
   --text-2: #a1a1aa;
   --text-3: #6b6b73;
@@ -1495,6 +1497,7 @@ html.theme-anim * {
 }
 
 .freeform-layer-row {
+  position: relative;
   min-width: 0;
   height: 40px;
   display: flex;
@@ -1506,6 +1509,22 @@ html.theme-anim * {
   color: var(--text-2);
   cursor: default;
   user-select: none;
+}
+
+.freeform-layer-depth {
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  width: 24px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 11px;
+  text-align: right;
+  text-overflow: clip;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .freeform-layer-children .freeform-layer-row {
@@ -1565,6 +1584,7 @@ html.theme-anim * {
 }
 
 .freeform-layer-type {
+  position: relative;
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
@@ -1602,6 +1622,95 @@ html.theme-anim * {
   white-space: nowrap;
 }
 
+.freeform-layer-actions {
+  flex: 0 0 auto;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.freeform-layer-inherited-state {
+  position: absolute;
+  right: -4px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--surface);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.freeform-layer-inherited-icon {
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.45;
+}
+
+.freeform-layer-row:hover .freeform-layer-actions,
+.freeform-layer-row:focus-within .freeform-layer-actions,
+.freeform-layer-row.is-selected .freeform-layer-actions,
+.freeform-layer-row.is-effectively-hidden .freeform-layer-actions,
+.freeform-layer-row.is-effectively-locked .freeform-layer-actions {
+  opacity: 1;
+}
+
+.freeform-layer-action {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.freeform-layer-action:hover,
+.freeform-layer-action[aria-pressed='true'] {
+  outline: none;
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.freeform-layer-action:focus-visible {
+  outline: 2px solid var(--text-2);
+  outline-offset: 1px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.freeform-layer-action-icon {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.45;
+}
+
+.freeform-textbox[aria-readonly='true'] {
+  cursor: default;
+}
+
 .freeform-layer-rename {
   height: 28px;
   padding: 0 6px;
@@ -1620,6 +1729,59 @@ html.theme-anim * {
   clip: rect(0 0 0 0);
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+.freeform-lock-banner {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin: 12px;
+  padding: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.freeform-lock-banner > svg,
+.freeform-lock-banner-action svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.freeform-lock-banner-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.freeform-lock-banner-copy strong {
+  font-size: 12px;
+}
+
+.freeform-lock-banner-copy span {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-lock-banner-action {
+  min-width: 64px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
 }
 
 .freeform-inspector .freeform-panel-head {

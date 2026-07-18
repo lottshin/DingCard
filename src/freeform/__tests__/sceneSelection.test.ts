@@ -5,6 +5,8 @@ import {
   directChildPathForScope,
   effectiveSceneState,
   fallbackScenePath,
+  nearestLockedNodePath,
+  nearestLockedSourcePathForSelection,
   normalizeSceneSelection,
   reconcileSceneUiState,
   sceneLogicalBounds,
@@ -128,6 +130,73 @@ describe('scene selection', () => {
     })
     expect(effectiveSceneState(nodes, ['missing'])).toBeNull()
     expect(leaf).toMatchObject({ locked: false, hidden: false })
+  })
+
+  it('finds the nearest node with its own lock flag along an effectively locked path', () => {
+    const nodes = [
+      group('outer', [
+        group('inner', [textLeaf('leaf', { locked: true })], { locked: true }),
+      ], { locked: true }),
+    ]
+
+    expect(nearestLockedNodePath(nodes, ['outer', 'inner', 'leaf'])).toEqual([
+      'outer',
+      'inner',
+      'leaf',
+    ])
+    expect(nearestLockedNodePath(nodes, ['outer', 'inner'])).toEqual(['outer', 'inner'])
+    expect(nearestLockedNodePath(nodes, ['outer'])).toEqual(['outer'])
+    expect(nearestLockedNodePath([group('open', [textLeaf('leaf')])], ['open', 'leaf']))
+      .toBeNull()
+    expect(nearestLockedNodePath(nodes, ['outer', 'inner', 'leaf', 'fake-child']))
+      .toBeNull()
+    expect(nearestLockedNodePath(nodes, ['missing'])).toBeNull()
+    expect(nearestLockedNodePath(nodes, [])).toBeNull()
+  })
+
+  it('finds one selected lock source with a single linear scene index pass', () => {
+    let idReads = 0
+    const nodes = Array.from({ length: 5_000 }, (_, index) => {
+      const id = `node-${index}`
+      const node = textLeaf(id, { locked: index === 4_999 })
+      Object.defineProperty(node, 'id', {
+        configurable: true,
+        enumerable: true,
+        get: () => {
+          idReads += 1
+          return id
+        },
+      })
+      return node
+    })
+    const selection = [
+      [],
+      ['missing'],
+      ...nodes.map((_node, index) => [`node-${index}`]),
+    ]
+
+    expect(nearestLockedSourcePathForSelection(nodes, selection)).toEqual(['node-4999'])
+    expect(idReads).toBeLessThanOrEqual(nodes.length * 2)
+    expect(nearestLockedSourcePathForSelection(nodes, [])).toBeNull()
+    expect(nearestLockedSourcePathForSelection(nodes, [[], ['missing']])).toBeNull()
+
+    const inherited = [
+      group('outer', [group('inner', [textLeaf('leaf')])], { locked: true }),
+    ]
+    expect(nearestLockedSourcePathForSelection(inherited, [
+      ['missing'],
+      ['outer', 'inner', 'leaf'],
+    ])).toEqual(['outer'])
+  })
+
+  it('returns null instead of throwing when an invalid tree exceeds the scene depth contract', () => {
+    let node: FreeformSceneNode = textLeaf('leaf', { locked: true })
+    for (let depth = 0; depth < 33; depth += 1) {
+      node = group(`group-${depth}`, [node])
+    }
+
+    expect(() => nearestLockedSourcePathForSelection([node], [['group-32']])).not.toThrow()
+    expect(nearestLockedSourcePathForSelection([node], [['group-32']])).toBeNull()
   })
 
   it('maps a deep hit to the direct child of the active editing scope', () => {

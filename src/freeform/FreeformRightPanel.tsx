@@ -1,10 +1,11 @@
-import { useId, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react'
 
 export type FreeformRightPanelTab = 'properties' | 'layers'
 
 export interface FreeformRightPanelProps {
   children: ReactNode
   layers: ReactNode
+  propertiesTabRef?: Ref<HTMLButtonElement>
 }
 
 const TABS: Array<{ id: FreeformRightPanelTab; label: string }> = [
@@ -13,7 +14,11 @@ const TABS: Array<{ id: FreeformRightPanelTab; label: string }> = [
 ]
 
 /** Right-side property/layers switcher. Tab state is intentionally UI-only. */
-export function FreeformRightPanel({ children, layers }: FreeformRightPanelProps) {
+export function FreeformRightPanel({
+  children,
+  layers,
+  propertiesTabRef,
+}: FreeformRightPanelProps) {
   const [activeTab, setActiveTab] = useState<FreeformRightPanelTab>('properties')
   const [focusedTab, setFocusedTab] = useState<FreeformRightPanelTab>('properties')
   const baseId = useId().replace(/:/g, '')
@@ -45,6 +50,7 @@ export function FreeformRightPanel({ children, layers }: FreeformRightPanelProps
         {TABS.map((tab) => (
           <button
             key={tab.id}
+            ref={tab.id === 'properties' ? propertiesTabRef : undefined}
             id={tabId(tab.id)}
             className={tab.id === activeTab ? 'freeform-right-tab is-active' : 'freeform-right-tab'}
             type="button"
