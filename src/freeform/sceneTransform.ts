@@ -387,3 +387,21 @@ export function sceneNodeBoundsInParent(node: FreeformSceneNode): SceneBounds | 
   collectLeafCorners(node, identity(), points, 1)
   return boundsFromPoints(points)
 }
+
+/** Bounds of complete leaf geometry for sibling nodes in their shared parent space. */
+export function sceneNodesBoundsInParent(
+  nodes: readonly FreeformSceneNode[],
+): SceneBounds | null {
+  const points: Point[] = []
+  for (const node of nodes) {
+    const bounds = sceneNodeBoundsInParent(node)
+    if (!bounds) return null
+    points.push(
+      { x: bounds.x, y: bounds.y },
+      { x: bounds.x + bounds.width, y: bounds.y },
+      { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+      { x: bounds.x, y: bounds.y + bounds.height },
+    )
+  }
+  return boundsFromPoints(points)
+}

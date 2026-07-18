@@ -7,17 +7,16 @@ import {
 import { isHexColor } from './paint'
 import {
   SCENE_EPSILON,
-  boundsFromPoints,
   groupLocal,
   identity,
   multiply,
-  sceneNodeBoundsInParent,
   sceneNodeLocalMatrix,
+  sceneNodesBoundsInParent,
   sceneNodeWithLocalMatrix,
   transformVector,
   translation,
 } from './sceneTransform'
-import type { Matrix2D, Point, SceneBounds } from './sceneTransform'
+import type { Matrix2D } from './sceneTransform'
 import type {
   ColorPaint,
   FreeformGroupNode,
@@ -995,21 +994,6 @@ function subtreeDepth(node: FreeformSceneNode): number {
   return deepest
 }
 
-function unionNodeBounds(nodes: readonly FreeformSceneNode[]): SceneBounds | null {
-  const corners: Point[] = []
-  for (const node of nodes) {
-    const bounds = sceneNodeBoundsInParent(node)
-    if (!bounds) return null
-    corners.push(
-      { x: bounds.x, y: bounds.y },
-      { x: bounds.x + bounds.width, y: bounds.y },
-      { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
-      { x: bounds.x, y: bounds.y + bounds.height },
-    )
-  }
-  return boundsFromPoints(corners)
-}
-
 function composeNodeWithMatrix(
   node: FreeformSceneNode,
   parentMatrix: Matrix2D,
@@ -1117,7 +1101,7 @@ export function createSceneGroup(
   }
 
   try {
-    const bounds = unionNodeBounds(selection.selectedNodes)
+    const bounds = sceneNodesBoundsInParent(selection.selectedNodes)
     if (!bounds) return { ok: false, reason: 'invalid-transform' }
     const center = {
       x: bounds.x + bounds.width / 2,
@@ -1352,7 +1336,7 @@ export function deleteSceneNodes(
 }
 
 function recenterGroup(group: FreeformGroupNode): FreeformGroupNode | null {
-  const bounds = unionNodeBounds(group.children)
+  const bounds = sceneNodesBoundsInParent(group.children)
   if (!bounds) return null
   const center = {
     x: bounds.x + bounds.width / 2,
