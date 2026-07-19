@@ -3852,6 +3852,38 @@ test('live move ignores ArrowRight before pointercancel and restores complete hi
   }
 })
 
+test('nested group export stays identical across themes and preview zooms', async ({ page }) => {
+  await openNestedV3Draft(page, `nested-group-export-${Date.now()}`)
+
+  async function downloadCurrent() {
+    const exportButton = page.getByTestId('freeform-primary-export')
+    await expect(exportButton).toBeEnabled()
+    const downloadPromise = page.waitForEvent('download')
+    await exportButton.click()
+    const download = await downloadPromise
+    const path = await download.path()
+    if (!path) throw new Error('missing nested group PNG path')
+    await expect(exportButton).toBeEnabled()
+    return path
+  }
+
+  await setFreeformZoom(page, 50)
+  const lightPath = await downloadCurrent()
+  await page.getByTestId('theme-toggle').click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await setFreeformZoom(page, 400)
+  const darkPath = await downloadCurrent()
+
+  expect(readPngSize(await readFile(lightPath))).toEqual({ width: 800, height: 600 })
+  expect(readPngSize(await readFile(darkPath))).toEqual({ width: 800, height: 600 })
+  expect(await pngPixelDigest(page, lightPath)).toBe(await pngPixelDigest(page, darkPath))
+  for (const [x, y] of [[20, 20], [400, 300], [720, 520]]) {
+    expect(await samplePngPixel(page, lightPath, x, y)).toEqual(
+      await samplePngPixel(page, darkPath, x, y),
+    )
+  }
+})
+
 test('saves and restores a freeform draft', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -4987,7 +5019,7 @@ test('layer tree restores deterministic row focus after delete and collapse', as
   await expect(tree.getByRole('treeitem', { name: 'Visible leaf' })).toHaveCount(0)
 })
 
-test('hides nested layers while preserving tree management, export, and focus fallback', async ({ page }) => {
+test('hidden group export excludes hidden pixels while preserving tree management and focus fallback', async ({ page }) => {
   await openNestedV3Draft(page, `layers-hide-${Date.now()}`)
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   const tree = page.getByRole('tree', { name: '图层树' })

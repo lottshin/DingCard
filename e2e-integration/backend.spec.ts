@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { installOfflineFontRoutes } from '../e2e/offlineFonts'
+import { API_BASE } from './ports'
 
 /**
  * Backend integration test — the REAL thing end to end.
@@ -10,7 +11,7 @@ import { installOfflineFontRoutes } from '../e2e/offlineFonts'
  *   - the frontend dev server built with VITE_API_BASE pointing at that server
  *
  * so the app runs in REMOTE mode and every draft/auth call is a real HTTP
- * request crossing origins (frontend :5273 -> backend :3100). That exercises
+ * request crossing origins (frontend :5273 -> backend :5310). That exercises
  * the parts local mode can't: JWT round-trips, CORS, server-side persistence,
  * and the remote store implementation itself.
  *
@@ -31,7 +32,6 @@ declare global {
 }
 
 const uniqueName = () => `it-user-${Date.now()}-${Math.floor(Math.random() * 1e4)}`
-const API_BASE = 'http://localhost:3100'
 const TEST_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
@@ -162,6 +162,137 @@ async function expectRemoteFreeformImagesDecoded(page: import('@playwright/test'
   })).toBe(true)
 }
 
+async function uploadManagedImage(
+  page: import('@playwright/test').Page,
+  token: string,
+  name: string,
+) {
+  const response = await page.request.post(`${API_BASE}/api/images`, {
+    headers: { authorization: `Bearer ${token}` },
+    multipart: {
+      file: {
+        name,
+        mimeType: 'image/png',
+        buffer: TEST_PNG,
+      },
+    },
+  })
+  expect(response.ok()).toBe(true)
+  return response.json() as Promise<{ ref: string; url: string }>
+}
+
+function remoteNestedScene(imageUrl: string, shapeUrl: string) {
+  return {
+    documentVersion: 3 as const,
+    activeSlideId: 'remote-slide',
+    slides: [{
+      id: 'remote-slide',
+      name: 'Nested remote scene',
+      width: 800,
+      height: 600,
+      background: { type: 'solid' as const, color: '#ffffff' },
+      nodes: [{
+        id: 'remote-hidden-group',
+        name: 'Remote hidden group',
+        locked: false,
+        hidden: true,
+        type: 'group' as const,
+        x: 380,
+        y: 280,
+        rotation: 18,
+        scale: 1.25,
+        children: [{
+          id: 'remote-image',
+          name: 'Remote nested image',
+          locked: false,
+          hidden: false,
+          type: 'image' as const,
+          x: -180,
+          y: -90,
+          width: 160,
+          height: 120,
+          rotation: -8,
+          scale: 0.9,
+          src: imageUrl,
+          alt: 'Remote nested image',
+          fit: 'cover' as const,
+        }, {
+          id: 'remote-shape',
+          name: 'Remote locked shape',
+          locked: true,
+          hidden: false,
+          type: 'shape' as const,
+          x: 20,
+          y: -80,
+          width: 180,
+          height: 140,
+          rotation: 12,
+          scale: 1.1,
+          shape: 'rect' as const,
+          fill: { type: 'image' as const, src: shapeUrl, fit: 'cover' as const },
+          stroke: '#111827',
+          strokeWidth: 3,
+        }],
+      }],
+    }],
+  }
+}
+
+function remoteAuthorityScene(prefix: string, slideName: string) {
+  return {
+    documentVersion: 3 as const,
+    activeSlideId: `${prefix}-slide`,
+    slides: [{
+      id: `${prefix}-slide`,
+      name: slideName,
+      width: 800,
+      height: 600,
+      background: { type: 'solid' as const, color: '#ffffff' },
+      nodes: [{
+        id: `${prefix}-outer`,
+        name: `${prefix} outer`,
+        locked: false,
+        hidden: false,
+        type: 'group' as const,
+        x: 260,
+        y: 180,
+        rotation: 20,
+        scale: 1.2,
+        children: [{
+          id: `${prefix}-leaf`,
+          name: `${prefix} leaf`,
+          locked: false,
+          hidden: false,
+          type: 'shape' as const,
+          x: -80,
+          y: -50,
+          width: 180,
+          height: 120,
+          rotation: -10,
+          scale: 0.9,
+          shape: 'rect' as const,
+          fill: { type: 'solid' as const, color: '#22c55e' },
+          stroke: '#166534',
+          strokeWidth: 2,
+        }],
+      }],
+    }],
+  }
+}
+
+async function createRemoteFreeformDraft(
+  page: import('@playwright/test').Page,
+  token: string,
+  document: ReturnType<typeof remoteAuthorityScene>,
+) {
+  const response = await page.request.post(`${API_BASE}/api/drafts`, {
+    headers: { authorization: `Bearer ${token}` },
+    data: { mode: 'freeform-slide', document },
+  })
+  expect(response.ok()).toBe(true)
+  return response.json() as Promise<{ id: string; title: string }>
+}
+
 function collectPageErrors(page: import('@playwright/test').Page): string[] {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -280,6 +411,254 @@ test.describe('remote backend integration', () => {
     await page.getByRole('button', { name: '导出当前页', exact: true }).click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toBe('slide-01.png')
+  })
+
+  test('round-trips a nested v3 scene and preserves hidden image references through GC', async ({
+    browser,
+    page,
+  }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    const username = uniqueName()
+    await register(page, username)
+    const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
+    expect(token).toBeTruthy()
+
+    const image = await uploadManagedImage(page, token!, 'nested-image.png')
+    const shape = await uploadManagedImage(page, token!, 'nested-shape.png')
+    const orphan = await uploadManagedImage(page, token!, 'expired-orphan.png')
+    const document = remoteNestedScene(
+      `${API_BASE}${image.url}`,
+      `${API_BASE}${shape.url}`,
+    )
+    const saveResponse = await page.request.post(`${API_BASE}/api/drafts`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: { mode: 'freeform-slide', document },
+    })
+    expect(saveResponse.ok()).toBe(true)
+
+    await page.waitForTimeout(1_300)
+    const trigger = await uploadManagedImage(page, token!, 'gc-trigger.png')
+    for (const url of [image.url, shape.url, trigger.url]) {
+      expect((await page.request.get(`${API_BASE}${url}`)).status()).toBe(200)
+    }
+    expect((await page.request.get(`${API_BASE}${orphan.url}`)).status()).toBe(404)
+
+    const draftsResponse = await page.request.get(`${API_BASE}/api/drafts`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(draftsResponse.ok()).toBe(true)
+    const [stored] = await draftsResponse.json() as Array<{
+      document: typeof document & { elements?: unknown }
+    }>
+    expect(stored.document.documentVersion).toBe(3)
+    expect(stored.document.slides[0]).not.toHaveProperty('elements')
+    expect(stored.document.slides[0].nodes[0]).toEqual(expect.objectContaining({
+      name: 'Remote hidden group',
+      hidden: true,
+      rotation: 18,
+      scale: 1.25,
+    }))
+
+    const secondContext = await browser.newContext()
+    await installOfflineFontRoutes(secondContext)
+    const secondPage = await secondContext.newPage()
+    await secondPage.goto('/')
+    await secondPage.getByTestId('account-login').click()
+    await secondPage.getByLabel('用户名').fill(username)
+    await secondPage.getByLabel('密码').fill('1234')
+    await secondPage.locator('.sheet-foot button.accent').click()
+    await expect(secondPage.getByTestId('account-logout')).toBeVisible()
+    await secondPage.getByTestId('workspace-tab-freeform').click()
+    await secondPage.getByRole('button', { name: draftsButton }).click()
+    await secondPage.locator('.draft-item', { hasText: 'Nested remote scene' }).click()
+    await secondPage.getByRole('tab', { name: '图层', exact: true }).click()
+    const tree = secondPage.getByRole('tree', { name: '图层树' })
+    const hiddenGroup = tree.getByRole('treeitem', { name: 'Remote hidden group' })
+    await expect(hiddenGroup.getByRole('button', { name: '隐藏图层 Remote hidden group' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    await expect(tree.getByRole('treeitem', { name: 'Remote locked shape' })
+      .getByRole('button', { name: '锁定图层 Remote locked shape' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    await hiddenGroup.getByRole('button', { name: '隐藏图层 Remote hidden group' }).click()
+    await expectRemoteFreeformImagesDecoded(secondPage)
+    expect(await draftKeys(secondPage)).toHaveLength(0)
+    await secondContext.close()
+  })
+
+  test('keeps a newer draft at root scope when an older nested save resolves late', async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await register(page, uniqueName())
+    const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
+    expect(token).toBeTruthy()
+
+    const draftA = await createRemoteFreeformDraft(
+      page,
+      token!,
+      remoteAuthorityScene('authority-a', 'Authority nested A'),
+    )
+    const draftB = await createRemoteFreeformDraft(
+      page,
+      token!,
+      remoteAuthorityScene('authority-b', 'Authority root B'),
+    )
+
+    await page.reload()
+    await page.getByTestId('workspace-tab-freeform').click()
+    await expect(page.getByRole('button', { name: /^草稿 · 2$/ })).toBeVisible()
+    await page.getByRole('button', { name: draftsButton }).click()
+    await page.locator('.draft-item', { hasText: draftA.title }).click()
+    await page.locator('[data-scene-node-id="authority-a-leaf"]').dblclick()
+    await expect(page.getByTestId('freeform-canvas'))
+      .toHaveAttribute('data-active-group-path', 'authority-a-outer')
+    await page.getByTestId('insert-text').click()
+
+    let delayedSaveRoute: import('@playwright/test').Route | null = null
+    await page.route(`${API_BASE}/api/drafts`, async (route) => {
+      if (route.request().method() === 'POST' && !delayedSaveRoute) {
+        delayedSaveRoute = route
+        return
+      }
+      await route.continue()
+    })
+
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect.poll(() => delayedSaveRoute !== null).toBe(true)
+    await page.getByRole('button', { name: draftsButton }).click()
+    await page.locator('.draft-item', { hasText: draftB.title }).click()
+    await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
+    await expect(page.locator('[data-scene-node-id="authority-b-leaf"]')).toHaveCount(1)
+    await expect(page.getByTestId('freeform-canvas').locator('[data-selected="true"]')).toHaveCount(0)
+
+    const delayedResponse = page.waitForResponse((response) => (
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/drafts'
+    ))
+    await delayedSaveRoute!.continue()
+    await delayedResponse
+    await expect(page.locator('[data-scene-node-id="authority-b-leaf"]')).toHaveCount(1)
+    await expect(page.locator('[data-scene-node-id="authority-a-leaf"]')).toHaveCount(0)
+    await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
+    await expect(page.getByTestId('freeform-canvas').locator('[data-selected="true"]')).toHaveCount(0)
+  })
+
+  test('keeps remote save authority coherent across pointerup and pointercancel', async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await register(page, uniqueName())
+    const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
+    expect(token).toBeTruthy()
+    const draft = await createRemoteFreeformDraft(
+      page,
+      token!,
+      remoteAuthorityScene('history-authority', 'History authority scene'),
+    )
+
+    await page.reload()
+    await page.getByTestId('workspace-tab-freeform').click()
+    await page.getByRole('button', { name: draftsButton }).click()
+    await page.locator('.draft-item', { hasText: draft.title }).click()
+    await page.locator('[data-scene-node-id="history-authority-leaf"]').dblclick()
+    await expect(page.getByTestId('freeform-canvas'))
+      .toHaveAttribute('data-active-group-path', 'history-authority-outer')
+    await page.getByTestId('insert-text').click()
+
+    const heldSaveRoutes: import('@playwright/test').Route[] = []
+    await page.route(`${API_BASE}/api/drafts`, async (route) => {
+      if (route.request().method() === 'POST') {
+        heldSaveRoutes.push(route)
+        return
+      }
+      await route.continue()
+    })
+
+    const workspace = page.locator('.freeform-workspace')
+    const historyAfterInsert = Number(await workspace.getAttribute('data-history-depth'))
+    const moveHandle = page.getByTestId('freeform-selection-move')
+
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect.poll(() => heldSaveRoutes.length).toBe(1)
+    const firstMoveBox = await moveHandle.boundingBox()
+    expect(firstMoveBox).toBeTruthy()
+    const firstStart = {
+      x: firstMoveBox!.x + firstMoveBox!.width / 2,
+      y: firstMoveBox!.y + firstMoveBox!.height / 2,
+    }
+    await moveHandle.dispatchEvent('pointerdown', {
+      pointerId: 201,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+      clientX: firstStart.x,
+      clientY: firstStart.y,
+    })
+    await page.evaluate(({ x, y }) => {
+      window.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true,
+        pointerId: 201,
+        pointerType: 'touch',
+        clientX: x + 36,
+        clientY: y + 24,
+      }))
+    }, firstStart)
+    await expect(page.getByTestId('freeform-selection-overlay'))
+      .toHaveAttribute('data-live-interaction', 'move')
+    await heldSaveRoutes[0].continue()
+    await expect.poll(() => heldSaveRoutes[0].request().response()).not.toBeNull()
+    await expect(workspace).toHaveAttribute('data-history-depth', String(historyAfterInsert))
+    await page.evaluate(() => {
+      window.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: 201,
+        pointerType: 'touch',
+      }))
+    })
+    await expect(workspace).toHaveAttribute('data-history-depth', String(historyAfterInsert + 1))
+    await expect(page.getByTestId('freeform-slide-meta')).not.toContainText('已保存')
+
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect.poll(() => heldSaveRoutes.length).toBe(2)
+    const secondMoveBox = await moveHandle.boundingBox()
+    expect(secondMoveBox).toBeTruthy()
+    const secondStart = {
+      x: secondMoveBox!.x + secondMoveBox!.width / 2,
+      y: secondMoveBox!.y + secondMoveBox!.height / 2,
+    }
+    await moveHandle.dispatchEvent('pointerdown', {
+      pointerId: 202,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+      clientX: secondStart.x,
+      clientY: secondStart.y,
+    })
+    await page.evaluate(({ x, y }) => {
+      window.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true,
+        pointerId: 202,
+        pointerType: 'touch',
+        clientX: x - 28,
+        clientY: y + 18,
+      }))
+    }, secondStart)
+    await heldSaveRoutes[1].continue()
+    await expect.poll(() => heldSaveRoutes[1].request().response()).not.toBeNull()
+    await page.evaluate(() => {
+      window.dispatchEvent(new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 202,
+        pointerType: 'touch',
+      }))
+    })
+    await expect(workspace).toHaveAttribute('data-history-depth', String(historyAfterInsert + 1))
+    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await expect(page.getByTestId('freeform-canvas'))
+      .toHaveAttribute('data-active-group-path', 'history-authority-outer')
+    await expect(page.getByTestId('freeform-canvas').locator('[data-selected="true"]')).toHaveCount(1)
   })
 
   test('a second browser context sees the same server drafts after login', async ({ browser }) => {

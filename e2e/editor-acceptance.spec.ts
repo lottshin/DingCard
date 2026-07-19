@@ -182,6 +182,13 @@ async function expectEditorLayout(page: Page) {
     .toEqual([])
 }
 
+async function insertAcceptanceShape(page: Page, name: '矩形' | '圆形' | '三角形') {
+  await page.getByTestId('insert-shape').click()
+  await page.getByRole('menu', { name: '形状' })
+    .getByRole('menuitem', { name, exact: true })
+    .click()
+}
+
 test('editor acceptance preserves styled artwork through auth, draft restore, responsive layout, and export', async ({ page }, testInfo) => {
   const runtimeIssues = collectRuntimeIssues(page)
   const uniqueText = `验收旅程-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -302,6 +309,94 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   expect(download.suggestedFilename()).toBe('slide-01.png')
   expect(downloadPath).toBeTruthy()
   expect(readPngDimensions(await readFile(downloadPath!))).toEqual({ width: 1080, height: 1920 })
+  await expect(exportButton).toBeEnabled()
+
+  expect(runtimeIssues, runtimeIssues.map((issue) => `${issue.source}: ${issue.detail}`).join('\n')).toEqual([])
+})
+
+test('editor acceptance preserves nested layer state through save, reload, and export', async ({ page }, testInfo) => {
+  const runtimeIssues = collectRuntimeIssues(page)
+  const username = `layer-acceptance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+  await page.goto('/')
+  await page.getByTestId('workspace-tab-freeform').click()
+  await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
+
+  await insertAcceptanceShape(page, '矩形')
+  await insertAcceptanceShape(page, '圆形')
+  await insertAcceptanceShape(page, '三角形')
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  await expect(tree).toHaveAttribute('aria-multiselectable', 'true')
+  const rootShapes = tree.locator('[role="treeitem"][aria-label="形状"][aria-level="1"]')
+  await expect(rootShapes).toHaveCount(3)
+
+  await rootShapes.nth(0).click()
+  await rootShapes.nth(1).focus()
+  await page.keyboard.press('Space')
+  await page.getByTestId('freeform-group-selection').click()
+
+  const firstGroup = tree.locator('[role="treeitem"][aria-label="组"][aria-level="1"]')
+  await expect(firstGroup).toHaveCount(1)
+  await firstGroup.click()
+  await tree.locator('[role="treeitem"][aria-label="形状"][aria-level="1"]').focus()
+  await page.keyboard.press('Space')
+  await page.getByTestId('freeform-group-selection').click()
+
+  const outerGroup = tree.locator('[role="treeitem"][aria-label="组"][aria-level="1"]')
+  const innerGroup = tree.locator('[role="treeitem"][aria-label="组"][aria-level="2"]')
+  await expect(outerGroup).toHaveAttribute('aria-expanded', 'true')
+  await expect(innerGroup).toHaveAttribute('aria-expanded', 'true')
+  await innerGroup.getByRole('button', { name: '隐藏图层 组' }).click()
+  await outerGroup.getByRole('button', { name: '锁定图层 组' }).click()
+  await expect(innerGroup.getByRole('button', { name: '隐藏图层 组' }))
+    .toHaveAttribute('aria-pressed', 'true')
+  await expect(outerGroup.getByRole('button', { name: '锁定图层 组' }))
+    .toHaveAttribute('aria-pressed', 'true')
+
+  const saveButton = page.getByRole('button', { name: '保存草稿', exact: true })
+  await saveButton.click()
+  const authDialog = page.getByRole('dialog', { name: '账户登录与注册' })
+  await authDialog.getByRole('button', { name: '注册', exact: true }).click()
+  await authDialog.getByLabel('用户名').fill(username)
+  await authDialog.getByLabel('密码').fill('1234')
+  await authDialog.getByRole('button', { name: '创建账号', exact: true }).click()
+  await expect(authDialog).toBeHidden()
+  await saveButton.click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByRole('button', { name: '草稿 · 1', exact: true }).click()
+  await page.locator('.draft-item', { hasText: 'Page 1' }).click()
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+
+  const restoredTree = page.getByRole('tree', { name: '图层树' })
+  const restoredOuterGroup = restoredTree.locator('[role="treeitem"][aria-label="组"][aria-level="1"]')
+  const restoredInnerGroup = restoredTree.locator('[role="treeitem"][aria-label="组"][aria-level="2"]')
+  await expect(restoredOuterGroup.getByRole('button', { name: '锁定图层 组' }))
+    .toHaveAttribute('aria-pressed', 'true')
+  await expect(restoredInnerGroup.getByRole('button', { name: '隐藏图层 组' }))
+    .toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('freeform-canvas').locator('[data-scene-node-id]:visible')).toHaveCount(1)
+
+  const exportButton = page.getByTestId('freeform-primary-export')
+  const exportStartedAt = performance.now()
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    exportButton.click(),
+  ])
+  const downloadPath = await download.path()
+  const exportDurationMs = performance.now() - exportStartedAt
+  testInfo.annotations.push({
+    type: 'nested-export-duration-ms',
+    description: exportDurationMs.toFixed(1),
+  })
+  expect(exportDurationMs, `嵌套图层导出耗时 ${exportDurationMs.toFixed(1)}ms 超过 5000ms`)
+    .toBeLessThanOrEqual(5_000)
+  expect(downloadPath).toBeTruthy()
+  expect(readPngDimensions(await readFile(downloadPath!))).toEqual({ width: 1080, height: 1440 })
   await expect(exportButton).toBeEnabled()
 
   expect(runtimeIssues, runtimeIssues.map((issue) => `${issue.source}: ${issue.detail}`).join('\n')).toEqual([])

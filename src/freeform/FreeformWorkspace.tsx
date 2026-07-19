@@ -446,14 +446,21 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const previousUserId = useRef<string | null>(user?.id ?? null)
   const documentIdentityGenerationRef = useRef(0)
   const inspectorNumberResetGenerationRef = useRef(0)
+  const historyRef = useRef(history)
   const currentDocumentRef = useRef(doc)
   const currentDraftIdRef = useRef(draftId)
   const currentUserIdRef = useRef<string | null>(user?.id ?? null)
   const draftListGenerationRef = useRef(0)
   const saveGenerationRef = useRef(0)
   const saveInFlightRef = useRef(false)
+  const successfulSaveRef = useRef<{
+    source: FreeformDocument
+    document: FreeformDocument
+    updatedAt: number
+  } | null>(null)
 
   selectedElementIds.current = selection
+  historyRef.current = history
   currentDocumentRef.current = doc
   currentDraftIdRef.current = draftId
   currentUserIdRef.current = user?.id ?? null
@@ -550,6 +557,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const showOperationError = useCallback((error: unknown, fallback: string) => {
     setOperationNotice(operationErrorMessage(error, fallback))
   }, [])
+
+  const updateHistory = useCallback((update: SetStateAction<HistoryState<FreeformDocument>>) => {
+    const current = historyRef.current
+    const next = typeof update === 'function' ? update(current) : update
+    historyRef.current = next
+    currentDocumentRef.current = next.current
+    if (!Object.is(next, current)) setHistory(next)
+    return next
+  }, [])
   const showLockedOperationNotice = useCallback(() => {
     setOperationNotice(LOCKED_OPERATION_NOTICE)
   }, [])
@@ -639,6 +655,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       shapeFillOperationTokensRef.current.clear()
       draftListGenerationRef.current += 1
       saveGenerationRef.current += 1
+      successfulSaveRef.current = null
       setDrafts([])
       updateDraftId(null)
       setSavedAt(null)
@@ -688,16 +705,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const start = currentDocumentRef.current
     const next = freeformReducer(start, action)
     if (Object.is(next, start)) return false
-    currentDocumentRef.current = next
-    setHistory((current) => {
+    updateHistory((current) => {
       if (Object.is(current.current, start)) return pushHistory(current, next)
       const rebased = freeformReducer(current.current, action)
-      currentDocumentRef.current = rebased
       return Object.is(rebased, current.current) ? current : pushHistory(current, rebased)
     })
     setSavedAt(null)
     return true
-  }, [blockDocumentMutationDuringInteraction])
+  }, [blockDocumentMutationDuringInteraction, updateHistory])
 
   function updateNodeContentAtPath(
     slideId: string,
@@ -778,24 +793,48 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   const replaceCurrent = useCallback((action: FreeformAction) => {
-    setHistory((current) => {
+    updateHistory((current) => {
       const next = freeformReducer(current.current, action)
-      currentDocumentRef.current = next
       return Object.is(next, current.current) ? current : { ...current, current: next }
     })
-  }, [])
+  }, [updateHistory])
 
   const commitLiveEdit = useCallback((startDocument: FreeformDocument) => {
-    setHistory((current) => {
-      if (Object.is(current.current, startDocument)) return current
+    const savedStart = successfulSaveRef.current
+    const historyStart = savedStart && (
+      Object.is(savedStart.source, startDocument) || Object.is(savedStart.document, startDocument)
+    )
+      ? savedStart.document
+      : startDocument
+    updateHistory((current) => {
+      if (Object.is(current.current, historyStart) || Object.is(current.current, startDocument)) {
+        return current
+      }
       return {
-        past: [...current.past, startDocument],
+        past: [...current.past, historyStart],
         current: current.current,
         future: [],
       }
     })
     setSavedAt(null)
-  }, [])
+  }, [updateHistory])
+
+  const cancelLiveEdit = useCallback((startDocument: FreeformDocument) => {
+    const savedStart = successfulSaveRef.current
+    const restoredDocument = savedStart && (
+      Object.is(savedStart.source, startDocument) || Object.is(savedStart.document, startDocument)
+    )
+      ? savedStart.document
+      : startDocument
+    updateHistory((current) => Object.is(current.current, restoredDocument)
+      ? current
+      : { ...current, current: restoredDocument })
+    if (savedStart && (
+      Object.is(savedStart.source, startDocument) || Object.is(savedStart.document, startDocument)
+    )) {
+      setSavedAt(savedStart.updatedAt)
+    }
+  }, [updateHistory])
 
   function selectSlide(slideId: string) {
     if (blockDocumentMutationDuringInteraction()) return
@@ -1360,14 +1399,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   function undoDocument() {
     if (blockDocumentMutationDuringInteraction()) return
     inspectorNumberResetGenerationRef.current += 1
-    setHistory((current) => undo(current))
+    updateHistory((current) => undo(current))
     setSavedAt(null)
   }
 
   function redoDocument() {
     if (blockDocumentMutationDuringInteraction()) return
     inspectorNumberResetGenerationRef.current += 1
-    setHistory((current) => redo(current))
+    updateHistory((current) => redo(current))
     setSavedAt(null)
   }
 
@@ -1611,7 +1650,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         snap.dy,
       )
       setSnapLines(snap.lines)
-      setHistory((current) => {
+      updateHistory((current) => {
         const next = freeformReducer(current.current, {
           type: 'node/update-geometry',
           slideId: startSlide.id,
@@ -1620,7 +1659,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             patch,
           })),
         })
-        currentDocumentRef.current = next
         return Object.is(next, current.current) ? current : { ...current, current: next }
       })
     }
@@ -1640,10 +1678,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
     const cancelDrag = () => {
       cleanupDrag()
-      currentDocumentRef.current = startDocument
-      setHistory((current) => Object.is(current.current, startDocument)
-        ? current
-        : { ...current, current: startDocument })
+      cancelLiveEdit(startDocument)
     }
     const onUp = (upEvent: PointerEvent) => {
       if (upEvent.pointerId === pointerId) finishDrag()
@@ -1905,12 +1940,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
     const cancelResize = () => {
       cleanupResize()
-      currentDocumentRef.current = startDocument
-      setHistory((current) =>
-        Object.is(current.current, startDocument)
-          ? current
-          : { ...current, current: startDocument },
-      )
+      cancelLiveEdit(startDocument)
     }
 
     const onUp = (upEvent: PointerEvent) => {
@@ -1996,10 +2026,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
     const cancel = () => {
       cleanup()
-      currentDocumentRef.current = startDocument
-      setHistory((current) => Object.is(current.current, startDocument)
-        ? current
-        : { ...current, current: startDocument })
+      cancelLiveEdit(startDocument)
     }
     const onUp = (upEvent: PointerEvent) => {
       if (upEvent.pointerId === pointerId) finish()
@@ -2134,8 +2161,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       )
       const snapshotIsCurrent = Object.is(currentDocumentRef.current, snapshot)
       if (saveIsCurrent) updateDraftId(saved.id)
+      if (saveIsCurrent && saved.mode === 'freeform-slide') {
+        successfulSaveRef.current = {
+          source: snapshot,
+          document: saved.document,
+          updatedAt: saved.updatedAt,
+        }
+      }
       if (saveIsCurrent && store.remote && saved.mode === 'freeform-slide') {
-        setHistory((current) => (
+        updateHistory((current) => (
           Object.is(current.current, snapshot)
             ? { ...current, current: saved.document }
             : current
@@ -2166,7 +2200,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     documentIdentityGenerationRef.current += 1
     shapeFillOperationTokensRef.current.clear()
     saveGenerationRef.current += 1
-    setHistory(createHistory(draft.document))
+    successfulSaveRef.current = {
+      source: draft.document,
+      document: draft.document,
+      updatedAt: draft.updatedAt,
+    }
+    updateHistory(createHistory(draft.document))
     setSelection([])
     updateDraftId(draft.id)
     setSavedAt(draft.updatedAt)
@@ -2185,6 +2224,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         documentIdentityGenerationRef.current += 1
         shapeFillOperationTokensRef.current.clear()
         saveGenerationRef.current += 1
+        successfulSaveRef.current = null
         updateDraftId(null)
         setSavedAt(null)
       }
