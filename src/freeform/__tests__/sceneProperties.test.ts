@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MAX_EFFECTIVE_SCALE, MAX_SCENE_DEPTH } from '../constants'
+import { MAX_EFFECTIVE_SCALE, MAX_SCENE_DEPTH, MIN_EFFECTIVE_SCALE } from '../constants'
 import { reduceFreeformDocumentV3 } from '../document'
 import {
   scenePropertiesForPath,
@@ -10,6 +10,7 @@ import {
   type ScenePropertyMutationSuccess,
 } from '../sceneProperties'
 import {
+  SCENE_EPSILON,
   identity,
   multiply,
   sceneNodeLocalMatrix,
@@ -464,6 +465,122 @@ describe('scene group properties', () => {
     expect(properties.kind === 'group' ? properties.scalePercent : 0)
       .toBeLessThanOrEqual(MAX_EFFECTIVE_SCALE * 100)
   })
+
+  it.each(['width', 'height', 'scalePercent'] as const)(
+    'reports a tiny request beyond the current upper clamp as a clamped no-op for %s',
+    (property) => {
+      const nodes = [group('editable', [shape('leaf')], { scale: MAX_EFFECTIVE_SCALE })]
+      const before = readProperties(nodes, ['editable'])
+      if (before.kind !== 'group') throw new Error('fixture')
+      const result = mutate(nodes, ['editable'], {
+        property,
+        value: before[property] + SCENE_EPSILON / 2,
+      })
+
+      expect(result.mutation).toMatchObject({
+        update: null,
+        resolvedValue: before[property],
+        clamped: true,
+      })
+    },
+  )
+
+  it.each(['width', 'height', 'scalePercent'] as const)(
+    'reports a tiny request beyond the current lower clamp as a clamped no-op for %s',
+    (property) => {
+      const nodes = [group('editable', [shape('leaf')], { scale: MIN_EFFECTIVE_SCALE })]
+      const before = readProperties(nodes, ['editable'])
+      if (before.kind !== 'group') throw new Error('fixture')
+      const result = mutate(nodes, ['editable'], {
+        property,
+        value: before[property] - SCENE_EPSILON / 2,
+      })
+
+      expect(result.mutation).toMatchObject({
+        update: null,
+        resolvedValue: before[property],
+        clamped: true,
+      })
+    },
+  )
+
+  it('does not swallow a visible change near the upper bound', () => {
+    const nodes = [group('editable', [shape('leaf')], {
+      scale: MAX_EFFECTIVE_SCALE - 0.005,
+    })]
+    const before = readProperties(nodes, ['editable'])
+    if (before.kind !== 'group') throw new Error('fixture')
+    const result = mutate(nodes, ['editable'], {
+      property: 'scalePercent',
+      value: MAX_EFFECTIVE_SCALE * 100,
+    })
+
+    expect(result.mutation.update).not.toBeNull()
+    const after = readProperties(result.nodes, ['editable'])
+    expect(after.kind === 'group' ? after.scalePercent : 0)
+      .toBeGreaterThan(before.scalePercent)
+  })
+
+  it('does not rewrite a large endpoint when the requested page width is unchanged', () => {
+    const nodes = [group('editable', [shape('leaf', { width: 1e9 })], {
+      scale: MAX_EFFECTIVE_SCALE,
+    })]
+    const before = readProperties(nodes, ['editable'])
+    if (before.kind !== 'group') throw new Error('fixture')
+    const result = mutate(nodes, ['editable'], {
+      property: 'width',
+      value: before.width,
+    })
+
+    expect(result.mutation).toMatchObject({
+      update: null,
+      resolvedValue: before.width,
+      clamped: false,
+    })
+  })
+
+  it.each([50, 200])(
+    'keeps endpoint safety inside an extremely narrow valid ratio range for %s%%',
+    (requestedScalePercent) => {
+      const nearMaximum = MAX_EFFECTIVE_SCALE - Number.EPSILON * MAX_EFFECTIVE_SCALE
+      const nodes = [group('editable', [
+        shape('minimum-child', { scale: MIN_EFFECTIVE_SCALE }),
+        shape('maximum-child', { scale: nearMaximum }),
+      ])]
+      const before = readProperties(nodes, ['editable'])
+      if (before.kind !== 'group') throw new Error('fixture')
+      const result = mutate(nodes, ['editable'], {
+        property: 'scalePercent',
+        value: requestedScalePercent,
+      })
+
+      expect(result.nodes).toBe(nodes)
+      expect(result.mutation).toMatchObject({
+        update: null,
+        resolvedValue: before.scalePercent,
+        clamped: true,
+      })
+    },
+  )
+
+  it('preserves tiny local scale edits when a large ancestor keeps world scale valid', () => {
+    const nodes = [group('ancestor', [
+      group('editable', [shape('leaf')], { scale: 1e-8 }),
+    ], { scale: 1e4 })]
+    const path = ['ancestor', 'editable']
+    const before = readProperties(nodes, path)
+    if (before.kind !== 'group') throw new Error('fixture')
+    expect(before.scalePercent).toBeCloseTo(MIN_EFFECTIVE_SCALE * 100, 8)
+    const result = mutate(nodes, path, {
+      property: 'scalePercent',
+      value: before.scalePercent * 2,
+    })
+
+    expect(result.mutation.update).not.toBeNull()
+    const after = readProperties(result.nodes, path)
+    expect(after.kind === 'group' ? after.scalePercent : 0)
+      .toBeCloseTo(before.scalePercent * 2, 8)
+  })
 })
 
 describe('scene property contracts', () => {
@@ -560,6 +677,20 @@ describe('scene property contracts', () => {
       ['leaf'],
       undefined as unknown as ScenePropertyEdit,
     )).toEqual({ ok: false, reason: 'invalid-value' })
+
+    const extremeRequestNodes = [group('minimum-parent', [shape('leaf')], {
+      scale: MIN_EFFECTIVE_SCALE,
+    })]
+    expect(() => scenePropertyMutation(
+      extremeRequestNodes,
+      ['minimum-parent', 'leaf'],
+      { property: 'x', value: Number.MAX_VALUE },
+    )).not.toThrow()
+    expect(scenePropertyMutation(
+      extremeRequestNodes,
+      ['minimum-parent', 'leaf'],
+      { property: 'x', value: Number.MAX_VALUE },
+    )).toEqual({ ok: false, reason: 'invalid-transform' })
   })
 
   it('reads the maximum valid depth and rejects an over-depth tree', () => {

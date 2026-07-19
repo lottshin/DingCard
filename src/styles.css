@@ -1744,6 +1744,29 @@ html.theme-anim * {
   color: var(--text);
 }
 
+.freeform-lock-descendant-banner {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  margin: 12px;
+  padding: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.freeform-lock-descendant-banner > svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
 .freeform-lock-banner > svg,
 .freeform-lock-banner-action svg {
   width: 18px;
@@ -1789,6 +1812,38 @@ html.theme-anim * {
   top: 0;
   z-index: 20;
   background: var(--surface);
+}
+
+.freeform-inspector-breadcrumb {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.freeform-inspector-breadcrumb > span {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.freeform-inspector-breadcrumb > .freeform-inspector-breadcrumb-current {
+  flex: 0 1 48%;
+  min-width: 44px;
+  color: var(--text);
+}
+
+.freeform-inspector-breadcrumb-separator {
+  margin: 0 2px;
+  color: var(--text-3);
+  flex: 0 0 auto;
 }
 
 .freeform-inspector .inspector-section {

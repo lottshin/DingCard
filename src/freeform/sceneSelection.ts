@@ -106,6 +106,45 @@ export function nearestLockedSourcePathForSelection(
   return null
 }
 
+/** Return a lock source below an otherwise editable selected group. */
+export function lockedDescendantSourcePathForSelection(
+  nodes: readonly FreeformSceneNode[],
+  selectionPaths: readonly ScenePath[],
+): ScenePath | null {
+  if (selectionPaths.length === 0) return null
+  let pathIndex: ReturnType<typeof buildScenePathIndex>
+  try {
+    pathIndex = buildScenePathIndex(nodes)
+  } catch {
+    return null
+  }
+
+  for (const path of selectionPaths) {
+    if (path.length === 0) continue
+    const selected = pathIndex.get(scenePathKey(path))
+    if (!selected || selected.effectiveLocked || !selected.subtreeLocked) continue
+    const children = getChildrenAtPath(nodes, path)
+    if (!children) continue
+
+    const pending = children.map((node) => ({
+      node,
+      path: [...path, node.id],
+    })).reverse()
+    while (pending.length > 0) {
+      const current = pending.pop()!
+      if (current.node.locked) return current.path
+      if (current.node.type === 'group') {
+        for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
+          const child = current.node.children[index]
+          pending.push({ node: child, path: [...current.path, child.id] })
+        }
+      }
+    }
+  }
+
+  return null
+}
+
 /** Map a deep canvas hit to the direct child selectable in one editing scope. */
 export function directChildPathForScope(
   nodes: readonly FreeformSceneNode[],

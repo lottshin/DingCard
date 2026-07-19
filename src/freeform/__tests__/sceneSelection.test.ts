@@ -5,6 +5,7 @@ import {
   directChildPathForScope,
   effectiveSceneState,
   fallbackScenePath,
+  lockedDescendantSourcePathForSelection,
   nearestLockedNodePath,
   nearestLockedSourcePathForSelection,
   normalizeSceneSelection,
@@ -189,6 +190,28 @@ describe('scene selection', () => {
     ])).toEqual(['outer'])
   })
 
+  it('finds a locked descendant source across single and multi-selection', () => {
+    const nodes = [
+      textLeaf('editable'),
+      group('contains-lock', [
+        textLeaf('open-child'),
+        group('nested', [textLeaf('locked-child', { locked: true })]),
+      ]),
+      group('effectively-locked', [textLeaf('inherited')], { locked: true }),
+    ]
+
+    expect(lockedDescendantSourcePathForSelection(nodes, [
+      ['editable'],
+      ['contains-lock'],
+    ])).toEqual(['contains-lock', 'nested', 'locked-child'])
+    expect(lockedDescendantSourcePathForSelection(nodes, [['contains-lock', 'open-child']]))
+      .toBeNull()
+    expect(lockedDescendantSourcePathForSelection(nodes, [['effectively-locked']]))
+      .toBeNull()
+    expect(lockedDescendantSourcePathForSelection(nodes, [[], ['missing']])).toBeNull()
+    expect(lockedDescendantSourcePathForSelection(nodes, [])).toBeNull()
+  })
+
   it('returns null instead of throwing when an invalid tree exceeds the scene depth contract', () => {
     let node: FreeformSceneNode = textLeaf('leaf', { locked: true })
     for (let depth = 0; depth < 33; depth += 1) {
@@ -197,6 +220,8 @@ describe('scene selection', () => {
 
     expect(() => nearestLockedSourcePathForSelection([node], [['group-32']])).not.toThrow()
     expect(nearestLockedSourcePathForSelection([node], [['group-32']])).toBeNull()
+    expect(() => lockedDescendantSourcePathForSelection([node], [['group-32']])).not.toThrow()
+    expect(lockedDescendantSourcePathForSelection([node], [['group-32']])).toBeNull()
   })
 
   it('maps a deep hit to the direct child of the active editing scope', () => {

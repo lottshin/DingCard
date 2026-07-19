@@ -22,6 +22,7 @@ import {
   freeformReducer,
 } from './document'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
+import { InspectorNumberInput } from './InspectorNumberInput'
 import { FreeformLayersPanel } from './FreeformLayersPanel'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
 import { FreeformRightPanel } from './FreeformRightPanel'
@@ -57,6 +58,7 @@ import {
 import {
   directChildPathForScope,
   effectiveSceneState,
+  lockedDescendantSourcePathForSelection,
   nearestLockedSourcePathForSelection,
   normalizeSceneSelection,
   reconcileSceneUiState,
@@ -65,6 +67,12 @@ import {
   type SceneUiState,
 } from './sceneSelection'
 import { cloneSceneNodes, findNodeAtPath, getChildrenAtPath, scenePathKey } from './sceneTree'
+import {
+  scenePropertiesForPath,
+  scenePropertyMutation,
+  type ScenePropertyEdit,
+  type SceneProperties,
+} from './sceneProperties'
 import {
   getElementsInMarquee,
   moveElementsWithinSlide,
@@ -79,6 +87,8 @@ import type {
   FreeformImageElement,
   FreeformLineElement,
   FreeformSceneNode,
+  FreeformNodeContentPatch,
+  FreeformNodeStylePatch,
   FreeformShapeElement,
   FreeformSlide,
   FreeformTextElement,
@@ -285,7 +295,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const propertiesTabRef = useRef<HTMLButtonElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
+  const shapeFillOperationTokensRef = useRef(new Map<string, symbol>())
   const previousUserId = useRef<string | null>(user?.id ?? null)
+  const documentIdentityGenerationRef = useRef(0)
+  const inspectorNumberResetGenerationRef = useRef(0)
   const currentDocumentRef = useRef(doc)
   const currentDraftIdRef = useRef(draftId)
   const currentUserIdRef = useRef<string | null>(user?.id ?? null)
@@ -313,6 +326,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     },
     [activeSlide.nodes, selectionPaths],
   )
+  const selectedPath = selectionPaths.length === 1 ? selectionPaths[0] : null
+  const inspectorNumberResetKey = JSON.stringify([
+    documentIdentityGenerationRef.current,
+    inspectorNumberResetGenerationRef.current,
+    activeSlide.id,
+    selectedPath,
+  ])
+  const selectedProperties = useMemo<SceneProperties | null>(() => {
+    if (!selectedPath) return null
+    const result = scenePropertiesForPath(activeSlide.nodes, selectedPath)
+    return result.ok ? result.properties : null
+  }, [activeSlide.nodes, selectedPath])
   const effectiveLockedSelection = useMemo(() => {
     const unlockPath = nearestLockedSourcePathForSelection(activeSlide.nodes, selectionPaths)
     if (!unlockPath) return null
@@ -323,6 +348,27 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       unlockName: unlockNode.name,
     }
   }, [activeSlide.nodes, selectionPaths])
+  const lockedDescendantSelection = useMemo(() => {
+    const sourcePath = lockedDescendantSourcePathForSelection(activeSlide.nodes, selectionPaths)
+      ?? (selectedProperties?.editability.kind === 'locked-descendant'
+        ? selectedProperties.editability.sourcePath
+        : null)
+    if (!sourcePath) return null
+    const sourceNode = findNodeAtPath(activeSlide.nodes, sourcePath)
+    if (!sourceNode) return null
+    return {
+      sourcePath,
+      sourceName: sourceNode.name,
+    }
+  }, [activeSlide.nodes, selectedProperties, selectionPaths])
+  const propertySelectionReadOnly = Boolean(effectiveLockedSelection || lockedDescendantSelection)
+  const canUseFlatAlignment = useMemo(() => (
+    selectionPaths.length > 1 &&
+    activeGroupPath.length === 0 &&
+    selectionPaths.every((path) => (
+      path.length === 1 && rootElements.some((element) => element.id === path[0])
+    ))
+  ), [activeGroupPath.length, rootElements, selectionPaths])
 
   const canUndo = history.past.length > 0
   const canRedo = history.future.length > 0
@@ -419,6 +465,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const userChanged = previousUserId.current !== nextUserId
     if (userChanged) {
       previousUserId.current = nextUserId
+      documentIdentityGenerationRef.current += 1
+      shapeFillOperationTokensRef.current.clear()
       draftListGenerationRef.current += 1
       saveGenerationRef.current += 1
       setDrafts([])
@@ -479,6 +527,84 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setSavedAt(null)
     return true
   }, [])
+
+  function updateNodeContentAtPath(
+    slideId: string,
+    path: ScenePath,
+    patch: FreeformNodeContentPatch,
+  ): boolean {
+    return applyAction({
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: [...path], patch }],
+    })
+  }
+
+  function updateNodeStyleAtPath(
+    slideId: string,
+    path: ScenePath,
+    patch: FreeformNodeStylePatch,
+  ): boolean {
+    return applyAction({
+      type: 'node/update-style',
+      slideId,
+      updates: [{ path: [...path], patch }],
+    })
+  }
+
+  function updateSelectedContent(patch: FreeformNodeContentPatch): boolean {
+    if (!selectedPath) return false
+    return updateNodeContentAtPath(activeSlide.id, selectedPath, patch)
+  }
+
+  function updateSelectedStyle(patch: FreeformNodeStylePatch): boolean {
+    if (!selectedPath) return false
+    return updateNodeStyleAtPath(activeSlide.id, selectedPath, patch)
+  }
+
+  function beginShapeFillOperation(slideId: string, path: ScenePath) {
+    const key = `${slideId}:${scenePathKey(path)}`
+    const token = Symbol(key)
+    shapeFillOperationTokensRef.current.set(key, token)
+    return { key, token }
+  }
+
+  function updateSelectedShapeFill(fill: ShapeFill): boolean {
+    if (!selectedPath) return false
+    const operation = beginShapeFillOperation(activeSlide.id, selectedPath)
+    const changed = updateSelectedStyle({ fill })
+    if (shapeFillOperationTokensRef.current.get(operation.key) === operation.token) {
+      shapeFillOperationTokensRef.current.delete(operation.key)
+    }
+    return changed
+  }
+
+  function commitSceneProperty(edit: ScenePropertyEdit): boolean {
+    if (!selectedPath) return false
+    const currentSlide = currentDocumentRef.current.slides.find(
+      (slide) => slide.id === activeSlide.id,
+    )
+    if (!currentSlide) return false
+    const mutation = scenePropertyMutation(currentSlide.nodes, selectedPath, edit)
+    if (!mutation.ok) {
+      if (mutation.reason === 'locked' || mutation.reason === 'locked-descendant') {
+        showLockedOperationNotice()
+      }
+      return false
+    }
+    if (!mutation.update) return false
+    return mutation.category === 'geometry'
+      ? applyAction({
+          type: 'node/update-geometry',
+          slideId: activeSlide.id,
+          updates: [mutation.update],
+        })
+      : applyAction({
+          type: 'node/update-style',
+          slideId: activeSlide.id,
+          updates: [mutation.update],
+        })
+  }
 
   const replaceCurrent = useCallback((action: FreeformAction) => {
     setHistory((current) => {
@@ -542,13 +668,22 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   async function addImageFromFile(file: File) {
+    const targetIdentityGeneration = documentIdentityGenerationRef.current
+    const targetUserId = currentUserIdRef.current
+    const targetSlideId = activeSlide.id
     if (store.remote) await retainImagesNow()
     const raw = await readFileAsDataUrl(file)
     const downscaled = await downscaleDataUrl(raw, 1800)
     const src = await store.images.put(downscaled)
-    const element = createImageElement(activeSlide, src, file.name)
-    if (applyAction({ type: 'element/add', slideId: activeSlide.id, element })) {
-      setSelection([element.id])
+    if (
+      targetIdentityGeneration !== documentIdentityGenerationRef.current ||
+      targetUserId !== currentUserIdRef.current
+    ) return
+    const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
+    if (!currentSlide) return
+    const element = createImageElement(currentSlide, src, file.name)
+    if (applyAction({ type: 'element/add', slideId: targetSlideId, element })) {
+      if (currentDocumentRef.current.activeSlideId === targetSlideId) setSelection([element.id])
     }
   }
 
@@ -565,17 +700,39 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   async function fillSelectedShapeFromFile(file: File) {
-    if (!isShapeElement(selectedElement)) return
-    if (store.remote) await retainImagesNow()
-    const raw = await readFileAsDataUrl(file)
-    const downscaled = await downscaleDataUrl(raw, 1800)
-    const src = await store.images.put(downscaled)
-    applyAction({
-      type: 'element/update',
-      slideId: activeSlide.id,
-      elementId: selectedElement.id,
-      patch: { fill: { type: 'image', src, fit: 'cover' } },
-    })
+    const targetPath = selectedPath ? [...selectedPath] : null
+    const targetSlideId = activeSlide.id
+    const targetIdentityGeneration = documentIdentityGenerationRef.current
+    const targetUserId = currentUserIdRef.current
+    const targetNode = targetPath
+      ? findNodeAtPath(
+          currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)?.nodes ?? [],
+          targetPath,
+        )
+      : undefined
+    if (targetNode?.type !== 'shape' || !targetPath) return
+    const operation = beginShapeFillOperation(targetSlideId, targetPath)
+    try {
+      if (store.remote) await retainImagesNow()
+      const raw = await readFileAsDataUrl(file)
+      const downscaled = await downscaleDataUrl(raw, 1800)
+      const src = await store.images.put(downscaled)
+      if (
+        shapeFillOperationTokensRef.current.get(operation.key) !== operation.token ||
+        targetIdentityGeneration !== documentIdentityGenerationRef.current ||
+        targetUserId !== currentUserIdRef.current
+      ) return
+      const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
+      const currentTarget = currentSlide ? findNodeAtPath(currentSlide.nodes, targetPath) : undefined
+      if (currentTarget?.type !== 'shape') return
+      updateNodeStyleAtPath(targetSlideId, targetPath, {
+        fill: { type: 'image', src, fit: 'cover' },
+      })
+    } finally {
+      if (shapeFillOperationTokensRef.current.get(operation.key) === operation.token) {
+        shapeFillOperationTokensRef.current.delete(operation.key)
+      }
+    }
   }
 
   async function handleShapeFillInput(files: FileList | null) {
@@ -590,15 +747,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }
 
-  function updateElement(elementId: string, patch: Partial<FreeformElement>) {
-    applyAction({ type: 'element/update', slideId: activeSlide.id, elementId, patch })
-  }
-
-  function updateSelected(patch: Partial<FreeformElement>) {
-    if (!selectedElement) return
-    updateElement(selectedElement.id, patch)
-  }
-
   function deleteSelection() {
     if (selection.length === 0) return
     const changed = applyAction({
@@ -609,7 +757,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     })
     if (changed) {
       setSelection([])
-    } else if (effectiveLockedSelection) {
+    } else if (effectiveLockedSelection || lockedDescendantSelection) {
       showLockedOperationNotice()
     }
   }
@@ -649,7 +797,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       nodeIds: selection,
       direction,
     })
-    if (!changed && effectiveLockedSelection) showLockedOperationNotice()
+    if (!changed && (effectiveLockedSelection || lockedDescendantSelection)) {
+      showLockedOperationNotice()
+    }
   }
 
   function selectLayerPath(path: ScenePath, options: { toggle: boolean }): boolean {
@@ -828,11 +978,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function undoDocument() {
+    inspectorNumberResetGenerationRef.current += 1
     setHistory((current) => undo(current))
     setSavedAt(null)
   }
 
   function redoDocument() {
+    inspectorNumberResetGenerationRef.current += 1
     setHistory((current) => redo(current))
     setSavedAt(null)
   }
@@ -850,7 +1002,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     )
 
     if (patches.length === 0) {
-      if (effectiveLockedSelection) showLockedOperationNotice()
+      if (effectiveLockedSelection || lockedDescendantSelection) showLockedOperationNotice()
       return
     }
     const changed = applyAction({
@@ -861,7 +1013,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         patch,
       })),
     })
-    if (!changed && effectiveLockedSelection) showLockedOperationNotice()
+    if (!changed && (effectiveLockedSelection || lockedDescendantSelection)) showLockedOperationNotice()
   }
 
   useEffect(() => {
@@ -1366,6 +1518,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function openDraft(draft: Draft) {
     if (draft.mode !== 'freeform-slide') return
+    documentIdentityGenerationRef.current += 1
+    shapeFillOperationTokensRef.current.clear()
     saveGenerationRef.current += 1
     setHistory(createHistory(draft.document))
     setSelection([])
@@ -1381,6 +1535,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       await store.drafts.remove(user.id, id)
       if (currentUserIdRef.current !== user.id) return
       if (id === currentDraftIdRef.current) {
+        documentIdentityGenerationRef.current += 1
+        shapeFillOperationTokensRef.current.clear()
         saveGenerationRef.current += 1
         updateDraftId(null)
         setSavedAt(null)
@@ -1705,6 +1861,30 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         >
           <div className="freeform-panel-head">
             <span>属性</span>
+            {selectedProperties && (
+              <nav
+                className="freeform-inspector-breadcrumb"
+                aria-label="对象路径"
+                title={[
+                  ...selectedProperties.breadcrumbs.map((breadcrumb) => breadcrumb.name),
+                  selectedProperties.node.name,
+                ].join(' / ')}
+              >
+                {selectedProperties.breadcrumbs.map((breadcrumb, index) => (
+                  <span key={scenePathKey(breadcrumb.path)} title={breadcrumb.name}>
+                    {index > 0 && <span className="freeform-inspector-breadcrumb-separator" aria-hidden="true">/</span>}
+                    {breadcrumb.name}
+                  </span>
+                ))}
+                <span
+                  className="freeform-inspector-breadcrumb-current"
+                  title={selectedProperties.node.name}
+                >
+                  <span className="freeform-inspector-breadcrumb-separator" aria-hidden="true">/</span>
+                  {selectedProperties.node.name}
+                </span>
+              </nav>
+            )}
           </div>
 
           {liveSelection.length === 0 ? (
@@ -1779,52 +1959,90 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 </div>
               )}
 
-              {!effectiveLockedSelection && liveSelection.length === 1 && selectedElement && (
+              {!effectiveLockedSelection && lockedDescendantSelection && (
+                <div
+                  className="freeform-lock-descendant-banner"
+                  data-testid="freeform-lock-descendant-banner"
+                  role="note"
+                  aria-label="包含锁定图层"
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <rect x="4" y="8" width="12" height="9" rx="2" />
+                    <path d="M7 8V6a3 3 0 0 1 6 0v2" />
+                  </svg>
+                  <div className="freeform-lock-banner-copy">
+                    <strong>包含锁定图层</strong>
+                    <span>锁定来源：{lockedDescendantSelection.sourceName}，请先在图层面板解锁</span>
+                  </div>
+                </div>
+              )}
+
+              {!propertySelectionReadOnly && liveSelection.length === 1 && selectedProperties && (
                 <>
                   <InspectorSection title="位置与尺寸" testId="inspector-geometry">
                     <div className="field-grid">
                       <label>
-                        X
-                        <input
-                          type="number"
-                          value={selectedElement.x}
-                          onChange={(event) => updateSelected({ x: Number(event.currentTarget.value) })}
+                        {selectedProperties.kind === 'group' ? '中心 X' : 'X'}
+                        <InspectorNumberInput
+                          ariaLabel={selectedProperties.kind === 'group' ? '中心 X' : 'X'}
+                          resetKey={inspectorNumberResetKey}
+                          value={selectedProperties.x}
+                          onCommit={(value) => commitSceneProperty({ property: 'x', value })}
                         />
                       </label>
                       <label>
-                        Y
-                        <input
-                          type="number"
-                          value={selectedElement.y}
-                          onChange={(event) => updateSelected({ y: Number(event.currentTarget.value) })}
+                        {selectedProperties.kind === 'group' ? '中心 Y' : 'Y'}
+                        <InspectorNumberInput
+                          ariaLabel={selectedProperties.kind === 'group' ? '中心 Y' : 'Y'}
+                          resetKey={inspectorNumberResetKey}
+                          value={selectedProperties.y}
+                          onCommit={(value) => commitSceneProperty({ property: 'y', value })}
                         />
                       </label>
                       <label>
                         宽
-                        <input
-                          type="number"
-                          min="1"
-                          value={selectedElement.width}
-                          onChange={(event) => updateSelected({ width: Number(event.currentTarget.value) })}
+                        <InspectorNumberInput
+                          ariaLabel="宽"
+                          min={Number.MIN_VALUE}
+                          resetKey={inspectorNumberResetKey}
+                          value={selectedProperties.width}
+                          onCommit={(value) => commitSceneProperty({ property: 'width', value })}
                         />
                       </label>
                       <label>
                         高
-                        <input
-                          type="number"
-                          min="1"
-                          value={selectedElement.height}
-                          onChange={(event) => updateSelected({ height: Number(event.currentTarget.value) })}
+                        <InspectorNumberInput
+                          ariaLabel="高"
+                          min={Number.MIN_VALUE}
+                          resetKey={inspectorNumberResetKey}
+                          value={selectedProperties.height}
+                          onCommit={(value) => commitSceneProperty({ property: 'height', value })}
                         />
                       </label>
                       <label>
                         旋转
-                        <input
-                          type="number"
-                          value={selectedElement.rotation}
-                          onChange={(event) => updateSelected({ rotation: Number(event.currentTarget.value) })}
+                        <InspectorNumberInput
+                          ariaLabel="旋转"
+                          resetKey={inspectorNumberResetKey}
+                          value={selectedProperties.rotation}
+                          onCommit={(value) => commitSceneProperty({ property: 'rotation', value })}
                         />
                       </label>
+                      {selectedProperties.kind === 'group' && (
+                        <label>
+                          缩放 %
+                          <InspectorNumberInput
+                            ariaLabel="缩放 %"
+                            min={Number.MIN_VALUE}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedProperties.scalePercent}
+                            onCommit={(value) => commitSceneProperty({
+                              property: 'scalePercent',
+                              value,
+                            })}
+                          />
+                        </label>
+                      )}
                     </div>
                     {isShapeElement(selectedElement) && (
                       <>
@@ -1835,7 +2053,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                               key={shape.id}
                               type="button"
                               className={selectedElement.shape === shape.id ? 'seg-btn on' : 'seg-btn'}
-                              onClick={() => updateElement(selectedElement.id, { shape: shape.id })}
+                              onClick={() => updateSelectedStyle({ shape: shape.id })}
                             >
                               {shape.label}
                             </button>
@@ -1853,7 +2071,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                           className="freeform-inspector-text"
                           value={selectedElement.text}
                           onChange={(event) =>
-                            updateElement(selectedElement.id, { text: event.currentTarget.value })
+                            updateSelectedContent({ text: event.currentTarget.value })
                           }
                         />
                       </label>
@@ -1867,7 +2085,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                               fontFamily,
                               [selectedElement.fontWeight],
                             ).catch(() => undefined)
-                            updateElement(selectedElement.id, { fontFamily })
+                            updateSelectedStyle({ fontFamily })
                           }}
                           title="字体"
                           testId="freeform-font-select"
@@ -1878,16 +2096,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       <div className="field-grid">
                         <label>
                           字号
-                          <input
-                            type="number"
-                            min="8"
-                            max="240"
-                            value={selectedElement.fontSize}
-                            onChange={(event) =>
-                              updateElement(selectedElement.id, {
-                                fontSize: Number(event.currentTarget.value),
-                              })
-                            }
+                          <InspectorNumberInput
+                            ariaLabel="字号"
+                            min={Number.MIN_VALUE}
+                            max={Number.MAX_VALUE}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedProperties.kind === 'leaf'
+                              ? selectedProperties.fontSize ?? selectedElement.fontSize
+                              : selectedElement.fontSize}
+                            onCommit={(value) => commitSceneProperty({ property: 'fontSize', value })}
                           />
                         </label>
                       </div>
@@ -1898,7 +2115,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                             key={align}
                             type="button"
                             className={selectedElement.align === align ? 'seg-btn on' : 'seg-btn'}
-                            onClick={() => updateElement(selectedElement.id, { align })}
+                            onClick={() => updateSelectedStyle({ align })}
                           >
                             {align === 'left' ? '左' : align === 'center' ? '中' : '右'}
                           </button>
@@ -1919,7 +2136,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                             modes={['solid', 'linear-gradient']}
                             fallbackPaint={DEFAULT_TEXT_PAINT}
                             onChange={(textFill) =>
-                              updateElement(selectedElement.id, { textFill: textFill as ColorPaint })
+                              updateSelectedStyle({ textFill: textFill as ColorPaint })
                             }
                           />
                         </div>
@@ -1933,17 +2150,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                               modes={['solid', 'linear-gradient', 'image']}
                               fallbackPaint={DEFAULT_SHAPE_PAINT}
                               onChange={(fill) =>
-                                updateElement(selectedElement.id, { fill: fill as ShapeFill })
+                                updateSelectedShapeFill(fill as ShapeFill)
                               }
                               onChooseImage={() => shapeFillInputRef.current?.click()}
                               onClearImage={() =>
-                                updateElement(selectedElement.id, { fill: { ...DEFAULT_SHAPE_PAINT } })
+                                updateSelectedShapeFill({ ...DEFAULT_SHAPE_PAINT })
                               }
                               onImageFitChange={(fit) => {
                                 if (selectedElement.fill.type !== 'image') return
-                                updateElement(selectedElement.id, {
-                                  fill: { ...selectedElement.fill, fit },
-                                })
+                                updateSelectedShapeFill({ ...selectedElement.fill, fit })
                               }}
                             />
                           </div>
@@ -1965,7 +2180,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                                 key={fit.id}
                                 type="button"
                                 className={selectedElement.fit === fit.id ? 'seg-btn on' : 'seg-btn'}
-                                onClick={() => updateElement(selectedElement.id, { fit: fit.id })}
+                                onClick={() => updateSelectedStyle({ fit: fit.id })}
                               >
                                 {fit.label}
                               </button>
@@ -1987,7 +2202,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                                 key={lineKind}
                                 type="button"
                                 className={selectedElement.lineKind === lineKind ? 'seg-btn on' : 'seg-btn'}
-                                onClick={() => updateElement(selectedElement.id, { lineKind })}
+                                onClick={() => updateSelectedStyle({ lineKind })}
                               >
                                 {lineKind === 'line' ? '直线' : '箭头'}
                               </button>
@@ -2004,21 +2219,20 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                           <ColorPickerButton
                             label={isShapeElement(selectedElement) ? '形状描边颜色' : '线条颜色'}
                             color={selectedElement.stroke}
-                            onChange={(stroke) => updateElement(selectedElement.id, { stroke })}
+                            onChange={(stroke) => updateSelectedStyle({ stroke })}
                           />
                         </div>
                         <label>
                           {isShapeElement(selectedElement) ? '描边宽' : '粗细'}
-                          <input
-                            type="number"
-                            min={isShapeElement(selectedElement) ? 0 : 1}
-                            max={isLineElement(selectedElement) ? 40 : undefined}
-                            value={selectedElement.strokeWidth}
-                            onChange={(event) =>
-                              updateElement(selectedElement.id, {
-                                strokeWidth: Number(event.currentTarget.value),
-                              })
-                            }
+                          <InspectorNumberInput
+                            ariaLabel={isShapeElement(selectedElement) ? '描边宽' : '粗细'}
+                            min={isShapeElement(selectedElement) ? 0 : Number.MIN_VALUE}
+                            max={Number.MAX_VALUE}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedProperties.kind === 'leaf'
+                              ? selectedProperties.strokeWidth ?? selectedElement.strokeWidth
+                              : selectedElement.strokeWidth}
+                            onCommit={(value) => commitSceneProperty({ property: 'strokeWidth', value })}
                           />
                         </label>
                       </div>
@@ -2027,9 +2241,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 </>
               )}
 
-              {!effectiveLockedSelection && (
+              {!propertySelectionReadOnly && (
                 <InspectorSection title="排列" testId="inspector-arrange">
-                  {liveSelection.length > 1 && (
+                  {canUseFlatAlignment && (
                     <>
                       <div className="field-label">对齐与分布</div>
                       <div className="inspector-actions">
@@ -2086,7 +2300,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 </InspectorSection>
               )}
 
-              {!effectiveLockedSelection && liveSelection.length === 1 && (
+              {!propertySelectionReadOnly && liveSelection.length === 1 && (
                 <InspectorSection title="删除" testId="inspector-danger" tone="danger">
                   <button className="ghost inspector-delete" type="button" onClick={deleteSelection}>
                     删除

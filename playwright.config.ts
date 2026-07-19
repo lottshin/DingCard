@@ -7,8 +7,20 @@ const E2E_ORIGIN = `http://127.0.0.1:${E2E_PORT}`
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
+  workers: 1,
   fullyParallel: false,
   reporter: 'list',
+  projects: [
+    {
+      name: 'e2e',
+      testIgnore: /editor-acceptance\.spec\.ts/,
+    },
+    {
+      name: 'acceptance',
+      testMatch: /editor-acceptance\.spec\.ts/,
+      dependencies: ['e2e'],
+    },
+  ],
   use: {
     baseURL: E2E_ORIGIN,
     channel: 'chrome',

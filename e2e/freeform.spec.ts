@@ -11,6 +11,7 @@ const TEST_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 )
+const TEST_PNG_DATA_URL = `data:image/png;base64,${TEST_PNG.toString('base64')}`
 
 function nestedV3Draft() {
   return {
@@ -208,6 +209,52 @@ function nestedV3Draft() {
       }],
     },
   }
+}
+
+function nestedPropertyMatrixDraft() {
+  const draft = structuredClone(nestedV3Draft())
+  const outer = (
+    draft.document.slides[0].nodes as unknown as Array<{
+      id: string
+      type: string
+      children?: unknown[]
+    }>
+  ).find((node) => node.id === 'outer')
+  if (!outer || outer.type !== 'group' || !outer.children) {
+    throw new Error('nested property matrix fixture requires the outer group')
+  }
+  outer.children.push({
+    id: 'matrix-image',
+    name: 'Matrix image',
+    locked: false,
+    hidden: false,
+    type: 'image',
+    x: 80,
+    y: 100,
+    width: 120,
+    height: 90,
+    rotation: 0,
+    scale: 1,
+    src: TEST_PNG_DATA_URL,
+    alt: 'Nested matrix image',
+    fit: 'cover',
+  }, {
+    id: 'matrix-line',
+    name: 'Matrix line',
+    locked: false,
+    hidden: false,
+    type: 'line',
+    x: 80,
+    y: 220,
+    width: 160,
+    height: 40,
+    rotation: 0,
+    scale: 1,
+    lineKind: 'line',
+    stroke: '#0f172a',
+    strokeWidth: 4,
+  })
+  return draft
 }
 
 function deepLayerBranch(depth: number) {
@@ -514,6 +561,80 @@ async function registerUser(page: import('@playwright/test').Page, username: str
   await page.getByRole('button', { name: '创建账号' }).click()
 }
 
+type ShapeFillFileReaderGate = {
+  started: number
+  completed: number
+  original: typeof FileReader.prototype.readAsDataURL
+  releaseAll: () => void
+}
+
+type ShapeFillGateWindow = typeof window & {
+  __shapeFillFileReaderGate?: ShapeFillFileReaderGate
+}
+
+async function installShapeFillFileReaderGate(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const gateWindow = window as ShapeFillGateWindow
+    if (gateWindow.__shapeFillFileReaderGate) {
+      throw new Error('delayed FileReader gate already installed')
+    }
+
+    const pending: Array<() => void> = []
+    const original = FileReader.prototype.readAsDataURL
+    const state: ShapeFillFileReaderGate = {
+      started: 0,
+      completed: 0,
+      original,
+      releaseAll() {
+        pending.splice(0).forEach((release) => release())
+      },
+    }
+    gateWindow.__shapeFillFileReaderGate = state
+    FileReader.prototype.readAsDataURL = function delayedReadAsDataURL(blob: Blob) {
+      state.started += 1
+      const reader = this
+      pending.push(() => {
+        reader.addEventListener('loadend', () => {
+          state.completed += 1
+        }, { once: true })
+        original.call(reader, blob)
+      })
+    }
+  })
+}
+
+async function expectShapeFillFileReaderStarted(
+  page: import('@playwright/test').Page,
+  expected = 1,
+) {
+  await expect.poll(() => page.evaluate(() => (
+    window as ShapeFillGateWindow
+  ).__shapeFillFileReaderGate?.started)).toBe(expected)
+}
+
+async function releaseShapeFillFileReaderGate(
+  page: import('@playwright/test').Page,
+  expected = 1,
+) {
+  await page.evaluate(() => {
+    const state = (window as ShapeFillGateWindow).__shapeFillFileReaderGate
+    if (!state) throw new Error('delayed FileReader gate missing')
+    state.releaseAll()
+  })
+  await expect.poll(() => page.evaluate(() => (
+    window as ShapeFillGateWindow
+  ).__shapeFillFileReaderGate?.completed)).toBe(expected)
+}
+
+async function restoreShapeFillFileReaderGate(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const gateWindow = window as ShapeFillGateWindow
+    const state = gateWindow.__shapeFillFileReaderGate
+    if (state) FileReader.prototype.readAsDataURL = state.original
+    delete gateWindow.__shapeFillFileReaderGate
+  })
+}
+
 async function expectVisibleFreeformToolbarButtonsToFit(
   page: import('@playwright/test').Page,
 ) {
@@ -590,7 +711,9 @@ async function setSelectedElementPosition(
 ) {
   const positionInputs = page.locator('.freeform-inspector .field-grid').first().locator('input')
   await positionInputs.nth(0).fill(String(x))
+  await positionInputs.nth(0).press('Enter')
   await positionInputs.nth(1).fill(String(y))
+  await positionInputs.nth(1).press('Enter')
 }
 
 async function setSelectedElementBox(
@@ -602,9 +725,13 @@ async function setSelectedElementBox(
 ) {
   const positionInputs = page.locator('.freeform-inspector .field-grid').first().locator('input')
   await positionInputs.nth(0).fill(String(x))
+  await positionInputs.nth(0).press('Enter')
   await positionInputs.nth(1).fill(String(y))
+  await positionInputs.nth(1).press('Enter')
   await positionInputs.nth(2).fill(String(width))
+  await positionInputs.nth(2).press('Enter')
   await positionInputs.nth(3).fill(String(height))
+  await positionInputs.nth(3).press('Enter')
 }
 
 async function openFreeform(page: import('@playwright/test').Page) {
@@ -616,6 +743,7 @@ async function openNestedV3Draft(
   page: import('@playwright/test').Page,
   username: string,
   includeDeepLayer = false,
+  createDraft: () => ReturnType<typeof nestedV3Draft> = nestedV3Draft,
 ) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -626,7 +754,7 @@ async function openNestedV3Draft(
   await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
   await expect(page.getByTestId('freeform-slide-meta')).toContainText('\u5df2\u4fdd\u5b58')
 
-  const draft = nestedV3Draft()
+  const draft = createDraft()
   if (includeDeepLayer) {
     (draft.document.slides[0].nodes as unknown[]).push(deepLayerBranch(25))
   }
@@ -4220,8 +4348,18 @@ test('distributes selected elements horizontally', async ({ page }) => {
   await setSelectedElementBox(page, 100, 160, 100, 100)
   await insertShape(page)
   await setSelectedElementBox(page, 400, 160, 100, 100)
+  expect(await freeformElementPositions(page)).toEqual([
+    { x: 100, y: 160 },
+    { x: 400, y: 160 },
+  ])
   await insertShape(page)
   await setSelectedElementBox(page, 800, 160, 100, 100)
+
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 100, y: 160 },
+    { x: 400, y: 160 },
+    { x: 800, y: 160 },
+  ])
 
   await page.locator('.freeform-element').nth(0).click({ modifiers: ['Shift'] })
   await page.locator('.freeform-element').nth(1).click({ modifiers: ['Shift'] })
@@ -4357,21 +4495,26 @@ test('layers tabs and tree directional keys stay in the panel without canvas nud
   await propertiesTab.focus()
   await page.keyboard.press('ArrowRight')
   await expect(layersTab).toHaveAttribute('aria-selected', 'true')
+  await expect(layersTab).toBeFocused()
   await expect(page.locator(`#${await layersTab.getAttribute('aria-controls')}`)).toHaveAttribute(
     'aria-labelledby',
     await layersTab.getAttribute('id'),
   )
   await page.keyboard.press('Home')
   await expect(propertiesTab).toHaveAttribute('aria-selected', 'true')
+  await expect(propertiesTab).toBeFocused()
   await propertiesTab.focus()
   await page.keyboard.press('End')
   await expect(layersTab).toHaveAttribute('aria-selected', 'true')
+  await expect(layersTab).toBeFocused()
 
   const tree = page.getByRole('tree', { name: '图层树' })
   const outer = tree.getByRole('treeitem', { name: 'Outer group' })
   await outer.focus()
+  await expect(outer).toBeFocused()
   await page.keyboard.press('ArrowLeft')
   await expect(tree.getByRole('treeitem', { name: 'Visible leaf' })).toHaveCount(0)
+  await expect(outer).toBeFocused()
   await page.keyboard.press('ArrowRight')
   await expect(tree.getByRole('treeitem', { name: 'Visible leaf' })).toBeVisible()
   await page.keyboard.press('ArrowRight')
@@ -5112,6 +5255,670 @@ test('locked layer metadata remains manageable through inherited state and reloa
   await restored.getByRole('button', { name: '隐藏图层 Protected caption' }).click()
   await expect(page.locator('[data-scene-node-id="locked-text"] [role="textbox"]'))
     .toHaveAttribute('contenteditable', 'false')
+})
+
+test('scene property coordinates and path updates', async ({ page }) => {
+  await openNestedV3Draft(page, `scene-properties-${Date.now()}`)
+  const workspace = page.locator('.freeform-workspace')
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Scaled root leaf' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const geometry = page.getByTestId('inspector-geometry')
+  const x = geometry.getByLabel('X', { exact: true })
+  const y = geometry.getByLabel('Y', { exact: true })
+  const width = geometry.getByLabel('宽', { exact: true })
+  const height = geometry.getByLabel('高', { exact: true })
+  await expect(x).toHaveValue('495')
+  await expect(y).toHaveValue('380')
+  await expect(width).toHaveValue('150')
+  await expect(height).toHaveValue('120')
+
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+  await x.fill('520')
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore))
+  await x.press('Enter')
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+  await x.blur()
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+  await expect(x).toHaveValue('520')
+  await expect(y).toHaveValue('380')
+  await page.keyboard.press('Control+z')
+  await expect(x).toHaveValue('495')
+
+  const historyAfterUndo = await workspace.getAttribute('data-history-depth')
+  await width.fill('')
+  await width.blur()
+  await expect(width).toHaveValue('150')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyAfterUndo ?? '')
+  await width.fill('0')
+  await width.blur()
+  await expect(width).toHaveValue('150')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyAfterUndo ?? '')
+  await x.fill('510')
+  await x.press('Escape')
+  await expect(x).toHaveValue('495')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyAfterUndo ?? '')
+  await x.fill('510')
+  await page.getByRole('button', { name: '重做', exact: true }).evaluate(
+    (button) => (button as HTMLButtonElement).click(),
+  )
+  await expect(x).toHaveValue('520')
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Scope text' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await expect(page.getByRole('navigation', { name: '对象路径' })).toContainText('页面')
+  await expect(page.getByRole('navigation', { name: '对象路径' })).toContainText('Outer group')
+  const textArea = page.getByTestId('inspector-typography').locator('textarea')
+  await textArea.fill('Path update survives nesting')
+  await expect(page.locator('[data-scene-node-id="scope-text"] [role="textbox"]'))
+    .toHaveText('Path update survives nesting')
+  const fontSize = page.getByTestId('inspector-typography').getByLabel('字号', { exact: true })
+  const textHistory = Number(await workspace.getAttribute('data-history-depth'))
+  await fontSize.fill('28')
+  await expect(workspace).toHaveAttribute('data-history-depth', String(textHistory))
+  await fontSize.press('Enter')
+  await expect(workspace).toHaveAttribute('data-history-depth', String(textHistory + 1))
+  await expect(fontSize).toHaveValue('28')
+})
+
+test('nested scene paths update every leaf style family', async ({ page }) => {
+  await openNestedV3Draft(
+    page,
+    `scene-property-matrix-${Date.now()}`,
+    false,
+    nestedPropertyMatrixDraft,
+  )
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  const selectLayer = async (name: string) => {
+    await page.getByRole('tab', { name: '图层', exact: true }).click()
+    await tree.getByRole('treeitem', { name, exact: true }).click()
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
+  }
+
+  await selectLayer('Scope text')
+  const textNode = page.locator('[data-scene-node-id="scope-text"]')
+  const textBox = textNode.getByTestId('freeform-textbox')
+  const fontSelect = page.getByTestId('freeform-font-select')
+  await fontSelect.click()
+  await page.getByRole('option', { name: '思源宋体', exact: true }).click()
+  await expect(fontSelect).toContainText('思源宋体')
+  await expect(textBox).toHaveCSS('font-family', /Noto Serif/i)
+
+  const textFill = page.getByTestId('text-fill-paint')
+  await textFill.getByLabel('文字颜色 hex', { exact: true }).fill('#3b82f6')
+  await expect(textFill.getByLabel('文字颜色 hex', { exact: true })).toHaveValue('#3b82f6')
+  await expect(textBox).toHaveCSS('color', 'rgb(59, 130, 246)')
+
+  await selectLayer('Visible leaf')
+  const shapeNode = page.locator('[data-scene-node-id="visible-leaf"]')
+  const shape = shapeNode.getByTestId('freeform-shape')
+  const geometry = page.getByTestId('inspector-geometry')
+  await geometry.getByRole('button', { name: '三角形', exact: true }).click()
+  await expect(shape).toHaveClass(/shape-triangle/)
+
+  const shapeFill = page.getByTestId('shape-fill-paint')
+  await shapeFill.getByLabel('填充 hex', { exact: true }).fill('#8b5cf6')
+  await expect(shapeFill.getByLabel('填充 hex', { exact: true })).toHaveValue('#8b5cf6')
+  await expect(shape).toHaveCSS('background-color', 'rgb(139, 92, 246)')
+
+  const shapeStroke = page.getByTestId('shape-stroke-color').getByTestId('paint-color-button')
+  await shapeStroke.click()
+  const shapeStrokePopover = page.getByRole('dialog', { name: '形状描边颜色 色板' })
+  await shapeStrokePopover.getByLabel('形状描边颜色 自定义 HEX', { exact: true }).fill('#ef4444')
+  await expect(shape).toHaveCSS('border-color', 'rgb(239, 68, 68)')
+  await page.keyboard.press('Escape')
+
+  const shapeStrokeWidth = page.getByTestId('inspector-stroke').getByLabel('描边宽', { exact: true })
+  await shapeStrokeWidth.fill('8')
+  await shapeStrokeWidth.press('Enter')
+  await expect(shapeStrokeWidth).toHaveValue('8')
+  await expect.poll(() => shape.evaluate((node) => getComputedStyle(node).borderWidth)).not.toBe('0px')
+
+  await selectLayer('Matrix image')
+  const imageNode = page.locator('[data-scene-node-id="matrix-image"]')
+  const imageFill = page.getByTestId('inspector-fill')
+  await expect(imageFill.getByRole('button', { name: '填满', exact: true })).toHaveClass(/\bon\b/)
+  await imageFill.getByRole('button', { name: '适应', exact: true }).click()
+  await expect(imageFill.getByRole('button', { name: '适应', exact: true })).toHaveClass(/\bon\b/)
+  await expect(imageNode.locator('.freeform-image')).toHaveCSS('object-fit', 'contain')
+
+  await selectLayer('Matrix line')
+  const lineNode = page.locator('[data-scene-node-id="matrix-line"]')
+  const lineStroke = page.getByTestId('inspector-stroke')
+  await lineStroke.getByRole('button', { name: '箭头', exact: true }).click()
+  await expect(lineNode.getByTestId('freeform-arrow')).toHaveCount(1)
+
+  const lineStrokeButton = lineStroke.getByTestId('line-stroke-color').getByTestId('paint-color-button')
+  await lineStrokeButton.click()
+  const lineStrokePopover = page.getByRole('dialog', { name: '线条颜色 色板' })
+  await lineStrokePopover.getByLabel('线条颜色 自定义 HEX', { exact: true }).fill('#14b8a6')
+  await expect(lineNode.locator('line')).toHaveAttribute('stroke', '#14b8a6')
+  await page.keyboard.press('Escape')
+
+  const lineStrokeWidth = lineStroke.getByLabel('粗细', { exact: true })
+  await lineStrokeWidth.fill('10')
+  await lineStrokeWidth.press('Enter')
+  await expect(lineStrokeWidth).toHaveValue('10')
+  await expect(lineNode.locator('line')).toHaveAttribute('stroke-width', '8')
+})
+
+test('number inspector preserves precision when an unchanged field blurs', async ({ page }) => {
+  await openNestedV3Draft(page, `scene-number-precision-${Date.now()}`)
+  const workspace = page.locator('.freeform-workspace')
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Scaled root leaf' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const x = page.getByTestId('inspector-geometry').getByLabel('X', { exact: true })
+
+  await x.fill('495.123456')
+  await x.press('Enter')
+  const historyAfterCommit = await workspace.getAttribute('data-history-depth')
+  await expect(x).toHaveValue('495.12')
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  const storedX = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    if (!key) throw new Error('draft storage key missing')
+    const drafts = JSON.parse(localStorage.getItem(key) ?? '[]')
+    const draft = drafts[0]
+    return draft?.document.slides[0].nodes.find((node: { id: string }) => node.id === 'scaled-root')?.x
+  })
+  expect(storedX).toBeCloseTo(520.123456, 8)
+
+  await x.focus()
+  await x.blur()
+  await expect(workspace).toHaveAttribute('data-history-depth', historyAfterCommit ?? '')
+  await expect(x).toHaveValue('495.12')
+})
+
+test('number inspector keeps negative decimal keyboard input intact', async ({ page }) => {
+  await openNestedV3Draft(page, `scene-number-intermediate-${Date.now()}`)
+  const workspace = page.locator('.freeform-workspace')
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Scaled root leaf' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const x = page.getByTestId('inspector-geometry').getByLabel('X', { exact: true })
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+
+  await x.focus()
+  await x.press('Control+A')
+  for (const key of ['-', '1', '2', '.', '5']) await x.press(key)
+  await expect(x).toHaveValue('-12.5')
+  await x.press('Enter')
+  await expect(x).toHaveValue('-12.5')
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+})
+
+test('number inspector keeps sibling drafts while previous fields commit', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+
+  const geometry = page.getByTestId('inspector-geometry')
+  const xInput = geometry.getByLabel('X', { exact: true })
+  const yInput = geometry.getByLabel('Y', { exact: true })
+  await geometry.locator('input[type="number"]').evaluateAll((inputs) => {
+    const [x, y, width, height] = inputs as HTMLInputElement[]
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )?.set
+    if (!x || !y || !width || !height || !setNativeValue) {
+      throw new Error('geometry inputs unavailable')
+    }
+    x.focus()
+    setNativeValue.call(x, '100')
+    x.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+    y.focus()
+    setNativeValue.call(y, '160')
+    y.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+    width.focus()
+    setNativeValue.call(width, '100')
+    width.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+    height.focus()
+    setNativeValue.call(height, '100')
+    height.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+  })
+
+  await expect.poll(async () => (await freeformElementPositions(page))[0]?.x).toBe(100)
+  await expect(yInput).toHaveValue('160')
+  await expect(geometry.getByLabel('宽', { exact: true })).toHaveValue('100')
+  await expect(geometry.getByLabel('高', { exact: true })).toHaveValue('100')
+  await geometry.getByLabel('高', { exact: true }).blur()
+  await expect.poll(() => freeformElementPositions(page)).toEqual([{ x: 100, y: 160 }])
+})
+
+test('number inspector drops an old draft buffer when the draft identity changes', async ({ page }) => {
+  await openNestedV3Draft(page, `scene-number-draft-switch-${Date.now()}`)
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    if (!key) throw new Error('draft storage key missing')
+    const drafts = JSON.parse(localStorage.getItem(key) ?? '[]')
+    const source = structuredClone(drafts[0])
+    source.id = 'number-buffer-other-draft'
+    source.title = 'Number buffer other draft'
+    source.updatedAt += 1
+    source.document.activeSlideId = 'number-buffer-slide'
+    source.document.slides = [{
+      ...source.document.slides[0],
+      id: 'number-buffer-slide',
+      name: 'Number buffer slide',
+      nodes: source.document.slides[0].nodes.map((node: { id: string; x?: number }) => (
+        node.id === 'scaled-root' ? { ...node, x: 120 } : node
+      )),
+    }]
+    localStorage.setItem(key, JSON.stringify([...drafts, source]))
+  })
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).evaluate(
+    (button) => (button as HTMLButtonElement).click(),
+  )
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Scaled root leaf' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const oldX = page.getByTestId('inspector-geometry').getByLabel('X', { exact: true })
+  await oldX.fill('510')
+
+  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).evaluate(
+    (button) => (button as HTMLButtonElement).click(),
+  )
+  await page.locator('.draft-item', { hasText: 'Number buffer other draft' }).click()
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Scaled root leaf' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const newX = page.getByTestId('inspector-geometry').getByLabel('X', { exact: true })
+  await expect(newX).toHaveValue('95')
+  await expect(page.locator('.freeform-workspace')).toHaveAttribute('data-history-depth', '0')
+})
+
+test('nested multi-selection hides unsupported flat alignment controls', async ({ page }) => {
+  await openNestedV3Draft(page, `scene-nested-arrange-${Date.now()}`)
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Scope text' }).click()
+  await tree.getByRole('treeitem', { name: 'Visible leaf' }).focus()
+  await page.keyboard.press('Space')
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+  const arrange = page.getByTestId('inspector-arrange')
+  await expect(arrange).toBeVisible()
+  await expect(arrange).not.toContainText('对齐与分布')
+  await expect(arrange).toContainText('层级')
+})
+
+test('multi-selection with a locked descendant is visibly read only', async ({ page }) => {
+  await openNestedV3Draft(page, `scene-multi-lock-${Date.now()}`)
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Outer group' }).click()
+  await tree.getByRole('treeitem', { name: 'Underlay' }).focus()
+  await page.keyboard.press('Space')
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+  await expect(page.getByTestId('freeform-lock-descendant-banner'))
+    .toContainText('Locked inner')
+  await expect(page.getByTestId('inspector-arrange')).toHaveCount(0)
+  await expect(page.getByTestId('inspector-danger')).toHaveCount(0)
+})
+
+test('deep inspector breadcrumb keeps the current object discoverable', async ({ page }) => {
+  await openNestedV3Draft(page, `scene-breadcrumb-${Date.now()}`, true)
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Deep layer label remains readable' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+  const breadcrumb = page.getByRole('navigation', { name: '对象路径' })
+  const current = breadcrumb.locator('.freeform-inspector-breadcrumb-current')
+  await expect(current).toContainText('Deep layer label remains readable')
+  await expect(current).toHaveAttribute('title', /Deep layer label remains readable/)
+  await expect.poll(() => current.evaluate((node) => node.getBoundingClientRect().width))
+    .toBeGreaterThan(40)
+})
+
+test('linked group dimensions and lock states', async ({ page }) => {
+  await openNestedV3Draft(page, `scene-group-properties-${Date.now()}`)
+  const workspace = page.locator('.freeform-workspace')
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const outer = tree.getByRole('treeitem', { name: 'Outer group' })
+  await outer.click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await expect(page.getByTestId('freeform-lock-descendant-banner')).toContainText('包含锁定图层')
+  await expect(page.getByTestId('inspector-geometry')).toHaveCount(0)
+  await expect(page.getByTestId('inspector-arrange')).toHaveCount(0)
+  await expect(page.getByTestId('inspector-danger')).toHaveCount(0)
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const lockedInner = tree.getByRole('treeitem', { name: 'Locked inner' })
+  await lockedInner.getByRole('button', { name: '锁定图层 Locked inner' }).click()
+  await outer.click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const geometry = page.getByTestId('inspector-geometry')
+  await expect(geometry).toBeVisible()
+  const centerX = geometry.getByLabel('中心 X', { exact: true })
+  const centerY = geometry.getByLabel('中心 Y', { exact: true })
+  const width = geometry.getByLabel('宽', { exact: true })
+  const height = geometry.getByLabel('高', { exact: true })
+  const beforeCenterX = Number(await centerX.inputValue())
+  const beforeCenterY = Number(await centerY.inputValue())
+  const beforeWidth = Number(await width.inputValue())
+  const beforeHeight = Number(await height.inputValue())
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+
+  await width.fill(String(beforeWidth * 1.2))
+  await width.press('Enter')
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+  await expect(centerX).toHaveValue(String(beforeCenterX))
+  await expect(centerY).toHaveValue(String(beforeCenterY))
+  await expect(height).toHaveValue(String(beforeHeight * 1.2))
+
+  const rotation = geometry.getByLabel('旋转', { exact: true })
+  await rotation.fill('330')
+  await rotation.press('Enter')
+  await expect(centerX).toHaveValue(String(beforeCenterX))
+  await expect(centerY).toHaveValue(String(beforeCenterY))
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await outer.getByRole('button', { name: '锁定图层 Outer group' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await expect(page.getByTestId('freeform-lock-banner')).toContainText('已锁定')
+  await expect(page.getByTestId('inspector-geometry')).toHaveCount(0)
+})
+
+test('delayed shape image fill cannot write into another draft with the same scene ids', async ({
+  page,
+}) => {
+  await openNestedV3Draft(page, `shape-fill-draft-race-${Date.now()}`)
+
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    if (!key) throw new Error('draft storage key missing')
+    const drafts = JSON.parse(localStorage.getItem(key) ?? '[]')
+    const source = structuredClone(drafts[0])
+    source.id = 'shape-fill-race-target'
+    source.title = 'Shape fill race target'
+    source.updatedAt += 1
+    localStorage.setItem(key, JSON.stringify([...drafts, source]))
+  })
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByRole('button', { name: /^草稿(?: · \d+)?$/ })).toContainText('2')
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await page.getByRole('tree', { name: '图层树' })
+    .getByRole('treeitem', { name: 'Scaled root leaf' })
+    .click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+  await installShapeFillFileReaderGate(page)
+
+  await page.locator('.freeform-properties-tabpanel input.freeform-file').setInputFiles({
+    name: 'delayed-shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page)
+
+  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.locator('.draft-item', { hasText: 'Shape fill race target' }).click()
+  await releaseShapeFillFileReaderGate(page)
+  await expect.poll(() => page.evaluate(() => {
+    const images = JSON.parse(sessionStorage.getItem('slicer.images.v1') ?? '{}')
+    return Object.keys(images).length
+  })).toBeGreaterThan(0)
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await page.getByRole('tree', { name: '图层树' })
+    .getByRole('treeitem', { name: 'Scaled root leaf' })
+    .click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const shapeFill = page.getByTestId('shape-fill-paint')
+  await expect(shapeFill.getByTestId('paint-mode-solid')).toHaveClass(/\bon\b/)
+  await expect(page.getByTestId('freeform-shape-image-fill')).toHaveCount(0)
+
+  await restoreShapeFillFileReaderGate(page)
+})
+
+test('delayed shape image fill cannot write across account identity changes', async ({ page }) => {
+  const accountSuffix = Date.now()
+  await openNestedV3Draft(page, `shape-fill-user-race-${accountSuffix}-a`)
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await page.getByRole('tree', { name: '图层树' })
+    .getByRole('treeitem', { name: 'Scaled root leaf' })
+    .click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+  await installShapeFillFileReaderGate(page)
+  await page.locator('.freeform-properties-tabpanel input.freeform-file').setInputFiles({
+    name: 'cross-account-shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page)
+
+  await page.getByTestId('account-logout').click()
+  await expect(page.getByTestId('account-login')).toBeVisible()
+  await page.getByTestId('account-login').click()
+  await registerUser(page, `shape-fill-user-race-${accountSuffix}-b`)
+  await expect(page.getByTestId('account-logout')).toBeVisible()
+
+  // B saves the same scene ids before A's pending read is released. A stale
+  // completion would therefore be visible in B's active document and draft.
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  const bFillBefore = await page.evaluate(() => {
+    const userId = localStorage.getItem('slicer.session.v1')
+    if (!userId) throw new Error('session user missing after registration')
+    const drafts = JSON.parse(localStorage.getItem(`slicer.drafts.${userId}`) ?? '[]') as Array<{
+      document?: { slides?: Array<{ nodes?: Array<{ id: string; fill?: unknown }> }> }
+    }>
+    const node = drafts.at(-1)?.document?.slides?.[0]?.nodes?.find((candidate) => (
+      candidate.id === 'scaled-root'
+    ))
+    return node?.fill
+  })
+  expect(bFillBefore).toMatchObject({ type: 'solid' })
+
+  await releaseShapeFillFileReaderGate(page)
+  await expect.poll(() => page.evaluate(() => {
+    const images = JSON.parse(sessionStorage.getItem('slicer.images.v1') ?? '{}')
+    return Object.keys(images).length
+  })).toBeGreaterThan(0)
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await page.getByRole('tree', { name: '图层树' })
+    .getByRole('treeitem', { name: 'Scaled root leaf' })
+    .click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const shapeFill = page.getByTestId('shape-fill-paint')
+  await expect(shapeFill.getByTestId('paint-mode-solid')).toHaveClass(/\bon\b/)
+  await expect(page.getByTestId('freeform-shape-image-fill')).toHaveCount(0)
+
+  // Save after release so a late reducer update cannot hide behind an unsaved
+  // in-memory state; the persisted B draft must still contain the original fill.
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  const bFillAfter = await page.evaluate(() => {
+    const userId = localStorage.getItem('slicer.session.v1')
+    if (!userId) throw new Error('session user missing after release')
+    const drafts = JSON.parse(localStorage.getItem(`slicer.drafts.${userId}`) ?? '[]') as Array<{
+      document?: { slides?: Array<{ nodes?: Array<{ id: string; fill?: unknown }> }> }
+    }>
+    const node = drafts.at(-1)?.document?.slides?.[0]?.nodes?.find((candidate) => (
+      candidate.id === 'scaled-root'
+    ))
+    return node?.fill
+  })
+  expect(bFillAfter).toEqual(bFillBefore)
+
+  await restoreShapeFillFileReaderGate(page)
+})
+
+test('delayed shape image fill survives the first save of the same document', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await registerUser(page, `shape-fill-first-save-${Date.now()}`)
+  await insertShape(page)
+
+  await installShapeFillFileReaderGate(page)
+  await page.locator('.freeform-properties-tabpanel input.freeform-file').setInputFiles({
+    name: 'first-save-shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page)
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await releaseShapeFillFileReaderGate(page)
+
+  await expect(page.getByTestId('freeform-shape-image-fill')).toBeVisible()
+  await restoreShapeFillFileReaderGate(page)
+})
+
+test('shape image fill accepts only the newest pending upload', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+
+  await installShapeFillFileReaderGate(page)
+  const input = page.locator('.freeform-properties-tabpanel input.freeform-file')
+  await input.setInputFiles({
+    name: 'older-shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page)
+  await input.setInputFiles({
+    name: 'newer-shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page, 2)
+
+  await releaseShapeFillFileReaderGate(page, 2)
+  await expect(page.getByTestId('freeform-shape-image-fill')).toBeVisible()
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+  await restoreShapeFillFileReaderGate(page)
+})
+
+test('shape image fill operations are isolated by target path', async ({ page }) => {
+  await openNestedV3Draft(page, `shape-fill-target-isolation-${Date.now()}`)
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Visible leaf' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+  await installShapeFillFileReaderGate(page)
+  await page.locator('.freeform-properties-tabpanel input.freeform-file').setInputFiles({
+    name: 'nested-target-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page)
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await tree.getByRole('treeitem', { name: 'Scaled root leaf' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await page.locator('.freeform-properties-tabpanel input.freeform-file').setInputFiles({
+    name: 'root-target-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page, 2)
+
+  await releaseShapeFillFileReaderGate(page, 2)
+  await expect(page.getByTestId('freeform-shape-image-fill')).toHaveCount(2)
+  await restoreShapeFillFileReaderGate(page)
+})
+
+test('manual shape fill changes cancel a pending image upload', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  await installShapeFillFileReaderGate(page)
+  const input = page.locator('.freeform-properties-tabpanel input.freeform-file')
+  await input.setInputFiles({
+    name: 'cancelled-shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page)
+
+  const shapeFill = page.getByTestId('shape-fill-paint')
+  await shapeFill.getByTestId('paint-mode-linear-gradient').click()
+  await expect(shapeFill.getByTestId('paint-mode-linear-gradient')).toHaveClass(/\bon\b/)
+  await releaseShapeFillFileReaderGate(page)
+
+  await expect(page.getByTestId('freeform-shape-image-fill')).toHaveCount(0)
+  await expect(page.getByTestId('freeform-shape')).toHaveCSS('background-image', /linear-gradient/)
+  await restoreShapeFillFileReaderGate(page)
+})
+
+test('delayed shape image fill follows the original nested path after same-document selection changes', async ({
+  page,
+}) => {
+  await openNestedV3Draft(page, `shape-fill-selection-race-${Date.now()}`)
+  const tree = page.getByRole('tree', { name: '图层树' })
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const shapeRow = tree.getByRole('treeitem', { name: 'Visible leaf' })
+  await shapeRow.click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+  await installShapeFillFileReaderGate(page)
+
+  await page.locator('.freeform-properties-tabpanel input.freeform-file').setInputFiles({
+    name: 'same-document-shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page)
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const textRow = tree.getByRole('treeitem', { name: 'Scope text' })
+  await textRow.click()
+  await expect(textRow).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('[data-scene-node-id="scope-text"][data-selected="true"]'))
+    .toHaveCount(1)
+
+  await releaseShapeFillFileReaderGate(page)
+  await expect.poll(() => page.evaluate(() => {
+    const images = JSON.parse(sessionStorage.getItem('slicer.images.v1') ?? '{}')
+    return Object.keys(images).length
+  })).toBeGreaterThan(0)
+
+  await expect(textRow).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('[data-scene-node-id="scope-text"][data-selected="true"]'))
+    .toHaveCount(1)
+  await shapeRow.click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await expect(page.getByTestId('freeform-shape-image-fill')).toBeVisible()
+  await expect(page.getByTestId('shape-fill-paint').getByTestId('paint-mode-image'))
+    .toHaveClass(/\bon\b/)
+
+  await restoreShapeFillFileReaderGate(page)
 })
 
 function panelLiveRegion(page: import('@playwright/test').Page) {

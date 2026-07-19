@@ -444,7 +444,7 @@ function currentGroupCenterInParent(
   })
 }
 
-export function scenePropertyMutation(
+function scenePropertyMutationUnsafe(
   nodes: readonly FreeformSceneNode[],
   path: ScenePath,
   edit: ScenePropertyEdit,
@@ -577,15 +577,6 @@ export function scenePropertyMutation(
     y: bounds.y + bounds.height / 2,
   }
 
-  if (
-    (edit.property === 'width' ||
-      edit.property === 'height' ||
-      edit.property === 'scalePercent') &&
-    almostEqual(properties[edit.property], edit.value)
-  ) {
-    return geometrySuccess(path, null, edit.value)
-  }
-
   if (edit.property === 'x' || edit.property === 'y') {
     if (almostEqual(properties[edit.property], edit.value)) {
       return geometrySuccess(path, null, edit.value)
@@ -628,20 +619,33 @@ export function scenePropertyMutation(
   const ratioBounds = groupScaleRatioBounds(node, properties.worldScale)
   if (!ratioBounds) return { ok: false, reason: 'invalid-transform' }
   const requestedRatio = requestedLocalScale / node.scale
+  const ratioWasClamped = requestedRatio < ratioBounds.min || requestedRatio > ratioBounds.max
   let finalRatio = Math.min(Math.max(requestedRatio, ratioBounds.min), ratioBounds.max)
+  if (!ratioWasClamped && almostEqual(edit.value, properties[edit.property])) {
+    return geometrySuccess(path, null, edit.value)
+  }
   const scaleSafetyMargin = Number.EPSILON * 32
+  let endpointAdjusted = false
   if (
     ratioBounds.max > ratioBounds.min &&
     requestedRatio >= ratioBounds.max &&
     finalRatio === ratioBounds.max
   ) {
-    finalRatio = ratioBounds.max * (1 - scaleSafetyMargin)
+    finalRatio = Math.max(
+      ratioBounds.min,
+      ratioBounds.max * (1 - scaleSafetyMargin),
+    )
+    endpointAdjusted = true
   } else if (
     ratioBounds.max > ratioBounds.min &&
     requestedRatio <= ratioBounds.min &&
     finalRatio === ratioBounds.min
   ) {
-    finalRatio = ratioBounds.min * (1 + scaleSafetyMargin)
+    finalRatio = Math.min(
+      ratioBounds.max,
+      ratioBounds.min * (1 + scaleSafetyMargin),
+    )
+    endpointAdjusted = true
   }
   const scale = node.scale * finalRatio
   if (!finitePositive(scale)) return { ok: false, reason: 'invalid-transform' }
@@ -650,9 +654,14 @@ export function scenePropertyMutation(
     : edit.property === 'width'
       ? bounds.width * state.parentScale * scale
       : bounds.height * state.parentScale * scale
-  const clamped = !almostEqual(finalRatio, requestedRatio)
-  if (almostEqual(scale, node.scale)) {
-    return geometrySuccess(path, null, resolvedValue, clamped)
+  const clamped = ratioWasClamped || endpointAdjusted
+  if (almostEqual(resolvedValue, properties[edit.property])) {
+    return geometrySuccess(
+      path,
+      null,
+      clamped ? properties[edit.property] : resolvedValue,
+      clamped,
+    )
   }
   const origin = groupOriginForCenter(centerInParent, localCenter, node.rotation, scale)
   if (![origin.x, origin.y, resolvedValue].every(Number.isFinite)) {
@@ -664,4 +673,16 @@ export function scenePropertyMutation(
     resolvedValue,
     clamped,
   )
+}
+
+export function scenePropertyMutation(
+  nodes: readonly FreeformSceneNode[],
+  path: ScenePath,
+  edit: ScenePropertyEdit,
+): ScenePropertyMutationResult {
+  try {
+    return scenePropertyMutationUnsafe(nodes, path, edit)
+  } catch {
+    return { ok: false, reason: 'invalid-transform' }
+  }
 }
