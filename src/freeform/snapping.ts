@@ -1,6 +1,12 @@
-import { moveElementsWithinSlide } from './selection'
-import { sceneNodeBoundsInParent } from './sceneTransform'
-import type { FreeformElement, FreeformSlide } from './types'
+import { getChildrenAtPath } from './sceneTree'
+import { moveElementsWithinSlide, moveSceneNodesWithinSlide } from './selection'
+import {
+  sceneNodeBoundsInParent,
+  sceneNodeBoundsInWorld,
+  sceneParentWorldMatrix,
+  transformVector,
+} from './sceneTransform'
+import type { FreeformElement, FreeformSceneNode, FreeformSlide, ScenePath } from './types'
 
 export interface SnapLine {
   axis: 'x' | 'y'
@@ -80,6 +86,161 @@ export function snapDrag(
     lines.push(ySnap.line)
   }
 
+  return { dx: final.dx, dy: final.dy, lines }
+}
+
+function sceneSelectionBounds(
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  selectedIds: ReadonlySet<string>,
+): Bounds | null {
+  const children = getChildrenAtPath(nodes, parentPath)
+  if (!children) return null
+  const bounds = children
+    .filter((node) => selectedIds.has(node.id) && !node.hidden)
+    .flatMap((node) => {
+      const world = sceneNodeBoundsInWorld(nodes, [...parentPath, node.id])
+      return world ? [{
+        left: world.x,
+        top: world.y,
+        right: world.x + world.width,
+        bottom: world.y + world.height,
+      }] : []
+    })
+  if (bounds.length === 0) return null
+  return bounds.reduce((union, current) => ({
+    left: Math.min(union.left, current.left),
+    top: Math.min(union.top, current.top),
+    right: Math.max(union.right, current.right),
+    bottom: Math.max(union.bottom, current.bottom),
+  }))
+}
+
+function clampSceneMovement(
+  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  selectedIds: readonly string[],
+  dx: number,
+  dy: number,
+): Pick<SnapResult, 'dx' | 'dy'> {
+  const patches = moveSceneNodesWithinSlide(slide, nodes, parentPath, selectedIds, dx, dy)
+  const children = getChildrenAtPath(nodes, parentPath)
+  const parentWorld = sceneParentWorldMatrix(nodes, parentPath)
+  const first = patches[0]
+  const original = children?.find((node) => node.id === first?.nodeId)
+  if (!first || !original || !parentWorld) return { dx, dy }
+  const worldDelta = transformVector(parentWorld, {
+    x: first.patch.x - original.x,
+    y: first.patch.y - original.y,
+  })
+  return { dx: worldDelta.x, dy: worldDelta.y }
+}
+
+function sceneAxisReferences(
+  axis: Axis,
+  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  selectedIds: ReadonlySet<string>,
+): AxisReference[] {
+  const pageSize = axis === 'x' ? slide.width : slide.height
+  const pageReferences: AxisReference[] = [0, pageSize / 2, pageSize].map((position) => ({
+    position,
+    source: 'page',
+  }))
+  const children = getChildrenAtPath(nodes, parentPath) ?? []
+  const nodeReferences = children
+    .filter((node) => !selectedIds.has(node.id) && !node.hidden)
+    .flatMap((node) => {
+      const world = sceneNodeBoundsInWorld(nodes, [...parentPath, node.id])
+      if (!world) return []
+      return getAxisAnchors({
+        left: world.x,
+        top: world.y,
+        right: world.x + world.width,
+        bottom: world.y + world.height,
+      }, axis).map((anchor) => ({
+        position: anchor.position,
+        source: 'element' as const,
+      }))
+    })
+  return [...pageReferences, ...nodeReferences]
+}
+
+function snapSceneAxis(
+  axis: Axis,
+  references: AxisReference[],
+  bounds: Bounds,
+  delta: number,
+  threshold: number,
+): { delta: number; line?: SnapLine } {
+  const anchors = getAxisAnchors(bounds, axis).map((anchor) => ({
+    ...anchor,
+    position: anchor.position + delta,
+  }))
+  const candidates = references.flatMap((reference) => anchors
+    .map((anchor): SnapCandidate => ({
+      anchor,
+      distance: Math.abs(reference.position - anchor.position),
+      reference,
+      snappedDelta: delta + reference.position - anchor.position,
+    }))
+    .filter((candidate) => candidate.distance <= threshold))
+  candidates.sort(compareCandidates)
+  const best = candidates[0]
+  return best
+    ? {
+      delta: best.snappedDelta,
+      line: { axis, position: best.reference.position, source: best.reference.source },
+    }
+    : { delta }
+}
+
+/** Snap a direct scene selection in page/world coordinates. */
+export function snapSceneDrag(
+  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  selectedIds: readonly string[],
+  dx: number,
+  dy: number,
+  options: Partial<SnapOptions> = {},
+): SnapResult {
+  const selected = new Set(selectedIds)
+  const bounds = sceneSelectionBounds(nodes, parentPath, selected)
+  if (!bounds) return { dx, dy, lines: [] }
+  const threshold = Math.max(0, options.threshold ?? DEFAULT_THRESHOLD)
+  const clamped = clampSceneMovement(slide, nodes, parentPath, selectedIds, dx, dy)
+  const xSnap = snapSceneAxis(
+    'x',
+    sceneAxisReferences('x', slide, nodes, parentPath, selected),
+    bounds,
+    clamped.dx,
+    threshold,
+  )
+  const ySnap = snapSceneAxis(
+    'y',
+    sceneAxisReferences('y', slide, nodes, parentPath, selected),
+    bounds,
+    clamped.dy,
+    threshold,
+  )
+  const final = clampSceneMovement(
+    slide,
+    nodes,
+    parentPath,
+    selectedIds,
+    xSnap.delta,
+    ySnap.delta,
+  )
+  const lines: SnapLine[] = []
+  if (xSnap.line && Math.abs(final.dx - xSnap.delta) <= Number.EPSILON * 64) {
+    lines.push(xSnap.line)
+  }
+  if (ySnap.line && Math.abs(final.dy - ySnap.delta) <= Number.EPSILON * 64) {
+    lines.push(ySnap.line)
+  }
   return { dx: final.dx, dy: final.dy, lines }
 }
 

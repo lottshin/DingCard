@@ -9,8 +9,10 @@ import {
   SCENE_EPSILON,
   groupLocal,
   identity,
+  invert,
   multiply,
   sceneNodeLocalMatrix,
+  sceneParentWorldMatrix,
   sceneNodesBoundsInParent,
   sceneNodeWithLocalMatrix,
   transformVector,
@@ -331,6 +333,54 @@ export function updateNodesAtPaths(
     return updateNodeListAtPaths(nodes, [], 1, updaters, options)
   } catch {
     return null
+  }
+}
+
+/** Apply one world-space similarity transform to selected direct siblings. */
+export function transformSceneNodesByWorldMatrix(
+  nodes: FreeformSceneNode[],
+  parentPath: ScenePath,
+  nodeIds: readonly string[],
+  worldTransform: Matrix2D,
+): SceneMutationResult {
+  const selection = validateSelectionForParent(nodes, parentPath, nodeIds)
+  if (!selection.ok) return selection
+  if (
+    !canApplySceneAction(nodes, {
+      kind: 'geometry',
+      paths: selection.selectedNodes.map((node) => [...parentPath, node.id]),
+    })
+  ) {
+    return { ok: false, reason: 'locked' }
+  }
+
+  try {
+    const parentWorld = sceneParentWorldMatrix(nodes, parentPath)
+    const inverseParent = parentWorld ? invert(parentWorld) : null
+    if (!parentWorld || !inverseParent) return { ok: false, reason: 'invalid-transform' }
+    const localTransform = multiply(
+      inverseParent,
+      multiply(worldTransform, parentWorld),
+    )
+    const transformed = new Map<string, FreeformSceneNode>()
+    for (const node of selection.selectedNodes) {
+      const next = sceneNodeWithLocalMatrix(
+        node,
+        multiply(localTransform, sceneNodeLocalMatrix(node)),
+      )
+      if (!next) return { ok: false, reason: 'invalid-transform' }
+      transformed.set(node.id, next)
+    }
+    const nextNodes = updateChildrenAtPath(nodes, parentPath, (children) => children.map(
+      (node) => transformed.get(node.id) ?? node,
+    ))
+    if (nextNodes === nodes) return { ok: false, reason: 'invalid-transform' }
+    const error = validateSceneNodesForMutation(nextNodes)
+    return error
+      ? { ok: false, reason: error }
+      : { ok: true, nodes: nextNodes, selectionIds: [...nodeIds] }
+  } catch {
+    return { ok: false, reason: 'invalid-transform' }
   }
 }
 

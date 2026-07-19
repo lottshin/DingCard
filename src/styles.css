@@ -1229,7 +1229,7 @@ html.theme-anim * {
 
 .freeform-selection-item {
   position: absolute;
-  transform-origin: center;
+  transform-origin: 0 0;
   pointer-events: none;
 }
 
@@ -1300,8 +1300,25 @@ html.theme-anim * {
   pointer-events: auto;
 }
 
+.element-rotate {
+  position: absolute;
+  top: calc(-32px * var(--freeform-inverse-scale, 1));
+  left: 50%;
+  width: calc(32px * var(--freeform-inverse-scale, 1));
+  height: calc(32px * var(--freeform-inverse-scale, 1));
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: grab;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  pointer-events: auto;
+}
+
 .freeform-selection-move::before,
-.freeform-selection-resize::before {
+.freeform-selection-resize::before,
+.freeform-selection-rotate::before {
   content: '';
   position: absolute;
   top: 50%;
@@ -1324,6 +1341,13 @@ html.theme-anim * {
   width: 10px;
   height: 10px;
   border-radius: 50%;
+}
+
+.freeform-selection-rotate::before {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: var(--shadow-sm), 0 -7px 0 -4px var(--accent);
 }
 
 .freeform-selection-item button:focus,

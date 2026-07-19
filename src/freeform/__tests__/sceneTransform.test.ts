@@ -11,6 +11,9 @@ import {
   leafLocal,
   matrixAlmostEqual,
   multiply,
+  sceneNodeBoundsInWorld,
+  sceneParentWorldMatrix,
+  sceneWorldMatrixAtPath,
   transformPoint,
   transformVector,
   translation,
@@ -70,6 +73,56 @@ describe('scene similarity transforms', () => {
 
     expect(inverse).not.toBeNull()
     expect(matrixAlmostEqual(multiply(inverse!, world), identity(), SCENE_EPSILON)).toBe(true)
+  })
+
+  it('resolves nested parent/world matrices and world bounds by path', () => {
+    const leaf = {
+      id: 'leaf',
+      name: 'Leaf',
+      locked: false,
+      hidden: false,
+      type: 'shape' as const,
+      x: 10,
+      y: 20,
+      width: 80,
+      height: 40,
+      rotation: 15,
+      scale: 0.75,
+      shape: 'rect' as const,
+      fill: { type: 'solid' as const, color: '#fff' },
+      stroke: '#000',
+      strokeWidth: 1,
+    }
+    const nodes = [{
+      id: 'outer',
+      name: 'Outer',
+      locked: false,
+      hidden: false,
+      type: 'group' as const,
+      x: 240,
+      y: 180,
+      rotation: 30,
+      scale: 1.5,
+      children: [leaf],
+    }]
+
+    expect(matrixAlmostEqual(
+      sceneParentWorldMatrix(nodes, ['outer'])!,
+      groupLocal(240, 180, 30, 1.5),
+    )).toBe(true)
+    const world = sceneWorldMatrixAtPath(nodes, ['outer', 'leaf'])
+    expect(world).not.toBeNull()
+    expect(matrixAlmostEqual(world!, multiply(groupLocal(240, 180, 30, 1.5), leafLocal(
+      leaf.x,
+      leaf.y,
+      leaf.width,
+      leaf.height,
+      leaf.rotation,
+      leaf.scale,
+    )))).toBe(true)
+    expect(sceneNodeBoundsInWorld(nodes, ['outer', 'leaf'])).toEqual(
+      expect.objectContaining({ width: expect.any(Number), height: expect.any(Number) }),
+    )
   })
 
   it('returns null when a matrix is singular', () => {

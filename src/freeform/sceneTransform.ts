@@ -1,5 +1,5 @@
 import { MAX_SCENE_DEPTH } from './constants'
-import type { FreeformSceneNode } from './types'
+import type { FreeformSceneNode, ScenePath } from './types'
 
 export type Matrix2D = readonly [
   a: number,
@@ -305,6 +305,42 @@ export function sceneNodeLocalMatrix(node: FreeformSceneNode): Matrix2D {
     : leafLocal(node.x, node.y, node.width, node.height, node.rotation, node.scale)
 }
 
+/** Return the complete world transform of a node's direct parent container. */
+export function sceneParentWorldMatrix(
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+): Matrix2D | null {
+  let children = nodes
+  let world = identity()
+  for (const id of parentPath) {
+    const node = children.find((candidate) => candidate.id === id)
+    if (!node || node.type !== 'group') return null
+    world = multiply(world, sceneNodeLocalMatrix(node))
+    children = node.children
+  }
+  return world
+}
+
+/** Return the complete world transform of a node addressed by a scene path. */
+export function sceneWorldMatrixAtPath(
+  nodes: readonly FreeformSceneNode[],
+  path: ScenePath,
+): Matrix2D | null {
+  if (path.length === 0) return identity()
+  let children = nodes
+  let world = identity()
+  for (let index = 0; index < path.length; index += 1) {
+    const node = children.find((candidate) => candidate.id === path[index])
+    if (!node) return null
+    world = multiply(world, sceneNodeLocalMatrix(node))
+    if (index < path.length - 1) {
+      if (node.type !== 'group') return null
+      children = node.children
+    }
+  }
+  return world
+}
+
 /**
  * Re-express a node through a similarity matrix without changing its content.
  * Leaves store x/y as the unrotated top-left, so their transformed center must
@@ -403,5 +439,26 @@ export function sceneNodesBoundsInParent(
       { x: bounds.x, y: bounds.y + bounds.height },
     )
   }
+  return boundsFromPoints(points)
+}
+
+/** Bounds of a node's complete leaf geometry in page/world coordinates. */
+export function sceneNodeBoundsInWorld(
+  nodes: readonly FreeformSceneNode[],
+  path: ScenePath,
+): SceneBounds | null {
+  if (path.length === 0) return null
+  const parentWorld = sceneParentWorldMatrix(nodes, path.slice(0, -1))
+  if (!parentWorld) return null
+  let children = nodes
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const node = children.find((candidate) => candidate.id === path[index])
+    if (!node || node.type !== 'group') return null
+    children = node.children
+  }
+  const node = children.find((candidate) => candidate.id === path[path.length - 1])
+  if (!node) return null
+  const points: Point[] = []
+  collectLeafCorners(node, parentWorld, points, 1)
   return boundsFromPoints(points)
 }

@@ -1,11 +1,24 @@
-import { sceneNodeBoundsInParent } from './sceneTransform'
-import type { FreeformElement, FreeformSlide } from './types'
+import { getChildrenAtPath } from './sceneTree'
+import {
+  invert,
+  sceneNodeBoundsInParent,
+  sceneNodeBoundsInWorld,
+  sceneParentWorldMatrix,
+  transformVector,
+} from './sceneTransform'
+import type { Point, SceneBounds } from './sceneTransform'
+import type { FreeformElement, FreeformSceneNode, FreeformSlide, ScenePath } from './types'
 
 export interface Rect {
   x: number
   y: number
   width: number
   height: number
+}
+
+export interface SceneNodeMovePatch {
+  nodeId: string
+  patch: Pick<FreeformSceneNode, 'x' | 'y'>
 }
 
 interface Bounds {
@@ -54,6 +67,94 @@ export function moveElementsWithinSlide(
       y: element.y + clampedDy,
     },
   }))
+}
+
+function sceneBoundsForSelection(
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  selectedIds: readonly string[],
+): SceneBounds | null {
+  const selected = new Set(selectedIds)
+  const children = getChildrenAtPath(nodes, parentPath)
+  if (!children) return null
+  const bounds: SceneBounds[] = []
+  for (const node of children) {
+    if (!selected.has(node.id) || node.hidden) continue
+    const world = sceneNodeBoundsInWorld(nodes, [...parentPath, node.id])
+    if (world) bounds.push(world)
+  }
+  if (bounds.length === 0) return null
+  const left = Math.min(...bounds.map((bound) => bound.x))
+  const top = Math.min(...bounds.map((bound) => bound.y))
+  const right = Math.max(...bounds.map((bound) => bound.x + bound.width))
+  const bottom = Math.max(...bounds.map((bound) => bound.y + bound.height))
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
+function clampWorldDelta(
+  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  bounds: SceneBounds,
+  dx: number,
+  dy: number,
+): Point {
+  const minX = -bounds.x
+  const maxX = slide.width - (bounds.x + bounds.width)
+  const minY = -bounds.y
+  const maxY = slide.height - (bounds.y + bounds.height)
+  return {
+    x: minX > maxX ? minX : Math.min(Math.max(dx, minX), maxX),
+    y: minY > maxY ? minY : Math.min(Math.max(dy, minY), maxY),
+  }
+}
+
+/** Select direct children by their page/world AABB, excluding hidden nodes. */
+export function getSceneNodesInMarquee(
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  rect: Rect,
+): string[] {
+  const children = getChildrenAtPath(nodes, parentPath)
+  if (!children) return []
+  const marquee = normalizeRect(rect)
+  return children
+    .filter((node) => !node.hidden)
+    .filter((node) => {
+      const bounds = sceneNodeBoundsInWorld(nodes, [...parentPath, node.id])
+      return bounds
+        ? intersects({
+          left: bounds.x,
+          top: bounds.y,
+          right: bounds.x + bounds.width,
+          bottom: bounds.y + bounds.height,
+        }, marquee)
+        : false
+    })
+    .map((node) => node.id)
+}
+
+/** Move direct scene children by a page/world delta converted into parent-local space. */
+export function moveSceneNodesWithinSlide(
+  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  selectedIds: readonly string[],
+  dx: number,
+  dy: number,
+): SceneNodeMovePatch[] {
+  const children = getChildrenAtPath(nodes, parentPath)
+  const parentWorld = sceneParentWorldMatrix(nodes, parentPath)
+  const inverseParent = parentWorld ? invert(parentWorld) : null
+  const bounds = sceneBoundsForSelection(nodes, parentPath, selectedIds)
+  if (!children || !parentWorld || !inverseParent || !bounds) return []
+  const clamped = clampWorldDelta(slide, bounds, dx, dy)
+  const localDelta = transformVector(inverseParent, clamped)
+  const selected = new Set(selectedIds)
+  return children
+    .filter((node) => selected.has(node.id) && !node.hidden)
+    .map((node) => ({
+      nodeId: node.id,
+      patch: { x: node.x + localDelta.x, y: node.y + localDelta.y },
+    }))
 }
 
 function normalizeRect(rect: Rect): Bounds {

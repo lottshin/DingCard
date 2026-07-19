@@ -22,6 +22,7 @@ import {
   reorderNodesAboveAtPath,
   reorderNodesAtPath,
   ungroupSceneGroups,
+  transformSceneNodesByWorldMatrix,
   updateChildrenAtPath,
   updateNodeAtPath,
   validateSelectionForParent,
@@ -35,7 +36,9 @@ import {
   matrixAlmostEqual,
   multiply,
   sceneNodeWithLocalMatrix,
+  sceneWorldMatrixAtPath,
   transformPoint,
+  translation,
   sceneNodeBoundsInParent,
 } from '../sceneTransform'
 import type { Matrix2D, Point } from '../sceneTransform'
@@ -2172,5 +2175,29 @@ describe('v3 reducer safety limits and stable failures', () => {
     })
     expect(ungrouped).not.toBe(document)
     expect(ungrouped.slides[0].nodes[0].scale).toBeCloseTo(1e4)
+  })
+
+  it('transforms selected nested nodes from a world-space matrix', () => {
+    const nodes = [groupNode('parent', [
+      textLeaf('a', { x: 10, y: 20, width: 40, height: 20 }),
+      textLeaf('b', { x: 120, y: 40, width: 30, height: 20 }),
+    ], { x: 260, y: 180, rotation: 30, scale: 1.5 })]
+    const before = sceneWorldMatrixAtPath(nodes, ['parent', 'a'])
+    const result = transformSceneNodesByWorldMatrix(
+      nodes,
+      ['parent'],
+      ['a'],
+      translation(24, -12),
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const after = sceneWorldMatrixAtPath(result.nodes, ['parent', 'a'])
+    expect(matrixAlmostEqual(after!, multiply(translation(24, -12), before!))).toBe(true)
+    expect(result.nodes[0]).toEqual(expect.objectContaining({ rotation: 30, scale: 1.5 }))
+    expect(result.nodes[0].type).toBe('group')
+    if (result.nodes[0].type === 'group') {
+      expect(result.nodes[0].children[1]).toEqual(nodes[0].children[1])
+    }
   })
 })

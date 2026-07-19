@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 
-import { snapDrag } from '../snapping'
-import type { FreeformElement } from '../types'
+import { snapDrag, snapSceneDrag } from '../snapping'
+import type { FreeformElement, FreeformSceneNode } from '../types'
 
 const rect = (
   id: string,
@@ -174,4 +174,35 @@ it('returns original movement and no lines for invalid selection', () => {
     dy: 30,
     lines: [],
   })
+})
+
+it('snaps nested direct children in world space while excluding hidden references', () => {
+  const selected = rect('selected', 0, 0, 100, 100)
+  const reference = rect('reference', 220, 20, 100, 100)
+  const hidden = { ...rect('hidden', 220, 200, 100, 100), hidden: true }
+  const nodes: FreeformSceneNode[] = [{
+    id: 'parent',
+    name: 'Parent',
+    locked: false,
+    hidden: false,
+    type: 'group',
+    x: 300,
+    y: 240,
+    rotation: 30,
+    scale: 1.5,
+    children: [selected, reference, hidden],
+  }]
+
+  const result = snapSceneDrag(
+    { width: 1200, height: 900 },
+    nodes,
+    ['parent'],
+    ['selected'],
+    65,
+    0,
+  )
+  expect(result.dx).toBeCloseTo(65.884573, 6)
+  const xLine = result.lines.find((line) => line.axis === 'x')
+  expect(xLine).toEqual(expect.objectContaining({ axis: 'x', source: 'element' }))
+  expect(xLine!.position).toBeCloseTo(495.788383, 6)
 })

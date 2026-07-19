@@ -358,6 +358,51 @@ function scopeNavigationDraft() {
   return draft
 }
 
+function crossScopeClipboardDraft() {
+  const draft = structuredClone(groupingDraft())
+  const shape = (id: string, name: string, x: number, y: number, color: string) => ({
+    id,
+    name,
+    locked: false,
+    hidden: false,
+    type: 'shape' as const,
+    x,
+    y,
+    width: 80,
+    height: 60,
+    rotation: 12,
+    scale: 0.8,
+    shape: 'rect' as const,
+    fill: { type: 'solid' as const, color },
+    stroke: '#111827',
+    strokeWidth: 0,
+  })
+  ;(draft.document.slides[0].nodes as unknown[]) = [{
+    id: 'clipboard-source',
+    name: 'Clipboard source',
+    locked: false,
+    hidden: false,
+    type: 'group',
+    x: 240,
+    y: 220,
+    rotation: 30,
+    scale: 1.5,
+    children: [shape('clipboard-source-leaf', 'Clipboard source leaf', -40, -30, '#dc2626')],
+  }, {
+    id: 'clipboard-target',
+    name: 'Clipboard target',
+    locked: false,
+    hidden: false,
+    type: 'group',
+    x: 620,
+    y: 420,
+    rotation: -20,
+    scale: 0.75,
+    children: [shape('clipboard-target-leaf', 'Clipboard target leaf', -40, -30, '#2563eb')],
+  }]
+  return draft
+}
+
 function textScopeDraft() {
   const draft = structuredClone(scopeNavigationDraft())
   const outer = draft.document.slides[0].nodes[0] as unknown as {
@@ -5772,7 +5817,7 @@ test('number inspector drops an old draft buffer when the draft identity changes
   await expect(page.locator('.freeform-workspace')).toHaveAttribute('data-history-depth', '0')
 })
 
-test('nested multi-selection hides unsupported flat alignment controls', async ({ page }) => {
+test('nested multi-selection exposes logical alignment controls', async ({ page }) => {
   await openNestedV3Draft(page, `scene-nested-arrange-${Date.now()}`)
   const tree = page.getByRole('tree', { name: '图层树' })
 
@@ -5784,7 +5829,7 @@ test('nested multi-selection hides unsupported flat alignment controls', async (
 
   const arrange = page.getByTestId('inspector-arrange')
   await expect(arrange).toBeVisible()
-  await expect(arrange).not.toContainText('对齐与分布')
+  await expect(arrange).toContainText('对齐与分布')
   await expect(arrange).toContainText('层级')
 })
 
@@ -6937,6 +6982,187 @@ test('inserts all new scene nodes under the active group path', async ({ page })
     expect(box.left).toBeLessThan(canvasBox!.x + canvasBox!.width)
     expect(box.top).toBeLessThan(canvasBox!.y + canvasBox!.height)
   })
+})
+
+test('rotation handle accessibility remains stable for a nested group', async ({ page }) => {
+  await openNestedV3Draft(page, `nested-group-transform-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  await tree.getByRole('treeitem', { name: 'Layer A' }).click()
+  await tree.getByRole('treeitem', { name: 'Layer B' }).focus()
+  await page.keyboard.press('Space')
+  await page.getByTestId('freeform-group-selection').click()
+
+  const selection = page.getByTestId('freeform-selection-box')
+  await expect(selection).toHaveAttribute('data-selection-kind', 'group')
+  const rotate = page.getByTestId('freeform-selection-rotate')
+  const zoomOut = page.getByRole('button', { name: '缩小画布' })
+  for (let index = 0; index < 3; index += 1) {
+    const box = await rotate.boundingBox()
+    expect(box).toBeTruthy()
+    expect(box!.width).toBeGreaterThanOrEqual(28)
+    expect(box!.height).toBeGreaterThanOrEqual(28)
+    if (index < 2) await zoomOut.click()
+  }
+  await rotate.focus()
+  await expect(rotate).toBeFocused()
+  const outline = await rotate.evaluate((node) => getComputedStyle(node).outlineStyle)
+  expect(outline).not.toBe('none')
+})
+
+test('nested group transforms keep one history entry per gesture', async ({ page }) => {
+  await openNestedV3Draft(page, `nested-group-gestures-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  await tree.getByRole('treeitem', { name: 'Layer A' }).click()
+  await tree.getByRole('treeitem', { name: 'Layer B' }).focus()
+  await page.keyboard.press('Space')
+  await page.getByTestId('freeform-group-selection').click()
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+  const group = page.locator('[data-testid="freeform-scene-group"][data-selected="true"]')
+  const before = await group.getAttribute('style')
+
+  const move = page.getByTestId('freeform-selection-move')
+  const moveBox = await move.boundingBox()
+  expect(moveBox).toBeTruthy()
+  await move.dispatchEvent('pointerdown', {
+    pointerId: 111,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: moveBox!.x + moveBox!.width / 2,
+    clientY: moveBox!.y + moveBox!.height / 2,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 111,
+      pointerType: 'touch',
+      clientX: x + 30,
+      clientY: y + 20,
+    }))
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: 111,
+      pointerType: 'touch',
+      clientX: x + 30,
+      clientY: y + 20,
+    }))
+  }, { x: moveBox!.x + moveBox!.width / 2, y: moveBox!.y + moveBox!.height / 2 })
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+  await expect(group).not.toHaveAttribute('style', before ?? '')
+
+  const rotate = page.getByTestId('freeform-selection-rotate')
+  const rotateBox = await rotate.boundingBox()
+  expect(rotateBox).toBeTruthy()
+  await rotate.dispatchEvent('pointerdown', {
+    pointerId: 112,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: rotateBox!.x + rotateBox!.width / 2,
+    clientY: rotateBox!.y + rotateBox!.height / 2,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 112,
+      pointerType: 'touch',
+      clientX: x + 18,
+      clientY: y + 26,
+    }))
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: 112,
+      pointerType: 'touch',
+      clientX: x + 18,
+      clientY: y + 26,
+    }))
+  }, { x: rotateBox!.x + rotateBox!.width / 2, y: rotateBox!.y + rotateBox!.height / 2 })
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 2))
+})
+
+test('cross-scope paste preserves world geometry with the page offset', async ({ page }) => {
+  await openNestedV3Draft(page, `cross-scope-paste-${Date.now()}`, false, crossScopeClipboardDraft)
+  const sourceLeaf = page.locator('[data-scene-node-id="clipboard-source-leaf"]')
+  await sourceLeaf.dblclick()
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute(
+    'data-active-group-path',
+    'clipboard-source',
+  )
+  await sourceLeaf.click()
+  const sourceBox = await sourceLeaf.boundingBox()
+  expect(sourceBox).toBeTruthy()
+  await page.keyboard.press('Control+C')
+  await page.keyboard.press('Escape')
+
+  const targetLeaf = page.locator('[data-scene-node-id="clipboard-target-leaf"]')
+  await targetLeaf.dblclick()
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute(
+    'data-active-group-path',
+    'clipboard-target',
+  )
+  await page.keyboard.press('Control+V')
+  const target = page.locator('[data-scene-node-id="clipboard-target"]')
+  await expect(target.locator(':scope > [data-scene-leaf="true"]')).toHaveCount(2)
+  const pasted = target.locator(
+    ':scope > [data-scene-leaf="true"]:not([data-scene-node-id="clipboard-target-leaf"])',
+  )
+  const pastedId = await pasted.getAttribute('data-scene-node-id')
+  expect(pastedId).not.toBe('clipboard-source-leaf')
+  const pastedBox = await pasted.boundingBox()
+  const canvasScale = await freeformCanvasScale(page)
+  expect(pastedBox).toBeTruthy()
+  expect((pastedBox!.x - sourceBox!.x) / canvasScale).toBeCloseTo(16, 2)
+  expect((pastedBox!.y - sourceBox!.y) / canvasScale).toBeCloseTo(16, 2)
+  expect(pastedBox!.width).toBeCloseTo(sourceBox!.width, 2)
+  expect(pastedBox!.height).toBeCloseTo(sourceBox!.height, 2)
+})
+
+test('logical group alignment moves a group as one unit', async ({ page }) => {
+  await openNestedV3Draft(page, `logical-group-alignment-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  await tree.getByRole('treeitem', { name: 'Layer A' }).click()
+  await tree.getByRole('treeitem', { name: 'Layer B' }).focus()
+  await page.keyboard.press('Space')
+  await page.getByTestId('freeform-group-selection').click()
+  await tree.getByRole('treeitem', { name: 'Layer C' }).focus()
+  await page.keyboard.press('Space')
+
+  const layerA = page.locator('[data-scene-node-id="layer-a"]')
+  const layerB = page.locator('[data-scene-node-id="layer-b"]')
+  const layerC = page.locator('[data-scene-node-id="layer-c"]')
+  const beforeA = await layerA.boundingBox()
+  const beforeB = await layerB.boundingBox()
+  expect(beforeA).toBeTruthy()
+  expect(beforeB).toBeTruthy()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await page.getByRole('button', { name: '左对齐', exact: true }).click()
+
+  const afterA = await layerA.boundingBox()
+  const afterB = await layerB.boundingBox()
+  const afterC = await layerC.boundingBox()
+  expect(afterA).toBeTruthy()
+  expect(afterB).toBeTruthy()
+  expect(afterC).toBeTruthy()
+  expect(Math.min(afterA!.x, afterB!.x)).toBeCloseTo(afterC!.x, 2)
+  expect(afterB!.x - afterA!.x).toBeCloseTo(beforeB!.x - beforeA!.x, 3)
+})
+
+test('nested local nudge uses the inverse parent world matrix', async ({ page }) => {
+  await openNestedV3Draft(page, `nested-local-nudge-${Date.now()}`, false, crossScopeClipboardDraft)
+  const sourceLeaf = page.locator('[data-scene-node-id="clipboard-source-leaf"]')
+  await sourceLeaf.dblclick()
+  await sourceLeaf.click()
+  const before = await sourceLeaf.boundingBox()
+  const scale = await freeformCanvasScale(page)
+  expect(before).toBeTruthy()
+  await page.keyboard.press('ArrowRight')
+  const after = await sourceLeaf.boundingBox()
+  expect(after).toBeTruthy()
+  expect((after!.x - before!.x) / scale).toBeCloseTo(1, 2)
 })
 
 function panelLiveRegion(page: import('@playwright/test').Page) {

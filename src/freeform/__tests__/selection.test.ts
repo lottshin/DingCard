@@ -3,9 +3,11 @@ import { expect, expectTypeOf, it } from 'vitest'
 import {
   filterLiveSelectionIds,
   getElementsInMarquee,
+  getSceneNodesInMarquee,
   moveElementsWithinSlide,
+  moveSceneNodesWithinSlide,
 } from '../selection'
-import type { FreeformElement, FreeformSlide } from '../types'
+import type { FreeformElement, FreeformSceneNode, FreeformSlide } from '../types'
 
 expectTypeOf(moveElementsWithinSlide)
   .parameter(0)
@@ -165,4 +167,45 @@ it('clamps scaled and rotated elements by their visual bounds', () => {
   )).toEqual([
     { elementId: 'rotated', patch: { x: 225, y: 225 } },
   ])
+})
+
+it('moves and marquee-selects direct children in parent-local coordinates', () => {
+  const child = element('child', 0, 0, 80, 40)
+  const sibling = element('sibling', 180, 20, 60, 60)
+  const hidden = { ...element('hidden', 300, 20, 60, 60), hidden: true }
+  const nodes: FreeformSceneNode[] = [{
+    id: 'parent',
+    name: 'Parent',
+    locked: false,
+    hidden: false,
+    type: 'group',
+    x: 300,
+    y: 240,
+    rotation: 30,
+    scale: 1.5,
+    children: [child, sibling, hidden],
+  }]
+
+  const patches = moveSceneNodesWithinSlide(
+    { width: 1200, height: 900 },
+    nodes,
+    ['parent'],
+    ['child'],
+    30,
+    0,
+  )
+  expect(patches).toHaveLength(1)
+  expect(patches[0].patch.x).toBeCloseTo(17.320508, 6)
+  expect(patches[0].patch.y).toBeCloseTo(-10, 6)
+
+  expect(getSceneNodesInMarquee(
+    nodes,
+    ['parent'],
+    { x: 260, y: 210, width: 170, height: 170 },
+  )).toContain('child')
+  expect(getSceneNodesInMarquee(
+    nodes,
+    ['parent'],
+    { x: 0, y: 0, width: 1200, height: 900 },
+  )).not.toContain('hidden')
 })
