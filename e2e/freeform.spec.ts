@@ -5661,6 +5661,70 @@ test('number inspector keeps sibling drafts while previous fields commit', async
   await expect.poll(() => freeformElementPositions(page)).toEqual([{ x: 100, y: 160 }])
 })
 
+test('numeric inspector blur is preserved when a pointer gesture is cancelled', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+
+  const workspace = page.locator('.freeform-workspace')
+  const geometry = page.getByTestId('inspector-geometry')
+  const xInput = geometry.getByLabel('X', { exact: true })
+  const widthInput = geometry.getByLabel('宽', { exact: true })
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+  const before = await freeformElementBoxes(page)
+  expect(before).toHaveLength(1)
+
+  await xInput.fill(String(before[0].x + 40))
+  const move = page.getByTestId('freeform-selection-move')
+  const moveBox = await move.boundingBox()
+  expect(moveBox).toBeTruthy()
+  await move.dispatchEvent('pointerdown', {
+    pointerId: 101,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: moveBox!.x + moveBox!.width / 2,
+    clientY: moveBox!.y + moveBox!.height / 2,
+  })
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 101,
+      pointerType: 'touch',
+    }))
+  })
+  await expect.poll(() => freeformElementBoxes(page)).toEqual([{
+    ...before[0],
+    x: before[0].x + 40,
+  }])
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+
+  await widthInput.fill(String(before[0].width + 40))
+  const resize = page.getByTestId('freeform-selection-resize')
+  const resizeBox = await resize.boundingBox()
+  expect(resizeBox).toBeTruthy()
+  await resize.dispatchEvent('pointerdown', {
+    pointerId: 102,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: resizeBox!.x + resizeBox!.width / 2,
+    clientY: resizeBox!.y + resizeBox!.height / 2,
+  })
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 102,
+      pointerType: 'touch',
+    }))
+  })
+  await expect.poll(() => freeformElementBoxes(page)).toEqual([{
+    ...before[0],
+    x: before[0].x + 40,
+    width: before[0].width + 40,
+  }])
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 2))
+})
+
 test('number inspector drops an old draft buffer when the draft identity changes', async ({ page }) => {
   await openNestedV3Draft(page, `scene-number-draft-switch-${Date.now()}`)
   const tree = page.getByRole('tree', { name: '图层树' })

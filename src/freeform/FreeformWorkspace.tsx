@@ -1464,14 +1464,24 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     event.preventDefault()
     event.stopPropagation()
     blurActiveTypingTarget()
+    const startDocument = currentDocumentRef.current
+    const startSlide = startDocument.slides.find((slide) => slide.id === activeSlide.id)
+    const startNodes = startSlide
+      ? getChildrenAtPath(startSlide.nodes, activeGroupPath)
+      : undefined
+    const startElements = startNodes?.filter(
+      (node): node is FreeformElement => node.type !== 'group' && !node.hidden,
+    )
+    const startElement = startSlide
+      ? findNodeAtPath(startSlide.nodes, [...activeGroupPath, element.id])
+      : undefined
+    if (!startSlide || !startElements || !startElement || startElement.type === 'group') return
     const currentSelection = selectedElementIds.current
     const draggingIds = currentSelection.includes(element.id) ? currentSelection : [element.id]
     if (!currentSelection.includes(element.id)) {
       setSelection([element.id])
     }
 
-    const startDocument = doc
-    const startElements = rootElements
     const startX = event.clientX
     const startY = event.clientY
     activeInteractionRef.current = 'move'
@@ -1481,13 +1491,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if (moveEvent.pointerId !== pointerId) return
       const rawDx = Math.round((moveEvent.clientX - startX) / interactionScale)
       const rawDy = Math.round((moveEvent.clientY - startY) / interactionScale)
-      const snap = snapDrag(activeSlide, startElements, draggingIds, rawDx, rawDy)
-      const patches = moveElementsWithinSlide(activeSlide, startElements, draggingIds, snap.dx, snap.dy)
+      const snap = snapDrag(startSlide, startElements, draggingIds, rawDx, rawDy)
+      const patches = moveElementsWithinSlide(
+        startSlide,
+        startElements,
+        draggingIds,
+        snap.dx,
+        snap.dy,
+      )
       setSnapLines(snap.lines)
       setHistory((current) => {
         const next = freeformReducer(current.current, {
           type: 'node/update-geometry',
-          slideId: activeSlide.id,
+          slideId: startSlide.id,
           updates: patches.map(({ elementId, patch }) => ({
             path: [...activeGroupPath, elementId],
             patch,
@@ -1647,13 +1663,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const resizeParentPath = [...activeGroupPath]
     event.preventDefault()
     event.stopPropagation()
-    setSelection([element.id])
+    blurActiveTypingTarget()
+    const startDocument = currentDocumentRef.current
+    const startSlide = startDocument.slides.find((slide) => slide.id === activeSlide.id)
+    const startElement = startSlide
+      ? findNodeAtPath(startSlide.nodes, [...resizeParentPath, element.id])
+      : undefined
+    if (!startSlide || !startElement || startElement.type === 'group') return
+    setSelection([startElement.id])
 
-    const startDocument = doc
     const startX = event.clientX
     const startY = event.clientY
-    const startW = element.width * element.scale
-    const startH = element.height * element.scale
+    const startW = startElement.width * startElement.scale
+    const startH = startElement.height * startElement.scale
     activeInteractionRef.current = 'resize'
     setActiveInteraction('resize')
 
@@ -1661,23 +1683,23 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if (moveEvent.pointerId !== pointerId) return
       const dx = (moveEvent.clientX - startX) / interactionScale
       const dy = (moveEvent.clientY - startY) / interactionScale
-      const visualLeft = element.x + (element.width - startW) / 2
-      const visualTop = element.y + (element.height - startH) / 2
+      const visualLeft = startElement.x + (startElement.width - startW) / 2
+      const visualTop = startElement.y + (startElement.height - startH) / 2
       const visualRight = visualLeft + startW
       const visualBottom = visualTop + startH
-      const visualWidth = startW + clamp(dx, 40 - startW, activeSlide.width - visualRight)
-      const visualHeight = startH + clamp(dy, 40 - startH, activeSlide.height - visualBottom)
-      const width = visualWidth / element.scale
-      const height = visualHeight / element.scale
-      const widthDelta = width - element.width
-      const heightDelta = height - element.height
-      const x = element.x + ((element.scale - 1) * widthDelta) / 2
-      const y = element.y + ((element.scale - 1) * heightDelta) / 2
+      const visualWidth = startW + clamp(dx, 40 - startW, startSlide.width - visualRight)
+      const visualHeight = startH + clamp(dy, 40 - startH, startSlide.height - visualBottom)
+      const width = visualWidth / startElement.scale
+      const height = visualHeight / startElement.scale
+      const widthDelta = width - startElement.width
+      const heightDelta = height - startElement.height
+      const x = startElement.x + ((startElement.scale - 1) * widthDelta) / 2
+      const y = startElement.y + ((startElement.scale - 1) * heightDelta) / 2
       replaceCurrent({
         type: 'node/update-geometry',
-        slideId: activeSlide.id,
+        slideId: startSlide.id,
         updates: [{
-          path: [...resizeParentPath, element.id],
+          path: [...resizeParentPath, startElement.id],
           patch: { x, y, width, height },
         }],
       })
