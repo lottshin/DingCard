@@ -214,7 +214,10 @@ export type FreeformActionV3 =
       groupIds: string[]
       mode: 'one-level' | 'all-level'
     }
-  /** Root-leaf compatibility adapters retained for existing workspace actions. */
+  /**
+   * Legacy root-leaf adapters retained only for reducer and migration tests.
+   * The shipping workspace uses path-based node actions exclusively.
+   */
   | { type: 'element/add'; slideId: string; element: FreeformElement }
   | {
       type: 'element/update'

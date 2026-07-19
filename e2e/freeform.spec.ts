@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import JSZip from 'jszip'
+import { groupLocal, sceneNodesBoundsInParent, transformPoint } from '../src/freeform/sceneTransform'
+import type { FreeformSceneNode } from '../src/freeform/types'
 import { installOfflineFontRoutes } from './offlineFonts'
 
 test.beforeEach(async ({ context }) => {
@@ -254,6 +256,165 @@ function nestedPropertyMatrixDraft() {
     stroke: '#0f172a',
     strokeWidth: 4,
   })
+  return draft
+}
+
+function groupingDraft() {
+  const draft = structuredClone(nestedV3Draft())
+  const shape = (
+    id: string,
+    name: string,
+    x: number,
+    y: number,
+    locked = false,
+  ) => ({
+    id,
+    name,
+    locked,
+    hidden: false,
+    type: 'shape' as const,
+    x,
+    y,
+    width: 80,
+    height: 60,
+    rotation: 0,
+    scale: 1,
+    shape: 'rect' as const,
+    fill: { type: 'solid' as const, color: '#dbeafe' },
+    stroke: '#1d4ed8',
+    strokeWidth: 0,
+  })
+  ;(draft.document.slides[0].nodes as unknown[]) = [
+    shape('layer-a', 'Layer A', 80, 80),
+    shape('layer-b', 'Layer B', 180, 80),
+    shape('layer-c', 'Layer C', 280, 80),
+    shape('layer-d', 'Layer D', 380, 80),
+    {
+      id: 'locked-container',
+      name: 'Locked container',
+      locked: true,
+      hidden: false,
+      type: 'group',
+      x: 600,
+      y: 180,
+      rotation: 0,
+      scale: 1,
+      children: [
+        shape('locked-child-a', 'Locked child A', -60, -30),
+        shape('locked-child-b', 'Locked child B', 40, -30),
+      ],
+    },
+  ]
+  return draft
+}
+
+function scopeNavigationDraft() {
+  const draft = structuredClone(groupingDraft())
+  const shape = (
+    id: string,
+    name: string,
+    x: number,
+    y: number,
+  ) => ({
+    id,
+    name,
+    locked: false,
+    hidden: false,
+    type: 'shape' as const,
+    x,
+    y,
+    width: 80,
+    height: 60,
+    rotation: 0,
+    scale: 1,
+    shape: 'rect' as const,
+    fill: { type: 'solid' as const, color: '#dcfce7' },
+    stroke: '#15803d',
+    strokeWidth: 0,
+  })
+  ;(draft.document.slides[0].nodes as unknown[]) = [{
+    id: 'scope-outer',
+    name: 'Scope outer',
+    locked: false,
+    hidden: false,
+    type: 'group',
+    x: 360,
+    y: 260,
+    rotation: 0,
+    scale: 1,
+    children: [{
+      id: 'scope-inner',
+      name: 'Scope inner',
+      locked: false,
+      hidden: false,
+      type: 'group',
+      x: 0,
+      y: 0,
+      rotation: 0,
+      scale: 1,
+      children: [shape('scope-leaf', 'Scope leaf', -40, -30)],
+    }, shape('outer-leaf', 'Outer leaf', 120, 0)],
+  }]
+  return draft
+}
+
+function textScopeDraft() {
+  const draft = structuredClone(scopeNavigationDraft())
+  const outer = draft.document.slides[0].nodes[0] as unknown as {
+    children: Array<Record<string, unknown>>
+  }
+  outer.children.push({
+    id: 'scope-text-edit',
+    name: 'Scope editable text',
+    locked: false,
+    hidden: false,
+    type: 'text',
+    x: -140,
+    y: 80,
+    width: 240,
+    height: 60,
+    rotation: 0,
+    scale: 1,
+    text: 'Escape editing first',
+    fontSize: 24,
+    fontFamily: 'system-ui',
+    textFill: { type: 'solid', color: '#111111' },
+    align: 'left',
+    fontWeight: 'normal',
+  })
+  return draft
+}
+
+function offCenterScopeDraft() {
+  const draft = structuredClone(groupingDraft())
+  ;(draft.document.slides[0].nodes as unknown[]) = [{
+    id: 'offset-parent',
+    name: 'Offset parent',
+    locked: false,
+    hidden: false,
+    type: 'group',
+    x: 360,
+    y: 240,
+    rotation: 28,
+    scale: 1.25,
+    children: [{
+      id: 'offset-anchor',
+      name: 'Offset anchor',
+      locked: false,
+      hidden: false,
+      type: 'shape',
+      x: 125.25,
+      y: 78.5,
+      width: 120,
+      height: 80,
+      rotation: 22,
+      scale: 1.4,
+      shape: 'rect',
+      fill: { type: 'solid', color: '#fde68a' },
+      stroke: '#92400e',
+      strokeWidth: 0,
+    }],
+  }]
   return draft
 }
 
@@ -777,11 +938,13 @@ async function insertShape(
   page: import('@playwright/test').Page,
   label: '矩形' | '圆形' | '三角形' = '矩形',
 ) {
-  await page.getByTestId('insert-shape').click()
-  await page
-    .getByRole('menu', { name: '形状' })
-    .getByRole('menuitem', { name: label, exact: true })
-    .click()
+  const trigger = page.getByTestId('insert-shape')
+  const menu = page.getByRole('menu', { name: '形状' })
+  await trigger.click()
+  await menu.getByRole('menuitem', { name: label, exact: true }).click()
+  await expect(menu).toHaveCount(0)
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await expect(trigger).toBeFocused()
 }
 
 async function insertImageElementAndShapeFill(page: import('@playwright/test').Page) {
@@ -832,11 +995,13 @@ async function insertLine(
   page: import('@playwright/test').Page,
   label: '直线' | '箭头',
 ) {
-  await page.getByTestId('insert-line').click()
-  await page
-    .getByRole('menu', { name: '线条' })
-    .getByRole('menuitem', { name: label, exact: true })
-    .click()
+  const trigger = page.getByTestId('insert-line')
+  const menu = page.getByRole('menu', { name: '线条' })
+  await trigger.click()
+  await menu.getByRole('menuitem', { name: label, exact: true }).click()
+  await expect(menu).toHaveCount(0)
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await expect(trigger).toBeFocused()
 }
 
 async function insertTwoSelectedRectangles(page: import('@playwright/test').Page) {
@@ -5876,6 +6041,64 @@ test('manual shape fill changes cancel a pending image upload', async ({ page })
   await restoreShapeFillFileReaderGate(page)
 })
 
+test('pending shape fill does not commit while a live pointer interaction is active', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  const move = page.getByTestId('freeform-selection-move').first()
+  const moveBox = await move.boundingBox()
+  expect(moveBox).toBeTruthy()
+
+  await installShapeFillFileReaderGate(page)
+  await page.locator('.freeform-properties-tabpanel input.freeform-file').setInputFiles({
+    name: 'live-shape-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expectShapeFillFileReaderStarted(page)
+
+  const start = {
+    x: moveBox!.x + moveBox!.width / 2,
+    y: moveBox!.y + moveBox!.height / 2,
+  }
+  await move.dispatchEvent('pointerdown', {
+    pointerId: 91,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 91,
+      pointerType: 'touch',
+      clientX: x + 24,
+      clientY: y + 18,
+    }))
+  }, start)
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+
+  await releaseShapeFillFileReaderGate(page)
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByTestId('freeform-shape-image-fill')).toHaveCount(0)
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 91,
+      pointerType: 'touch',
+    }))
+  })
+  await restoreShapeFillFileReaderGate(page)
+})
+
 test('delayed shape image fill follows the original nested path after same-document selection changes', async ({
   page,
 }) => {
@@ -5919,6 +6142,737 @@ test('delayed shape image fill follows the original nested path after same-docum
     .toHaveClass(/\bon\b/)
 
   await restoreShapeFillFileReaderGate(page)
+})
+
+test('groups non-contiguous layers from the panel and ungroups promoted paths', async ({ page }) => {
+  await openNestedV3Draft(page, `group-panel-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const workspace = page.locator('.freeform-workspace')
+  const layerA = tree.getByRole('treeitem', { name: 'Layer A' })
+  const layerC = tree.getByRole('treeitem', { name: 'Layer C' })
+  await layerA.click()
+  await layerC.focus()
+  await page.keyboard.press('Space')
+  await expect(layerA).toHaveAttribute('aria-selected', 'true')
+  await expect(layerC).toHaveAttribute('aria-selected', 'true')
+
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+  await page.getByTestId('freeform-group-selection').click()
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+  await expect(page.getByTestId('freeform-slide-meta')).not.toContainText('已保存')
+
+  const selectedGroup = page.locator('.freeform-scene-group[data-selected="true"]')
+  await expect(selectedGroup).toHaveCount(1)
+  const groupId = await selectedGroup.getAttribute('data-scene-node-id')
+  expect(groupId).toBeTruthy()
+  const rootIdsAfterGroup = await page.locator('.freeform-artwork-clip > [data-scene-node-id]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-scene-node-id')))
+  expect(rootIdsAfterGroup).toEqual(['layer-b', groupId, 'layer-d', 'locked-container'])
+  const groupedChildIds = await selectedGroup.locator(':scope > [data-scene-node-id]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-scene-node-id')))
+  expect(groupedChildIds).toEqual(['layer-a', 'layer-c'])
+
+  await page.getByTestId('freeform-ungroup-selection').click()
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 2))
+  await expect(tree.getByRole('treeitem', { name: '组' })).toHaveCount(0)
+  const selectedLabels = await tree.locator('[role="treeitem"][aria-selected="true"]')
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')))
+  expect(selectedLabels).toEqual(['Layer C', 'Layer A'])
+  const allIds = await page.getByTestId('freeform-canvas').locator('[data-scene-node-id]')
+    .evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('data-scene-node-id')).filter(Boolean),
+  )
+  expect(new Set(allIds).size).toBe(allIds.length)
+
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+  await expect(tree.getByRole('treeitem', { name: '组' })).toHaveCount(1)
+  await expect(page.getByTestId('freeform-canvas').locator('[data-selected="true"]')).toHaveCount(0)
+})
+
+test('group and ungroup shortcuts share the command layer for nested groups', async ({ page }) => {
+  await openNestedV3Draft(page, `group-shortcuts-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const workspace = page.locator('.freeform-workspace')
+  await tree.getByRole('treeitem', { name: 'Layer A' }).click()
+  const layerB = tree.getByRole('treeitem', { name: 'Layer B' })
+  await layerB.focus()
+  await page.keyboard.press('Space')
+  await page.keyboard.press('ControlOrMeta+g')
+  await expect(tree.getByRole('treeitem', { name: '组' })).toHaveCount(1)
+  await expect(workspace).toHaveAttribute('data-history-depth', '1')
+
+  const layerC = tree.getByRole('treeitem', { name: 'Layer C' })
+  await layerC.focus()
+  await page.keyboard.press('Space')
+  await page.keyboard.press('ControlOrMeta+g')
+  await expect(tree.getByRole('treeitem', { name: '组' })).toHaveCount(2)
+  await expect(workspace).toHaveAttribute('data-history-depth', '2')
+
+  await page.keyboard.press('ControlOrMeta+Shift+g')
+  await expect(tree.getByRole('treeitem', { name: '组' })).toHaveCount(1)
+  await expect(workspace).toHaveAttribute('data-history-depth', '3')
+  const selectedLabels = await tree.locator('[role="treeitem"][aria-selected="true"]')
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')))
+  expect(selectedLabels).toEqual(['Layer C', '组'])
+})
+
+test('grouping rejects locked selections and locked parent insertion without dirty history', async ({ page }) => {
+  await openNestedV3Draft(page, `group-locked-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const workspace = page.locator('.freeform-workspace')
+  const lockedA = tree.getByRole('treeitem', { name: 'Locked child A' })
+  const lockedB = tree.getByRole('treeitem', { name: 'Locked child B' })
+  await lockedA.click()
+  await lockedB.focus()
+  await page.keyboard.press('Space')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  const savedMeta = await page.getByTestId('freeform-slide-meta').textContent()
+
+  await page.getByTestId('freeform-group-selection').click()
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByRole('alert')).toContainText('锁定')
+  await expect(page.getByTestId('freeform-slide-meta')).toHaveText(savedMeta ?? '')
+
+  await page.keyboard.press('ControlOrMeta+g')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByRole('alert')).toContainText('锁定')
+
+  await page.getByTestId('insert-text').click()
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByRole('alert')).toContainText('锁定')
+  await expect(tree.getByRole('treeitem', { name: '文本' })).toHaveCount(0)
+
+  await tree.getByRole('treeitem', { name: 'Locked container' }).click()
+  await page.getByTestId('freeform-ungroup-selection').click()
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByRole('alert')).toContainText('锁定')
+})
+
+test('group command rejects a single layer without changing history', async ({ page }) => {
+  await openNestedV3Draft(page, `group-single-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const workspace = page.locator('.freeform-workspace')
+  await page.getByRole('tree', { name: '图层树' })
+    .getByRole('treeitem', { name: 'Layer A' })
+    .click()
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  await page.getByTestId('freeform-group-selection').click()
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByRole('alert')).toContainText('至少选择两个同级图层')
+})
+
+test('focused ungroup button keeps Enter as a native button command', async ({ page }) => {
+  await openNestedV3Draft(page, `group-button-enter-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  await tree.getByRole('treeitem', { name: 'Layer A' }).click()
+  const layerB = tree.getByRole('treeitem', { name: 'Layer B' })
+  await layerB.focus()
+  await page.keyboard.press('Space')
+  await page.getByTestId('freeform-group-selection').click()
+  await expect(tree.getByRole('treeitem', { name: '组' })).toHaveCount(1)
+
+  const ungroupButton = page.getByTestId('freeform-ungroup-selection')
+  await ungroupButton.focus()
+  await page.keyboard.press('Enter')
+  await expect(tree.getByRole('treeitem', { name: '组' })).toHaveCount(0)
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
+})
+
+test('canvas group scope enters by double click or Enter and exits one level per Escape', async ({ page }) => {
+  await openNestedV3Draft(page, `group-scope-${Date.now()}`, false, scopeNavigationDraft)
+  const workspace = page.locator('.freeform-workspace')
+  const canvas = page.getByTestId('freeform-canvas')
+  const leaf = page.locator('[data-scene-node-id="scope-leaf"]')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  await leaf.click()
+  await expect(page.locator('[data-scene-node-id="scope-outer"][data-selected="true"]')).toHaveCount(1)
+  await leaf.dblclick()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer')
+  await expect(canvas.locator('[data-selected="true"]')).toHaveCount(0)
+  await expect(page.getByTestId('freeform-scope-breadcrumb')).toContainText('页面')
+  await expect(page.getByTestId('freeform-scope-breadcrumb')).toContainText('Scope outer')
+
+  await page.locator('[data-scene-node-id="scope-leaf"]').click()
+  await expect(page.locator('[data-scene-node-id="scope-inner"][data-selected="true"]')).toHaveCount(1)
+  await page.keyboard.press('Enter')
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer/scope-inner')
+  await expect(canvas.locator('[data-selected="true"]')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer')
+  await page.keyboard.press('Escape')
+  await expect(canvas).toHaveAttribute('data-active-group-path', '')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+})
+
+test('nested text consumes the first Escape before leaving its group scope', async ({ page }) => {
+  await openNestedV3Draft(page, `group-text-escape-${Date.now()}`, false, textScopeDraft)
+  const canvas = page.getByTestId('freeform-canvas')
+  const editable = page.locator('[data-scene-node-id="scope-text-edit"] [contenteditable="true"]')
+  await page.locator('[data-scene-node-id="scope-text-edit"]').dblclick()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer')
+  await editable.click()
+  await expect(editable).toBeFocused()
+
+  await page.keyboard.press('Escape')
+  await expect(editable).not.toBeFocused()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer')
+  await page.keyboard.press('Escape')
+  await expect(canvas).toHaveAttribute('data-active-group-path', '')
+})
+
+test('IME composition keeps Escape inside nested text editing until composition ends', async ({ page }) => {
+  await openNestedV3Draft(page, `group-text-ime-escape-${Date.now()}`, false, textScopeDraft)
+  const canvas = page.getByTestId('freeform-canvas')
+  const editable = page.locator('[data-scene-node-id="scope-text-edit"] [contenteditable="true"]')
+  await page.locator('[data-scene-node-id="scope-text-edit"]').dblclick()
+  await page.getByTestId('freeform-canvas').locator('[data-scene-node-id="scope-text-edit"]')
+    .click()
+  await expect(editable).toBeFocused()
+  await editable.dispatchEvent('compositionstart')
+
+  await page.keyboard.press('Escape')
+  await expect(editable).toBeFocused()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer')
+
+  await editable.dispatchEvent('compositionend')
+  await page.keyboard.press('Escape')
+  await expect(editable).not.toBeFocused()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer')
+})
+
+test('paint popover consumes Escape before leaving a nested group scope', async ({ page }) => {
+  await openNestedV3Draft(page, `group-paint-escape-${Date.now()}`, false, scopeNavigationDraft)
+  const canvas = page.getByTestId('freeform-canvas')
+  const leaf = page.locator('[data-scene-node-id="scope-leaf"]')
+
+  await leaf.click()
+  await leaf.dblclick()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer')
+  await leaf.click()
+  await page.keyboard.press('Enter')
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer/scope-inner')
+  await leaf.click()
+  await expect(leaf).toHaveAttribute('data-selected', 'true')
+
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  const trigger = page.getByTestId('shape-fill-paint').getByTestId('paint-color-button')
+  await trigger.click()
+  const popover = page.getByRole('dialog', { name: '填充 颜色 色板' })
+  await expect(popover).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(popover).toBeHidden()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'scope-outer/scope-inner')
+  await expect(leaf).toHaveAttribute('data-selected', 'true')
+  await expect(trigger).toBeFocused()
+})
+
+test('panel structure commands reject while a live pointer interaction is active', async ({ page }) => {
+  await openNestedV3Draft(page, `group-live-move-${Date.now()}`, false, groupingDraft)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  await tree.getByRole('treeitem', { name: 'Layer A' }).click()
+  const layerB = tree.getByRole('treeitem', { name: 'Layer B' })
+  await layerB.focus()
+  await page.keyboard.press('Space')
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  const before = await freeformElementBoxes(page)
+  const move = page.getByTestId('freeform-selection-move').first()
+  const moveBox = await move.boundingBox()
+  expect(moveBox).toBeTruthy()
+  const start = {
+    x: moveBox!.x + moveBox!.width / 2,
+    y: moveBox!.y + moveBox!.height / 2,
+  }
+  await move.dispatchEvent('pointerdown', {
+    pointerId: 81,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 81,
+      pointerType: 'touch',
+      clientX: x + 40,
+      clientY: y + 30,
+    }))
+  }, start)
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+
+  const rootOrderBeforeReorder = await tree.locator('[role="treeitem"][aria-level="1"]')
+    .evaluateAll((items) => items.map((item) => item.getAttribute('aria-label')))
+  const liveGeometryBeforeReorder = await freeformElementBoxes(page)
+  await tree.getByRole('treeitem', { name: 'Layer A' }).focus()
+  await page.keyboard.press('Alt+ArrowUp')
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(liveGeometryBeforeReorder)
+  await expect(tree.locator('[role="treeitem"][aria-level="1"]')
+    .evaluateAll((items) => items.map((item) => item.getAttribute('aria-label'))))
+    .resolves.toEqual(rootOrderBeforeReorder)
+
+  await page.getByRole('button', { name: '关闭提示' }).click()
+  await tree.getByRole('treeitem', { name: 'Layer A' }).dragTo(
+    tree.getByRole('treeitem', { name: 'Layer D' }),
+  )
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(liveGeometryBeforeReorder)
+  await expect(tree.locator('[role="treeitem"][aria-level="1"]')
+    .evaluateAll((items) => items.map((item) => item.getAttribute('aria-label'))))
+    .resolves.toEqual(rootOrderBeforeReorder)
+
+  await page.getByRole('button', { name: '关闭提示' }).click()
+  await tree.getByRole('treeitem', { name: 'Layer A' }).focus()
+  await page.keyboard.press('F2')
+  const renameInput = page.getByRole('textbox', { name: '重命名图层' })
+  await renameInput.fill('Blocked rename')
+  await renameInput.press('Enter')
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(tree.getByRole('treeitem', { name: 'Layer A' })).toHaveCount(1)
+  await expect(tree.getByRole('treeitem', { name: 'Blocked rename' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '关闭提示' }).click()
+  await page.getByTestId('insert-text').click()
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(tree.getByRole('treeitem', { name: '文本' })).toHaveCount(0)
+
+  await page.getByTestId('freeform-group-selection').click()
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(tree.getByRole('treeitem', { name: '组' })).toHaveCount(0)
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 81,
+      pointerType: 'touch',
+    }))
+  })
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+
+  await page.getByRole('button', { name: '关闭提示' }).click()
+  await tree.getByRole('treeitem', { name: 'Layer C' }).click()
+  const resize = page.getByTestId('freeform-selection-resize')
+  const resizeBox = await resize.boundingBox()
+  expect(resizeBox).toBeTruthy()
+  const resizeStart = {
+    x: resizeBox!.x + resizeBox!.width / 2,
+    y: resizeBox!.y + resizeBox!.height / 2,
+  }
+  await resize.dispatchEvent('pointerdown', {
+    pointerId: 82,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: resizeStart.x,
+    clientY: resizeStart.y,
+  })
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'resize',
+  )
+  await page.getByTestId('freeform-ungroup-selection').click()
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 82,
+      pointerType: 'touch',
+    }))
+  })
+})
+
+test('save and export reject a transient live pointer snapshot', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  const before = await freeformElementBoxes(page)
+  const move = page.getByTestId('freeform-selection-move').first()
+  const moveBox = await move.boundingBox()
+  expect(moveBox).toBeTruthy()
+  const start = {
+    x: moveBox!.x + moveBox!.width / 2,
+    y: moveBox!.y + moveBox!.height / 2,
+  }
+
+  await move.dispatchEvent('pointerdown', {
+    pointerId: 83,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 83,
+      pointerType: 'touch',
+      clientX: x + 32,
+      clientY: y + 20,
+    }))
+  }, start)
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(page.getByRole('dialog', { name: '登录' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '关闭提示' }).click()
+  const downloads: string[] = []
+  page.on('download', (download) => downloads.push(download.suggestedFilename()))
+  await page.getByTestId('freeform-primary-export').click()
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await page.waitForTimeout(100)
+  expect(downloads).toEqual([])
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 83,
+      pointerType: 'touch',
+    }))
+  })
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+})
+
+test('a second pointer cannot replace an active transform owner', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  const before = await freeformElementBoxes(page)
+  const move = page.getByTestId('freeform-selection-move').first()
+  const resize = page.getByTestId('freeform-selection-resize').first()
+  const moveBox = await move.boundingBox()
+  const resizeBox = await resize.boundingBox()
+  expect(moveBox).toBeTruthy()
+  expect(resizeBox).toBeTruthy()
+
+  await move.dispatchEvent('pointerdown', {
+    pointerId: 85,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: moveBox!.x + moveBox!.width / 2,
+    clientY: moveBox!.y + moveBox!.height / 2,
+  })
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+
+  await resize.dispatchEvent('pointerdown', {
+    pointerId: 86,
+    pointerType: 'touch',
+    isPrimary: false,
+    button: 0,
+    clientX: resizeBox!.x + resizeBox!.width / 2,
+    clientY: resizeBox!.y + resizeBox!.height / 2,
+  })
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 86,
+      pointerType: 'touch',
+    }))
+  })
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 85,
+      pointerType: 'touch',
+    }))
+  })
+  await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+})
+
+test('marquee pointercancel cleans up and ignores foreign pointer streams', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page)
+  const canvas = page.getByTestId('freeform-canvas')
+  const canvasBox = await canvas.boundingBox()
+  expect(canvasBox).toBeTruthy()
+  const start = {
+    x: canvasBox!.x + 8,
+    y: canvasBox!.y + 8,
+  }
+
+  await canvas.evaluate((node, point) => {
+    const target = node.querySelector('.freeform-artwork-clip')
+    if (!target) throw new Error('artwork target missing')
+    target.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      pointerId: 87,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+      clientX: point.x,
+      clientY: point.y,
+    }))
+  }, start)
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 88,
+      pointerType: 'touch',
+      clientX: x + 300,
+      clientY: y + 300,
+    }))
+  }, start)
+  await expect(page.locator('.freeform-marquee')).toHaveCount(1)
+  const marqueeStyle = await page.locator('.freeform-marquee').getAttribute('style')
+
+  await page.evaluate(({ x, y }) => {
+    const target = document.querySelector<HTMLElement>('.freeform-artwork-clip')
+    if (!target) throw new Error('artwork target missing')
+    target.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      pointerId: 89,
+      pointerType: 'touch',
+      isPrimary: false,
+      button: 0,
+      clientX: x + 10,
+      clientY: y + 10,
+    }))
+  }, start)
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(page.locator('.freeform-marquee')).toHaveAttribute('style', marqueeStyle ?? '')
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 88,
+      pointerType: 'touch',
+    }))
+  })
+  await expect(page.locator('.freeform-marquee')).toHaveAttribute('style', marqueeStyle ?? '')
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 87,
+      pointerType: 'touch',
+    }))
+  })
+  await expect(page.locator('.freeform-marquee')).toHaveCount(0)
+})
+
+test('layer tree reports structural read-only state for a group with locked descendants', async ({ page }) => {
+  await openNestedV3Draft(page, `group-locked-descendant-reorder-${Date.now()}`)
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const tree = page.getByRole('tree', { name: '图层树' })
+  const workspace = page.locator('.freeform-workspace')
+  const outer = tree.getByRole('treeitem', { name: 'Outer group' })
+  const underlay = tree.getByRole('treeitem', { name: 'Underlay' })
+  await underlay.click()
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+
+  await outer.focus()
+  await expect(outer).toHaveAttribute('aria-selected', 'false')
+  await expect(outer).toHaveAttribute('draggable', 'false')
+  await page.keyboard.press('Alt+ArrowUp')
+  await expect(page.getByTestId('freeform-layer-live')).toContainText('锁定')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+})
+
+test('opening another draft cannot be rolled back by an old pointer cancellation', async ({ page }) => {
+  await openNestedV3Draft(page, `group-live-open-${Date.now()}`, false, groupingDraft)
+  const workspace = page.locator('.freeform-workspace')
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await page.getByRole('tree', { name: '图层树' })
+    .getByRole('treeitem', { name: 'Layer A' })
+    .click()
+  const move = page.getByTestId('freeform-selection-move').first()
+  const moveBox = await move.boundingBox()
+  expect(moveBox).toBeTruthy()
+  const start = {
+    x: moveBox!.x + moveBox!.width / 2,
+    y: moveBox!.y + moveBox!.height / 2,
+  }
+
+  await move.dispatchEvent('pointerdown', {
+    pointerId: 84,
+    pointerType: 'touch',
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await expect(page.getByTestId('freeform-selection-overlay')).toHaveAttribute(
+    'data-live-interaction',
+    'move',
+  )
+
+  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.locator('.draft-item', { hasText: 'Nested v3 scene' }).click()
+  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
+  await expect(page.locator('.drawer')).toBeVisible()
+  await expect(workspace).toHaveAttribute('data-history-depth', '0')
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 84,
+      pointerType: 'touch',
+    }))
+  })
+  await expect(page.getByRole('tree', { name: '图层树' })
+    .getByRole('treeitem', { name: 'Layer A' })).toHaveCount(1)
+})
+
+test('nested insertion preserves the active scope pre-insertion world center', async ({ page }) => {
+  const fixture = offCenterScopeDraft()
+  const parent = fixture.document.slides[0].nodes[0] as unknown as FreeformSceneNode
+  if (parent.type !== 'group') throw new Error('offset fixture parent must be a group')
+  const bounds = sceneNodesBoundsInParent(parent.children)
+  if (!bounds) throw new Error('offset fixture bounds missing')
+  const localCenter = {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+  }
+  const worldCenter = transformPoint(
+    groupLocal(parent.x, parent.y, parent.rotation, parent.scale),
+    localCenter,
+  )
+
+  await openNestedV3Draft(page, `group-offset-center-${Date.now()}`, false, () => structuredClone(fixture))
+  const anchor = page.locator('[data-scene-node-id="offset-anchor"]')
+  await anchor.dblclick()
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', 'offset-parent')
+  const parentLocator = page.locator('[data-scene-node-id="offset-parent"]')
+  const leafWorldCenter = async (leaf: import('@playwright/test').Locator) => {
+    const geometry = await leaf.evaluate((node) => {
+      const parseNumber = (value: string, label: string) => {
+        const parsed = Number.parseFloat(value)
+        if (!Number.isFinite(parsed)) throw new Error(`invalid ${label}: ${value}`)
+        return parsed
+      }
+      const readTransform = (element: HTMLElement) => {
+        const rotation = element.style.transform.match(/rotate\((-?[\d.]+)deg\)/)?.[1]
+        const scale = element.style.transform.match(/scale\((-?[\d.]+)\)/)?.[1]
+        if (rotation === undefined || scale === undefined) {
+          throw new Error(`invalid scene transform: ${element.style.transform}`)
+        }
+        return {
+          x: parseNumber(element.style.left, 'x'),
+          y: parseNumber(element.style.top, 'y'),
+          rotation: parseNumber(rotation, 'rotation'),
+          scale: parseNumber(scale, 'scale'),
+        }
+      }
+      const element = node as HTMLElement
+      const groups: ReturnType<typeof readTransform>[] = []
+      let ancestor = element.parentElement?.closest<HTMLElement>('.freeform-scene-group') ?? null
+      while (ancestor) {
+        groups.push(readTransform(ancestor))
+        ancestor = ancestor.parentElement?.closest<HTMLElement>('.freeform-scene-group') ?? null
+      }
+      return {
+        leaf: {
+          x: parseNumber(element.style.left, 'leaf x'),
+          y: parseNumber(element.style.top, 'leaf y'),
+          width: parseNumber(element.style.width, 'leaf width'),
+          height: parseNumber(element.style.height, 'leaf height'),
+        },
+        groups,
+      }
+    })
+    let center = {
+      x: geometry.leaf.x + geometry.leaf.width / 2,
+      y: geometry.leaf.y + geometry.leaf.height / 2,
+    }
+    geometry.groups.forEach((group) => {
+      center = transformPoint(
+        groupLocal(group.x, group.y, group.rotation, group.scale),
+        center,
+      )
+    })
+    return center
+  }
+
+  await insertText(page)
+  const textNode = parentLocator.locator(':scope > [data-selected="true"]')
+  const textCenter = await leafWorldCenter(textNode)
+  expect(textCenter.x).toBeCloseTo(worldCenter.x, 3)
+  expect(textCenter.y).toBeCloseTo(worldCenter.y, 3)
+
+  await insertShape(page)
+  const shapeNode = parentLocator.locator(':scope > [data-selected="true"]')
+  const shapeCenter = await leafWorldCenter(shapeNode)
+  expect(shapeCenter.x).toBeCloseTo(worldCenter.x, 3)
+  expect(shapeCenter.y).toBeCloseTo(worldCenter.y, 3)
+})
+
+test('inserts all new scene nodes under the active group path', async ({ page }) => {
+  await openNestedV3Draft(page, `group-insert-${Date.now()}`, false, scopeNavigationDraft)
+  const leaf = page.locator('[data-scene-node-id="scope-leaf"]')
+  await leaf.dblclick()
+  await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', 'scope-outer')
+  const outer = page.locator('[data-scene-node-id="scope-outer"]')
+  const directLeaves = () => outer.locator(':scope > [data-scene-leaf="true"]')
+  await expect(directLeaves()).toHaveCount(1)
+
+  await insertText(page)
+  await expect(directLeaves()).toHaveCount(2)
+  await insertShape(page)
+  await expect(directLeaves()).toHaveCount(3)
+  await page.getByTestId('insert-line').click()
+  await page.getByRole('menu', { name: '线条' }).getByRole('menuitem', { name: '直线', exact: true }).click()
+  await expect(directLeaves()).toHaveCount(4)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'nested-image.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expect(directLeaves()).toHaveCount(5)
+  await expect(outer.locator(':scope > [data-selected="true"]')).toHaveCount(1)
+  const canvasBox = await page.getByTestId('freeform-canvas').boundingBox()
+  const insertedBoxes = await directLeaves().evaluateAll((nodes) => nodes.slice(1).map((node) => {
+    const box = node.getBoundingClientRect()
+    return { left: box.left, top: box.top, right: box.right, bottom: box.bottom }
+  }))
+  expect(canvasBox).not.toBeNull()
+  insertedBoxes.forEach((box) => {
+    expect(box.right).toBeGreaterThan(canvasBox!.x)
+    expect(box.bottom).toBeGreaterThan(canvasBox!.y)
+    expect(box.left).toBeLessThan(canvasBox!.x + canvasBox!.width)
+    expect(box.top).toBeLessThan(canvasBox!.y + canvasBox!.height)
+  })
 })
 
 function panelLiveRegion(page: import('@playwright/test').Page) {

@@ -628,6 +628,10 @@ function pickPatch(source: UnknownRecord, keys: ReadonlySet<string>): UnknownRec
   return result
 }
 
+/**
+ * Legacy root-leaf patch adapter retained only for reducer and migration tests.
+ * Shipping workspace mutations use path-based node actions.
+ */
 function applyLegacyElementPatch(
   node: FreeformSceneNode,
   patch: unknown,

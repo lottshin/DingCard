@@ -1474,6 +1474,45 @@ html.theme-anim * {
   text-transform: uppercase;
 }
 
+.freeform-layers-title,
+.freeform-layers-commands {
+  display: inline-flex;
+  align-items: center;
+}
+
+.freeform-layers-title {
+  gap: 7px;
+}
+
+.freeform-layers-commands {
+  gap: 4px;
+}
+
+.freeform-layers-command {
+  min-width: 42px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.freeform-layers-command:hover {
+  border-color: var(--line-2);
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.freeform-layers-command:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .freeform-layers-count {
   color: var(--text-2);
   font-family: var(--mono);

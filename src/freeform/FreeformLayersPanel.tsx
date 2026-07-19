@@ -19,7 +19,7 @@ export interface LayerSelectionOptions {
 export interface FreeformLayersPanelProps {
   nodes: readonly FreeformSceneNode[]
   selectedPaths: readonly ScenePath[]
-  hasEffectiveLockedSelection: boolean
+  hasStructuralLockedSelection: boolean
   onSelect: (path: ScenePath, options: LayerSelectionOptions) => boolean | void
   onRename: (path: ScenePath, name: string) => boolean | void
   onReorder: (
@@ -34,6 +34,8 @@ export interface FreeformLayersPanelProps {
   ) => boolean | void
   onSetLocked: (path: ScenePath, locked: boolean) => boolean | void
   onSetHidden: (path: ScenePath, hidden: boolean) => boolean | void
+  onGroup: () => boolean
+  onUngroup: () => boolean
 }
 
 interface VisibleRow {
@@ -67,6 +69,13 @@ function defaultNodeName(node: FreeformSceneNode): string {
   if (node.type === 'line') return node.lineKind === 'arrow' ? '箭头' : '直线'
   if (node.type === 'group') return '组合'
   return '形状'
+}
+
+function hasLockedDescendant(node: FreeformSceneNode, depth = 1): boolean {
+  if (node.type !== 'group' || depth > MAX_SCENE_DEPTH) return false
+  return node.children.some((child) => (
+    child.locked || hasLockedDescendant(child, depth + 1)
+  ))
 }
 
 function collectVisibleRows(
@@ -173,13 +182,15 @@ function inheritedStateIcon() {
 export function FreeformLayersPanel({
   nodes,
   selectedPaths,
-  hasEffectiveLockedSelection,
+  hasStructuralLockedSelection,
   onSelect,
   onRename,
   onReorder,
   onDropReorder,
   onSetLocked,
   onSetHidden,
+  onGroup,
+  onUngroup,
 }: FreeformLayersPanelProps) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
     () => new Set(collectGroupKeys(nodes)),
@@ -278,6 +289,15 @@ export function FreeformLayersPanel({
     requestAnimationFrame(() => setAnnouncement(message))
   }
 
+  function runStructureCommand(command: 'group' | 'ungroup') {
+    const changed = command === 'group' ? onGroup() : onUngroup()
+    announce(
+      changed
+        ? command === 'group' ? '所选图层已组合' : '所选组合已解组'
+        : command === 'group' ? '无法组合所选图层' : '无法解组所选图层',
+    )
+  }
+
   function toggleExpanded(path: ScenePath) {
     const key = scenePathKey(path)
     setExpandedKeys((current) => {
@@ -353,7 +373,7 @@ export function FreeformLayersPanel({
   function handleTreeKeyDown(
     row: VisibleRow,
     event: KeyboardEvent<HTMLDivElement>,
-    effectiveLocked: boolean,
+    structureLocked: boolean,
   ) {
     const key = event.key
     const rowKey = scenePathKey(row.path)
@@ -377,9 +397,7 @@ export function FreeformLayersPanel({
         )
         announce(`${row.node.name} 已移至第 ${nextIndex + 1} 层`)
         focusRow(rowKey)
-      } else if (effectiveLocked || (
-        selectedKeys.has(rowKey) && hasEffectiveLockedSelection
-      )) {
+      } else if (structureLocked) {
         announce('图层已锁定，无法调整层级')
       }
       return
@@ -482,7 +500,7 @@ export function FreeformLayersPanel({
           ? `已移动 ${movingCount} 个图层至 ${row.node.name} 上方`
           : `${sourceRow.node.name} 已移至第 ${targetIndex + 1} 层`,
       )
-    } else if (sourceSelected && hasEffectiveLockedSelection) {
+    } else if (sourceSelected && hasStructuralLockedSelection) {
       announce('图层已锁定，无法调整层级')
     }
   }
@@ -512,10 +530,17 @@ export function FreeformLayersPanel({
       const depthLabel = layerDepthLabel(level)
       const effectiveLocked = inheritedLocked || node.locked
       const effectiveHidden = inheritedHidden || node.hidden
+      const hasLockedChild = hasLockedDescendant(node)
+      const structureLocked = (
+        effectiveLocked ||
+        hasLockedChild ||
+        (selected && hasStructuralLockedSelection)
+      )
       const rowClassName = [
         'freeform-layer-row',
         selected ? 'is-selected' : '',
         effectiveLocked ? 'is-effectively-locked' : '',
+        structureLocked && !effectiveLocked ? 'is-structurally-locked' : '',
         effectiveHidden ? 'is-effectively-hidden' : '',
       ].filter(Boolean).join(' ')
       const statusId = rowStatusId(path)
@@ -524,6 +549,11 @@ export function FreeformLayersPanel({
         inheritedHidden ? '受父级隐藏影响，当前隐藏' : `当前${node.hidden ? '隐藏' : '可见'}`,
         node.locked ? '自身锁定' : '自身未锁定',
         inheritedLocked ? '受父级锁定影响，当前锁定' : `当前${node.locked ? '锁定' : '未锁定'}`,
+        hasLockedChild
+          ? '包含锁定后代，结构只读'
+          : selected && hasStructuralLockedSelection
+            ? '当前选择包含锁定图层，结构只读'
+            : '',
       ].join('；')
       const visibilityLabel = `隐藏图层 ${node.name}`
       const visibilityTitle = `${node.hidden ? '显示' : '隐藏'} ${node.name}`
@@ -549,9 +579,10 @@ export function FreeformLayersPanel({
             aria-owns={node.type === 'group' && expanded ? childGroupId(path) : undefined}
             aria-describedby={statusId}
             data-effective-locked={effectiveLocked ? 'true' : 'false'}
+            data-structural-locked={structureLocked ? 'true' : 'false'}
             data-effective-hidden={effectiveHidden ? 'true' : 'false'}
             tabIndex={focusedKey === key ? 0 : -1}
-            draggable={!editing && !effectiveLocked}
+            draggable={!editing && !structureLocked}
             style={{ paddingLeft: layerIndentPx(level) }}
             onFocus={() => setFocusedKey(key)}
             onClick={(event: MouseEvent<HTMLDivElement>) => {
@@ -563,9 +594,9 @@ export function FreeformLayersPanel({
               event.stopPropagation()
               beginRename(row)
             }}
-            onKeyDown={(event) => handleTreeKeyDown(row, event, effectiveLocked)}
+            onKeyDown={(event) => handleTreeKeyDown(row, event, structureLocked)}
             onDragStart={() => {
-              if (effectiveLocked) return
+              if (structureLocked) return
               dragPathRef.current = row.path
             }}
             onDragOver={(event) => event.preventDefault()}
@@ -730,8 +761,30 @@ export function FreeformLayersPanel({
   return (
     <div className="freeform-layers-panel">
       <div className="freeform-layers-heading">
-        <span>图层</span>
-        <span className="freeform-layers-count">{rows.length}</span>
+        <span className="freeform-layers-title">
+          图层
+          <span className="freeform-layers-count">{rows.length}</span>
+        </span>
+        <div className="freeform-layers-commands" role="group" aria-label="图层组合操作">
+          <button
+            className="freeform-layers-command"
+            type="button"
+            data-testid="freeform-group-selection"
+            title="组合所选图层 (Ctrl+G)"
+            onClick={() => runStructureCommand('group')}
+          >
+            组合
+          </button>
+          <button
+            className="freeform-layers-command"
+            type="button"
+            data-testid="freeform-ungroup-selection"
+            title="解组所选图层 (Ctrl+Shift+G)"
+            onClick={() => runStructureCommand('ungroup')}
+          >
+            解组
+          </button>
+        </div>
       </div>
       <div
         ref={treeRef}

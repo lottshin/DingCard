@@ -851,6 +851,8 @@ Register a unique user, create nested groups with names/lock/hide/image refs, sa
 
 Add a delayed-save variant: enter a nested group, start a held remote save, open another draft or switch user, then release the old response. Assert draft identity, root editing scope and selection remain tied to the newer context.
 
+Add a history-authority gate for the existing optimistic `applyAction` path: hold a remote save, queue a document action or pointer gesture, then release the normalized save response. The returned action result, `history.current`, `currentDocumentRef`, dirty state and undo depth must agree. Consolidate every history mutation through one synchronous history ref/update entry point if the current React updater rebase can diverge; do not use `flushSync` as a workaround. Include save-in-flight plus pointerup/pointercancel so a normalized response cannot create a false live-edit history entry or be rolled back by the gesture's older start snapshot.
+
 - [ ] **Step 3: Write failing hidden-image lease/GC integration test**
 
 Upload an image element and shape fill under a hidden group and save the draft. Before waiting, upload a third control image through the real API but do not reference it from any draft. Wait at least 750ms beyond the integration-only lease start, then upload a fourth image solely to trigger the real reclaim path. Verify both draft-referenced hidden assets remain retrievable and decode after reload, the third expired unreferenced image returns 404, and the fourth trigger upload remains retrievable.

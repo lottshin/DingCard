@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { store } from '../storage'
 import { PlainTextEditable } from './PlainTextEditable'
 import { shapeFillToStyle, textFillToStyle } from './paint'
@@ -20,6 +20,12 @@ export interface FreeformSceneNodeViewProps {
   selectedPaths: readonly ScenePath[]
   onNodePointerDown: (
     event: ReactPointerEvent<HTMLDivElement>,
+    node: FreeformSceneLeaf,
+    path: ScenePath,
+    state: SceneNodePointerState,
+  ) => void
+  onNodeDoubleClick: (
+    event: ReactMouseEvent<HTMLDivElement>,
     node: FreeformSceneLeaf,
     path: ScenePath,
     state: SceneNodePointerState,
@@ -193,6 +199,9 @@ function SceneNodeBranch({
       {...commonData}
       onPointerDown={(event) => {
         props.onNodePointerDown(event, node, path, { locked, hidden })
+      }}
+      onDoubleClick={(event) => {
+        props.onNodeDoubleClick(event, node, path, { locked, hidden })
       }}
       style={{
         left: node.x,

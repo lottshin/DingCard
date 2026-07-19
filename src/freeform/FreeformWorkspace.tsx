@@ -66,13 +66,22 @@ import {
   type SceneUiIdentity,
   type SceneUiState,
 } from './sceneSelection'
-import { cloneSceneNodes, findNodeAtPath, getChildrenAtPath, scenePathKey } from './sceneTree'
+import {
+  cloneSceneNodes,
+  createSceneGroup,
+  findNodeAtPath,
+  getChildrenAtPath,
+  scenePathKey,
+  ungroupSceneGroups,
+  type SceneMutationError,
+} from './sceneTree'
 import {
   scenePropertiesForPath,
   scenePropertyMutation,
   type ScenePropertyEdit,
   type SceneProperties,
 } from './sceneProperties'
+import { sceneNodesBoundsInParent } from './sceneTransform'
 import {
   getElementsInMarquee,
   moveElementsWithinSlide,
@@ -145,6 +154,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable
 }
 
+function isBareEnterContext(target: EventTarget | null): boolean {
+  if (target === globalThis.document?.body) return true
+  return target instanceof HTMLElement && Boolean(target.closest('[data-testid="freeform-canvas"]'))
+}
+
 function blurActiveTypingTarget() {
   const activeElement = globalThis.document?.activeElement
   if (activeElement instanceof HTMLElement && isTypingTarget(activeElement)) {
@@ -189,6 +203,32 @@ function offsetNodeForPaste(node: FreeformSceneNode, slide: FreeformSlide): Free
   }
 }
 
+function centerNewElementInScope<T extends FreeformElement>(
+  element: T,
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+): T {
+  if (parentPath.length === 0) return element
+  const parent = findNodeAtPath(nodes, parentPath)
+  const bounds = parent?.type === 'group'
+    ? sceneNodesBoundsInParent(parent.children)
+    : null
+  if (!bounds) {
+    return {
+      ...element,
+      x: -element.width / 2,
+      y: -element.height / 2,
+    }
+  }
+  const centerX = bounds.x + bounds.width / 2
+  const centerY = bounds.y + bounds.height / 2
+  return {
+    ...element,
+    x: centerX - element.width / 2,
+    y: centerY - element.height / 2,
+  }
+}
+
 type Alignment = 'left' | 'h-center' | 'right' | 'top' | 'v-center' | 'bottom'
 type Distribution = 'horizontal' | 'vertical'
 type MarqueeState = { startX: number; startY: number; currentX: number; currentY: number }
@@ -199,6 +239,32 @@ function operationErrorMessage(error: unknown, fallback: string): string {
 
 const LOCKED_OPERATION_NOTICE = '图层已锁定，先解锁后再编辑'
 const ACTIVE_INTERACTION_NOTICE = '请先结束当前变换'
+
+function sceneStructureFailureMessage(
+  operation: 'group' | 'ungroup' | 'insert',
+  reason: SceneMutationError,
+): string {
+  if (reason === 'locked' || reason === 'locked-parent') {
+    return operation === 'group'
+      ? '图层或父级已锁定，无法组合'
+      : operation === 'ungroup'
+        ? '图层或父级已锁定，无法解组'
+        : LOCKED_OPERATION_NOTICE
+  }
+  if (operation === 'group') {
+    if (reason === 'requires-two' || reason === 'empty-selection') {
+      return '至少选择两个同级图层后才能组合'
+    }
+    if (reason === 'invalid-selection') return '只能组合同一组内的图层'
+    if (reason === 'hidden') return '隐藏图层无法组合'
+    return '当前图层无法组合'
+  }
+  if (operation === 'ungroup') {
+    if (reason === 'not-group') return '请选择一个或多个组合后再解组'
+    return '当前图层无法解组'
+  }
+  return '无法在当前编辑范围内插入对象'
+}
 
 function toRect(marquee: MarqueeState): Rect {
   return {
@@ -292,6 +358,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   const stageScrollRef = useRef<HTMLDivElement>(null)
   const artboardRef = useRef<HTMLDivElement>(null)
+  const marqueePointerIdRef = useRef<number | null>(null)
   const propertiesTabRef = useRef<HTMLButtonElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
@@ -362,6 +429,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }, [activeSlide.nodes, selectedProperties, selectionPaths])
   const propertySelectionReadOnly = Boolean(effectiveLockedSelection || lockedDescendantSelection)
+  const scopeBreadcrumbs = useMemo(() => {
+    const breadcrumbs: Array<{ name: string; path: ScenePath }> = [{ name: '页面', path: [] }]
+    for (let length = 1; length <= activeGroupPath.length; length += 1) {
+      const path = activeGroupPath.slice(0, length)
+      const node = findNodeAtPath(activeSlide.nodes, path)
+      if (node?.type !== 'group') break
+      breadcrumbs.push({ name: node.name, path })
+    }
+    return breadcrumbs
+  }, [activeGroupPath, activeSlide.nodes])
   const canUseFlatAlignment = useMemo(() => (
     selectionPaths.length > 1 &&
     activeGroupPath.length === 0 &&
@@ -387,6 +464,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }, [])
   const showLockedOperationNotice = useCallback(() => {
     setOperationNotice(LOCKED_OPERATION_NOTICE)
+  }, [])
+  const blockDocumentMutationDuringInteraction = useCallback(() => {
+    if (!activeInteractionRef.current && marqueePointerIdRef.current === null) return false
+    setOperationNotice(ACTIVE_INTERACTION_NOTICE)
+    return true
   }, [])
   const handleImageLeaseError = useCallback((error: unknown) => {
     showOperationError(error, '图片续租失败，请检查网络后重试')
@@ -514,6 +596,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }, [documentFontRequests])
 
   const applyAction = useCallback((action: FreeformAction) => {
+    if (blockDocumentMutationDuringInteraction()) return false
     const start = currentDocumentRef.current
     const next = freeformReducer(start, action)
     if (Object.is(next, start)) return false
@@ -526,7 +609,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     })
     setSavedAt(null)
     return true
-  }, [])
+  }, [blockDocumentMutationDuringInteraction])
 
   function updateNodeContentAtPath(
     slideId: string,
@@ -627,50 +710,87 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }, [])
 
   function selectSlide(slideId: string) {
+    if (blockDocumentMutationDuringInteraction()) return
     replaceCurrent({ type: 'slide/select', slideId })
     setSelection([])
   }
 
   function addSlide() {
+    if (blockDocumentMutationDuringInteraction()) return
     applyAction({ type: 'slide/add-after-active' })
     setSelection([])
   }
 
   function duplicateSlide() {
+    if (blockDocumentMutationDuringInteraction()) return
     applyAction({ type: 'slide/duplicate', slideId: activeSlide.id })
     setSelection([])
   }
 
   function deleteSlide() {
+    if (blockDocumentMutationDuringInteraction()) return
     applyAction({ type: 'slide/delete', slideId: activeSlide.id })
     setSelection([])
   }
 
-  function addText() {
-    const element = createTextElement(activeSlide)
-    if (applyAction({ type: 'element/add', slideId: activeSlide.id, element })) {
-      setSelection([element.id])
+  function selectInsertedNode(
+    parentPath: ScenePath,
+    nodeId: string,
+    onlyIfScopeIsCurrent = false,
+  ) {
+    setSceneUiState((current) => {
+      if (
+        onlyIfScopeIsCurrent &&
+        scenePathKey(current.activeGroupPath) !== scenePathKey(parentPath)
+      ) return current
+      return {
+        ...current,
+        activeGroupPath: [...parentPath],
+        selectionPaths: [[...parentPath, nodeId]],
+      }
+    })
+  }
+
+  function insertNewElement(element: FreeformElement): boolean {
+    if (blockDocumentMutationDuringInteraction()) return false
+    const parentPath = [...activeGroupPath]
+    const node = centerNewElementInScope(element, activeSlide.nodes, parentPath)
+    const changed = applyAction({
+      type: 'node/insert-children',
+      slideId: activeSlide.id,
+      parentPath,
+      nodes: [node],
+    })
+    if (changed) {
+      selectInsertedNode(parentPath, node.id)
+      return true
     }
+    if (effectiveSceneState(activeSlide.nodes, parentPath)?.locked) {
+      showLockedOperationNotice()
+    } else {
+      setOperationNotice(sceneStructureFailureMessage('insert', 'invalid-selection'))
+    }
+    return false
+  }
+
+  function addText() {
+    insertNewElement(createTextElement(activeSlide))
   }
 
   function addShape(shape: FreeformShapeElement['shape']) {
-    const element = createShapeElement(activeSlide, shape)
-    if (applyAction({ type: 'element/add', slideId: activeSlide.id, element })) {
-      setSelection([element.id])
-    }
+    insertNewElement(createShapeElement(activeSlide, shape))
   }
 
   function addLine(lineKind: FreeformLineElement['lineKind']) {
-    const element = createLineElement(activeSlide, lineKind)
-    if (applyAction({ type: 'element/add', slideId: activeSlide.id, element })) {
-      setSelection([element.id])
-    }
+    insertNewElement(createLineElement(activeSlide, lineKind))
   }
 
   async function addImageFromFile(file: File) {
+    if (blockDocumentMutationDuringInteraction()) return
     const targetIdentityGeneration = documentIdentityGenerationRef.current
     const targetUserId = currentUserIdRef.current
     const targetSlideId = activeSlide.id
+    const targetParentPath = [...activeGroupPath]
     if (store.remote) await retainImagesNow()
     const raw = await readFileAsDataUrl(file)
     const downscaled = await downscaleDataUrl(raw, 1800)
@@ -679,11 +799,27 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       targetIdentityGeneration !== documentIdentityGenerationRef.current ||
       targetUserId !== currentUserIdRef.current
     ) return
+    if (blockDocumentMutationDuringInteraction()) return
     const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
     if (!currentSlide) return
-    const element = createImageElement(currentSlide, src, file.name)
-    if (applyAction({ type: 'element/add', slideId: targetSlideId, element })) {
-      if (currentDocumentRef.current.activeSlideId === targetSlideId) setSelection([element.id])
+    const element = centerNewElementInScope(
+      createImageElement(currentSlide, src, file.name),
+      currentSlide.nodes,
+      targetParentPath,
+    )
+    if (applyAction({
+      type: 'node/insert-children',
+      slideId: targetSlideId,
+      parentPath: targetParentPath,
+      nodes: [element],
+    })) {
+      if (currentDocumentRef.current.activeSlideId === targetSlideId) {
+        selectInsertedNode(targetParentPath, element.id, true)
+      }
+    } else if (effectiveSceneState(currentSlide.nodes, targetParentPath)?.locked) {
+      showLockedOperationNotice()
+    } else {
+      setOperationNotice(sceneStructureFailureMessage('insert', 'invalid-selection'))
     }
   }
 
@@ -722,6 +858,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         targetIdentityGeneration !== documentIdentityGenerationRef.current ||
         targetUserId !== currentUserIdRef.current
       ) return
+      if (blockDocumentMutationDuringInteraction()) return
       const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
       const currentTarget = currentSlide ? findNodeAtPath(currentSlide.nodes, targetPath) : undefined
       if (currentTarget?.type !== 'shape') return
@@ -749,6 +886,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function deleteSelection() {
     if (selection.length === 0) return
+    if (blockDocumentMutationDuringInteraction()) return
     const changed = applyAction({
       type: 'node/delete',
       slideId: activeSlide.id,
@@ -771,6 +909,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function pasteClipboard() {
     if (clipboard.length === 0) return
+    if (blockDocumentMutationDuringInteraction()) return
     const pasted = cloneSceneNodes(clipboard).map((node) => offsetNodeForPaste(node, activeSlide))
     const changed = applyAction({
       type: 'node/insert-children',
@@ -786,6 +925,131 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     ) {
       showLockedOperationNotice()
     }
+  }
+
+  function groupSelection(): boolean {
+    if (blockDocumentMutationDuringInteraction()) return false
+    const parentPath = [...activeGroupPath]
+    const nodeIds = selectionPaths
+      .filter((path) => scenePathKey(path.slice(0, -1)) === scenePathKey(parentPath))
+      .map((path) => path[path.length - 1])
+    const currentSlide = currentDocumentRef.current.slides.find(
+      (slide) => slide.id === activeSlide.id,
+    )
+    if (!currentSlide || nodeIds.length !== selectionPaths.length) {
+      setOperationNotice(sceneStructureFailureMessage('group', 'invalid-selection'))
+      return false
+    }
+
+    const groupId = crypto.randomUUID()
+    const mutation = createSceneGroup(currentSlide.nodes, parentPath, nodeIds, {
+      id: groupId,
+      name: '组',
+    })
+    if (!mutation.ok) {
+      setOperationNotice(sceneStructureFailureMessage('group', mutation.reason))
+      return false
+    }
+
+    const changed = applyAction({
+      type: 'group/create',
+      slideId: currentSlide.id,
+      parentPath,
+      nodeIds,
+      groupId,
+      name: '组',
+    })
+    const committedSlide = currentDocumentRef.current.slides.find(
+      (slide) => slide.id === currentSlide.id,
+    )
+    const groupPath = [...parentPath, groupId]
+    if (!changed || findNodeAtPath(committedSlide?.nodes ?? [], groupPath)?.type !== 'group') {
+      setOperationNotice('组合未能应用到当前文档，请重试')
+      return false
+    }
+
+    setOperationNotice(null)
+    setSceneUiState((current) => ({
+      ...current,
+      activeGroupPath: parentPath,
+      selectionPaths: [groupPath],
+    }))
+    return true
+  }
+
+  function ungroupSelection(): boolean {
+    if (blockDocumentMutationDuringInteraction()) return false
+    const parentPath = [...activeGroupPath]
+    const groupIds = selectionPaths
+      .filter((path) => scenePathKey(path.slice(0, -1)) === scenePathKey(parentPath))
+      .map((path) => path[path.length - 1])
+    const currentSlide = currentDocumentRef.current.slides.find(
+      (slide) => slide.id === activeSlide.id,
+    )
+    if (!currentSlide || groupIds.length !== selectionPaths.length || groupIds.length === 0) {
+      setOperationNotice(sceneStructureFailureMessage('ungroup', 'not-group'))
+      return false
+    }
+
+    const mutation = ungroupSceneGroups(currentSlide.nodes, parentPath, groupIds, 'one-level')
+    if (!mutation.ok) {
+      setOperationNotice(sceneStructureFailureMessage('ungroup', mutation.reason))
+      return false
+    }
+    const changed = applyAction({
+      type: 'group/ungroup',
+      slideId: currentSlide.id,
+      parentPath,
+      groupIds,
+      mode: 'one-level',
+    })
+    const committedSlide = currentDocumentRef.current.slides.find(
+      (slide) => slide.id === currentSlide.id,
+    )
+    const promotedPaths = mutation.selectionIds
+      .map((id) => [...parentPath, id])
+      .filter((path) => Boolean(findNodeAtPath(committedSlide?.nodes ?? [], path)))
+    if (!changed || promotedPaths.length !== mutation.selectionIds.length) {
+      setOperationNotice('解组未能应用到当前文档，请重试')
+      return false
+    }
+
+    setOperationNotice(null)
+    setSceneUiState((current) => ({
+      ...current,
+      activeGroupPath: parentPath,
+      selectionPaths: promotedPaths,
+    }))
+    return true
+  }
+
+  function enterSelectedGroup(): boolean {
+    if (selectionPaths.length !== 1) return false
+    const path = selectionPaths[0]
+    const node = findNodeAtPath(activeSlide.nodes, path)
+    if (
+      node?.type !== 'group' ||
+      scenePathKey(path.slice(0, -1)) !== scenePathKey(activeGroupPath)
+    ) return false
+    setSceneUiState((current) => ({
+      ...current,
+      activeGroupPath: [...path],
+      selectionPaths: [],
+    }))
+    return true
+  }
+
+  function exitGroupScope() {
+    setSceneUiState((current) => {
+      if (current.activeGroupPath.length === 0) {
+        return { ...current, selectionPaths: [] }
+      }
+      return {
+        ...current,
+        activeGroupPath: current.activeGroupPath.slice(0, -1),
+        selectionPaths: [],
+      }
+    })
   }
 
   function reorderSelection(direction: 'forward' | 'backward' | 'front' | 'back') {
@@ -832,22 +1096,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function renameLayer(path: ScenePath, name: string): boolean {
+    if (blockDocumentMutationDuringInteraction()) return false
     return applyAction({ type: 'node/rename', slideId: activeSlide.id, path, name })
   }
 
   function setLayerLocked(path: ScenePath, locked: boolean): boolean {
-    if (activeInteractionRef.current) {
-      setOperationNotice(ACTIVE_INTERACTION_NOTICE)
-      return false
-    }
+    if (blockDocumentMutationDuringInteraction()) return false
     return applyAction({ type: 'node/set-locked', slideId: activeSlide.id, path, locked })
   }
 
   function setLayerHidden(path: ScenePath, hidden: boolean): boolean {
-    if (activeInteractionRef.current) {
-      setOperationNotice(ACTIVE_INTERACTION_NOTICE)
-      return false
-    }
+    if (blockDocumentMutationDuringInteraction()) return false
     return applyAction({ type: 'node/set-hidden', slideId: activeSlide.id, path, hidden })
   }
 
@@ -856,6 +1115,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     nodeIds: readonly string[],
     direction: 'forward' | 'backward' | 'front' | 'back',
   ): boolean {
+    if (blockDocumentMutationDuringInteraction()) return false
     const selectedAtParent = selectionPaths.filter(
       (path) => scenePathKey(path.slice(0, -1)) === scenePathKey(parentPath),
     )
@@ -875,6 +1135,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     nodeIds: readonly string[],
     targetNodeId: string,
   ): boolean {
+    if (blockDocumentMutationDuringInteraction()) return false
     const selectedAtParent = selectionPaths.filter(
       (path) => scenePathKey(path.slice(0, -1)) === scenePathKey(parentPath),
     )
@@ -894,6 +1155,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   function alignSelection(alignment: Alignment) {
     const selectedElements = rootElements.filter((element) => selection.includes(element.id))
     if (selectedElements.length < 2) return
+    if (blockDocumentMutationDuringInteraction()) return
     const entries = selectedElements.flatMap((element) => {
       const path = [...activeGroupPath, element.id]
       const bounds = sceneLogicalBounds(activeSlide.nodes, path)
@@ -933,6 +1195,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   function distributeSelection(distribution: Distribution) {
     const selectedElements = rootElements.filter((element) => selection.includes(element.id))
     if (selectedElements.length < 3) return
+    if (blockDocumentMutationDuringInteraction()) return
 
     const entries = selectedElements.flatMap((element) => {
       const path = [...activeGroupPath, element.id]
@@ -974,16 +1237,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function applySlideSize(width: number, height: number) {
     if (activeSlide.width === width && activeSlide.height === height) return
+    if (blockDocumentMutationDuringInteraction()) return
     applyAction({ type: 'slide/resize', slideId: activeSlide.id, width, height })
   }
 
   function undoDocument() {
+    if (blockDocumentMutationDuringInteraction()) return
     inspectorNumberResetGenerationRef.current += 1
     setHistory((current) => undo(current))
     setSavedAt(null)
   }
 
   function redoDocument() {
+    if (blockDocumentMutationDuringInteraction()) return
     inspectorNumberResetGenerationRef.current += 1
     setHistory((current) => redo(current))
     setSavedAt(null)
@@ -1021,7 +1287,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const onKey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase()
       const isDocumentShortcut = (
-        ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'v'].includes(key)) ||
+        ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'v', 'g'].includes(key)) ||
         [
           'arrowleft',
           'arrowright',
@@ -1030,9 +1296,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           'delete',
           'backspace',
           'escape',
+          'enter',
         ].includes(key)
       )
-      if (activeInteractionRef.current && isDocumentShortcut) {
+      if ((activeInteractionRef.current || marqueePointerIdRef.current !== null) && isDocumentShortcut) {
         event.preventDefault()
         return
       }
@@ -1056,6 +1323,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if ((event.ctrlKey || event.metaKey) && key === 'v') {
         event.preventDefault()
         pasteClipboard()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && key === 'g') {
+        event.preventDefault()
+        if (event.shiftKey) ungroupSelection()
+        else groupSelection()
+        return
+      }
+      if (event.key === 'Enter' && isBareEnterContext(event.target) && enterSelectedGroup()) {
+        event.preventDefault()
         return
       }
       const nudgeStep = event.shiftKey ? 10 : 1
@@ -1082,7 +1359,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           deleteSelection()
         }
       }
-      if (event.key === 'Escape') setSelection([])
+      if (event.key === 'Escape') {
+        if (activeGroupPath.length > 0 || selectedElementIds.current.length > 0) {
+          event.preventDefault()
+        }
+        exitGroupScope()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -1126,8 +1408,37 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     onElementPointerDown(event, leaf)
   }
 
+  function onSceneNodeDoubleClick(
+    event: React.MouseEvent<HTMLDivElement>,
+    _leaf: FreeformElement,
+    hitPath: ScenePath,
+    state: SceneNodePointerState,
+  ) {
+    const directPath = directChildPathForScope(activeSlide.nodes, activeGroupPath, hitPath)
+    const directNode = directPath
+      ? findNodeAtPath(activeSlide.nodes, directPath)
+      : undefined
+    if (!directPath || directNode?.type !== 'group') return
+    event.preventDefault()
+    event.stopPropagation()
+    if (state.locked || state.hidden) {
+      showLockedOperationNotice()
+      return
+    }
+    setSceneUiState((current) => ({
+      ...current,
+      activeGroupPath: [...directPath],
+      selectionPaths: [],
+    }))
+  }
+
   function onElementPointerDown(event: React.PointerEvent, element: FreeformElement) {
     if (renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     if (element.locked || element.hidden) {
       event.preventDefault()
       event.stopPropagation()
@@ -1239,11 +1550,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function onArtboardPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.target !== event.currentTarget) return
+    if (blockDocumentMutationDuringInteraction()) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     const start = artboardPointFromClient(event.clientX, event.clientY)
     if (!start) return
 
     event.preventDefault()
     blurActiveTypingTarget()
+    const pointerId = event.pointerId
+    marqueePointerIdRef.current = pointerId
     setSelection([])
     setMarquee({
       startX: start.x,
@@ -1252,7 +1570,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       currentY: start.y,
     })
 
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onBlur)
+      if (marqueePointerIdRef.current === pointerId) marqueePointerIdRef.current = null
+    }
+
     const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
       const current = artboardPointFromClient(moveEvent.clientX, moveEvent.clientY)
       if (!current) return
       setMarquee((value) =>
@@ -1261,9 +1588,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
 
     const onUp = (upEvent: PointerEvent) => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-
+      if (upEvent.pointerId !== pointerId) return
+      cleanup()
       const current = artboardPointFromClient(upEvent.clientX, upEvent.clientY) ?? start
       const finalMarquee = {
         startX: start.x,
@@ -1285,12 +1611,30 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       ))
     }
 
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== pointerId) return
+      cleanup()
+      setMarquee(null)
+    }
+
+    const onBlur = () => {
+      cleanup()
+      setMarquee(null)
+    }
+
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onBlur)
   }
 
   function onResizePointerDown(event: React.PointerEvent, element: FreeformElement) {
     if (renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     if (element.locked || element.hidden) {
       event.preventDefault()
       event.stopPropagation()
@@ -1300,6 +1644,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
     const interactionScale = renderScale
     const pointerId = event.pointerId
+    const resizeParentPath = [...activeGroupPath]
     event.preventDefault()
     event.stopPropagation()
     setSelection([element.id])
@@ -1329,10 +1674,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       const x = element.x + ((element.scale - 1) * widthDelta) / 2
       const y = element.y + ((element.scale - 1) * heightDelta) / 2
       replaceCurrent({
-        type: 'element/update',
+        type: 'node/update-geometry',
         slideId: activeSlide.id,
-        elementId: element.id,
-        patch: { x, y, width, height },
+        updates: [{
+          path: [...resizeParentPath, element.id],
+          patch: { x, y, width, height },
+        }],
       })
     }
 
@@ -1401,6 +1748,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   async function exportCurrentSlide() {
     if (renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) return
     setExporting(true)
     try {
       setSelection([])
@@ -1421,6 +1769,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   async function exportAllSlides() {
     if (doc.slides.length === 0 || renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) return
     setExporting(true)
     setExportProgress(null)
     const originalSlideId = activeSlide.id
@@ -1449,6 +1798,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function requestExportAllSlides() {
     if (renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) return
     if (hasMixedSlideSizes(doc.slides)) {
       setShowMixedSizeWarning(true)
       return
@@ -1458,11 +1808,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function continueMixedSizeExport() {
     if (renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) return
     setShowMixedSizeWarning(false)
     void exportAllSlides()
   }
 
   async function handleSaveDraft() {
+    if (blockDocumentMutationDuringInteraction()) return
     if (!user) {
       requestAuth()
       return
@@ -1518,6 +1870,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function openDraft(draft: Draft) {
     if (draft.mode !== 'freeform-slide') return
+    if (blockDocumentMutationDuringInteraction()) return
     documentIdentityGenerationRef.current += 1
     shapeFillOperationTokensRef.current.clear()
     saveGenerationRef.current += 1
@@ -1530,8 +1883,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   async function removeDraft(id: string) {
     if (!user) return
+    if (blockDocumentMutationDuringInteraction()) return
     try {
       if (store.remote) await retainImagesNow()
+      if (blockDocumentMutationDuringInteraction()) return
       await store.drafts.remove(user.id, id)
       if (currentUserIdRef.current !== user.id) return
       if (id === currentDraftIdRef.current) {
@@ -1787,6 +2142,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       activeParentPath={activeGroupPath}
                       selectedPaths={selectionPaths}
                       onNodePointerDown={onSceneNodePointerDown}
+                      onNodeDoubleClick={onSceneNodeDoubleClick}
                       onTextChange={(path, text) => {
                         const directPath = directChildPathForScope(
                           activeSlide.nodes,
@@ -1849,40 +2205,50 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             <FreeformLayersPanel
               nodes={activeSlide.nodes}
               selectedPaths={selectionPaths}
-              hasEffectiveLockedSelection={Boolean(effectiveLockedSelection)}
+              hasStructuralLockedSelection={Boolean(
+                effectiveLockedSelection || lockedDescendantSelection
+              )}
               onSelect={selectLayerPath}
               onRename={renameLayer}
               onReorder={reorderLayers}
               onDropReorder={reorderLayersAbove}
               onSetLocked={setLayerLocked}
               onSetHidden={setLayerHidden}
+              onGroup={groupSelection}
+              onUngroup={ungroupSelection}
             />
           )}
         >
           <div className="freeform-panel-head">
             <span>属性</span>
-            {selectedProperties && (
+            {(selectedProperties || activeGroupPath.length > 0) && (
               <nav
                 className="freeform-inspector-breadcrumb"
-                aria-label="对象路径"
-                title={[
-                  ...selectedProperties.breadcrumbs.map((breadcrumb) => breadcrumb.name),
-                  selectedProperties.node.name,
-                ].join(' / ')}
+                aria-label={selectedProperties ? '对象路径' : '编辑范围'}
+                data-testid={selectedProperties ? undefined : 'freeform-scope-breadcrumb'}
+                title={(selectedProperties
+                  ? [
+                      ...selectedProperties.breadcrumbs.map((breadcrumb) => breadcrumb.name),
+                      selectedProperties.node.name,
+                    ]
+                  : scopeBreadcrumbs.map((breadcrumb) => breadcrumb.name)
+                ).join(' / ')}
               >
-                {selectedProperties.breadcrumbs.map((breadcrumb, index) => (
+                {(selectedProperties?.breadcrumbs ?? scopeBreadcrumbs).map((breadcrumb, index) => (
                   <span key={scenePathKey(breadcrumb.path)} title={breadcrumb.name}>
                     {index > 0 && <span className="freeform-inspector-breadcrumb-separator" aria-hidden="true">/</span>}
                     {breadcrumb.name}
                   </span>
                 ))}
-                <span
-                  className="freeform-inspector-breadcrumb-current"
-                  title={selectedProperties.node.name}
-                >
-                  <span className="freeform-inspector-breadcrumb-separator" aria-hidden="true">/</span>
-                  {selectedProperties.node.name}
-                </span>
+                {selectedProperties && (
+                  <span
+                    className="freeform-inspector-breadcrumb-current"
+                    title={selectedProperties.node.name}
+                  >
+                    <span className="freeform-inspector-breadcrumb-separator" aria-hidden="true">/</span>
+                    {selectedProperties.node.name}
+                  </span>
+                )}
               </nav>
             )}
           </div>

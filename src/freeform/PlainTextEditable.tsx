@@ -94,6 +94,13 @@ export function PlainTextEditable({
         composingRef.current = false
         if (!readOnly) publish()
       }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        if (event.nativeEvent.isComposing || composingRef.current) return
+        event.preventDefault()
+        event.stopPropagation()
+        ref.current?.blur()
+      }}
       onPaste={(event) => {
         event.preventDefault()
         if (readOnly) return

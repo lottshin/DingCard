@@ -87,6 +87,7 @@ function channelGradient(channel: keyof Rgb, rgb: Rgb): string {
 
 export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const rgb = hexToRgb(color)
 
@@ -99,14 +100,18 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
     }
 
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      setOpen(false)
+      requestAnimationFrame(() => triggerRef.current?.focus())
     }
 
     window.addEventListener('pointerdown', closeOnOutsidePointer, true)
-    window.addEventListener('keydown', closeOnEscape)
+    window.addEventListener('keydown', closeOnEscape, true)
     return () => {
       window.removeEventListener('pointerdown', closeOnOutsidePointer, true)
-      window.removeEventListener('keydown', closeOnEscape)
+      window.removeEventListener('keydown', closeOnEscape, true)
     }
   }, [open])
 
@@ -117,6 +122,7 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
   return (
     <div className="paint-color" ref={rootRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="paint-color-button"
         data-testid="paint-color-button"
