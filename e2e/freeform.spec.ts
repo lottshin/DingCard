@@ -5641,6 +5641,7 @@ test('nested scene paths update every leaf style family', async ({ page }) => {
   await shapeStrokePopover.getByLabel('形状描边颜色 自定义 HEX', { exact: true }).fill('#ef4444')
   await expect(shape).toHaveCSS('border-color', 'rgb(239, 68, 68)')
   await page.keyboard.press('Escape')
+  await expect(shapeStroke).toBeFocused()
 
   const shapeStrokeWidth = page.getByTestId('inspector-stroke').getByLabel('描边宽', { exact: true })
   await shapeStrokeWidth.fill('8')
@@ -5668,6 +5669,7 @@ test('nested scene paths update every leaf style family', async ({ page }) => {
   await lineStrokePopover.getByLabel('线条颜色 自定义 HEX', { exact: true }).fill('#14b8a6')
   await expect(lineNode.locator('line')).toHaveAttribute('stroke', '#14b8a6')
   await page.keyboard.press('Escape')
+  await expect(lineStrokeButton).toBeFocused()
 
   const lineStrokeWidth = lineStroke.getByLabel('粗细', { exact: true })
   await lineStrokeWidth.fill('10')
