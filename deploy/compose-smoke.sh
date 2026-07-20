@@ -7,9 +7,12 @@
 # 用法: bash deploy/compose-smoke.sh
 set -u
 
-PROJECT=dinka-smoke
-WEB_PORT=8093
+PROJECT="${COMPOSE_SMOKE_PROJECT:-dinka-smoke}"
+WEB_PORT="${COMPOSE_SMOKE_WEB_PORT:-8093}"
 ENV_FILE="$(mktemp)"
+HOME_BODY_FILE="$(mktemp)"
+HEALTH_BODY_FILE="$(mktemp)"
+IMAGE_FILE="$(mktemp)"
 FAIL=0
 
 # 临时测试用环境(密钥仅用于本次冒烟,不落仓库)。
@@ -20,7 +23,7 @@ EOF
 cleanup() {
   echo "=== 清理 ==="
   docker compose -p "$PROJECT" --env-file "$ENV_FILE" down -v --remove-orphans >/dev/null 2>&1
-  rm -f "$ENV_FILE" /tmp/dinka-smoke-*.png 2>/dev/null
+  rm -f "$ENV_FILE" "$HOME_BODY_FILE" "$HEALTH_BODY_FILE" "$IMAGE_FILE" 2>/dev/null
   echo "已清理"
 }
 trap cleanup EXIT
@@ -31,34 +34,39 @@ fail() { echo "  ✗ $1  <-- $2"; FAIL=1; }
 echo "=== build + up ==="
 WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" up -d --build 2>&1 | tail -4
 
-echo "=== 等后端 healthy ==="
-for i in $(seq 1 30); do
-  h=$(docker inspect --format '{{.State.Health.Status}}' "${PROJECT}-server-1" 2>/dev/null || echo none)
-  echo "  $i: $h"
-  [ "$h" = healthy ] && break
+base="http://127.0.0.1:${WEB_PORT}"
+ready=0
+echo "=== 等首页和 API 就绪(最多 60 秒) ==="
+for i in $(seq 1 60); do
+  home_code=$(curl -sS --max-time 2 -o "$HOME_BODY_FILE" -w '%{http_code}' "$base/" 2>/dev/null || echo 000)
+  health_code=$(curl -sS --max-time 2 -o "$HEALTH_BODY_FILE" -w '%{http_code}' "$base/api/health" 2>/dev/null || echo 000)
+  health_ok=$(node -e "try{const v=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));process.stdout.write(v.ok===true?'true':'false')}catch{process.stdout.write('false')}" "$HEALTH_BODY_FILE")
+  echo "  $i: home=$home_code api=$health_code ok=$health_ok"
+  if [ "$home_code" = 200 ] && grep -q '<div id="root">' "$HOME_BODY_FILE" \
+    && [ "$health_code" = 200 ] && [ "$health_ok" = true ]; then
+    ready=1
+    break
+  fi
   sleep 1
 done
+[ "$ready" = 1 ] \
+  && pass "首页与 /api/health 在 60 秒内就绪" \
+  || fail "首页/API 就绪" "home=$home_code api=$health_code body=$(cat "$HEALTH_BODY_FILE" 2>/dev/null)"
 
-base="http://127.0.0.1:${WEB_PORT}"
-
-# 1) 首页经 Nginx
-body=$(curl -s "$base/")
-echo "$body" | grep -q '<div id="root">' && pass "首页经 Nginx 出 (root div)" || fail "首页" "$body"
-
-# 2) 注册经 /api 反代
+# 1) 注册经 /api 反代
 reg=$(curl -s -X POST "$base/api/auth/register" -H 'content-type: application/json' \
   -d '{"username":"smoke","password":"1234"}')
 token=$(printf '%s' "$reg" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).token||'')}catch{console.log('')}})")
 [ -n "$token" ] && pass "注册经 /api 反代拿到 token" || fail "注册" "$reg"
 
-# 3) 上传图片经 web->server,写入 uploads 卷
-node -e "require('fs').writeFileSync('/tmp/dinka-smoke-1.png',Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64'))"
+# 2) 上传图片经 web->server,写入 uploads 卷
+node -e "require('fs').writeFileSync(process.argv[1],Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64'))" "$IMAGE_FILE"
 up=$(curl -s -X POST "$base/api/images" -H "authorization: Bearer $token" \
-  -F "file=@/tmp/dinka-smoke-1.png;type=image/png")
+  -F "file=@$IMAGE_FILE;type=image/png")
 imgurl=$(printf '%s' "$up" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).url||'')}catch{console.log('')}})")
 [ -n "$imgurl" ] && pass "上传经 /api 反代 (url=$imgurl)" || fail "上传" "$up"
 
-# 4) 关键:后端写的图片,Nginx 能否经只读共享卷直出
+# 3) 关键:后端写的图片,Nginx 能否经只读共享卷直出
 if [ -n "$imgurl" ]; then
   code=$(curl -s -o /dev/null -w '%{http_code}' "$base$imgurl")
   [ "$code" = 200 ] && pass "图片经 Nginx 直出 (跨容器共享卷 200)" || fail "图片直出" "HTTP $code"
