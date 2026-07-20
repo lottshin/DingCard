@@ -61,8 +61,12 @@ token=$(printf '%s' "$reg" | node -e "let s='';process.stdin.on('data',d=>s+=d);
 
 # 2) 上传图片经 web->server,写入 uploads 卷
 node -e "require('fs').writeFileSync(process.argv[1],Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64'))" "$IMAGE_FILE"
+CURL_IMAGE_FILE="$IMAGE_FILE"
+if command -v cygpath >/dev/null 2>&1; then
+  CURL_IMAGE_FILE="$(cygpath -w "$IMAGE_FILE")"
+fi
 up=$(curl -s -X POST "$base/api/images" -H "authorization: Bearer $token" \
-  -F "file=@$IMAGE_FILE;type=image/png")
+  -F "file=@$CURL_IMAGE_FILE;type=image/png;filename=smoke.png")
 imgurl=$(printf '%s' "$up" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).url||'')}catch{console.log('')}})")
 [ -n "$imgurl" ] && pass "上传经 /api 反代 (url=$imgurl)" || fail "上传" "$up"
 

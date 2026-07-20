@@ -107,4 +107,5 @@ test('verification report and compose smoke expose explicit execution contracts'
   assert.match(smoke, /COMPOSE_SMOKE_WEB_PORT/)
   assert.match(smoke, /\/api\/health/)
   assert.match(smoke, /seq 1 60/)
+  assert.match(smoke, /command -v cygpath/)
 })
