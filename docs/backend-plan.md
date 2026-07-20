@@ -304,7 +304,8 @@ curl -sf http://127.0.0.1:8080/api/health   # {"ok":true}
 ## 7. 安全清单(上生产前必须)
 
 - [x] 密码 **bcrypt/argon2**,弃用 SHA-256
-- [x] `JWT_SECRET` 走环境变量,足够随机,不进 git
+- [x] `JWT_SECRET` 走环境变量且生产环境非空,不进 git
+- [ ] `JWT_SECRET` 使用足够随机的生产密钥(部署环境核验)
 - [x] 所有草稿/图片查询强制 `WHERE user_id = <来自 JWT>`,不信前端
 - [x] 上传校验:大小上限、MIME 白名单、随机文件名(防路径穿越)
 - [ ] 全站 HTTPS(Let's Encrypt)
@@ -317,12 +318,12 @@ curl -sf http://127.0.0.1:8080/api/health   # {"ok":true}
 | 已完成项 | 实现/配置证据 | 自动化测试/冒烟证据 |
 |---|---|---|
 | bcrypt 密码存储 | `server/src/routes/auth.js` | `server/smoke-test.mjs` 检查数据库 bcrypt hash、登录和错误密码。 |
-| 生产 JWT 密钥 | `server/src/config.js`、根 `.env.example`、`server/.env.example` | `server/src/config.test.mjs` 验证生产空密钥拒绝启动；`server/smoke-test.mjs` 使用生产配置启动。 |
+| 生产 JWT 环境变量与非空校验 | `server/src/config.js`、根 `.env.example`、`server/.env.example` | `server/src/config.test.mjs` 验证生产空密钥拒绝启动；`server/smoke-test.mjs` 使用生产配置启动。 |
 | 草稿/图片所有权 | `server/src/db.js`、`server/src/routes/drafts.js`、`server/src/routes/images.js` | `server/smoke-test.mjs` 覆盖跨用户草稿与图片隔离；`server/src/routes/assetLock.integration.test.mjs` 覆盖 retain 原子所有权校验。 |
 | 上传校验 | `server/src/routes/images.js` | `server/smoke-test.mjs` 覆盖单文件 413、MIME 415、UUID 文件名和并发配额。 |
 | 认证限流 | `server/src/index.js`、`server/src/config.js` | `server/smoke-test.mjs` 以固定上限验证注册路由返回 429。 |
 
-HTTPS、宿主机文件权限必须在真实部署环境验收。CORS 已有条件启用实现，但尚无直接覆盖启用/禁用行为的自动化测试，因此仍保持未完成。
+JWT 密钥随机强度、HTTPS、宿主机文件权限必须在真实部署环境验收。CORS 已有条件启用实现，但尚无直接覆盖启用/禁用行为的自动化测试，因此仍保持未完成。
 
 ---
 

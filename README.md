@@ -58,7 +58,7 @@ npm --prefix server run dev
 
 ```powershell
 $env:VITE_API_BASE='http://127.0.0.1:3000'
-npm run dev -- --host 127.0.0.1 --port 5173
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
 复制环境变量模板时，PowerShell 使用：
@@ -83,7 +83,7 @@ npm --prefix server run dev
 
 ```bash
 export VITE_API_BASE='http://127.0.0.1:3000'
-npm run dev -- --host 127.0.0.1 --port 5173
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
 复制环境变量模板时，POSIX Shell 使用：

@@ -30,6 +30,7 @@ test('release entry documentation matches current versions and commands', () => 
   }
   assert.match(readme, /PowerShell/)
   assert.match(readme, /POSIX/)
+  assert.match(readme, /--strictPort/)
   assert.match(readme, /VITE_API_BASE/)
   assert.match(readme, /LocalStore[\s\S]*RemoteStore[\s\S]*不(?:会|自动)迁移/)
 
@@ -66,14 +67,19 @@ test('backend release checklists distinguish repository and deployment evidence'
   const plan = read('docs/backend-plan.md')
   for (const implemented of [
     '密码 **bcrypt/argon2**',
-    '`JWT_SECRET` 走环境变量',
+    '`JWT_SECRET` 走环境变量且生产环境非空',
     '所有草稿/图片查询',
     '上传校验',
     '注册加基础限流',
   ]) {
     assert.match(plan, new RegExp(`- \\[x\\] ${escapeRegExp(implemented)}`))
   }
-  for (const deploymentOnly of ['全站 HTTPS', '`data.db` 权限 600', 'CORS:']) {
+  for (const deploymentOnly of [
+    '`JWT_SECRET` 使用足够随机的生产密钥',
+    '全站 HTTPS',
+    '`data.db` 权限 600',
+    'CORS:',
+  ]) {
     assert.match(plan, new RegExp(`- \\[ \\] ${escapeRegExp(deploymentOnly)}`))
   }
   assert.match(plan, /实现\/配置证据[^\n]*自动化测试\/冒烟证据/)
@@ -106,6 +112,12 @@ test('verification report and compose smoke expose explicit execution contracts'
   assert.match(smoke, /COMPOSE_SMOKE_PROJECT/)
   assert.match(smoke, /COMPOSE_SMOKE_WEB_PORT/)
   assert.match(smoke, /\/api\/health/)
-  assert.match(smoke, /seq 1 60/)
   assert.match(smoke, /command -v cygpath/)
+  assert.match(smoke, /SECONDS \+ 60/)
+  assert.match(smoke, /--connect-timeout/)
+  assert.match(smoke, /Compose 资源清理失败/)
+
+  const backendSmoke = read('server/smoke-test.mjs')
+  assert.match(backendSmoke, /RATE_LIMIT_MAX: '300'/)
+  assert.match(backendSmoke, /x-ratelimit-limit/)
 })

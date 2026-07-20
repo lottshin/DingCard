@@ -30,6 +30,7 @@ const server = spawn(process.execPath, ['src/index.js'], {
     USER_QUOTA_BYTES: '1024',
     MAX_UPLOAD_BYTES: '1024',
     AUTH_RATE_LIMIT_MAX: '12',
+    RATE_LIMIT_MAX: '300',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
@@ -389,6 +390,7 @@ async function main() {
   check('alice existing small-image flow still serves the surviving upload', r.status === 200, r.status)
 
   let registerRateLimited = false
+  let registerRateLimitDetail = null
   for (let i = 0; i < 12; i++) {
     r = await fetch(`${base}/api/auth/register`, {
       method: 'POST',
@@ -396,11 +398,13 @@ async function main() {
       body: JSON.stringify({ username: `rate-limit-${i}`, password: 'secret' }),
     })
     if (r.status === 429) {
-      registerRateLimited = true
+      const limit = r.headers.get('x-ratelimit-limit')
+      registerRateLimited = limit === '12'
+      registerRateLimitDetail = { status: r.status, limit }
       break
     }
   }
-  check('registration route is rate limited -> 429', registerRateLimited, r.status)
+  check('registration route is rate limited by the auth limit -> 429', registerRateLimited, registerRateLimitDetail ?? r.status)
 }
 
 async function uploadImage(auth, bytes, filename = 'image.png', mime = 'image/png') {
