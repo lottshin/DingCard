@@ -1,29 +1,36 @@
 # 0.10.1 本地发布验证
 
 - 验证日期：2026-07-20
-- Commit under test：NOT EXECUTED
-- 环境：Windows 10 / PowerShell / Node.js 20；Docker、Compose 与 Bash 状态待检查
+- Commit under test：`7d7ff278de0a38332d44ca6d9d86e76fc55b6331`
+- 环境：Microsoft Windows NT 10.0.22631.0、PowerShell 5.1.22621.6133、Node.js v20.18.0、npm 10.8.2、Python 3.13.3
+- 容器工具：Docker 29.1.2、Docker Compose v2.40.3-desktop.1、Git Bash
 
 状态含义：`PASS` 表示命令在本次验证中以预期结果完成；`FAIL` 表示已经执行但未满足契约；`NOT EXECUTED` 表示尚未执行或当前环境不具备前置条件。
 
 | Check | Status | Evidence |
 |---|---|---|
-| Release contract | NOT EXECUTED | 待运行。 |
-| Frontend unit | NOT EXECUTED | 待运行。 |
-| Backend tests | NOT EXECUTED | 待运行。 |
-| Backend HTTP smoke | NOT EXECUTED | 待运行。 |
-| Production build | NOT EXECUTED | 待运行。 |
-| CI YAML | NOT EXECUTED | 待运行。 |
-| Full E2E | NOT EXECUTED | 待运行。 |
-| Compose config | NOT EXECUTED | 待检查 Docker CLI 与 Compose 插件。 |
-| Container smoke | NOT EXECUTED | 待检查 Docker daemon 与 Bash。 |
-| Compose cleanup | NOT EXECUTED | 仅在容器冒烟实际执行后记录。 |
+| Release contract | PASS | `node --test scripts/release-readiness.test.mjs`：4/4。 |
+| Frontend unit | PASS | `npm run test:unit`：24 个测试文件、397/397。 |
+| Backend tests | PASS | `npm run test:server`：48/48。 |
+| Backend HTTP smoke | PASS | `node server/smoke-test.mjs`：认证、所有权、413/415/429、租约/GC 和并发配额全部通过。 |
+| Production build | PASS | `npm run build`：TypeScript 与 Vite 构建成功；保留已知的大块警告。 |
+| CI YAML | PASS | PyYAML 6.0.3 成功解析 `.github/workflows/ci.yml`，并确认 `static`/`browser` 两个 job。 |
+| Full E2E | PASS | `npm run test:e2e`：184/184，耗时约 5.4 分钟。 |
+| Compose config | PASS | 唯一项目 `rednote-release-smoke-1784532424633`、端口 18813；展开结果包含 `server` 与 `web`。 |
+| Container smoke | PASS | 首页与 `/api/health` 首轮即 200；注册、图片上传、Nginx 只读卷直出均通过。 |
+| Compose cleanup | PASS | 按 Compose project label 查询，容器、网络和卷结果均为空。 |
 
 ## 构建产物
 
-待记录生产构建的实际 JS/CSS 原始体积、gzip 体积和警告。
+- `dist/index.html`：2.35 kB，gzip 1.12 kB。
+- `dist/assets/index-CvLZbRsD.css`：62.94 kB，gzip 10.56 kB。
+- `dist/assets/index-r1MgV6ea.js`：1,111.54 kB，gzip 369.09 kB。
+- Vite 仍提示单 chunk 超过 500 kB。该警告已知且本轮明确不做拆包优化，不影响构建退出状态。
 
 ## Docker 验证
 
-待分别记录 Docker CLI、Compose 插件、daemon、配置展开、HTTP 健康检查和资源清理结果。配置验证与容器冒烟是独立结果，daemon 不可用不应覆盖 Compose 配置解析结果。
-
+- Docker CLI、Compose 插件和 daemon 分别检查，均可用。
+- Compose 配置验证使用非生产测试密钥、唯一项目名和空闲高端口，不读取或写入项目 `.env`。
+- 最终全栈冒烟使用项目 `rednote-release-smoke-1784532424633` 和端口 18813。
+- Git Bash 下发现 curl multipart 的 `@/tmp/...` 嵌入路径不会触发 MSYS 自动转换；新增 `cygpath` 条件转换后，Windows 与 Linux 路径采用各自原生形式，最终上传返回 200。
+- 冒烟脚本通过 EXIT trap 执行 `down -v --remove-orphans`；随后用 Docker project label 独立确认容器、网络和卷为空。
