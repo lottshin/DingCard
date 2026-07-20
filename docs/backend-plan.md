@@ -162,6 +162,7 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 | 409 | 用户名冲突，或 retain 中至少一个托管图片不存在/不属于当前用户；retain 整批失败，不部分续租。 |
 | 413 | 单图超过上传上限，或用户图片配额不足。 |
 | 415 | 上传文件 MIME 不在 PNG/JPEG/WebP 白名单。 |
+| 429 | 全局或认证路由触发限流；注册、登录等认证请求需稍后重试。 |
 
 图片 retain 的机器可读错误码为 `INVALID_IMAGE_RETAIN_REQUEST`、`IMAGE_RETAIN_LIMIT_EXCEEDED`、`IMAGE_RETAIN_CONFLICT`；配额错误码为 `IMAGE_QUOTA_EXCEEDED`。
 
@@ -302,14 +303,26 @@ curl -sf http://127.0.0.1:8080/api/health   # {"ok":true}
 
 ## 7. 安全清单(上生产前必须)
 
-- [ ] 密码 **bcrypt/argon2**,弃用 SHA-256
-- [ ] `JWT_SECRET` 走环境变量,足够随机,不进 git
-- [ ] 所有草稿/图片查询强制 `WHERE user_id = <来自 JWT>`,不信前端
-- [ ] 上传校验:大小上限、MIME 白名单、随机文件名(防路径穿越)
+- [x] 密码 **bcrypt/argon2**,弃用 SHA-256
+- [x] `JWT_SECRET` 走环境变量,足够随机,不进 git
+- [x] 所有草稿/图片查询强制 `WHERE user_id = <来自 JWT>`,不信前端
+- [x] 上传校验:大小上限、MIME 白名单、随机文件名(防路径穿越)
 - [ ] 全站 HTTPS(Let's Encrypt)
-- [ ] 注册加基础限流(防刷号),可用 `@fastify/rate-limit`
+- [x] 注册加基础限流(防刷号),可用 `@fastify/rate-limit`
 - [ ] `data.db` 权限 600,`uploads/` 不允许执行
 - [ ] CORS:同域部署可不开;若前后端分离域名则精确白名单
+
+这里的 `[x]` 只表示仓库同时具备**实现/配置证据**和**自动化测试/冒烟证据**，不代表目标主机已经完成部署审计：
+
+| 已完成项 | 实现/配置证据 | 自动化测试/冒烟证据 |
+|---|---|---|
+| bcrypt 密码存储 | `server/src/routes/auth.js` | `server/smoke-test.mjs` 检查数据库 bcrypt hash、登录和错误密码。 |
+| 生产 JWT 密钥 | `server/src/config.js`、根 `.env.example`、`server/.env.example` | `server/src/config.test.mjs` 验证生产空密钥拒绝启动；`server/smoke-test.mjs` 使用生产配置启动。 |
+| 草稿/图片所有权 | `server/src/db.js`、`server/src/routes/drafts.js`、`server/src/routes/images.js` | `server/smoke-test.mjs` 覆盖跨用户草稿与图片隔离；`server/src/routes/assetLock.integration.test.mjs` 覆盖 retain 原子所有权校验。 |
+| 上传校验 | `server/src/routes/images.js` | `server/smoke-test.mjs` 覆盖单文件 413、MIME 415、UUID 文件名和并发配额。 |
+| 认证限流 | `server/src/index.js`、`server/src/config.js` | `server/smoke-test.mjs` 以固定上限验证注册路由返回 429。 |
+
+HTTPS、宿主机文件权限必须在真实部署环境验收。CORS 已有条件启用实现，但尚无直接覆盖启用/禁用行为的自动化测试，因此仍保持未完成。
 
 ---
 
@@ -444,10 +457,10 @@ UI 层只 import `store`,对两种模式无感。这正是之前"抽 StorageAdap
 
 ### 10.4 开源前检查清单
 
-- [ ] **密钥不进仓库**:`JWT_SECRET`、邮件 API Key 等全走环境变量;提供 `server/.env.example` 模板(只有键名,无值)
+- [x] **密钥不进仓库**:`JWT_SECRET`、邮件 API Key 等全走环境变量;提供 `server/.env.example` 模板(只有键名,无值)
 - [ ] **`.superpowers/`**:确认目录内无不宜公开内容(设计稿注明"不属于产品源代码"),按需加进 `.gitignore` 或清理
 - [ ] **LICENSE**:选协议(个人项目 MIT 最省心)
-- [ ] **README**:说明两种模式;本地模式一键跑,服务器模式指向部署文档(本文)
+- [x] **README**:说明两种模式;本地模式一键跑,服务器模式指向部署文档(本文)
 - [x] **示例配置**:根 `.env.example` 写明 `VITE_API_BASE`（留空 = 本地模式）；Docker Compose 构建仍固定使用同源 `/`。
 
 ---

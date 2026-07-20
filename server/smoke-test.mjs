@@ -28,6 +28,8 @@ const server = spawn(process.execPath, ['src/index.js'], {
     HOST: '127.0.0.1',
     IMAGE_LEASE_MS: '60000',
     USER_QUOTA_BYTES: '1024',
+    MAX_UPLOAD_BYTES: '1024',
+    AUTH_RATE_LIMIT_MAX: '12',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
@@ -253,16 +255,40 @@ async function main() {
   )
 
   directDb = new Database(path.join(dataDir, 'data.db'))
+  const alicePasswordHash = directDb
+    .prepare('SELECT pw_hash FROM users WHERE username = ?')
+    .pluck()
+    .get('alice')
+  check(
+    'registered password is stored as a bcrypt hash',
+    typeof alicePasswordHash === 'string'
+      && /^\$2[aby]\$\d{2}\$/.test(alicePasswordHash)
+      && alicePasswordHash !== 'secret',
+    alicePasswordHash,
+  )
 
   // --- leased image lifecycle: upload, static GET, retain, ownership isolation ---
   const tinyPng = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
     'base64',
   )
-  let uploaded = await uploadImage(auth, tinyPng, 'tiny.png')
+  const invalidMime = await uploadImage(auth, Buffer.from('not an image'), 'note.txt', 'text/plain')
+  check('non-image MIME upload -> 415', invalidMime.response.status === 415, invalidMime.body)
+
+  const oversized = await uploadImage(auth, Buffer.alloc(1025, 1), 'oversized.png')
+  check('single image over MAX_UPLOAD_BYTES -> 413', oversized.response.status === 413, oversized.body)
+
+  let uploaded = await uploadImage(auth, tinyPng, '../../client-name.png')
   check('small PNG upload succeeds', uploaded.response.status === 200 && uploaded.body?.url, uploaded.body)
   const aliceImage = uploaded.body
   const aliceImageId = aliceImage.ref?.slice('img:'.length)
+  const aliceImageFilename = path.basename(new URL(aliceImage.url, base).pathname)
+  check(
+    'upload uses a randomized server filename instead of the client path',
+    /^[0-9a-f]{32}\.png$/.test(aliceImageFilename)
+      && !aliceImageFilename.includes('client-name'),
+    aliceImageFilename,
+  )
   const aliceImageDiskPath = path.join(
     dataDir,
     'uploads',
@@ -361,11 +387,25 @@ async function main() {
 
   r = await fetch(`${base}${uploaded.body.url}`)
   check('alice existing small-image flow still serves the surviving upload', r.status === 200, r.status)
+
+  let registerRateLimited = false
+  for (let i = 0; i < 12; i++) {
+    r = await fetch(`${base}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: `rate-limit-${i}`, password: 'secret' }),
+    })
+    if (r.status === 429) {
+      registerRateLimited = true
+      break
+    }
+  }
+  check('registration route is rate limited -> 429', registerRateLimited, r.status)
 }
 
-async function uploadImage(auth, bytes, filename = 'image.png') {
+async function uploadImage(auth, bytes, filename = 'image.png', mime = 'image/png') {
   const form = new FormData()
-  form.append('file', new Blob([bytes], { type: 'image/png' }), filename)
+  form.append('file', new Blob([bytes], { type: mime }), filename)
   const response = await fetch(`${base}/api/images`, {
     method: 'POST',
     headers: auth,
