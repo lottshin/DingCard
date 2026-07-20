@@ -1,6 +1,6 @@
 # 叮卡 · 后端接入方案
 
-> 当前发布版本：前端 `0.9.0`，后端 `0.2.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
+> 当前发布版本：前端 `0.10.0`，后端 `0.2.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
 
 把当前"纯浏览器存储"改造成真实后端,实现跨设备同步与真实账号。
 
@@ -11,7 +11,7 @@
 - **部署形态**:后端可选 —— 默认纯本地(零部署),配了后端地址才走服务器(见第 10 章)
 
 > 进度:后端、`src/storage/` 的 Local/Remote 双实现、远程联调与 Docker 部署均已落地。
-> 图片租约/回收与 retain API 已接入前后端：RemoteStore 保存自由编辑草稿时执行“续租已有 URL → 上传历史 Data URL → 续租完整 URL → 提交草稿”，活动 Markdown/自由编辑文档还会在图片源变化、恢复联网、页面重新可见和每 5 分钟周期触发续租。认证、草稿与图片操作失败统一显示可恢复的非阻塞提示，不再静默失败。本文与代码保持同步。
+> 图片租约/回收与 retain API 已接入前后端：RemoteStore 保存自由编辑 v3 递归场景树时执行“续租已有 URL → 上传历史 Data URL → 续租完整 URL → 提交草稿”，图片收集包含隐藏组及其后代。活动 Markdown/自由编辑文档还会在图片源变化、恢复联网、页面重新可见和每 5 分钟周期触发续租。认证、草稿与图片操作失败统一显示可恢复的非阻塞提示，不再静默失败。本文与代码保持同步。
 
 ---
 
@@ -282,12 +282,15 @@ curl -sf http://127.0.0.1:8080/api/health   # {"ok":true}
 |---|---|
 | `npm run test:server` | SQLite 迁移、图片引用/租约/GC、用户级资源锁和后端路由单元/集成测试。 |
 | `node server/smoke-test.mjs` | 直连 Fastify 的认证、跨用户草稿隔离、图片上传/retain/配额/回收及 Fastify 静态图片路径。 |
-| `npm run test:integration` | 真实 Fastify 后端 + RemoteStore 前端，包括远程图片保存恢复、认证失效和可恢复错误 UI。 |
+| `npm run test:integration` | 真实 Fastify 后端 + RemoteStore 前端，包括 v3 嵌套草稿、隐藏图片租约/GC、延迟保存权威门、认证失效和可恢复错误 UI。 |
+| `npm run test:acceptance` | 自由编辑布局、可访问控件、嵌套图层保存/重载和 5000 ms 导出预算。 |
 | `npm run test:e2e` | 默认 LocalStore、离线字体和自由编辑导出等浏览器回归。 |
 | `$env:JWT_SECRET='compose-validation-secret'; docker compose config` | 展开并校验 Compose 配置，确认 `IMAGE_LEASE_MS` 等变量进入 server 容器。 |
 | `deploy/compose-smoke.sh` | 在可使用 Docker daemon 的环境中验证 Nginx 首页、`/api` 反代、uploads 只读卷直出和数据库卷隔离。 |
 
 生产静态路径由 Nginx 直接读取 uploads 只读卷；Fastify 同时保留同一路径的静态注册，供直连开发、自动化联调和后端冒烟使用。
+
+真实后端集成测试与用户预览端口隔离：后端固定使用 `5310`，前端固定使用 `5273`，二者统一从 `e2e-integration/ports.ts` 读取。该配置为每次运行创建临时数据目录，并仅在集成环境把 `IMAGE_LEASE_MS` 缩短为 `500`；生产默认值和常用的 `3100`/`5174` 本地服务不会被复用或停止。
 
 ### 6.6 资源占用(2c2g 完全够)
 - server(Node+Fastify)常驻 ~60–120MB;Nginx ~20MB;SQLite 几乎不占额外内存
