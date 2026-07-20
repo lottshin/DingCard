@@ -147,4 +147,3 @@ docker compose up -d --build
 - 正式环境必须在可信反向代理处终结 HTTPS，并限制数据库和上传目录权限。
 
 自由画布的数据模型、迁移和交互契约见 [自由编辑器说明](docs/freeform-editor.md)。
-
