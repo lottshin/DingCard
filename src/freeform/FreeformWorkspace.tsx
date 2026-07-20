@@ -2916,15 +2916,20 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       )}
                       <div className="field-grid with-gap">
                         <div
-                          className="color-field"
+                          className="stroke-color-field"
                           data-testid={isShapeElement(selectedElement) ? 'shape-stroke-color' : 'line-stroke-color'}
                         >
-                          <span>{isShapeElement(selectedElement) ? '描边' : '颜色'}</span>
-                          <ColorPickerButton
-                            label={isShapeElement(selectedElement) ? '形状描边颜色' : '线条颜色'}
-                            color={selectedElement.stroke}
-                            onChange={(stroke) => updateSelectedStyle({ stroke })}
-                          />
+                          <span className="stroke-color-label">
+                            {isShapeElement(selectedElement) ? '描边' : '颜色'}
+                          </span>
+                          <div className="color-field">
+                            <span className="color-field-value">{selectedElement.stroke.toUpperCase()}</span>
+                            <ColorPickerButton
+                              label={isShapeElement(selectedElement) ? '形状描边颜色' : '线条颜色'}
+                              color={selectedElement.stroke}
+                              onChange={(stroke) => updateSelectedStyle({ stroke })}
+                            />
+                          </div>
                         </div>
                         <label>
                           {isShapeElement(selectedElement) ? '描边宽' : '粗细'}

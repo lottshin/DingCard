@@ -1,6 +1,6 @@
 # 叮卡 · 后端接入方案
 
-> 当前发布版本：前端 `0.10.0`，后端 `0.2.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
+> 当前发布版本：前端 `0.10.1`，后端 `0.2.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
 
 把当前"纯浏览器存储"改造成真实后端,实现跨设备同步与真实账号。
 

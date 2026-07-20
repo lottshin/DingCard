@@ -1255,6 +1255,33 @@ test('shared inspector controls use 32px height, 8px radius, and custom native r
   await expect(page.locator('.freeform-inspector select:visible')).toHaveCount(0)
 })
 
+test('line stroke color and width controls align in the compact inspector', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await openFreeform(page)
+  await insertLine(page, '直线')
+
+  const stroke = page.getByTestId('inspector-stroke')
+  const colorControl = stroke.getByTestId('line-stroke-color')
+  const colorField = colorControl.locator('.color-field')
+  const widthInput = stroke.getByLabel('粗细', { exact: true })
+  const [colorBox, widthBox] = await Promise.all([
+    colorField.boundingBox(),
+    widthInput.boundingBox(),
+  ])
+
+  expect(colorBox).toBeTruthy()
+  expect(widthBox).toBeTruthy()
+  expect(Math.abs(colorBox!.y - widthBox!.y)).toBeLessThanOrEqual(1)
+  expect(colorBox!.height).toBe(32)
+  expect(widthBox!.height).toBe(32)
+  await expect(colorControl.locator('.stroke-color-label')).toHaveText('颜色')
+  const colorValue = colorControl.locator('.color-field-value')
+  await expect(colorValue).toHaveText(/^#[0-9A-F]{6}$/)
+  await expect.poll(() => colorValue.evaluate((element) => (
+    element.scrollWidth <= element.clientWidth
+  ))).toBe(true)
+})
+
 test('shared inspector controls expose a visible accent focus ring', async ({ page }) => {
   await openFreeform(page)
   const accentColor = await page.evaluate(() => {

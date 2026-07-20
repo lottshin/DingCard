@@ -1973,6 +1973,16 @@ html.theme-anim * {
   font-weight: 700;
 }
 
+.freeform-inspector .stroke-color-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .freeform-inspector .field-grid .color-field {
   position: relative;
   display: flex;
@@ -1982,6 +1992,29 @@ html.theme-anim * {
   color: var(--text-2);
   font-size: 11px;
   font-weight: 700;
+}
+
+.freeform-inspector .stroke-color-field .color-field {
+  gap: 4px;
+  padding: 0 4px 0 7px;
+}
+
+.freeform-inspector .stroke-color-field .color-field-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-inspector .stroke-color-field .paint-color-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .freeform-inspector .field-grid input {
