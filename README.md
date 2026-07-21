@@ -1,50 +1,105 @@
 # 叮卡
 
-叮卡是一个在浏览器中制作社交媒体图文卡片和自由画布的编辑器。
+<div align="center">
+  <p><strong>小红书长文排版 + 轻设计出图</strong></p>
+  <p>把一篇长文自动排成适合滑动阅读的图文卡片，也可以在自由画布中制作封面、重点页和多页视觉内容。</p>
+</div>
 
-- **Markdown 卡片**：把 Markdown 自动分页为固定尺寸卡片，并导出单页或 ZIP。
-- **自由画布**：编辑多页面图文作品，支持文本、形状、图片、线条、嵌套分组、图层树、锁定/隐藏和 PNG/ZIP 导出。
+<p align="center">
+  <img src="docs/assets/markdown-workspace.png" width="49%" alt="叮卡 Markdown 长文排版工作区">
+  <img src="docs/assets/freeform-workspace.png" width="49%" alt="叮卡自由画布轻设计工作区">
+</p>
 
-默认使用浏览器本地存储，不需要后端；配置 `VITE_API_BASE` 后可连接仓库内的 Fastify + SQLite 服务。
+<p align="center"><sub>左：Markdown 长文自动分页　右：自由画布轻设计出图</sub></p>
 
-## 环境要求
+叮卡把内容排版和轻量设计放在同一个浏览器工具中：
+
+- 写长文时，用 Markdown 专注内容，实时预览分页效果。
+- 做封面或重点页时，切到自由画布编辑文字、图片、形状和图层。
+- 完成后导出当前页，或把整组图片打包为 ZIP。
+- 默认数据保存在本地浏览器；需要跨设备同步时，可以连接仓库自带的 Fastify + SQLite 服务。
+
+## 两种创作方式
+
+### Markdown 长文排版
+
+粘贴或编写 Markdown，叮卡会按照目标平台尺寸自动分页。编辑区和图片预览实时并排，适合教程、清单、知识分享和小红书长图文。
+
+支持：
+
+- 小红书、微博和推特尺寸预设。
+- 主题、字体、圆角和个人资料样式。
+- Markdown 标题、列表、引用、代码块与手动分页。
+- 图片粘贴、宽度调整、单页导出和全部分页打包。
+
+![叮卡 Markdown 长文排版工作区](docs/assets/markdown-workspace.png)
+
+### 自由画布轻设计
+
+自由画布用于制作封面、重点页和更灵活的多页图文。它保留了轻量工具的上手速度，同时提供完整的图层与嵌套编辑能力。
+
+支持：
+
+- 文本、图片、矩形、圆形、三角形、直线和箭头。
+- 多页面、页面尺寸、缩放、吸附、对齐与分布。
+- 图层树、重命名、拖放排序、分组与取消分组。
+- 嵌套作用域、锁定、隐藏、撤销与重做。
+- 当前页 PNG 导出和全部页面 ZIP 导出。
+
+![叮卡自由画布轻设计工作区](docs/assets/freeform-workspace.png)
+
+## 快速开始
+
+环境要求：
 
 - Node.js 20+
 - npm
 - Chrome（运行 Playwright E2E 时需要）
 - Docker 与 Compose 插件（仅 Docker 部署和全栈冒烟需要）
 
-## 本地模式
+默认启动本地模式，不需要后端：
 
-本地模式是默认配置，账号、草稿和图片数据保存在当前浏览器中。
-
-```powershell
+```bash
 npm ci
 npm run dev
 ```
 
-打开终端输出的本地地址。生产构建与本地预览：
+打开终端输出的地址即可使用。生产构建与本地预览：
 
-```powershell
+```bash
 npm run build
 npm run preview
 ```
 
-`LocalStore` 使用 `localStorage` 保存账号与草稿，使用 `sessionStorage` 和草稿副本管理图片。清理浏览器数据会删除本地内容，应先导出重要作品。
+## 数据模式
 
-## 服务器模式
+### 本地模式
 
-服务器模式使用 `RemoteStore`，提供真实账号、SQLite 草稿和服务端图片存储。`LocalStore` 与 `RemoteStore` 是独立数据源；设置或清空 `VITE_API_BASE` **不会迁移**已有账号、草稿或图片。
+本地模式是默认配置。账号和草稿保存在 `localStorage`，图片由 `sessionStorage` 和草稿副本管理。
+
+- 不需要服务器，克隆后即可运行。
+- 数据只存在当前浏览器，清理浏览器数据会删除本地内容。
+- 本地账号仅用于浏览器内区分草稿，不是真实远程身份认证，请勿复用重要密码。
+- 重要作品应及时导出。
+
+### 服务器模式
+
+服务器模式使用 `RemoteStore`，提供真实账号、SQLite 草稿和服务端图片存储。设置 `VITE_API_BASE` 后启用。
+
+`LocalStore` 与 `RemoteStore` 是独立数据源，切换模式**不会迁移**已有账号、草稿或图片，也不会覆盖另一端的数据。
+
+<details>
+<summary><strong>展开服务器模式开发说明</strong></summary>
 
 先安装后端依赖：
 
-```powershell
+```bash
 npm --prefix server ci
 ```
 
-以下示例使用两个终端。开发环境可不设置 `JWT_SECRET`，但服务每次重启会生成新密钥并使旧令牌失效；建议本地联调也显式设置。
+开发环境可不设置 `JWT_SECRET`，但服务每次重启会生成新密钥并使旧令牌失效；建议本地联调也显式设置。
 
-### PowerShell
+#### PowerShell
 
 终端一：
 
@@ -61,7 +116,7 @@ $env:VITE_API_BASE='http://127.0.0.1:3000'
 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-复制环境变量模板时，PowerShell 使用：
+复制环境变量模板：
 
 ```powershell
 Copy-Item server/.env.example server/.env
@@ -69,7 +124,7 @@ Copy-Item server/.env.example server/.env
 
 模板用于核对变量；后端不会自动读取 `.env`，直跑时仍需在进程环境中设置变量。
 
-### POSIX Shell
+#### POSIX Shell
 
 终端一：
 
@@ -86,7 +141,7 @@ export VITE_API_BASE='http://127.0.0.1:3000'
 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-复制环境变量模板时，POSIX Shell 使用：
+复制环境变量模板：
 
 ```bash
 cp server/.env.example server/.env
@@ -94,9 +149,14 @@ cp server/.env.example server/.env
 
 后端健康检查地址为 `http://127.0.0.1:3000/api/health`。
 
+</details>
+
 ## Docker Compose
 
 Docker Compose 以同源方式启动前端 Nginx 和后端服务。先复制根环境模板并填写强随机 `JWT_SECRET`。
+
+<details>
+<summary><strong>展开 Docker Compose 启动说明</strong></summary>
 
 PowerShell：
 
@@ -116,9 +176,11 @@ docker compose up -d --build
 
 把生成值写入 `.env` 的 `JWT_SECRET=`，不要提交 `.env`。默认入口为 `http://127.0.0.1:8080/`，健康检查为 `http://127.0.0.1:8080/api/health`。
 
-生产部署还必须配置 HTTPS、宿主机数据权限和备份。完整拓扑、配置和安全清单见 [后端接入方案](docs/backend-plan.md)。
+生产部署还必须配置 HTTPS、宿主机数据权限和备份。完整拓扑、配置和安全清单见[后端接入方案](docs/backend-plan.md)。
 
-## 命令
+</details>
+
+## 开发与验证
 
 | 命令 | 用途 |
 |---|---|
@@ -138,12 +200,25 @@ docker compose up -d --build
 
 后端自身还提供 `npm --prefix server start`、`npm --prefix server run dev` 和 `npm --prefix server test`。
 
-## 数据与部署
+## 数据与部署边界
 
-- 本地模式数据只存在当前浏览器，仓库不提供自动迁移到服务器的流程。
 - 直跑后端默认把 SQLite 和上传文件写入 `server/data/`；可用 `DATA_DIR` 覆盖。
 - Compose 使用独立的数据库卷和上传卷，升级镜像不会自动删除数据。
-- 备份必须同时包含 SQLite 数据库与 uploads 目录。
+- 备份必须同时包含 SQLite 数据库与 `uploads` 目录。
 - 正式环境必须在可信反向代理处终结 HTTPS，并限制数据库和上传目录权限。
+- 当前不提供 LocalStore 到 RemoteStore 的自动导入流程。
 
-自由画布的数据模型、迁移和交互契约见 [自由编辑器说明](docs/freeform-editor.md)。
+## 技术栈
+
+- React 18、TypeScript、Vite
+- CodeMirror 6、Marked
+- Fastify、SQLite、JWT、bcrypt
+- Vitest、Playwright
+- Docker Compose、Nginx
+
+## 文档
+
+- [自由画布数据模型与交互说明](docs/freeform-editor.md)
+- [后端接入与部署方案](docs/backend-plan.md)
+- [0.10.1 本地发布验证](docs/release-verification.md)
+- [更新日志](CHANGELOG.md)
