@@ -17,6 +17,10 @@ test('release entry documentation matches current versions and commands', () => 
 
   const readme = read('README.md')
   const changelog = read('CHANGELOG.md')
+  assert.equal(exists('public/favicon.svg'), true, 'README header favicon must exist')
+  assert.match(readme, /public\/favicon\.svg/)
+  assert.match(readme, new RegExp(`version-${escapeRegExp(frontend.version)}`))
+  assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/)
   assert.match(readme, /Node\.js 20\+/)
   for (const scriptName of Object.keys(frontend.scripts)) {
     const command = scriptName === 'test' ? 'npm test' : `npm run ${scriptName}`
@@ -61,6 +65,46 @@ test('CI invokes repository contracts and existing verification commands', () =>
   assert.match(workflow, /setup-python@v5/)
   assert.match(workflow, /yaml\.safe_load/)
   assert.match(workflow, /timeout-minutes:\s*15/)
+})
+
+test('deployment documentation keeps the shortest safe Docker path', () => {
+  assert.equal(exists('docs/deployment.md'), true, 'deployment guide must exist')
+
+  const readme = read('README.md')
+  for (const entry of [
+    '在线 Demo',
+    'Vercel',
+    'git clone https://github.com/lottshin/DingCard.git',
+    'docker compose config --quiet',
+    'docker compose up -d --build',
+    'curl -f http://127.0.0.1:8080/api/health',
+    'docs/deployment.md',
+  ]) {
+    assert.match(readme, new RegExp(escapeRegExp(entry)), `README must keep ${entry}`)
+  }
+
+  const deployment = read('docs/deployment.md')
+  for (const entry of [
+    'JWT_SECRET',
+    'WEB_PORT=127.0.0.1:8080',
+    'docker compose config --quiet',
+    'host_ip: 127.0.0.1',
+    'Caddyfile',
+    'Nginx',
+    'db.tar.gz',
+    'uploads.tar.gz',
+    '输入 RESTORE',
+    'git pull --ff-only',
+    'docker compose down -v',
+  ]) {
+    assert.match(deployment, new RegExp(escapeRegExp(entry)), `deployment guide must keep ${entry}`)
+  }
+
+  const envExample = read('.env.example')
+  assert.match(envExample, /127\.0\.0\.1:8080/)
+
+  const backendPlan = read('docs/backend-plan.md')
+  assert.match(backendPlan, /Docker 部署与维护.*deployment\.md/)
 })
 
 test('backend release checklists distinguish repository and deployment evidence', () => {

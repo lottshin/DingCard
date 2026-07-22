@@ -1,16 +1,19 @@
-# 叮卡
-
 <div align="center">
+  <h1><img src="public/favicon.svg" width="40" height="40" alt="叮卡图标" align="absmiddle"> 叮卡</h1>
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
-  <p><a href="https://dingcard.vercel.app"><strong>在线体验</strong></a></p>
+  <p>
+    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.10.1-e2570f" alt="叮卡版本 0.10.1"></a>
+    <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
+    <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
+    <a href="docs/deployment.md"><img src="https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker&amp;logoColor=white" alt="Docker 部署"></a>
+  </p>
   <p>
     <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Flottshin%2FDingCard">
       <img src="https://vercel.com/button" alt="Deploy with Vercel">
     </a>
   </p>
-  <p><sub>一键部署只包含前端，无需配置环境变量；如需远端数据模式，请按下文部署 Fastify + SQLite 服务。</sub></p>
-  <p><sub>在线版默认把草稿和账号数据保存在当前浏览器，请及时导出重要作品。</sub></p>
+  <p><sub>在线版和 Vercel 一键部署使用浏览器本地存储，请及时导出重要作品。</sub></p>
 </div>
 
 <p align="center">
@@ -64,28 +67,48 @@
 
 ![叮卡自由画布轻设计工作区](docs/assets/freeform-workspace.png)
 
-## 快速开始
+## 使用与部署
 
-环境要求：
+只想看看效果，可以直接打开[在线 Demo](https://dingcard.vercel.app)。想要一份自己的在线地址，点击上方的 Vercel 按钮即可。Vercel 部署不需要环境变量，草稿仍然保存在访问者当前使用的浏览器中。
 
-- Node.js 20+
-- npm
-- Chrome（运行 Playwright E2E 时需要）
-- Docker 与 Compose 插件（仅 Docker 部署和全栈冒烟需要）
-
-默认启动本地模式，不需要后端：
+需要真实账号、跨设备草稿和服务端图片时，再部署完整前后端。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
 
 ```bash
+git clone https://github.com/lottshin/DingCard.git
+cd DingCard
+
+cp .env.example .env
+JWT_SECRET="$(openssl rand -hex 32)"
+sed -i "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
+unset JWT_SECRET
+
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+curl -f http://127.0.0.1:8080/api/health
+```
+
+健康检查返回 `{"ok":true}` 后，通过 `http://服务器地址:8080` 打开叮卡。这个 HTTP 入口只适合首次验证；正式使用前，请按[部署指南](docs/deployment.md)配置域名、HTTPS 和备份，并把 8080 端口限制在服务器本机。Windows 和 macOS 可以用 Docker Desktop 试跑同一套 Compose，但不建议作为生产服务器。
+
+## 本地开发
+
+本地开发需要 Git、Node.js 20+ 和 npm，不需要后端：
+
+```bash
+git clone https://github.com/lottshin/DingCard.git
+cd DingCard
 npm ci
 npm run dev
 ```
 
-打开终端输出的地址即可使用。生产构建与本地预览：
+打开终端输出的地址即可使用。构建并预览生产版本：
 
 ```bash
 npm run build
 npm run preview
 ```
+
+运行 Playwright E2E 时还需要 Chrome；全栈联调和 Docker 部署才需要 Docker Compose。
 
 ## 数据模式
 
@@ -132,13 +155,7 @@ $env:VITE_API_BASE='http://127.0.0.1:3000'
 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-复制环境变量模板：
-
-```powershell
-Copy-Item server/.env.example server/.env
-```
-
-模板用于核对变量；后端不会自动读取 `.env`，直跑时仍需在进程环境中设置变量。
+后端不会自动读取 `server/.env`；直跑时请像上面一样在进程环境中设置变量。完整变量说明见 `server/.env.example`。
 
 #### POSIX Shell
 
@@ -157,42 +174,7 @@ export VITE_API_BASE='http://127.0.0.1:3000'
 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-复制环境变量模板：
-
-```bash
-cp server/.env.example server/.env
-```
-
 后端健康检查地址为 `http://127.0.0.1:3000/api/health`。
-
-</details>
-
-## Docker Compose
-
-Docker Compose 以同源方式启动前端 Nginx 和后端服务。先复制根环境模板并填写强随机 `JWT_SECRET`。
-
-<details>
-<summary><strong>展开 Docker Compose 启动说明</strong></summary>
-
-PowerShell：
-
-```powershell
-Copy-Item .env.example .env
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-docker compose up -d --build
-```
-
-POSIX Shell：
-
-```bash
-cp .env.example .env
-openssl rand -hex 32
-docker compose up -d --build
-```
-
-把生成值写入 `.env` 的 `JWT_SECRET=`，不要提交 `.env`。默认入口为 `http://127.0.0.1:8080/`，健康检查为 `http://127.0.0.1:8080/api/health`。
-
-生产部署还必须配置 HTTPS、宿主机数据权限和备份。完整拓扑、配置和安全清单见[后端接入方案](docs/backend-plan.md)。
 
 </details>
 
@@ -235,6 +217,7 @@ docker compose up -d --build
 ## 文档
 
 - [自由画布数据模型与交互说明](docs/freeform-editor.md)
-- [后端接入与部署方案](docs/backend-plan.md)
+- [Docker 部署与维护](docs/deployment.md)
+- [后端实现与接入方案](docs/backend-plan.md)
 - [0.10.1 本地发布验证](docs/release-verification.md)
 - [更新日志](CHANGELOG.md)
