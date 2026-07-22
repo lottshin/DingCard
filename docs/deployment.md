@@ -2,7 +2,7 @@
 
 这份文档用于部署叮卡的完整前后端。只需要前端时，使用 README 顶部的 Vercel 按钮即可，不必准备服务器。
 
-Docker Compose 会启动两个容器：`web` 提供前端页面并转发 `/api`，`server` 负责账号、草稿和图片。SQLite 与上传图片分别保存在两个 Docker 命名卷中。
+Docker Compose 会启动一个 `app` 容器。容器内的 Fastify 直接提供前端页面、`/uploads` 图片和 `/api` 接口。`db` 卷保存 SQLite 数据库，`uploads` 卷保存上传图片。
 
 ## 部署前准备
 
@@ -30,12 +30,12 @@ unset JWT_SECRET
 chmod 600 .env
 ```
 
-先检查配置，再构建并启动：
+先检查配置，再构建并启动 `app`：
 
 ```bash
 docker compose config --quiet
-docker compose up -d --build
-docker compose ps
+docker compose up -d --build app
+docker compose ps app
 curl -f http://127.0.0.1:8080/api/health
 ```
 
@@ -47,10 +47,10 @@ curl -f http://127.0.0.1:8080/api/health
 
 首次检查时可以通过 `http://服务器地址:8080` 打开叮卡。此时还是明文 HTTP，不要在公网注册正式账号或录入重要内容。
 
-如果启动失败，先查看日志：
+如果启动失败，先查看 `app` 日志：
 
 ```bash
-docker compose logs --tail=100 server web
+docker compose logs --tail=100 app
 ```
 
 ## 配置域名和 HTTPS
@@ -61,11 +61,11 @@ docker compose logs --tail=100 server web
 WEB_PORT=127.0.0.1:8080
 ```
 
-确认 Compose 只监听本机，然后重建 `web` 容器：
+确认 Compose 只监听本机，然后重建 `app` 容器：
 
 ```bash
 docker compose config | grep -E 'host_ip: 127\.0\.0\.1|published: "8080"'
-docker compose up -d --force-recreate web
+docker compose up -d --force-recreate app
 ```
 
 展开结果中应出现 `host_ip: 127.0.0.1`。此后不要再把防火墙的 8080 端口开放到公网。
@@ -124,31 +124,32 @@ curl -f https://dingcard.example.com/api/health
 | `WEB_PORT` | Compose 对外端口。接入 HTTPS 后使用 `127.0.0.1:8080`。 |
 | `JWT_EXPIRY` | 登录有效期，默认 `7d`。 |
 | `USER_QUOTA_BYTES` | 每个用户可使用的图片空间。 |
-| `MAX_UPLOAD_BYTES` | 单张图片上限；修改时还要同步调整 `deploy/nginx.conf`。 |
+| `MAX_UPLOAD_BYTES` | Fastify 接收的单张图片上限；修改后需要重建 `app`。 |
 
-修改 `.env` 后运行 `docker compose config --quiet`。需要让容器读取新值时，执行：
+修改 `.env` 后先运行 `docker compose config --quiet`，再让容器读取新值：
 
 ```bash
-docker compose up -d --force-recreate
+docker compose up -d --force-recreate app
 ```
 
 ## 备份
 
-数据库使用 SQLite WAL。为了得到一致的数据库和图片快照，备份时先停止两个服务。下面的命令从 `server` 容器动态取得实际卷名，不依赖仓库所在目录的名称。
+数据库使用 SQLite WAL。为了得到一致的数据库和图片快照，备份时先停止 `app`。下面的命令从 `app` 容器动态取得实际卷名，不依赖仓库所在目录的名称。
 
 ```bash
-SERVER_ID="$(docker compose ps --all -q server)"
-DB_VOLUME="$(docker inspect "$SERVER_ID" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}')"
-UPLOADS_VOLUME="$(docker inspect "$SERVER_ID" --format '{{range .Mounts}}{{if eq .Destination "/data/uploads"}}{{.Name}}{{end}}{{end}}')"
+APP_ID="$(docker compose ps --all -q app)"
+test -n "$APP_ID"
+DB_VOLUME="$(docker inspect "$APP_ID" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}')"
+UPLOADS_VOLUME="$(docker inspect "$APP_ID" --format '{{range .Mounts}}{{if eq .Destination "/data/uploads"}}{{.Name}}{{end}}{{end}}')"
 test -n "$DB_VOLUME" && test -n "$UPLOADS_VOLUME"
 
 BACKUP_DIR="$(pwd)/backups/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-docker compose stop
+docker compose stop app
 docker run --rm -v "$DB_VOLUME:/source:ro" alpine:3.22 tar -czf - -C /source . > "$BACKUP_DIR/db.tar.gz"
 docker run --rm -v "$UPLOADS_VOLUME:/source:ro" alpine:3.22 tar -czf - -C /source . > "$BACKUP_DIR/uploads.tar.gz"
-docker compose start
+docker compose start app
 
 tar -tzf "$BACKUP_DIR/db.tar.gz" >/dev/null
 tar -tzf "$BACKUP_DIR/uploads.tar.gz" >/dev/null
@@ -166,70 +167,71 @@ BACKUP_DIR="$(pwd)/backups/替换为备份目录"
 test -f "$BACKUP_DIR/db.tar.gz"
 test -f "$BACKUP_DIR/uploads.tar.gz"
 
-# 新服务器还没有容器时，先运行：docker compose create --build
-SERVER_ID="$(docker compose ps --all -q server)"
-DB_VOLUME="$(docker inspect "$SERVER_ID" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}')"
-UPLOADS_VOLUME="$(docker inspect "$SERVER_ID" --format '{{range .Mounts}}{{if eq .Destination "/data/uploads"}}{{.Name}}{{end}}{{end}}')"
+# 新服务器还没有容器时，先运行：docker compose create --build app
+APP_ID="$(docker compose ps --all -q app)"
+test -n "$APP_ID"
+DB_VOLUME="$(docker inspect "$APP_ID" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}')"
+UPLOADS_VOLUME="$(docker inspect "$APP_ID" --format '{{range .Mounts}}{{if eq .Destination "/data/uploads"}}{{.Name}}{{end}}{{end}}')"
 test -n "$DB_VOLUME" && test -n "$UPLOADS_VOLUME"
 
 read -r -p '输入 RESTORE 覆盖当前数据：' CONFIRM
 test "$CONFIRM" = 'RESTORE'
 
-docker compose stop
+docker compose stop app
 docker run --rm -i -v "$DB_VOLUME:/target" alpine:3.22 sh -c 'rm -rf /target/* /target/.[!.]* /target/..?* && tar -xzf - -C /target' < "$BACKUP_DIR/db.tar.gz"
 docker run --rm -i -v "$UPLOADS_VOLUME:/target" alpine:3.22 sh -c 'rm -rf /target/* /target/.[!.]* /target/..?* && tar -xzf - -C /target' < "$BACKUP_DIR/uploads.tar.gz"
-docker compose start
+docker compose start app
 
 curl -f http://127.0.0.1:8080/api/health
 ```
 
-如果正式环境已经绑定域名，也应通过 HTTPS 地址再检查一次。恢复失败时不要反复启动服务，先保留现场并查看归档文件和容器日志。
+如果正式环境已经绑定域名，也应通过 HTTPS 地址再检查一次。恢复失败时不要反复启动服务，先保留现场并查看归档文件和 `app` 日志。
 
 ## 升级
 
-升级前先备份，然后拉取代码并重新构建：
+升级前先备份，然后拉取代码并重新构建 `app`：
 
 ```bash
 git pull --ff-only
 docker compose config --quiet
-docker compose up -d --build
-docker compose ps
+docker compose up -d --build app
+docker compose ps app
 curl -f http://127.0.0.1:8080/api/health
 ```
 
-`docker compose up -d --build` 不会主动删除命名卷。不要把 `down -v` 写进升级脚本。
+`docker compose up -d --build app` 不会主动删除命名卷。不要把 `down -v` 写进升级脚本。
 
 ## 日志和排查
 
 ```bash
-# 查看容器状态
-docker compose ps
+# 查看 app 状态
+docker compose ps app
 
-# 跟随日志
-docker compose logs -f --tail=100 server web
+# 查看最近日志；需要持续跟随时加 -f
+docker compose logs --tail=100 app
+docker compose logs -f --tail=100 app
 
 # 检查环境变量和端口展开结果
 docker compose config
 
-# 重新构建单个服务
-docker compose up -d --build server
-docker compose up -d --build web
+# 重新构建 app
+docker compose up -d --build app
 ```
 
 常见问题：
 
 - 提示 `JWT_SECRET` 缺失：检查 `.env` 中该值是否为空，再运行 `docker compose config --quiet`。
-- `/api/health` 返回 502：查看 `server` 是否为 `healthy`，并检查后端日志。
+- `/api/health` 不是 200：运行 `docker compose ps app` 和 `docker compose logs --tail=100 app` 检查启动错误。
 - 页面能打开但上传失败：检查 `MAX_UPLOAD_BYTES`、磁盘空间和 `uploads` 卷。
 - 域名出现重定向或同源问题：确认外层代理传递了原始 `Host`，并把 `X-Forwarded-Proto` 设置为实际协议。
-- 修改 `.env` 后没有生效：用 `docker compose up -d --force-recreate` 重建容器。
+- 修改 `.env` 后没有生效：用 `docker compose up -d --force-recreate app` 重建容器。
 
 ## 停止或卸载
 
 临时停止并保留数据：
 
 ```bash
-docker compose stop
+docker compose stop app
 ```
 
 移除容器和网络，但保留数据库与图片卷：

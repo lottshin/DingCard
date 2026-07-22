@@ -5,6 +5,7 @@ set -u
 
 PROJECT="${COMPOSE_SMOKE_PROJECT:-dingcard-smoke-$$}"
 SMOKE_VERSION="smoke-${PROJECT}"
+SMOKE_IMAGE="ghcr.io/lottshin/dingcard:$SMOKE_VERSION"
 if [ -n "${COMPOSE_SMOKE_WEB_PORT:-}" ]; then
   WEB_PORT="$COMPOSE_SMOKE_WEB_PORT"
 else
@@ -29,7 +30,16 @@ cleanup() {
     echo "  x Compose 资源清理失败" >&2
     status=1
   fi
-  docker image rm "ghcr.io/lottshin/dingcard:$SMOKE_VERSION" >/dev/null 2>&1 || true
+  if docker image inspect "$SMOKE_IMAGE" >/dev/null 2>&1; then
+    if ! docker image rm "$SMOKE_IMAGE"; then
+      echo "  x Smoke image cleanup failed: $SMOKE_IMAGE" >&2
+      status=1
+    else
+      echo "已清理 smoke 镜像标签"
+    fi
+  else
+    echo "smoke 镜像标签不存在，视为已清理"
+  fi
   if ! rm -f "$ENV_FILE" "$HOME_BODY_FILE" "$HEALTH_BODY_FILE" "$IMAGE_FILE" 2>/dev/null; then
     echo "  x 临时文件清理失败" >&2
     status=1

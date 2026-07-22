@@ -110,9 +110,27 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
     '输入 RESTORE',
     'git pull --ff-only',
     'docker compose down -v',
+    'docker compose up -d --build app',
+    'docker compose logs --tail=100 app',
+    'docker compose up -d --force-recreate app',
+    'docker compose ps --all -q app',
+    'APP_ID',
   ]) {
     assert.match(deployment, new RegExp(escapeRegExp(entry)), `deployment guide must keep ${entry}`)
   }
+  assert.match(deployment, /Docker Compose[^\n]*`app`[^\n]*容器/)
+  assert.match(deployment, /Fastify[^\n]*前端[^\n]*`\/uploads`[^\n]*`\/api`/)
+  assert.match(deployment, /`db`[^\n]*SQLite/)
+  assert.match(deployment, /`uploads`[^\n]*上传/)
+  assert.match(deployment, /proxy_pass http:\/\/127\.0\.0\.1:8080/)
+  assert.doesNotMatch(deployment, /docker compose logs[^\n]*(?:\bserver\b|\bweb\b)/)
+  assert.doesNotMatch(deployment, /docker compose ps[^\n]*-q server/)
+  assert.doesNotMatch(deployment, /docker compose up[^\n]*(?:\bserver\b|\bweb\b)/)
+  assert.doesNotMatch(deployment, /\bSERVER_ID\b/)
+  assert.doesNotMatch(deployment, /deploy\/nginx\.conf/)
+  assert.doesNotMatch(deployment, /MAX_UPLOAD_BYTES[^\n]*(?:Nginx|client_max_body_size)/i)
+  assert.doesNotMatch(deployment, /\/api\/health[^\n]*502[^\n]*server/i)
+  assert.doesNotMatch(deployment, /Docker Compose[^\n]*两个容器/)
 
   const envExample = read('.env.example')
   assert.match(envExample, /127\.0\.0\.1:8080/)
@@ -175,6 +193,7 @@ test('verification report and compose smoke expose explicit execution contracts'
   assert.doesNotMatch(report, /\| Compose config \| PASS \|[^\n]*(?:`server`|`web`)/)
   assert.doesNotMatch(report, /\| Container smoke \| PASS \|[^\n]*Nginx/)
   assert.match(report, /Docker daemon 29\.1\.2[^\n]*可用/)
+  assert.match(report, /Commit under test：`a87b8af`/)
 
   const smoke = read('deploy/compose-smoke.sh')
   assert.match(smoke, /COMPOSE_SMOKE_PROJECT/)
@@ -313,7 +332,11 @@ test('compose smoke validates the app container without generated-name assumptio
   for (const command of composeCommands) {
     assert.match(command, /DINGCARD_VERSION="\$SMOKE_VERSION"/)
   }
-  assert.match(smoke, /docker image rm "ghcr\.io\/lottshin\/dingcard:\$SMOKE_VERSION"[^\n]*\|\| true/)
+  assert.match(smoke, /SMOKE_IMAGE="ghcr\.io\/lottshin\/dingcard:\$SMOKE_VERSION"/)
+  assert.match(smoke, /if docker image inspect "\$SMOKE_IMAGE"/)
+  assert.match(smoke, /if ! docker image rm "\$SMOKE_IMAGE"/)
+  assert.match(smoke, /Smoke image cleanup failed/)
+  assert.doesNotMatch(smoke, /docker image rm[^\n]*\|\| true/)
   assert.doesNotMatch(smoke, /DINGCARD_VERSION=["']?0\.11\.0/)
   assert.match(smoke, /docker compose[^\n]*up -d --build/)
   assert.match(smoke, /docker compose[^\n]*ps -q app/)
