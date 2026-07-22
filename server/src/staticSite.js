@@ -4,6 +4,7 @@ import path from 'node:path'
 
 const DEFAULT_UPLOADS_PUBLIC_PATH = '/uploads'
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+const SPA_FALLBACK_ATTEMPTED = Symbol('spaFallbackAttempted')
 
 function readableDirectory(directoryPath) {
   try {
@@ -48,14 +49,37 @@ function resolveWebRoot(webRoot, required) {
   return resolvedRoot
 }
 
+function normalizeRequestPath(rawUrl) {
+  if (typeof rawUrl !== 'string') return null
+
+  const queryStart = rawUrl.indexOf('?')
+  const rawPath = queryStart === -1 ? rawUrl : rawUrl.slice(0, queryStart)
+  let decodedPath
+  try {
+    decodedPath = decodeURIComponent(rawPath || '/')
+  } catch {
+    return null
+  }
+
+  if (decodedPath.includes('\0')) return null
+  const slashPath = decodedPath.replace(/\\/gu, '/').replace(/^\/+/, '/')
+  const normalizedPath = path.posix.normalize(slashPath.startsWith('/') ? slashPath : `/${slashPath}`)
+  return normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`
+}
+
 function normalizePublicPath(publicPath) {
   const value = publicPath ?? DEFAULT_UPLOADS_PUBLIC_PATH
   if (typeof value !== 'string' || value.trim() === '') {
     throw new TypeError('uploadsPublicPath must be a non-empty string')
   }
 
-  const withLeadingSlash = value.trim().startsWith('/') ? value.trim() : `/${value.trim()}`
-  return withLeadingSlash === '/' ? '/' : withLeadingSlash.replace(/\/+$/u, '')
+  const normalizedPath = normalizeRequestPath(value.trim())
+  if (normalizedPath === null) {
+    throw new TypeError('uploadsPublicPath must be a valid path')
+  }
+
+  const withoutTrailingSlash = normalizedPath.replace(/\/+$/u, '')
+  return withoutTrailingSlash === '' ? '/' : withoutTrailingSlash
 }
 
 function isPathAtOrBelow(pathname, prefix) {
@@ -96,6 +120,10 @@ export async function registerStaticSite(app, {
     root: resolvedRoot,
     prefix: '/',
     cacheControl: false,
+    dotfiles: 'ignore',
+    allowedPath(pathname, _root, request) {
+      return normalizeRequestPath(request.raw?.url ?? pathname) !== null
+    },
     setHeaders(response, filePath) {
       response.setHeader(
         'Cache-Control',
@@ -106,13 +134,18 @@ export async function registerStaticSite(app, {
 
   app.setNotFoundHandler((request, reply) => {
     const acceptsHtml = request.headers.accept?.toLowerCase().includes('text/html') === true
-    const pathname = new URL(request.raw.url, 'http://localhost').pathname
+    const pathname = normalizeRequestPath(request.raw?.url)
     const canUseSpaFallback = (request.method === 'GET' || request.method === 'HEAD')
       && acceptsHtml
+      && pathname !== null
       && !isPathAtOrBelow(pathname, '/api')
       && !isPathAtOrBelow(pathname, normalizedUploadsPath)
 
     if (!canUseSpaFallback) return sendDefaultNotFound(request, reply)
+    if (request[SPA_FALLBACK_ATTEMPTED] || !readableFile(path.join(resolvedRoot, 'index.html'))) {
+      return sendDefaultNotFound(request, reply)
+    }
+    request[SPA_FALLBACK_ATTEMPTED] = true
     return reply.sendFile('index.html')
   })
 }
