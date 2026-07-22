@@ -104,6 +104,33 @@ test('does not apply the SPA fallback to API or default upload paths', async (t)
   }
 })
 
+test('does not serve files from protected API or upload directories', async (t) => {
+  const webRoot = await createWebRoot()
+  await Promise.all([
+    mkdir(path.join(webRoot, 'api')),
+    mkdir(path.join(webRoot, 'uploads')),
+    mkdir(path.join(webRoot, 'media')),
+  ])
+  await Promise.all([
+    writeFile(path.join(webRoot, 'api', 'leak.txt'), 'api secret'),
+    writeFile(path.join(webRoot, 'uploads', 'leak.txt'), 'upload secret'),
+    writeFile(path.join(webRoot, 'media', 'leak.txt'), 'media secret'),
+  ])
+  t.after(() => rm(webRoot, { recursive: true, force: true }))
+
+  const defaultApp = await createStaticApp(t, webRoot)
+  for (const url of ['/api/leak.txt', '/uploads/leak.txt']) {
+    const response = await defaultApp.inject({ method: 'GET', url })
+    assert.equal(response.statusCode, 404, url)
+    assert.doesNotMatch(response.body, /secret/u, url)
+  }
+
+  const customApp = await createStaticApp(t, webRoot, { uploadsPublicPath: '/media' })
+  const customResponse = await customApp.inject({ method: 'GET', url: '/media/leak.txt' })
+  assert.equal(customResponse.statusCode, 404)
+  assert.doesNotMatch(customResponse.body, /secret/u)
+})
+
 test('uses the configured upload prefix as an exact SPA fallback boundary', async (t) => {
   const webRoot = await createWebRoot()
   t.after(() => rm(webRoot, { recursive: true, force: true }))

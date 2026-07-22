@@ -122,7 +122,10 @@ export async function registerStaticSite(app, {
     cacheControl: false,
     dotfiles: 'ignore',
     allowedPath(pathname, _root, request) {
-      return normalizeRequestPath(request.raw?.url ?? pathname) !== null
+      const normalizedPath = normalizeRequestPath(request.raw?.url ?? pathname)
+      return normalizedPath !== null
+        && !isPathAtOrBelow(normalizedPath, '/api')
+        && !isPathAtOrBelow(normalizedPath, normalizedUploadsPath)
     },
     setHeaders(response, filePath) {
       response.setHeader(
