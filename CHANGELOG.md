@@ -16,6 +16,7 @@
 
 - Docker Compose 收敛为一个 `app` 服务，默认拉取固定的 `ghcr.io/lottshin/dingcard:0.11.0`，也保留单独的源码构建入口。
 - 继续使用原有 `db` 和 `uploads` 命名卷，升级镜像不会自动删除 SQLite 数据库或上传文件。
+- 从 `0.10.x` 升级时会先无损移除旧 `server/web` 容器；CI 会验证账号、草稿和图片可由新 `app` 继续读取。
 - LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
 - 前端版本升至 `0.11.0`；Fastify 增加静态站点职责，服务端版本升至 `0.3.0`。
 

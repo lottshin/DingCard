@@ -104,6 +104,7 @@ test('CI invokes repository contracts and existing verification commands', () =>
     'npm run test:server',
     'node server/smoke-test.mjs',
     'node --test scripts/release-readiness.test.mjs',
+    'bash deploy/compose-smoke.sh',
     'npm run build',
     'npm run test:e2e',
   ]) {
@@ -279,6 +280,13 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
   const restore = markdownSection(deployment, '恢复备份')
   const upgrade = markdownSection(deployment, '升级')
   const sourceBuild = markdownSection(deployment, '从源码构建')
+  const legacyShutdown = 'docker compose down --remove-orphans'
+  assert.match(upgrade, new RegExp(`^${escapeRegExp(legacyShutdown)}$`, 'm'))
+  assert.ok(
+    upgrade.indexOf(legacyShutdown) < upgrade.indexOf('git pull --ff-only'),
+    'the legacy stack must stop before the Compose definition changes',
+  )
+  assert.doesNotMatch(upgrade, /^docker compose down[^\n]*(?:\s-v(?:\s|$)|--volumes)/m)
   for (const section of [firstDeploy, upgrade]) {
     assert.match(section, /docker compose pull/)
     assert.match(section, /docker compose up -d --no-build/)
@@ -380,8 +388,8 @@ test('verification report and compose smoke expose explicit execution contracts'
     )
   }
   assert.match(report, /^# 0\.11\.0 本地发布验证$/m)
-  assert.match(report, /\| Release contract \| PASS \|[^\n]*10\/10/)
   assert.match(report, /\| Backend tests \| PASS \|[^\n]*72\/72/)
+  assert.match(report, /\| Release contract \| PASS \|[^\n]*11\/11/)
   assert.match(report, /\| Compose config \| PASS \|[^\n]*`app`/)
   assert.match(
     report,
@@ -390,8 +398,9 @@ test('verification report and compose smoke expose explicit execution contracts'
   assert.match(report, /\| Compose cleanup \| PASS \|[^\n]*smoke[^\n]*镜像标签[^\n]*不存在/)
   assert.doesNotMatch(report, /\| Compose config \| PASS \|[^\n]*(?:`server`|`web`)/)
   assert.doesNotMatch(report, /\| Container smoke \| PASS \|[^\n]*Nginx/)
+  assert.match(report, /\| Container smoke \| PASS \|[^\n]*迁移[^\n]*账号[^\n]*草稿[^\n]*图片/)
   assert.match(report, /Docker daemon 29\.1\.2[^\n]*可用/)
-  assert.match(report, /单容器 smoke[^\n]*PASS/)
+  assert.match(report, /迁移 smoke[^\n]*PASS/)
   assert.match(report, /CI YAML \| PASS \|[^\n]*(?:ci\.yml[^\n]*publish-image\.yml|publish-image\.yml[^\n]*ci\.yml)/)
   for (const label of ['Image manifest', 'Anonymous pull', 'amd64 image smoke', 'arm64 image smoke']) {
     assert.match(
@@ -533,7 +542,7 @@ test('compose smoke validates the app container without generated-name assumptio
   const composeCommands = smoke
     .split(/\r?\n/)
     .filter((line) => /\bdocker compose -p\b/.test(line))
-  assert.equal(composeCommands.length, 3, 'smoke must have only up/down/ps Compose calls')
+  assert.equal(composeCommands.length, 4, 'smoke must have only build/up/down/ps app Compose calls')
   for (const command of composeCommands) {
     assert.match(command, /DINGCARD_VERSION="\$SMOKE_VERSION"/)
   }
@@ -543,7 +552,8 @@ test('compose smoke validates the app container without generated-name assumptio
   assert.match(smoke, /Smoke image cleanup failed/)
   assert.doesNotMatch(smoke, /docker image rm[^\n]*\|\| true/)
   assert.doesNotMatch(smoke, /DINGCARD_VERSION=["']?0\.11\.0/)
-  assert.match(smoke, /docker compose[^\n]*up -d --build/)
+  assert.match(smoke, /docker compose[^\n]*build app/)
+  assert.match(smoke, /docker compose[^\n]*up -d --no-build/)
   assert.match(smoke, /docker compose[^\n]*ps -q app/)
   assert.match(smoke, /APP_ID=\$\(/)
   assert.match(smoke, /docker exec "?\$APP_ID"?/)
@@ -557,4 +567,26 @@ test('compose smoke validates the app container without generated-name assumptio
   assert.doesNotMatch(smoke, /nginx/i)
   assert.doesNotMatch(smoke, /\$\{PROJECT\}-(?:server|app|web)-1/)
   assert.doesNotMatch(smoke, /ps -q (?:server|web)(?:\s|$)/)
+})
+
+test('compose smoke migrates legacy services without deleting persisted user data', () => {
+  const smoke = read('deploy/compose-smoke.sh')
+
+  assert.match(smoke, /LEGACY_COMPOSE_FILE/)
+  assert.match(smoke, /services:\s*\n\s+server:/)
+  assert.match(smoke, /services:[\s\S]*\n\s+web:/)
+  assert.match(smoke, /docker compose -f "\$LEGACY_COMPOSE_FILE" -p "\$PROJECT"[^\n]*up -d/)
+  assert.match(
+    smoke,
+    /docker compose -f "\$LEGACY_COMPOSE_FILE" -p "\$PROJECT"[^\n]*down --remove-orphans/,
+  )
+  assert.doesNotMatch(
+    smoke,
+    /docker compose -f "\$LEGACY_COMPOSE_FILE" -p "\$PROJECT"[^\n]*down[^\n]*(?:\s-v(?:\s|$)|--volumes)/,
+  )
+  assert.match(smoke, /\/api\/auth\/login/)
+  assert.match(smoke, /\/api\/drafts/)
+  assert.match(smoke, /migrated account/)
+  assert.match(smoke, /migrated draft/)
+  assert.match(smoke, /migrated upload/)
 })

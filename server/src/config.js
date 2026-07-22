@@ -52,7 +52,7 @@ export const config = {
   rateLimitMax: positiveInteger(process.env.RATE_LIMIT_MAX, 300),
   authRateLimitMax: positiveInteger(process.env.AUTH_RATE_LIMIT_MAX, 20),
 
-  // Public URL prefix images are served under (Nginx maps this to uploadsDir).
+  // Public URL prefix Fastify serves from uploadsDir.
   uploadsPublicPath: process.env.UPLOADS_PUBLIC_PATH || '/uploads',
 
   // Per-user storage quota in bytes (images). Default 500 MB. 0 = unlimited.
@@ -62,7 +62,7 @@ export const config = {
   // Invalid or negative values fall back to one day; 0 is allowed for tests.
   imageLeaseMs: nonNegativeNumber(process.env.IMAGE_LEASE_MS, DEFAULT_IMAGE_LEASE_MS),
 
-  // Max single upload size in bytes (matches Nginx client_max_body_size).
+  // Max single upload size enforced by the Fastify multipart endpoint.
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 6 * 1024 * 1024),
 
   // Comma-separated allowed origins for CORS. Empty = same-origin only (no CORS).

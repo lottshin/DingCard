@@ -207,9 +207,10 @@ curl -f http://127.0.0.1:8080/api/health
 
 ## 升级
 
-升级前先备份。拉取代码后，把 `.env` 中的镜像版本改为 `0.11.0`，再拉取并启动预构建镜像：
+升级前先备份。先用当前版本的 Compose 配置停掉旧容器，再拉取新版代码和预构建镜像：
 
 ```bash
+docker compose down --remove-orphans
 git pull --ff-only
 sed -i 's/^DINGCARD_VERSION=.*/DINGCARD_VERSION=0.11.0/' .env
 docker compose config --quiet
@@ -219,7 +220,7 @@ docker compose ps app
 curl -f http://127.0.0.1:8080/api/health
 ```
 
-这些命令不会主动删除命名卷。不要把 `down -v` 写进升级脚本。
+`down --remove-orphans` 会移除旧容器和网络，但会保留 `db`、`uploads` 命名卷。从 `0.10.x` 升级时，旧 `server` 和 `web` 容器也会在这一步移除，不会占用新 `app` 的端口。不要把 `-v` 或 `--volumes` 写进升级脚本。
 
 ## 从源码构建
 
