@@ -3,6 +3,8 @@
 <div align="center">
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
+  <p><a href="https://dingcard.vercel.app"><strong>在线体验</strong></a></p>
+  <p><sub>在线版默认把草稿和账号数据保存在当前浏览器，请及时导出重要作品。</sub></p>
 </div>
 
 <p align="center">

@@ -1,0 +1,14 @@
+.agents/
+.claude/
+.github/
+.superpowers/
+.worktrees/
+deploy/
+dist/
+docs/
+e2e/
+e2e-integration/
+node_modules/
+playwright-report/
+server/
+test-results/
