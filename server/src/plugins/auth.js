@@ -7,10 +7,11 @@ import fp from 'fastify-plugin'
 import jwt from '@fastify/jwt'
 import { config } from '../config.js'
 
-async function authPlugin(fastify) {
+async function authPlugin(fastify, options = {}) {
+  const authConfig = options.config ?? config
   fastify.register(jwt, {
-    secret: config.jwtSecret,
-    sign: { expiresIn: config.jwtExpiry },
+    secret: authConfig.jwtSecret,
+    sign: { expiresIn: authConfig.jwtExpiry },
   })
 
   // preHandler that rejects the request with 401 if the token is missing/invalid.

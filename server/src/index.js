@@ -3,11 +3,20 @@
 import { buildApp } from './app.js'
 import { config } from './config.js'
 
-const app = await buildApp()
-
+let app
 try {
+  app = await buildApp()
   await app.listen({ host: config.host, port: config.port })
-} catch (err) {
-  app.log.error(err)
-  process.exit(1)
+} catch (error) {
+  if (app) {
+    app.log.error(error)
+    try {
+      await app.close()
+    } catch (closeError) {
+      app.log.error(closeError)
+    }
+  } else {
+    console.error('Server startup failed', error)
+  }
+  process.exitCode = 1
 }

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { createHmac } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import Fastify from 'fastify'
 
@@ -47,6 +50,29 @@ function imageStatements(overrides = {}) {
   }
 }
 
+function serverStatements(overrides = {}) {
+  return {
+    insertUser: { run: () => ({ changes: 1 }) },
+    userByName: { get: () => undefined },
+    userById: { get: () => undefined },
+    ...draftStatements(),
+    ...imageStatements(),
+    listDraftDocuments: { all: () => [] },
+    listImages: { all: () => [] },
+    deleteImage: { run: () => ({ changes: 1 }) },
+    ...overrides,
+  }
+}
+
+function jwtSignedWith(token, secret) {
+  const [header, payload, signature] = token.split('.')
+  if (!header || !payload || !signature) return false
+  const expected = createHmac('sha256', secret)
+    .update(`${header}.${payload}`)
+    .digest('base64url')
+  return signature === expected
+}
+
 async function buildApp({
   assetLock,
   draftsStmts,
@@ -88,6 +114,108 @@ async function createStaticRoots(t) {
   t.after(() => rm(root, { recursive: true, force: true }))
   return { webRoot, uploadsDir }
 }
+
+test('importing the app factory does not create default data or SQLite files', async (t) => {
+  const cwd = await mkdtemp(path.join(tmpdir(), 'dingcard-app-import-'))
+  t.after(() => rm(cwd, { recursive: true, force: true }))
+  const appUrl = new URL('../app.js', import.meta.url).href
+  const {
+    DATA_DIR: _dataDir,
+    DB_PATH: _dbPath,
+    UPLOADS_DIR: _uploadsDir,
+    ...baseEnvironment
+  } = process.env
+
+  const result = spawnSync(
+    process.execPath,
+    ['--input-type=module', '--eval', `await import(${JSON.stringify(appUrl)})`],
+    {
+      cwd,
+      encoding: 'utf8',
+      env: { ...baseEnvironment, NODE_ENV: 'development' },
+    },
+  )
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
+  const entries = await readdir(cwd)
+  assert.deepEqual(entries, [])
+})
+
+test('server app auth uses injected statements, JWT settings, and bcrypt cost', async (t) => {
+  const { uploadsDir } = await createStaticRoots(t)
+  const users = new Map()
+  let insertedUser
+  const fakeStmts = serverStatements({
+    insertUser: {
+      run(row) {
+        insertedUser = row
+        users.set(row.id, row)
+        return { changes: 1 }
+      },
+    },
+    userByName: {
+      get(username) {
+        return [...users.values()].find((row) => row.username.toLowerCase() === username.toLowerCase())
+      },
+    },
+    userById: { get: (userId) => users.get(userId) },
+  })
+  const jwtSecret = 'injected-auth-secret'
+  const username = `isolated-${process.pid}`
+  const app = await buildServerApp({
+    config: {
+      ...config,
+      bcryptCost: 4,
+      jwtExpiry: '15m',
+      jwtSecret,
+      uploadsDir,
+      webRoot: '',
+      imageRuntime: false,
+    },
+    stmts: fakeStmts,
+  })
+  t.after(() => app.close())
+
+  const registerResponse = await app.inject({
+    method: 'POST',
+    url: '/api/auth/register',
+    payload: { username, password: 'secret' },
+  })
+  assert.equal(registerResponse.statusCode, 200)
+  const registered = registerResponse.json()
+  assert.equal(insertedUser?.username, username)
+  assert.match(insertedUser?.pw_hash, /^\$2[aby]\$04\$/)
+  assert.equal(jwtSignedWith(registered.token, jwtSecret), true)
+
+  const meResponse = await app.inject({
+    method: 'GET',
+    url: '/api/auth/me',
+    headers: { authorization: `Bearer ${registered.token}` },
+  })
+  assert.equal(meResponse.statusCode, 200)
+  assert.deepEqual(meResponse.json(), { user: registered.user })
+})
+
+test('server entry catches and records strict image assembly failures', async (t) => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), 'dingcard-index-failure-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const indexPath = fileURLToPath(new URL('../index.js', import.meta.url))
+  const result = spawnSync(process.execPath, [indexPath], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DATA_DIR: dataDir,
+      DINGCARD_IMAGE: '1',
+      JWT_SECRET: 'strict-startup-test-secret',
+      NODE_ENV: 'production',
+      WEB_ROOT: '',
+    },
+  })
+
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`)
+  assert.match(`${result.stdout}\n${result.stderr}`, /Server startup failed/u)
+  assert.match(`${result.stdout}\n${result.stderr}`, /Static site web root is required/u)
+})
 
 test('server app keeps API-only production-style assembly valid when WEB_ROOT is empty', async (t) => {
   const { uploadsDir } = await createStaticRoots(t)
@@ -146,6 +274,16 @@ test('server app serves the SPA without shadowing APIs and caches uploads for 30
   assert.equal(uploadResponse.statusCode, 200)
   assert.equal(uploadResponse.body, 'uploaded-image')
   assert.equal(uploadResponse.headers['cache-control'], 'public, max-age=2592000, immutable')
+
+  for (const url of ['/api/missing', '/uploads/missing.png']) {
+    const missingResponse = await app.inject({
+      method: 'GET',
+      url,
+      headers: { accept: 'text/html' },
+    })
+    assert.equal(missingResponse.statusCode, 404, url)
+    assert.doesNotMatch(missingResponse.body, /<title>DingCard app<\/title>/, url)
+  }
 })
 
 test('draft mutation and image retain serialize through the injected shared user asset lock', async (t) => {
