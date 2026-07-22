@@ -1,0 +1,188 @@
+name: Publish container image
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      image: ${{ steps.version.outputs.image }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate release tag
+        id: version
+        env:
+          IMAGE_NAME: ghcr.io/lottshin/dingcard
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SEMVER_PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ ! "$TAG" =~ $SEMVER_PATTERN ]]; then
+            echo "Invalid release tag: $TAG" >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          STABLE=true
+          if [[ "$VERSION" == *-* ]]; then
+            STABLE=false
+            PRERELEASE="${VERSION#*-}"
+            IFS='.' read -ra IDENTIFIERS <<< "$PRERELEASE"
+            for IDENTIFIER in "${IDENTIFIERS[@]}"; do
+              if [[ "$IDENTIFIER" =~ ^0[0-9]+$ ]]; then
+                echo "Invalid release tag: numeric prerelease identifiers cannot have leading zeroes" >&2
+                exit 1
+              fi
+            done
+          fi
+
+          echo "image=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/lottshin/dingcard
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ steps.version.outputs.stable == 'true' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify published manifest
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAW_MANIFEST="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --raw)"
+          jq -e '
+            ([.manifests[] | select(
+              .platform.os == "linux" and .platform.architecture == "amd64"
+            )] | length >= 1) and
+            ([.manifests[] | select(
+              .platform.os == "linux" and .platform.architecture == "arm64"
+            )] | length >= 1)
+          ' <<< "$RAW_MANIFEST"
+
+  smoke:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
+    env:
+      IMAGE: ${{ needs.publish.outputs.image }}
+      VERSION: ${{ needs.publish.outputs.version }}
+      PLATFORM: ${{ matrix.platform }}
+      CONTAINER_NAME: dingcard-smoke-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+      VOLUME_NAME: dingcard-smoke-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: ${{ matrix.arch }}
+
+      - name: Pull and run the public image anonymously
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker pull --platform "$PLATFORM" "$IMAGE:$VERSION"
+          docker volume create "$VOLUME_NAME"
+          docker run --detach \
+            --name "$CONTAINER_NAME" \
+            --platform "$PLATFORM" \
+            --env JWT_SECRET="anonymous-smoke-${{ github.run_id }}-${{ matrix.arch }}" \
+            --volume "$VOLUME_NAME:/data" \
+            -p 127.0.0.1::3000 \
+            "$IMAGE:$VERSION"
+
+          PORT="$(docker port "$CONTAINER_NAME" 3000/tcp | awk -F: 'NR == 1 { print $NF }')"
+          test -n "$PORT"
+          BASE_URL="http://127.0.0.1:$PORT"
+
+          READY=false
+          for ATTEMPT in $(seq 1 60); do
+            if curl --fail --silent --show-error --max-time 2 "$BASE_URL/api/health" >/dev/null; then
+              READY=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$READY" != true ]]; then
+            docker logs "$CONTAINER_NAME"
+            exit 1
+          fi
+
+          HOMEPAGE="$(curl --fail --silent --show-error "$BASE_URL/")"
+          HEALTH="$(curl --fail --silent --show-error "$BASE_URL/api/health")"
+          jq -e '.ok == true' <<< "$HEALTH"
+          ASSET_PATH="$(printf '%s' "$HOMEPAGE" | grep -oE "/assets/[^\"'[:space:]]+" | sed -n '1p')"
+          test -n "$ASSET_PATH"
+          curl --fail --silent --show-error "$BASE_URL$ASSET_PATH" >/dev/null
+
+      - name: Clean up smoke resources
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+            docker rm -f "$CONTAINER_NAME"
+          fi
+          if docker volume inspect "$VOLUME_NAME" >/dev/null 2>&1; then
+            docker volume rm "$VOLUME_NAME"
+          fi
+          if docker image inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then
+            docker image rm "$IMAGE:$VERSION"
+          fi

@@ -25,6 +25,16 @@ function composeServiceNames(source) {
   return names
 }
 
+function workflowJob(source, jobName) {
+  const lines = source.split(/\r?\n/)
+  const start = lines.findIndex((line) => line === `  ${jobName}:`)
+  assert.notEqual(start, -1, `workflow must define the ${jobName} job`)
+
+  const endOffset = lines.slice(start + 1).findIndex((line) => /^  [A-Za-z0-9_-]+:\s*$/.test(line))
+  const end = endOffset === -1 ? lines.length : start + 1 + endOffset
+  return lines.slice(start, end).join('\n')
+}
+
 test('release entry documentation matches current versions and commands', () => {
   assert.equal(exists('README.md'), true, 'README.md must exist')
   assert.equal(exists('CHANGELOG.md'), true, 'CHANGELOG.md must exist')
@@ -79,6 +89,84 @@ test('CI invokes repository contracts and existing verification commands', () =>
   assert.match(workflow, /setup-python@v5/)
   assert.match(workflow, /yaml\.safe_load/)
   assert.match(workflow, /timeout-minutes:\s*15/)
+})
+
+test('tag releases publish and anonymously verify the multi-architecture GHCR image', () => {
+  assert.equal(
+    exists('.github/workflows/publish-image.yml'),
+    true,
+    'container publishing workflow must exist',
+  )
+
+  const workflow = read('.github/workflows/publish-image.yml')
+  assert.match(workflow, /^on:\s*\n\s{2}push:\s*\n\s{4}tags:\s*\n\s{6}- ['"]v\*['"]\s*$/m)
+  assert.doesNotMatch(workflow, /branches:/)
+  for (const permission of ['contents: read', 'packages: write', 'id-token: write', 'attestations: write']) {
+    assert.match(workflow, new RegExp(escapeRegExp(permission)))
+  }
+
+  const publish = workflowJob(workflow, 'publish')
+  assert.match(
+    publish,
+    new RegExp(
+      escapeRegExp(
+        '^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$',
+      ),
+    ),
+  )
+  assert.match(publish, /Invalid release tag[\s\S]*exit 1/)
+  assert.match(publish, /image:\s*\$\{\{ steps\.version\.outputs\.image \}\}/)
+  assert.match(publish, /version:\s*\$\{\{ steps\.version\.outputs\.version \}\}/)
+  assert.match(publish, /ghcr\.io\/lottshin\/dingcard/)
+  for (const action of [
+    'actions/checkout@v7',
+    'docker/setup-qemu-action@v4',
+    'docker/setup-buildx-action@v4',
+    'docker/login-action@v4',
+    'docker/metadata-action@v6',
+    'docker/build-push-action@v7',
+  ]) {
+    assert.match(publish, new RegExp(escapeRegExp(action)), `publish job must use ${action}`)
+  }
+  assert.match(publish, /password:\s*\$\{\{ secrets\.GITHUB_TOKEN \}\}/)
+  assert.match(publish, /platforms:\s*linux\/amd64,linux\/arm64/)
+  assert.match(publish, /type=semver,pattern=\{\{version\}\}/)
+  assert.match(publish, /type=semver,pattern=\{\{major\}\}\.\{\{minor\}\}/)
+  assert.match(publish, /type=sha/)
+  assert.match(publish, /type=raw,value=latest,enable=\$\{\{ steps\.version\.outputs\.stable == 'true' \}\}/)
+  for (const label of [
+    'org.opencontainers.image.source',
+    'org.opencontainers.image.revision',
+    'org.opencontainers.image.version',
+    'org.opencontainers.image.licenses',
+  ]) {
+    assert.match(publish, new RegExp(escapeRegExp(label)), `publish job must set ${label}`)
+  }
+  assert.match(publish, /sbom:\s*true/)
+  assert.match(publish, /provenance:\s*mode=max/)
+  assert.match(publish, /cache-from:\s*type=gha/)
+  assert.match(publish, /cache-to:\s*type=gha,mode=max/)
+  assert.match(publish, /docker buildx imagetools inspect[\s\S]*--raw[\s\S]*jq -e/)
+  assert.match(publish, /platform\.architecture == "amd64"/)
+  assert.match(publish, /platform\.architecture == "arm64"/)
+
+  const smoke = workflowJob(workflow, 'smoke')
+  assert.match(smoke, /needs:\s*publish/)
+  assert.match(smoke, /fail-fast:\s*false/)
+  assert.match(smoke, /platform:\s*linux\/amd64/)
+  assert.match(smoke, /platform:\s*linux\/arm64/)
+  assert.match(smoke, /docker\/setup-qemu-action@v4/)
+  assert.doesNotMatch(smoke, /docker\/login-action|GITHUB_TOKEN|password:/)
+  assert.match(smoke, /docker logout ghcr\.io/)
+  assert.match(smoke, /docker pull --platform "\$PLATFORM" "\$IMAGE:\$VERSION"/)
+  assert.match(smoke, /docker run[\s\S]*-p 127\.0\.0\.1::3000/)
+  assert.match(smoke, /docker port "\$CONTAINER_NAME" 3000\/tcp/)
+  assert.match(smoke, /"\$BASE_URL\/"/)
+  assert.match(smoke, /"\$BASE_URL\/api\/health"/)
+  assert.match(smoke, /\/assets\//)
+  assert.match(smoke, /if:\s*\$\{\{ always\(\) \}\}/)
+  assert.match(smoke, /docker rm -f "\$CONTAINER_NAME"/)
+  assert.match(smoke, /docker image rm "\$IMAGE:\$VERSION"/)
 })
 
 test('deployment documentation keeps the shortest safe Docker path', () => {
