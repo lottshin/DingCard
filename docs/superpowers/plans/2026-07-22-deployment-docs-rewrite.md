@@ -54,7 +54,7 @@
 **Files:**
 - Commit all files from Tasks 1-3
 
-- [ ] **Step 1:** 暂存并核对只包含部署文档、文档测试和计划文件。
-- [ ] **Step 2:** 提交为 `docs: simplify deployment guide`。
-- [ ] **Step 3:** 推送 `master`，等待 GitHub CI 和 Vercel 自动部署。
-- [ ] **Step 4:** 核对远端 README、部署指南、最终 SHA 和工作区状态。
+- [x] **Step 1:** 暂存并核对只包含部署文档、文档测试和计划文件。
+- [x] **Step 2:** 提交为 `docs: simplify deployment guide`。
+- [x] **Step 3:** 推送 `master`，等待 GitHub CI 和 Vercel 自动部署。
+- [x] **Step 4:** 核对远端 README、部署指南、最终 SHA 和工作区状态。
