@@ -86,7 +86,13 @@ test('CI invokes repository contracts and existing verification commands', () =>
   assert.match(workflow, /contents:\s*read/)
   assert.match(workflow, /package-lock\.json[\s\S]*server\/package-lock\.json/)
   assert.match(workflow, /hashFiles\('test-results\/\*\*\/\*'\)/)
-  assert.match(workflow, /setup-python@v5/)
+  for (const action of [
+    'actions/checkout@v7',
+    'actions/setup-node@v7',
+    'actions/setup-python@v7',
+  ]) {
+    assert.match(workflow, new RegExp(escapeRegExp(action)), `CI must use ${action}`)
+  }
   assert.match(workflow, /yaml\.safe_load/)
   assert.match(workflow, /timeout-minutes:\s*15/)
 })
