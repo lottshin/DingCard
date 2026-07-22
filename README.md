@@ -82,14 +82,12 @@ JWT_SECRET="$(openssl rand -hex 32)"
 sed -i "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
 unset JWT_SECRET
 
-docker compose config --quiet
 docker compose pull
 docker compose up -d --no-build
-docker compose ps
 curl -f http://127.0.0.1:8080/api/health
 ```
 
-健康检查返回 `{"ok":true}` 后，通过 `http://服务器地址:8080` 打开叮卡。这个 HTTP 入口只适合首次验证；正式使用前，请按[部署指南](docs/deployment.md)配置域名、HTTPS 和备份，并把 8080 端口限制在服务器本机。需要从当前源码构建镜像时，单独运行 `docker compose up -d --build app`。Windows 和 macOS 可以用 Docker Desktop 试跑同一套 Compose，但不建议作为生产服务器。
+健康检查返回 `{"ok":true}` 后，通过 `http://服务器地址:8080` 打开叮卡。域名、HTTPS、备份、升级和源码构建见[部署指南](docs/deployment.md)。
 
 ## 本地开发
 

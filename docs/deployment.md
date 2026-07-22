@@ -67,11 +67,12 @@ WEB_PORT=127.0.0.1:8080
 确认 Compose 只监听本机，然后重建 `app` 容器：
 
 ```bash
-docker compose config | grep -E 'host_ip: 127\.0\.0\.1|published: "8080"'
+docker compose config | grep -F 'host_ip: 127.0.0.1'
+docker compose config | grep -F 'published: "8080"'
 docker compose up -d --force-recreate app
 ```
 
-展开结果中应出现 `host_ip: 127.0.0.1`。此后不要再把防火墙的 8080 端口开放到公网。
+两条检查都应返回匹配行。此后不要再把防火墙的 8080 端口开放到公网。
 
 ### 使用 Caddy
 
@@ -166,12 +167,20 @@ ls -lh "$BACKUP_DIR"
 
 恢复会覆盖当前数据库和全部图片。先为当前数据再做一次备份，并确认目标目录同时包含两个归档文件。
 
+新服务器还没有 `app` 容器时，先执行：
+
+```bash
+docker compose pull
+docker compose create --no-build app
+```
+
+已有 `app` 容器时跳过上面两条命令。然后获取卷名并恢复归档：
+
 ```bash
 BACKUP_DIR="$(pwd)/backups/替换为备份目录"
 test -f "$BACKUP_DIR/db.tar.gz"
 test -f "$BACKUP_DIR/uploads.tar.gz"
 
-# 新服务器还没有容器时，先运行 docker compose pull，再运行 docker compose create --no-build app
 APP_ID="$(docker compose ps --all -q app)"
 test -n "$APP_ID"
 DB_VOLUME="$(docker inspect "$APP_ID" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}')"

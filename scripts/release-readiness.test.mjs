@@ -220,16 +220,18 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
     '在线 Demo',
     'Vercel',
     'git clone https://github.com/lottshin/DingCard.git',
+    'cp .env.example .env',
+    'openssl rand -hex 32',
     'DINGCARD_VERSION=0.11.0',
-    'docker compose config --quiet',
     'docker compose pull',
     'docker compose up -d --no-build',
-    'docker compose up -d --build app',
     'curl -f http://127.0.0.1:8080/api/health',
     'docs/deployment.md',
   ]) {
     assert.match(readme, new RegExp(escapeRegExp(entry)), `README must keep ${entry}`)
   }
+  const readmeDeploy = markdownSection(readme, '使用与部署')
+  assert.doesNotMatch(readmeDeploy, /docker compose (?:config|ps)|docker compose up[^\n]*--build/)
 
   const deployment = read('docs/deployment.md')
   for (const entry of [
@@ -279,10 +281,21 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
     assert.doesNotMatch(section, /docker compose up[^\n]*--build/)
   }
   assert.match(sourceBuild, /docker compose up -d --build app/)
-  assert.match(restore, /docker compose create --no-build app/)
+  assert.match(restore, /^docker compose pull$/m)
+  assert.match(restore, /^docker compose create --no-build app$/m)
+  assert.doesNotMatch(restore, /^\s*#.*docker compose (?:pull|create)[^\n]*$/m)
   assert.doesNotMatch(restore, /docker compose create(?![^\n]*--no-build)[^\n]*\bapp\b/)
   assert.doesNotMatch(deployment, /docker compose pull[^\n]*(?:\|\||;)[^\n]*--build/)
   assert.doesNotMatch(deployment, /拉取失败[^\n]*(?:--build|源码构建|本地构建)/)
+  assert.match(
+    deployment,
+    /^docker compose config \| grep -F 'host_ip: 127\.0\.0\.1'$/m,
+  )
+  assert.match(
+    deployment,
+    /^docker compose config \| grep -F 'published: "8080"'$/m,
+  )
+  assert.doesNotMatch(deployment, /grep[^\n]*host_ip[^\n]*\|[^\n]*published/)
 
   const envExample = read('.env.example')
   assert.match(envExample, /^DINGCARD_VERSION=0\.11\.0$/m)
