@@ -1,7 +1,7 @@
 # 0.11.0 本地发布验证
 
 - 验证日期：2026-07-22
-- Commit under test：`efd4541` 加本轮迁移修复工作树
+- Commit under test：`7e1520d`
 - 环境：Microsoft Windows NT 10.0.22631.0、PowerShell 5.1.22621.6133、Node.js v20.18.0、npm 10.8.2、Python 3.13.3
 - 容器工具：Docker 29.1.2、Docker Compose v2.40.3-desktop.1、Git Bash
 
