@@ -22,6 +22,10 @@ function markdownSection(source, heading) {
   return lines.slice(start, end).join('\n')
 }
 
+function fencedCodeBlocks(source) {
+  return [...source.matchAll(/```[^\n]*\r?\n([\s\S]*?)```/g)].map((match) => match[1].trim())
+}
+
 function composeServiceNames(source) {
   const lines = source.split(/\r?\n/)
   const servicesIndex = lines.findIndex((line) => /^services:\s*$/.test(line))
@@ -296,6 +300,18 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
     /^docker compose config \| grep -F 'published: "8080"'$/m,
   )
   assert.doesNotMatch(deployment, /grep[^\n]*host_ip[^\n]*\|[^\n]*published/)
+
+  const httpsSection = markdownSection(deployment, '配置域名和 HTTPS')
+  const httpsBlocks = fencedCodeBlocks(httpsSection)
+  const bindingCheck = [
+    "docker compose config | grep -F 'host_ip: 127.0.0.1'",
+    'docker compose config | grep -F \'published: "8080"\'',
+  ].join('\n')
+  const bindingCheckIndex = httpsBlocks.indexOf(bindingCheck)
+  const restartIndex = httpsBlocks.indexOf('docker compose up -d --force-recreate app')
+  assert.notEqual(bindingCheckIndex, -1, 'HTTPS binding checks must have a dedicated code block')
+  assert.ok(restartIndex > bindingCheckIndex, 'app restart must follow the binding check block')
+  assert.match(httpsSection, /两条检查都输出匹配结果后再执行/)
 
   const envExample = read('.env.example')
   assert.match(envExample, /^DINGCARD_VERSION=0\.11\.0$/m)

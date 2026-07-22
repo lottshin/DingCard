@@ -64,15 +64,20 @@ docker compose logs --tail=100 app
 WEB_PORT=127.0.0.1:8080
 ```
 
-确认 Compose 只监听本机，然后重建 `app` 容器：
+确认 Compose 只监听本机：
 
 ```bash
 docker compose config | grep -F 'host_ip: 127.0.0.1'
 docker compose config | grep -F 'published: "8080"'
+```
+
+两条检查都输出匹配结果后再执行重建：
+
+```bash
 docker compose up -d --force-recreate app
 ```
 
-两条检查都应返回匹配行。此后不要再把防火墙的 8080 端口开放到公网。
+此后不要再把防火墙的 8080 端口开放到公网。
 
 ### 使用 Caddy
 
