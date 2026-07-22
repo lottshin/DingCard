@@ -1,36 +1,43 @@
-# 叮卡前端镜像 —— 构建 React 产物,用 Nginx 出静态页 + 反代后端。
-#
-# 多阶段构建:
-#   build 阶段用 Node 打包出 dist/(静态文件)
-#   final 阶段用 nginx 出 dist/,并反代 /api 到后端容器、直出 /uploads
-#
-# 前后端同源:浏览器所有请求都经这一个 Nginx,VITE_API_BASE=/ 让前端用同源
-# 相对路径(/api/... 与 /uploads/...),因此不需要 CORS。
-
-# ---- build: 打包前端静态产物 --------------------------------------------
-FROM node:20-slim AS build
+FROM node:20-slim AS frontend-build
 WORKDIR /app
 
-# 先只拷清单装依赖,借助层缓存:依赖没变则跳过重装。
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# 再拷源码构建。VITE_API_BASE 是构建期注入(Vite 把它固化进静态文件),
-# 默认 "/" = 同源部署。前后端分离域名时可在 build 时用 --build-arg 覆盖。
 COPY . .
 ARG VITE_API_BASE=/
 ENV VITE_API_BASE=$VITE_API_BASE
 RUN npm run build
 
-# ---- final: Nginx 出静态页 ----------------------------------------------
-FROM nginx:1.27-alpine AS final
+FROM node:20-slim AS server-deps
+WORKDIR /app/server
 
-# 用我们的配置替换默认站点(SPA 回退 + /api 反代 + /uploads 直出)。
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --omit=dev
 
-# 只拷贝构建产物,不带任何源码或 node_modules。
-COPY --from=build /app/dist /usr/share/nginx/html
+FROM node:20-slim AS final
 
-EXPOSE 80
+ENV NODE_ENV=production \
+    DINGCARD_IMAGE=1 \
+    HOST=0.0.0.0 \
+    PORT=3000 \
+    DATA_DIR=/data \
+    WEB_ROOT=/app/dist
 
-# nginx 官方镜像自带 CMD(前台运行),无需覆盖。
+WORKDIR /app
+
+COPY --from=server-deps /app/server/node_modules ./server/node_modules
+COPY server/package.json ./server/package.json
+COPY server/src ./server/src
+COPY --from=frontend-build /app/dist ./dist
+
+RUN mkdir -p /data/uploads && chown -R node:node /data
+
+WORKDIR /app/server
+USER node
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+
+CMD ["node", "src/index.js"]

@@ -1,51 +1,30 @@
-# 叮卡 —— 一条 `docker compose up -d` 起全套。
-#
-# 拓扑:
-#   web(Nginx)  对外唯一入口:出前端静态页 + 反代 /api → server + 直出 /uploads
-#   server(Node) 只在内部网络,不对外暴露端口
-#
-# 数据持久化用两个命名卷:
-#   db       挂 server 的 /data          —— SQLite 库(仅 server 可见可写)
-#   uploads  挂 server 的 /data/uploads  —— 图片;同时只读挂给 web 的 /uploads
-#   → Nginx 只能看到图片,永远看不到数据库文件,比共享整个 /data 更安全。
-
 services:
-  server:
-    build: ./server
+  app:
+    image: ghcr.io/lottshin/dingcard:${DINGCARD_VERSION:-0.11.0}
+    build:
+      context: .
+      args:
+        VITE_API_BASE: /
     restart: unless-stopped
     environment:
-      # 必填:JWT 签名密钥。从 .env 读,绝不写死在这。
-      JWT_SECRET: ${JWT_SECRET:?请在 .env 里设置 JWT_SECRET}
-      # 其余用镜像内默认值即可;需要时在 .env 覆盖。
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       JWT_EXPIRY: ${JWT_EXPIRY:-7d}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
       AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-20}
       USER_QUOTA_BYTES: ${USER_QUOTA_BYTES:-524288000}
       IMAGE_LEASE_MS: ${IMAGE_LEASE_MS:-86400000}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-6291456}
-      # 同源部署,前后端经同一 Nginx,无需 CORS。
+      NODE_ENV: production
+      DINGCARD_IMAGE: "1"
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATA_DIR: /data
+      WEB_ROOT: /app/dist
     volumes:
       - db:/data
       - uploads:/data/uploads
-    # 不映射端口:只允许同网络内的 web 通过服务名 server:3000 访问。
-    expose:
-      - "3000"
-
-  web:
-    build:
-      context: .
-      # 同源部署,前端用相对路径 /api 与 /uploads,故 VITE_API_BASE=/。
-      args:
-        VITE_API_BASE: /
-    restart: unless-stopped
-    depends_on:
-      - server
-    volumes:
-      # 图片卷只读挂进来,供 Nginx 直出;: ro 确保 web 不能改图片。
-      - uploads:/uploads:ro
     ports:
-      # 宿主 8080 → 容器 80。生产由更外层反代/负载均衡终结 HTTPS 后转到这里。
-      - "${WEB_PORT:-8080}:80"
+      - "${WEB_PORT:-8080}:3000"
 
 volumes:
   db:

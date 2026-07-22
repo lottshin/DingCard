@@ -11,6 +11,20 @@ const frontend = JSON.parse(read('package.json'))
 const server = JSON.parse(read('server/package.json'))
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+function composeServiceNames(source) {
+  const lines = source.split(/\r?\n/)
+  const servicesIndex = lines.findIndex((line) => /^services:\s*$/.test(line))
+  assert.notEqual(servicesIndex, -1, 'compose file must define services')
+
+  const names = []
+  for (const line of lines.slice(servicesIndex + 1)) {
+    if (/^[^\s#]/.test(line)) break
+    const match = line.match(/^  ([A-Za-z0-9_-]+):\s*$/)
+    if (match) names.push(match[1])
+  }
+  return names
+}
+
 test('release entry documentation matches current versions and commands', () => {
   assert.equal(exists('README.md'), true, 'README.md must exist')
   assert.equal(exists('CHANGELOG.md'), true, 'CHANGELOG.md must exist')
@@ -164,4 +178,130 @@ test('verification report and compose smoke expose explicit execution contracts'
   const backendSmoke = read('server/smoke-test.mjs')
   assert.match(backendSmoke, /RATE_LIMIT_MAX: '300'/)
   assert.match(backendSmoke, /x-ratelimit-limit/)
+})
+
+test('compose packages the release as one pinned app service', () => {
+  const compose = read('docker-compose.yml')
+
+  assert.deepEqual(composeServiceNames(compose), ['app'])
+  assert.match(compose, /image:\s*ghcr\.io\/lottshin\/dingcard:\$\{DINGCARD_VERSION:-0\.11\.0\}/)
+  assert.match(compose, /build:\s*\n\s+context:\s*\.\s*\n\s+args:\s*\n\s+VITE_API_BASE:\s*\/\s*$/m)
+  assert.match(compose, /JWT_SECRET:\s*\$\{JWT_SECRET:\?[^}]+\}/)
+  assert.match(compose, /NODE_ENV:\s*production/)
+  assert.match(compose, /DINGCARD_IMAGE:\s*["']?1["']?/)
+  assert.match(compose, /HOST:\s*0\.0\.0\.0/)
+  assert.match(compose, /PORT:\s*["']?3000["']?/)
+  assert.match(compose, /DATA_DIR:\s*\/data/)
+  assert.match(compose, /WEB_ROOT:\s*\/app\/dist/)
+  for (const setting of [
+    'JWT_EXPIRY',
+    'RATE_LIMIT_MAX',
+    'AUTH_RATE_LIMIT_MAX',
+    'USER_QUOTA_BYTES',
+    'IMAGE_LEASE_MS',
+    'MAX_UPLOAD_BYTES',
+  ]) {
+    assert.match(compose, new RegExp(`\\b${setting}:`), `compose must preserve ${setting}`)
+  }
+  assert.match(compose, /-\s*db:\/data(?:\s|$)/)
+  assert.match(compose, /-\s*uploads:\/data\/uploads(?:\s|$)/)
+  assert.match(compose, /-\s*["']?\$\{WEB_PORT:-8080\}:3000["']?/)
+  assert.doesNotMatch(compose, /depends_on:|expose:/)
+})
+
+test('root Dockerfile builds the frontend and server into a non-root Node image', () => {
+  const dockerfile = read('Dockerfile')
+
+  assert.deepEqual(
+    [...dockerfile.matchAll(/^FROM\s+\S+(?:\s+AS\s+(\S+))?/gim)].map((match) => match[1]),
+    ['frontend-build', 'server-deps', 'final'],
+  )
+  assert.match(dockerfile, /^FROM node:20-slim AS final$/m)
+  assert.match(dockerfile, /^ARG VITE_API_BASE=\/$/m)
+  assert.match(dockerfile, /^ENV VITE_API_BASE=\$VITE_API_BASE$/m)
+  assert.match(dockerfile, /COPY package\.json package-lock\.json \.\//)
+  assert.match(dockerfile, /RUN npm ci\s*$/m)
+  assert.match(dockerfile, /RUN npm ci --omit=dev\s*$/m)
+  assert.match(dockerfile, /COPY server\/package\.json server\/package-lock\.json \.\//)
+  assert.match(dockerfile, /COPY server\/src \.\/server\/src/)
+  assert.match(dockerfile, /COPY --from=server-deps \/app\/server\/node_modules \.\/server\/node_modules/)
+  assert.match(dockerfile, /COPY --from=frontend-build \/app\/dist \.\/dist/)
+  for (const setting of [
+    'NODE_ENV=production',
+    'DINGCARD_IMAGE=1',
+    'HOST=0.0.0.0',
+    'PORT=3000',
+    'DATA_DIR=/data',
+    'WEB_ROOT=/app/dist',
+  ]) {
+    assert.match(dockerfile, new RegExp(escapeRegExp(setting)), `Dockerfile must set ${setting}`)
+  }
+  assert.match(dockerfile, /RUN mkdir -p \/data(?:\/uploads)?[\s\S]*chown[^\n]*node:node \/data/)
+  assert.match(dockerfile, /^WORKDIR \/app\/server$/m)
+  assert.match(dockerfile, /^USER node$/m)
+  assert.match(dockerfile, /^EXPOSE 3000$/m)
+  assert.match(dockerfile, /HEALTHCHECK[\s\S]*127\.0\.0\.1:3000\/api\/health/)
+  assert.match(dockerfile, /CMD \["node", "src\/index\.js"\]/)
+  assert.doesNotMatch(dockerfile, /nginx/i)
+
+  assert.equal(exists('server/Dockerfile'), false, 'server/Dockerfile must be removed')
+  assert.equal(exists('deploy/nginx.conf'), false, 'deploy/nginx.conf must be removed')
+})
+
+test('Docker build context contains required sources but excludes local state', () => {
+  const dockerignore = read('.dockerignore')
+  const patterns = dockerignore
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+
+  assert.equal(patterns.includes('server'), false, 'server source must remain in the root build context')
+  assert.equal(patterns.includes('server/'), false, 'server source must remain in the root build context')
+  for (const required of [
+    'node_modules',
+    '**/node_modules',
+    'server/data',
+    'data',
+    'e2e',
+    'e2e-integration',
+    'docs',
+    '.git',
+    '.worktrees',
+  ]) {
+    assert.equal(patterns.includes(required), true, `.dockerignore must exclude ${required}`)
+  }
+  for (const requiredSource of [
+    'public',
+    'src',
+    'index.html',
+    'package.json',
+    'package-lock.json',
+    'tsconfig.json',
+    'tsconfig.node.json',
+    'vite.config.ts',
+  ]) {
+    assert.equal(patterns.includes(requiredSource), false, `${requiredSource} is required to build the image`)
+  }
+  assert.match(dockerignore, /(?:^|\n)e2e(?:\r?\n|$)/)
+  assert.match(dockerignore, /(?:^|\n)\.env(?:\r?\n|$)/)
+  assert.match(dockerignore, /\*\.log/)
+})
+
+test('compose smoke validates the app container without generated-name assumptions', () => {
+  const smoke = read('deploy/compose-smoke.sh')
+
+  assert.match(smoke, /docker compose[^\n]*up -d --build/)
+  assert.match(smoke, /docker compose[^\n]*ps -q app/)
+  assert.match(smoke, /APP_ID=\$\(/)
+  assert.match(smoke, /docker exec "?\$APP_ID"?/)
+  assert.match(smoke, /docker logs "?\$APP_ID"?/)
+  assert.match(smoke, /<div id=["']root["']>/)
+  assert.match(smoke, /\/api\/health/)
+  assert.match(smoke, /\/api\/auth\/register/)
+  assert.match(smoke, /\/api\/images/)
+  assert.match(smoke, /\/assets\//)
+  assert.match(smoke, /down -v --remove-orphans/)
+  assert.doesNotMatch(smoke, /nginx/i)
+  assert.doesNotMatch(smoke, /\$\{PROJECT\}-(?:server|app|web)-1/)
+  assert.doesNotMatch(smoke, /ps -q (?:server|web)(?:\s|$)/)
 })

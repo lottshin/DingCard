@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# 全栈冒烟:起 compose 全套(前端 Nginx + 后端 + 卷),在栈活着时一次性验证
-# 首页 / API 反代 / 图片上传+经 Nginx 直出(跨容器共享卷),最后无条件清理。
-#
-# 用完整链路证明部署可用。不留残留:EXIT 陷阱保证任何情况下都 down -v。
-#
-# 用法: bash deploy/compose-smoke.sh
+# End-to-end smoke for the single DingCard app container. Every run uses an
+# isolated Compose project, environment file, host port, and named volumes.
 set -u
 
-PROJECT="${COMPOSE_SMOKE_PROJECT:-dinka-smoke}"
-WEB_PORT="${COMPOSE_SMOKE_WEB_PORT:-8093}"
+PROJECT="${COMPOSE_SMOKE_PROJECT:-dingcard-smoke-$$}"
+if [ -n "${COMPOSE_SMOKE_WEB_PORT:-}" ]; then
+  WEB_PORT="$COMPOSE_SMOKE_WEB_PORT"
+else
+  WEB_PORT=$(node -e "const net=require('net');const s=net.createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")
+fi
 ENV_FILE="$(mktemp)"
 HOME_BODY_FILE="$(mktemp)"
 HEALTH_BODY_FILE="$(mktemp)"
 IMAGE_FILE="$(mktemp)"
 FAIL=0
 
-# 临时测试用环境(密钥仅用于本次冒烟,不落仓库)。
 cat >"$ENV_FILE" <<'EOF'
 JWT_SECRET=compose-smoke-secret-not-for-prod
 EOF
@@ -23,14 +22,14 @@ EOF
 cleanup() {
   status=$?
   echo "=== 清理 ==="
-  if docker compose -p "$PROJECT" --env-file "$ENV_FILE" down -v --remove-orphans >/dev/null 2>&1; then
+  if WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" down -v --remove-orphans >/dev/null 2>&1; then
     echo "已清理 Compose 资源"
   else
-    echo "  ✗ Compose 资源清理失败" >&2
+    echo "  x Compose 资源清理失败" >&2
     status=1
   fi
   if ! rm -f "$ENV_FILE" "$HOME_BODY_FILE" "$HEALTH_BODY_FILE" "$IMAGE_FILE" 2>/dev/null; then
-    echo "  ✗ 临时文件清理失败" >&2
+    echo "  x 临时文件清理失败" >&2
     status=1
   fi
   trap - EXIT
@@ -38,21 +37,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
-pass() { echo "  ✓ $1"; }
-fail() { echo "  ✗ $1  <-- $2"; FAIL=1; }
+pass() { echo "  PASS $1"; }
+fail() { echo "  FAIL $1 <-- $2"; FAIL=1; }
 
 echo "=== build + up ==="
 if up_output=$(WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" up -d --build 2>&1); then
   printf '%s\n' "$up_output" | tail -4
 else
   printf '%s\n' "$up_output" | tail -4
-  fail "build + up" "docker compose 启动失败"
+  fail "build + up" "docker compose failed"
+  exit "$FAIL"
+fi
+
+APP_ID=$(WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" ps -q app)
+if [ -z "$APP_ID" ]; then
+  fail "container lookup" "app container was not created"
   exit "$FAIL"
 fi
 
 base="http://127.0.0.1:${WEB_PORT}"
 ready=0
-echo "=== 等首页和 API 就绪(最多 60 秒) ==="
+echo "=== wait for homepage and API (up to 60 seconds) ==="
 deadline=$((SECONDS + 60))
 attempt=0
 home_code=000
@@ -79,19 +84,25 @@ while [ "$SECONDS" -lt "$deadline" ]; do
   [ "$SECONDS" -lt "$deadline" ] && sleep 1
 done
 if [ "$ready" = 1 ]; then
-  pass "首页与 /api/health 在 60 秒内就绪"
+  pass "homepage and /api/health became ready"
 else
-  fail "首页/API 就绪" "home=$home_code api=$health_code body=$(cat "$HEALTH_BODY_FILE" 2>/dev/null)"
+  fail "homepage/API readiness" "home=$home_code api=$health_code body=$(cat "$HEALTH_BODY_FILE" 2>/dev/null)"
   exit "$FAIL"
 fi
 
-# 1) 注册经 /api 反代
+asset_path=$(node -e "const s=require('fs').readFileSync(process.argv[1],'utf8');const m=s.match(/(?:src|href)=[\"'](\/assets\/[^\"']+)[\"']/);if(m)process.stdout.write(m[1])" "$HOME_BODY_FILE")
+if [ -n "$asset_path" ]; then
+  asset_code=$(curl -sS --connect-timeout 2 --max-time 10 -o /dev/null -w '%{http_code}' "$base$asset_path")
+  [ "$asset_code" = 200 ] && pass "built asset $asset_path returned 200" || fail "built asset" "HTTP $asset_code"
+else
+  fail "built asset" "homepage did not reference /assets/..."
+fi
+
 reg=$(curl -sS --connect-timeout 2 --max-time 10 -X POST "$base/api/auth/register" -H 'content-type: application/json' \
   -d '{"username":"smoke","password":"1234"}')
-token=$(printf '%s' "$reg" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).token||'')}catch{console.log('')}})")
-[ -n "$token" ] && pass "注册经 /api 反代拿到 token" || fail "注册" "$reg"
+token=$(printf '%s' "$reg" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{process.stdout.write(JSON.parse(s).token||'')}catch{}})")
+[ -n "$token" ] && pass "registration returned a token" || fail "registration" "$reg"
 
-# 2) 上传图片经 web->server,写入 uploads 卷
 node -e "require('fs').writeFileSync(process.argv[1],Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64'))" "$IMAGE_FILE"
 CURL_IMAGE_FILE="$IMAGE_FILE"
 if command -v cygpath >/dev/null 2>&1; then
@@ -99,22 +110,20 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 up=$(curl -sS --connect-timeout 2 --max-time 10 -X POST "$base/api/images" -H "authorization: Bearer $token" \
   -F "file=@$CURL_IMAGE_FILE;type=image/png;filename=smoke.png")
-imgurl=$(printf '%s' "$up" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).url||'')}catch{console.log('')}})")
-[ -n "$imgurl" ] && pass "上传经 /api 反代 (url=$imgurl)" || fail "上传" "$up"
+imgurl=$(printf '%s' "$up" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{process.stdout.write(JSON.parse(s).url||'')}catch{}})")
+[ -n "$imgurl" ] && pass "upload returned $imgurl" || fail "upload" "$up"
 
-# 3) 关键:后端写的图片,Nginx 能否经只读共享卷直出
 if [ -n "$imgurl" ]; then
-  code=$(curl -sS --connect-timeout 2 --max-time 10 -o /dev/null -w '%{http_code}' "$base$imgurl")
-  [ "$code" = 200 ] && pass "图片经 Nginx 直出 (跨容器共享卷 200)" || fail "图片直出" "HTTP $code"
+  image_code=$(curl -sS --connect-timeout 2 --max-time 10 -o /dev/null -w '%{http_code}' "$base$imgurl")
+  [ "$image_code" = 200 ] && pass "Fastify served the upload directly" || fail "uploaded image" "HTTP $image_code"
 fi
 
-# 诊断信息(无论成败都抓,栈此刻还活着)
-echo "=== 后端 maxUploadBytes 实际值 ==="
-docker exec "${PROJECT}-server-1" node -e "import('./src/config.js').then(m=>console.log(m.config.maxUploadBytes))" 2>&1 | tail -1
+echo "=== app maxUploadBytes ==="
+docker exec "$APP_ID" node -e "import('./src/config.js').then(m=>console.log(m.config.maxUploadBytes))" 2>&1 | tail -1
 
-echo "=== 后端日志尾部 ==="
-docker logs "${PROJECT}-server-1" 2>&1 | tail -6
+echo "=== app log tail ==="
+docker logs "$APP_ID" 2>&1 | tail -6
 
 echo ""
 [ "$FAIL" = 0 ] && echo "ALL PASSED" || echo "SOME FAILED"
-exit $FAIL
+exit "$FAIL"
