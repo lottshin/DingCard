@@ -4,6 +4,12 @@
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
   <p><a href="https://dingcard.vercel.app"><strong>在线体验</strong></a></p>
+  <p>
+    <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Flottshin%2FDingCard">
+      <img src="https://vercel.com/button" alt="Deploy with Vercel">
+    </a>
+  </p>
+  <p><sub>一键部署只包含前端，无需配置环境变量；如需远端数据模式，请按下文部署 Fastify + SQLite 服务。</sub></p>
   <p><sub>在线版默认把草稿和账号数据保存在当前浏览器，请及时导出重要作品。</sub></p>
 </div>
 
