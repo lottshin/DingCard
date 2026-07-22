@@ -193,7 +193,7 @@ test('verification report and compose smoke expose explicit execution contracts'
   assert.doesNotMatch(report, /\| Compose config \| PASS \|[^\n]*(?:`server`|`web`)/)
   assert.doesNotMatch(report, /\| Container smoke \| PASS \|[^\n]*Nginx/)
   assert.match(report, /Docker daemon 29\.1\.2[^\n]*可用/)
-  assert.match(report, /Commit under test：`a87b8af`/)
+  assert.match(report, /Commit under test：`8169480`/)
 
   const smoke = read('deploy/compose-smoke.sh')
   assert.match(smoke, /COMPOSE_SMOKE_PROJECT/)
