@@ -9,12 +9,12 @@
 
 | Check | Status | Evidence |
 |---|---|---|
-| Release contract | PASS | `node --test scripts/release-readiness.test.mjs`：9/9。 |
+| Release contract | PASS | `node --test scripts/release-readiness.test.mjs`：10/10。 |
 | Frontend unit | PASS | `npm run test:unit`：24 个测试文件、397/397。 |
 | Backend tests | PASS | `npm run test:server`：72/72。 |
 | Backend HTTP smoke | PASS | `node server/smoke-test.mjs`：认证、所有权、413/415/429、租约/GC 和并发配额全部通过；429 响应确认命中认证限流上限 12。 |
 | Production build | PASS | `npm run build`：TypeScript 与 Vite 构建成功；保留已知的大块警告。 |
-| CI YAML | PASS | PyYAML 6.0.3 成功解析 `.github/workflows/ci.yml`，并确认 `static`/`browser` 两个 job。 |
+| CI YAML | PASS | PyYAML 6.0.3 成功解析 `.github/workflows/*.yml`，包含 `ci.yml` 与 `publish-image.yml`。 |
 | Full E2E | PASS | `npm run test:e2e`：184/184，耗时约 4.9 分钟。 |
 | Compose config | PASS | `docker compose config --quiet` 通过，`docker compose config --services` 仅输出 `app`。 |
 | Container smoke | PASS | 单个 `app` 容器由 Fastify 提供首页、`/api/health`、注册、上传与 `/assets/` 构建资源，全部返回预期结果。 |

@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check --no-input PyYAML==6.0.3
-      - run: python -c "import pathlib, yaml; yaml.safe_load(pathlib.Path('.github/workflows/ci.yml').read_text(encoding='utf-8'))"
+      - run: python -c "import pathlib, yaml; workflows=list(pathlib.Path('.github/workflows').glob('*.yml')); assert any(path.name == 'publish-image.yml' for path in workflows); [yaml.safe_load(path.read_text(encoding='utf-8')) for path in workflows]"
 
   browser:
     needs: static

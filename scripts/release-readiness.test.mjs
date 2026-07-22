@@ -94,6 +94,8 @@ test('CI invokes repository contracts and existing verification commands', () =>
     assert.match(workflow, new RegExp(escapeRegExp(action)), `CI must use ${action}`)
   }
   assert.match(workflow, /yaml\.safe_load/)
+  assert.match(workflow, /pathlib\.Path\('\.github\/workflows'\)\.glob\('\*\.yml'\)/)
+  assert.match(workflow, /publish-image\.yml/)
   assert.match(workflow, /timeout-minutes:\s*15/)
 })
 
@@ -107,11 +109,14 @@ test('tag releases publish and anonymously verify the multi-architecture GHCR im
   const workflow = read('.github/workflows/publish-image.yml')
   assert.match(workflow, /^on:\s*\n\s{2}push:\s*\n\s{4}tags:\s*\n\s{6}- ['"]v\*['"]\s*$/m)
   assert.doesNotMatch(workflow, /branches:/)
-  for (const permission of ['contents: read', 'packages: write', 'id-token: write', 'attestations: write']) {
-    assert.match(workflow, new RegExp(escapeRegExp(permission)))
-  }
+  const workflowPreamble = workflow.split(/^jobs:\s*$/m)[0]
+  assert.match(workflowPreamble, /^permissions:\s*\n\s{2}contents:\s*read\s*$/m)
+  assert.doesNotMatch(workflowPreamble, /packages:\s*write|id-token:\s*write|attestations:\s*write/)
 
   const publish = workflowJob(workflow, 'publish')
+  for (const permission of ['contents: read', 'packages: write', 'id-token: write', 'attestations: write']) {
+    assert.match(publish, new RegExp(escapeRegExp(permission)), `publish job must grant ${permission}`)
+  }
   assert.match(
     publish,
     new RegExp(
@@ -155,8 +160,18 @@ test('tag releases publish and anonymously verify the multi-architecture GHCR im
   assert.match(publish, /docker buildx imagetools inspect[\s\S]*--raw[\s\S]*jq -e/)
   assert.match(publish, /platform\.architecture == "amd64"/)
   assert.match(publish, /platform\.architecture == "arm64"/)
+  assert.match(publish, /docker logout ghcr\.io/)
+  assert.match(publish, /https:\/\/ghcr\.io\/v2\/lottshin\/dingcard\/manifests\/\$VERSION/)
+  assert.match(publish, /application\/vnd\.oci\.image\.index\.v1\+json/)
+  assert.match(publish, /application\/vnd\.docker\.distribution\.manifest\.list\.v2\+json/)
+  assert.match(publish, /curl[\s\S]*--request GET[\s\S]*HTTP_STATUS/)
+  assert.match(publish, /HTTP_STATUS[\s\S]*2\*/)
+  assert.match(publish, /public[\s\S]*rerun/i)
+  const publicManifestCheck = publish.slice(publish.indexOf('      - name: Verify public manifest access'))
+  assert.doesNotMatch(publicManifestCheck, /GITHUB_TOKEN|secrets\.|docker\/login-action/)
 
   const smoke = workflowJob(workflow, 'smoke')
+  assert.match(smoke, /permissions:\s*\{\}/)
   assert.match(smoke, /needs:\s*publish/)
   assert.match(smoke, /fail-fast:\s*false/)
   assert.match(smoke, /platform:\s*linux\/amd64/)
@@ -277,7 +292,7 @@ test('verification report and compose smoke expose explicit execution contracts'
       `verification report must contain a status row for ${label}`,
     )
   }
-  assert.match(report, /\| Release contract \| PASS \|[^\n]*9\/9/)
+  assert.match(report, /\| Release contract \| PASS \|[^\n]*10\/10/)
   assert.match(report, /\| Compose config \| PASS \|[^\n]*`app`/)
   assert.match(
     report,
