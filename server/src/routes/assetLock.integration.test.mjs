@@ -110,9 +110,24 @@ async function createStaticRoots(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'dingcard-app-assembly-'))
   const webRoot = path.join(root, 'web')
   const uploadsDir = path.join(root, 'uploads')
-  await Promise.all([mkdir(webRoot), mkdir(uploadsDir)])
-  t.after(() => rm(root, { recursive: true, force: true }))
-  return { webRoot, uploadsDir }
+  const dataDir = path.join(root, 'data')
+  const dbPath = path.join(dataDir, 'data.db')
+  const apps = []
+  await Promise.all([mkdir(webRoot), mkdir(uploadsDir), mkdir(dataDir)])
+  t.after(async () => {
+    for (const app of apps) await app.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  return {
+    webRoot,
+    uploadsDir,
+    dataDir,
+    dbPath,
+    trackApp(app) {
+      apps.push(app)
+      return app
+    },
+  }
 }
 
 test('importing the app factory does not create default data or SQLite files', async (t) => {
@@ -142,7 +157,7 @@ test('importing the app factory does not create default data or SQLite files', a
 })
 
 test('server app auth uses injected statements, JWT settings, and bcrypt cost', async (t) => {
-  const { uploadsDir } = await createStaticRoots(t)
+  const { trackApp, uploadsDir } = await createStaticRoots(t)
   const users = new Map()
   let insertedUser
   const fakeStmts = serverStatements({
@@ -162,7 +177,7 @@ test('server app auth uses injected statements, JWT settings, and bcrypt cost', 
   })
   const jwtSecret = 'injected-auth-secret'
   const username = `isolated-${process.pid}`
-  const app = await buildServerApp({
+  const app = trackApp(await buildServerApp({
     config: {
       ...config,
       bcryptCost: 4,
@@ -173,8 +188,7 @@ test('server app auth uses injected statements, JWT settings, and bcrypt cost', 
       imageRuntime: false,
     },
     stmts: fakeStmts,
-  })
-  t.after(() => app.close())
+  }))
 
   const registerResponse = await app.inject({
     method: 'POST',
@@ -194,6 +208,37 @@ test('server app auth uses injected statements, JWT settings, and bcrypt cost', 
   })
   assert.equal(meResponse.statusCode, 200)
   assert.deepEqual(meResponse.json(), { user: registered.user })
+})
+
+test('lazy db exports initialize only on first access and close cleanly', async (t) => {
+  const cwd = await mkdtemp(path.join(tmpdir(), 'dingcard-db-lazy-'))
+  t.after(() => rm(cwd, { recursive: true, force: true }))
+  const dataDir = path.join(cwd, 'data')
+  const dbPath = path.join(dataDir, 'data.db')
+  const uploadsDir = path.join(cwd, 'uploads')
+  const dbUrl = new URL('../db.js', import.meta.url).href
+  const script = `
+    import { existsSync } from 'node:fs'
+    import { db, stmts } from ${JSON.stringify(dbUrl)}
+    if (existsSync(${JSON.stringify(dataDir)}) || existsSync(${JSON.stringify(dbPath)})) {
+      throw new Error('database initialized while importing db.js')
+    }
+    if (typeof stmts.userByName.get !== 'function') throw new Error('default stmts are not usable')
+    if (!existsSync(${JSON.stringify(dbPath)})) throw new Error('first default stmts access did not initialize db')
+    db.close()
+  `
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+    cwd,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DATA_DIR: dataDir,
+      DB_PATH: dbPath,
+      UPLOADS_DIR: uploadsDir,
+    },
+  })
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
 })
 
 test('server entry catches and records strict image assembly failures', async (t) => {
@@ -218,11 +263,10 @@ test('server entry catches and records strict image assembly failures', async (t
 })
 
 test('server app keeps API-only production-style assembly valid when WEB_ROOT is empty', async (t) => {
-  const { uploadsDir } = await createStaticRoots(t)
-  const app = await buildServerApp({
-    config: { ...config, uploadsDir, webRoot: '', imageRuntime: false },
-  })
-  t.after(() => app.close())
+  const { dataDir, dbPath, trackApp, uploadsDir } = await createStaticRoots(t)
+  const app = trackApp(await buildServerApp({
+    config: { ...config, dataDir, dbPath, uploadsDir, webRoot: '', imageRuntime: false },
+  }))
 
   const healthResponse = await app.inject({ method: 'GET', url: '/api/health' })
   assert.equal(healthResponse.statusCode, 200)
@@ -237,26 +281,25 @@ test('server app keeps API-only production-style assembly valid when WEB_ROOT is
 })
 
 test('server app rejects image runtime startup when the web root is empty', async (t) => {
-  const { uploadsDir } = await createStaticRoots(t)
+  const { dataDir, dbPath, uploadsDir } = await createStaticRoots(t)
 
   await assert.rejects(
     buildServerApp({
-      config: { ...config, uploadsDir, webRoot: '', imageRuntime: true },
+      config: { ...config, dataDir, dbPath, uploadsDir, webRoot: '', imageRuntime: true },
     }),
     { name: 'Error', message: 'Static site web root is required' },
   )
 })
 
 test('server app serves the SPA without shadowing APIs and caches uploads for 30 days', async (t) => {
-  const { webRoot, uploadsDir } = await createStaticRoots(t)
+  const { dataDir, dbPath, trackApp, webRoot, uploadsDir } = await createStaticRoots(t)
   await Promise.all([
     writeFile(path.join(webRoot, 'index.html'), '<!doctype html><title>DingCard app</title>'),
     writeFile(path.join(uploadsDir, 'image.png'), 'uploaded-image'),
   ])
-  const app = await buildServerApp({
-    config: { ...config, uploadsDir, webRoot, imageRuntime: true },
-  })
-  t.after(() => app.close())
+  const app = trackApp(await buildServerApp({
+    config: { ...config, dataDir, dbPath, uploadsDir, webRoot, imageRuntime: true },
+  }))
 
   const healthResponse = await app.inject({ method: 'GET', url: '/api/health' })
   assert.equal(healthResponse.statusCode, 200)
