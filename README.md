@@ -69,9 +69,13 @@
 
 ## 使用与部署
 
+### 在线使用
+
 只想看看效果，可以直接打开[在线 Demo](https://dingcard.vercel.app)。想要一份自己的在线地址，点击上方的 Vercel 按钮即可。Vercel 部署不需要环境变量，草稿仍然保存在访问者当前使用的浏览器中。
 
-需要真实账号、跨设备草稿和服务端图片时，再部署完整应用。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器。`.env.example` 固定使用 `DINGCARD_VERSION=0.11.0`：
+### Docker 部署
+
+需要真实账号、跨设备草稿和服务端图片时，可以部署完整应用。`.env.example` 中的 `DINGCARD_VERSION=0.11.0` 会让 Compose 拉取 `ghcr.io/lottshin/dingcard:0.11.0`。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
 
 ```bash
 git clone https://github.com/lottshin/DingCard.git
