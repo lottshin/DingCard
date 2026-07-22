@@ -1,7 +1,7 @@
-# 0.10.1 本地发布验证
+# 0.11.0 本地发布验证
 
 - 验证日期：2026-07-22
-- Commit under test：`8169480`
+- Commit under test：`573ca44`
 - 环境：Microsoft Windows NT 10.0.22631.0、PowerShell 5.1.22621.6133、Node.js v20.18.0、npm 10.8.2、Python 3.13.3
 - 容器工具：Docker 29.1.2、Docker Compose v2.40.3-desktop.1、Git Bash
 
@@ -19,6 +19,10 @@
 | Compose config | PASS | `docker compose config --quiet` 通过，`docker compose config --services` 仅输出 `app`。 |
 | Container smoke | PASS | 单个 `app` 容器由 Fastify 提供首页、`/api/health`、注册、上传与 `/assets/` 构建资源，全部返回预期结果。 |
 | Compose cleanup | PASS | `dingcard-single-smoke-docs-a87b8af` 的容器、网络、卷以及 smoke 镜像标签经独立查询均不存在。 |
+| Image manifest | NOT EXECUTED | `v0.11.0` 标签尚未发布，GHCR 中没有可检查的版本 manifest。 |
+| Anonymous pull | NOT EXECUTED | `v0.11.0` 标签尚未发布，无法从 GHCR 匿名拉取该版本。 |
+| amd64 image smoke | NOT EXECUTED | `v0.11.0` 标签尚未发布，发布工作流的 amd64 镜像 smoke 尚未运行。 |
+| arm64 image smoke | NOT EXECUTED | `v0.11.0` 标签尚未发布，发布工作流的 arm64 镜像 smoke 尚未运行。 |
 
 ## 构建产物
 
@@ -29,6 +33,7 @@
 
 ## Docker 验证
 
+- 单容器 smoke：PASS；本地构建的 `app` 同时通过首页、API、上传和静态资源检查。
 - Docker CLI、Compose 插件与 Docker daemon 29.1.2 均可用。
 - Compose 配置验证使用非生产测试密钥，不读取或写入项目 `.env`；展开后的服务仅为 `app`。
 - Git Bash 对 `deploy/compose-smoke.sh` 的静态语法检查通过。

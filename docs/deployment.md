@@ -30,14 +30,17 @@ unset JWT_SECRET
 chmod 600 .env
 ```
 
-先检查配置，再构建并启动 `app`：
+模板已经固定 `DINGCARD_VERSION=0.11.0`。先检查配置，再拉取预构建镜像并启动 `app`：
 
 ```bash
 docker compose config --quiet
-docker compose up -d --build app
+docker compose pull
+docker compose up -d --no-build
 docker compose ps app
 curl -f http://127.0.0.1:8080/api/health
 ```
+
+`docker compose pull` 返回非零时先停止部署，检查版本号、网络和 GHCR 包权限，解决后再重试。
 
 健康检查应返回：
 
@@ -120,6 +123,7 @@ curl -f https://dingcard.example.com/api/health
 
 | 变量 | 用途 |
 |---|---|
+| `DINGCARD_VERSION` | GHCR 镜像版本，当前固定为 `0.11.0`。生产环境不要默认使用 `latest`。 |
 | `JWT_SECRET` | JWT 签名密钥。必须随机生成，不要提交到 Git。 |
 | `WEB_PORT` | Compose 对外端口。接入 HTTPS 后使用 `127.0.0.1:8080`。 |
 | `JWT_EXPIRY` | 登录有效期，默认 `7d`。 |
@@ -167,7 +171,7 @@ BACKUP_DIR="$(pwd)/backups/替换为备份目录"
 test -f "$BACKUP_DIR/db.tar.gz"
 test -f "$BACKUP_DIR/uploads.tar.gz"
 
-# 新服务器还没有容器时，先运行：docker compose create --build app
+# 新服务器还没有容器时，先运行 docker compose pull，再运行 docker compose create --no-build app
 APP_ID="$(docker compose ps --all -q app)"
 test -n "$APP_ID"
 DB_VOLUME="$(docker inspect "$APP_ID" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}')"
@@ -189,17 +193,30 @@ curl -f http://127.0.0.1:8080/api/health
 
 ## 升级
 
-升级前先备份，然后拉取代码并重新构建 `app`：
+升级前先备份。拉取代码后，把 `.env` 中的镜像版本改为 `0.11.0`，再拉取并启动预构建镜像：
 
 ```bash
 git pull --ff-only
+sed -i 's/^DINGCARD_VERSION=.*/DINGCARD_VERSION=0.11.0/' .env
 docker compose config --quiet
-docker compose up -d --build app
+docker compose pull
+docker compose up -d --no-build
 docker compose ps app
 curl -f http://127.0.0.1:8080/api/health
 ```
 
-`docker compose up -d --build app` 不会主动删除命名卷。不要把 `down -v` 写进升级脚本。
+这些命令不会主动删除命名卷。不要把 `down -v` 写进升级脚本。
+
+## 从源码构建
+
+需要验证本地修改或 GHCR 暂无目标版本时，可以从当前源码构建：
+
+```bash
+docker compose up -d --build app
+curl -f http://127.0.0.1:8080/api/health
+```
+
+源码构建是单独的部署方式，不是镜像拉取失败后的自动回退。
 
 ## 日志和排查
 
@@ -214,8 +231,8 @@ docker compose logs -f --tail=100 app
 # 检查环境变量和端口展开结果
 docker compose config
 
-# 重新构建 app
-docker compose up -d --build app
+# 重新创建 app，不改镜像版本
+docker compose up -d --force-recreate app
 ```
 
 常见问题：
@@ -247,3 +264,9 @@ docker compose down -v
 ```
 
 后端实现、接口和安全契约见[后端实现与接入方案](backend-plan.md)。
+
+## 首次发布 GHCR 包（维护者）
+
+本节只供仓库维护者使用，普通部署用户不需要执行。
+
+首次推送版本标签后，GitHub Packages 中的新包可能默认是 private。维护者需要把 `ghcr.io/lottshin/dingcard` 设为 public，然后重新运行发布工作流。只有匿名 manifest 检查以及 amd64、arm64 两个镜像 smoke job 都通过，才创建 GitHub Release。

@@ -3,7 +3,7 @@
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
   <p>
-    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.10.1-e2570f" alt="叮卡版本 0.10.1"></a>
+    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.11.0-e2570f" alt="叮卡版本 0.11.0"></a>
     <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
     <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
     <a href="docs/deployment.md"><img src="https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker&amp;logoColor=white" alt="Docker 部署"></a>
@@ -71,7 +71,7 @@
 
 只想看看效果，可以直接打开[在线 Demo](https://dingcard.vercel.app)。想要一份自己的在线地址，点击上方的 Vercel 按钮即可。Vercel 部署不需要环境变量，草稿仍然保存在访问者当前使用的浏览器中。
 
-需要真实账号、跨设备草稿和服务端图片时，再部署完整前后端。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
+需要真实账号、跨设备草稿和服务端图片时，再部署完整应用。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器。`.env.example` 固定使用 `DINGCARD_VERSION=0.11.0`：
 
 ```bash
 git clone https://github.com/lottshin/DingCard.git
@@ -83,12 +83,13 @@ sed -i "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
 unset JWT_SECRET
 
 docker compose config --quiet
-docker compose up -d --build
+docker compose pull
+docker compose up -d --no-build
 docker compose ps
 curl -f http://127.0.0.1:8080/api/health
 ```
 
-健康检查返回 `{"ok":true}` 后，通过 `http://服务器地址:8080` 打开叮卡。这个 HTTP 入口只适合首次验证；正式使用前，请按[部署指南](docs/deployment.md)配置域名、HTTPS 和备份，并把 8080 端口限制在服务器本机。Windows 和 macOS 可以用 Docker Desktop 试跑同一套 Compose，但不建议作为生产服务器。
+健康检查返回 `{"ok":true}` 后，通过 `http://服务器地址:8080` 打开叮卡。这个 HTTP 入口只适合首次验证；正式使用前，请按[部署指南](docs/deployment.md)配置域名、HTTPS 和备份，并把 8080 端口限制在服务器本机。需要从当前源码构建镜像时，单独运行 `docker compose up -d --build app`。Windows 和 macOS 可以用 Docker Desktop 试跑同一套 Compose，但不建议作为生产服务器。
 
 ## 本地开发
 
@@ -212,12 +213,12 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 - CodeMirror 6、Marked
 - Fastify、SQLite、JWT、bcrypt
 - Vitest、Playwright
-- Docker Compose、Nginx
+- Docker Compose
 
 ## 文档
 
 - [自由画布数据模型与交互说明](docs/freeform-editor.md)
 - [Docker 部署与维护](docs/deployment.md)
 - [后端实现与接入方案](docs/backend-plan.md)
-- [0.10.1 本地发布验证](docs/release-verification.md)
+- [0.11.0 本地发布验证](docs/release-verification.md)
 - [更新日志](CHANGELOG.md)

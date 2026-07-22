@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-22
+
+### Added
+
+- 新增单镜像自托管发布，Fastify 在一个进程中提供前端页面、`/api` 和 `/uploads`。
+- 新增 GHCR 多架构发布流程，版本标签会构建 `linux/amd64` 与 `linux/arm64` 镜像，并执行匿名拉取和启动检查。
+- 项目采用 MIT License，Copyright (c) 2026 lottshin。
+
+### Changed
+
+- Docker Compose 收敛为一个 `app` 服务，默认拉取固定的 `ghcr.io/lottshin/dingcard:0.11.0`，也保留单独的源码构建入口。
+- 继续使用原有 `db` 和 `uploads` 命名卷，升级镜像不会自动删除 SQLite 数据库或上传文件。
+- LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
+- 前端版本升至 `0.11.0`；Fastify 增加静态站点职责，服务端版本升至 `0.3.0`。
+
 ## [0.10.1] - 2026-07-20
 
 ### Added

@@ -8,8 +8,19 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 const exists = (relative) => fs.existsSync(path.join(root, relative))
 const frontend = JSON.parse(read('package.json'))
+const frontendLock = JSON.parse(read('package-lock.json'))
 const server = JSON.parse(read('server/package.json'))
+const serverLock = JSON.parse(read('server/package-lock.json'))
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+function markdownSection(source, heading) {
+  const lines = source.split(/\r?\n/)
+  const start = lines.findIndex((line) => line === `## ${heading}`)
+  assert.notEqual(start, -1, `document must contain the ${heading} section`)
+  const endOffset = lines.slice(start + 1).findIndex((line) => /^## /.test(line))
+  const end = endOffset === -1 ? lines.length : start + 1 + endOffset
+  return lines.slice(start, end).join('\n')
+}
 
 function composeServiceNames(source) {
   const lines = source.split(/\r?\n/)
@@ -38,12 +49,21 @@ function workflowJob(source, jobName) {
 test('release entry documentation matches current versions and commands', () => {
   assert.equal(exists('README.md'), true, 'README.md must exist')
   assert.equal(exists('CHANGELOG.md'), true, 'CHANGELOG.md must exist')
+  assert.equal(exists('LICENSE'), true, 'MIT LICENSE must exist')
 
   const readme = read('README.md')
   const changelog = read('CHANGELOG.md')
+  const releaseNotes = markdownSection(changelog, '[0.11.0] - 2026-07-22')
+  const license = read('LICENSE')
+  assert.equal(frontend.version, '0.11.0')
+  assert.equal(frontendLock.version, '0.11.0')
+  assert.equal(frontendLock.packages[''].version, '0.11.0')
+  assert.equal(server.version, '0.3.0')
+  assert.equal(serverLock.version, '0.3.0')
+  assert.equal(serverLock.packages[''].version, '0.3.0')
   assert.equal(exists('public/favicon.svg'), true, 'README header favicon must exist')
   assert.match(readme, /public\/favicon\.svg/)
-  assert.match(readme, new RegExp(`version-${escapeRegExp(frontend.version)}`))
+  assert.match(readme, /version-0\.11\.0/)
   assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/)
   assert.match(readme, /Node\.js 20\+/)
   for (const scriptName of Object.keys(frontend.scripts)) {
@@ -62,10 +82,12 @@ test('release entry documentation matches current versions and commands', () => 
   assert.match(readme, /VITE_API_BASE/)
   assert.match(readme, /LocalStore[\s\S]*RemoteStore[\s\S]*不(?:会|自动)迁移/)
 
-  assert.match(changelog, new RegExp(`\\[${escapeRegExp(frontend.version)}\\] - 2026-07-20`))
-  assert.match(changelog, new RegExp(`服务端[^\n]*${escapeRegExp(server.version)}`))
-  assert.match(changelog, /LocalStore[^\n]*RemoteStore[^\n]*不自动迁移/)
+  assert.match(releaseNotes, /服务端[^\n]*0\.3\.0/)
+  assert.match(releaseNotes, /LocalStore[^\n]*RemoteStore[^\n]*不自动迁移/)
   assert.match(changelog, /混合尺寸[^\n]*确认/)
+  assert.match(license, /MIT License/)
+  assert.match(license, /Copyright \(c\) 2026 lottshin/)
+  assert.match(license, /Permission is hereby granted, free of charge/)
 })
 
 test('CI invokes repository contracts and existing verification commands', () => {
@@ -198,8 +220,11 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
     '在线 Demo',
     'Vercel',
     'git clone https://github.com/lottshin/DingCard.git',
+    'DINGCARD_VERSION=0.11.0',
     'docker compose config --quiet',
-    'docker compose up -d --build',
+    'docker compose pull',
+    'docker compose up -d --no-build',
+    'docker compose up -d --build app',
     'curl -f http://127.0.0.1:8080/api/health',
     'docs/deployment.md',
   ]) {
@@ -209,8 +234,11 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
   const deployment = read('docs/deployment.md')
   for (const entry of [
     'JWT_SECRET',
+    'DINGCARD_VERSION=0.11.0',
     'WEB_PORT=127.0.0.1:8080',
     'docker compose config --quiet',
+    'docker compose pull',
+    'docker compose up -d --no-build',
     'host_ip: 127.0.0.1',
     'Caddyfile',
     'Nginx',
@@ -241,11 +269,37 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
   assert.doesNotMatch(deployment, /\/api\/health[^\n]*502[^\n]*server/i)
   assert.doesNotMatch(deployment, /Docker Compose[^\n]*两个容器/)
 
+  const firstDeploy = markdownSection(deployment, '首次部署')
+  const restore = markdownSection(deployment, '恢复备份')
+  const upgrade = markdownSection(deployment, '升级')
+  const sourceBuild = markdownSection(deployment, '从源码构建')
+  for (const section of [firstDeploy, upgrade]) {
+    assert.match(section, /docker compose pull/)
+    assert.match(section, /docker compose up -d --no-build/)
+    assert.doesNotMatch(section, /docker compose up[^\n]*--build/)
+  }
+  assert.match(sourceBuild, /docker compose up -d --build app/)
+  assert.match(restore, /docker compose create --no-build app/)
+  assert.doesNotMatch(restore, /docker compose create(?![^\n]*--no-build)[^\n]*\bapp\b/)
+  assert.doesNotMatch(deployment, /docker compose pull[^\n]*(?:\|\||;)[^\n]*--build/)
+  assert.doesNotMatch(deployment, /拉取失败[^\n]*(?:--build|源码构建|本地构建)/)
+
   const envExample = read('.env.example')
+  assert.match(envExample, /^DINGCARD_VERSION=0\.11\.0$/m)
   assert.match(envExample, /127\.0\.0\.1:8080/)
+  assert.match(envExample, /app:3000/)
+  assert.match(envExample, /Fastify[^\n]*统一限制[^\n]*\r?\nMAX_UPLOAD_BYTES=/)
+  assert.doesNotMatch(envExample, /deploy\/nginx\.conf|server\/Dockerfile|容器内 Nginx|web 容器|server 容器/)
 
   const backendPlan = read('docs/backend-plan.md')
   assert.match(backendPlan, /Docker 部署与维护.*deployment\.md/)
+  assert.match(backendPlan, /Fastify[^\n]*(?:同一进程|单进程)[^\n]*(?:SPA|前端)[^\n]*`\/api`[^\n]*`\/uploads`/)
+  assert.doesNotMatch(backendPlan, /server\/Dockerfile|deploy\/nginx\.conf|web \+ server|web 容器|server 容器|Nginx 直出/)
+
+  const currentDocs = [readme, deployment, envExample, backendPlan].join('\n')
+  assert.doesNotMatch(currentDocs, /docker compose logs[^\n]*(?:\bserver\b|\bweb\b)/)
+  assert.doesNotMatch(currentDocs, /docker compose ps[^\n]*-q server/)
+  assert.doesNotMatch(currentDocs, /deploy\/nginx\.conf|server\/Dockerfile/)
 })
 
 test('backend release checklists distinguish repository and deployment evidence', () => {
@@ -285,6 +339,10 @@ test('verification report and compose smoke expose explicit execution contracts'
     'Compose config',
     'Container smoke',
     'Compose cleanup',
+    'Image manifest',
+    'Anonymous pull',
+    'amd64 image smoke',
+    'arm64 image smoke',
   ]) {
     assert.match(
       report,
@@ -292,7 +350,9 @@ test('verification report and compose smoke expose explicit execution contracts'
       `verification report must contain a status row for ${label}`,
     )
   }
+  assert.match(report, /^# 0\.11\.0 本地发布验证$/m)
   assert.match(report, /\| Release contract \| PASS \|[^\n]*10\/10/)
+  assert.match(report, /\| Backend tests \| PASS \|[^\n]*72\/72/)
   assert.match(report, /\| Compose config \| PASS \|[^\n]*`app`/)
   assert.match(
     report,
@@ -302,7 +362,14 @@ test('verification report and compose smoke expose explicit execution contracts'
   assert.doesNotMatch(report, /\| Compose config \| PASS \|[^\n]*(?:`server`|`web`)/)
   assert.doesNotMatch(report, /\| Container smoke \| PASS \|[^\n]*Nginx/)
   assert.match(report, /Docker daemon 29\.1\.2[^\n]*可用/)
-  assert.match(report, /Commit under test：`8169480`/)
+  assert.match(report, /单容器 smoke[^\n]*PASS/)
+  assert.match(report, /CI YAML \| PASS \|[^\n]*(?:ci\.yml[^\n]*publish-image\.yml|publish-image\.yml[^\n]*ci\.yml)/)
+  for (const label of ['Image manifest', 'Anonymous pull', 'amd64 image smoke', 'arm64 image smoke']) {
+    assert.match(
+      report,
+      new RegExp(`\\| ${escapeRegExp(label)} \\| NOT EXECUTED \\|[^\\n]*(?:尚未发布|未发布)`),
+    )
+  }
 
   const smoke = read('deploy/compose-smoke.sh')
   assert.match(smoke, /COMPOSE_SMOKE_PROJECT/)
