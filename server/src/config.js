@@ -25,6 +25,7 @@ export function positiveInteger(value, fallback) {
 // Always resolved to an absolute path — @fastify/static (and sane file writes)
 // require it, and we don't want to depend on the caller passing an absolute one.
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'))
+const WEB_ROOT = process.env.WEB_ROOT
 
 export const config = {
   dev: DEV,
@@ -34,6 +35,10 @@ export const config = {
   dataDir: DATA_DIR,
   dbPath: path.resolve(process.env.DB_PATH || path.join(DATA_DIR, 'data.db')),
   uploadsDir: path.resolve(process.env.UPLOADS_DIR || path.join(DATA_DIR, 'uploads')),
+
+  // Optional co-located SPA. The image runtime makes it mandatory at startup.
+  webRoot: WEB_ROOT && WEB_ROOT.trim() ? path.resolve(WEB_ROOT) : '',
+  imageRuntime: process.env.DINGCARD_IMAGE === '1',
 
   // JWT signing secret. MUST be set in production. In dev we fall back to a
   // random per-boot secret (tokens don't survive a restart, which is fine locally).

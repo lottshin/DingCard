@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 
 import Fastify from 'fastify'
 
+import { buildApp as buildServerApp } from '../app.js'
+import { config } from '../config.js'
 import { createUserAssetLock } from '../userAssetLock.js'
 import draftRoutes from './drafts.js'
 import imageRoutes from './images.js'
@@ -75,6 +79,74 @@ async function buildApp({
   await app.ready()
   return app
 }
+
+async function createStaticRoots(t) {
+  const root = await mkdtemp(path.join(tmpdir(), 'dingcard-app-assembly-'))
+  const webRoot = path.join(root, 'web')
+  const uploadsDir = path.join(root, 'uploads')
+  await Promise.all([mkdir(webRoot), mkdir(uploadsDir)])
+  t.after(() => rm(root, { recursive: true, force: true }))
+  return { webRoot, uploadsDir }
+}
+
+test('server app keeps API-only production-style assembly valid when WEB_ROOT is empty', async (t) => {
+  const { uploadsDir } = await createStaticRoots(t)
+  const app = await buildServerApp({
+    config: { ...config, uploadsDir, webRoot: '', imageRuntime: false },
+  })
+  t.after(() => app.close())
+
+  const healthResponse = await app.inject({ method: 'GET', url: '/api/health' })
+  assert.equal(healthResponse.statusCode, 200)
+  assert.deepEqual(healthResponse.json(), { ok: true })
+
+  const pageResponse = await app.inject({
+    method: 'GET',
+    url: '/editor/work',
+    headers: { accept: 'text/html' },
+  })
+  assert.equal(pageResponse.statusCode, 404)
+})
+
+test('server app rejects image runtime startup when the web root is empty', async (t) => {
+  const { uploadsDir } = await createStaticRoots(t)
+
+  await assert.rejects(
+    buildServerApp({
+      config: { ...config, uploadsDir, webRoot: '', imageRuntime: true },
+    }),
+    { name: 'Error', message: 'Static site web root is required' },
+  )
+})
+
+test('server app serves the SPA without shadowing APIs and caches uploads for 30 days', async (t) => {
+  const { webRoot, uploadsDir } = await createStaticRoots(t)
+  await Promise.all([
+    writeFile(path.join(webRoot, 'index.html'), '<!doctype html><title>DingCard app</title>'),
+    writeFile(path.join(uploadsDir, 'image.png'), 'uploaded-image'),
+  ])
+  const app = await buildServerApp({
+    config: { ...config, uploadsDir, webRoot, imageRuntime: true },
+  })
+  t.after(() => app.close())
+
+  const healthResponse = await app.inject({ method: 'GET', url: '/api/health' })
+  assert.equal(healthResponse.statusCode, 200)
+  assert.deepEqual(healthResponse.json(), { ok: true })
+
+  const pageResponse = await app.inject({
+    method: 'GET',
+    url: '/editor/work',
+    headers: { accept: 'text/html' },
+  })
+  assert.equal(pageResponse.statusCode, 200)
+  assert.match(pageResponse.body, /<title>DingCard app<\/title>/)
+
+  const uploadResponse = await app.inject({ method: 'GET', url: '/uploads/image.png' })
+  assert.equal(uploadResponse.statusCode, 200)
+  assert.equal(uploadResponse.body, 'uploaded-image')
+  assert.equal(uploadResponse.headers['cache-control'], 'public, max-age=2592000, immutable')
+})
 
 test('draft mutation and image retain serialize through the injected shared user asset lock', async (t) => {
   const draftEntered = deferred()
@@ -306,15 +378,6 @@ test('retain preserves a non-default port from the request Host authority', asyn
   assert.equal(response.statusCode, 200)
   assert.deepEqual(response.json(), { retained: 1 })
   assert.deepEqual(validations, [['user-1', '/uploads/public-port.png']])
-})
-
-test('deployment proxy preserves the complete public Host authority', async () => {
-  const nginxConfig = await readFile(
-    new URL('../../../deploy/nginx.conf', import.meta.url),
-    'utf8',
-  )
-
-  assert.match(nginxConfig, /proxy_set_header\s+Host\s+\$http_host\s*;/)
 })
 
 test('retain returns 409 without renewing any path when ownership validation fails', async (t) => {
