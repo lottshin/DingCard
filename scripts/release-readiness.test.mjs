@@ -165,6 +165,16 @@ test('verification report and compose smoke expose explicit execution contracts'
       `verification report must contain a status row for ${label}`,
     )
   }
+  assert.match(report, /\| Release contract \| PASS \|[^\n]*9\/9/)
+  assert.match(report, /\| Compose config \| PASS \|[^\n]*`app`/)
+  assert.match(
+    report,
+    /\| Container smoke \| PASS \|[^\n]*`app`[^\n]*Fastify[^\n]*首页[^\n]*`\/api\/health`[^\n]*注册[^\n]*上传[^\n]*`\/assets\//,
+  )
+  assert.match(report, /\| Compose cleanup \| PASS \|[^\n]*smoke[^\n]*镜像标签[^\n]*不存在/)
+  assert.doesNotMatch(report, /\| Compose config \| PASS \|[^\n]*(?:`server`|`web`)/)
+  assert.doesNotMatch(report, /\| Container smoke \| PASS \|[^\n]*Nginx/)
+  assert.match(report, /Docker daemon 29\.1\.2[^\n]*可用/)
 
   const smoke = read('deploy/compose-smoke.sh')
   assert.match(smoke, /COMPOSE_SMOKE_PROJECT/)
@@ -221,6 +231,11 @@ test('root Dockerfile builds the frontend and server into a non-root Node image'
   assert.match(dockerfile, /^ENV VITE_API_BASE=\$VITE_API_BASE$/m)
   assert.match(dockerfile, /COPY package\.json package-lock\.json \.\//)
   assert.match(dockerfile, /RUN npm ci\s*$/m)
+  const frontendStage = dockerfile.split(/^FROM node:20-slim AS server-deps$/m)[0]
+  assert.doesNotMatch(frontendStage, /^COPY \. \.\s*$/m)
+  assert.match(frontendStage, /COPY tsconfig\.json tsconfig\.node\.json vite\.config\.ts index\.html \.\//)
+  assert.match(frontendStage, /COPY public \.\/public/)
+  assert.match(frontendStage, /COPY src \.\/src/)
   assert.match(dockerfile, /RUN npm ci --omit=dev\s*$/m)
   assert.match(dockerfile, /COPY server\/package\.json server\/package-lock\.json \.\//)
   assert.match(dockerfile, /COPY server\/src \.\/server\/src/)
@@ -290,6 +305,16 @@ test('Docker build context contains required sources but excludes local state', 
 test('compose smoke validates the app container without generated-name assumptions', () => {
   const smoke = read('deploy/compose-smoke.sh')
 
+  assert.match(smoke, /SMOKE_VERSION="smoke-\$\{PROJECT\}"/)
+  const composeCommands = smoke
+    .split(/\r?\n/)
+    .filter((line) => /\bdocker compose -p\b/.test(line))
+  assert.equal(composeCommands.length, 3, 'smoke must have only up/down/ps Compose calls')
+  for (const command of composeCommands) {
+    assert.match(command, /DINGCARD_VERSION="\$SMOKE_VERSION"/)
+  }
+  assert.match(smoke, /docker image rm "ghcr\.io\/lottshin\/dingcard:\$SMOKE_VERSION"[^\n]*\|\| true/)
+  assert.doesNotMatch(smoke, /DINGCARD_VERSION=["']?0\.11\.0/)
   assert.match(smoke, /docker compose[^\n]*up -d --build/)
   assert.match(smoke, /docker compose[^\n]*ps -q app/)
   assert.match(smoke, /APP_ID=\$\(/)

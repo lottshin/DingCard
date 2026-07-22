@@ -4,6 +4,7 @@
 set -u
 
 PROJECT="${COMPOSE_SMOKE_PROJECT:-dingcard-smoke-$$}"
+SMOKE_VERSION="smoke-${PROJECT}"
 if [ -n "${COMPOSE_SMOKE_WEB_PORT:-}" ]; then
   WEB_PORT="$COMPOSE_SMOKE_WEB_PORT"
 else
@@ -22,12 +23,13 @@ EOF
 cleanup() {
   status=$?
   echo "=== 清理 ==="
-  if WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" down -v --remove-orphans >/dev/null 2>&1; then
+  if DINGCARD_VERSION="$SMOKE_VERSION" WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" down -v --remove-orphans >/dev/null 2>&1; then
     echo "已清理 Compose 资源"
   else
     echo "  x Compose 资源清理失败" >&2
     status=1
   fi
+  docker image rm "ghcr.io/lottshin/dingcard:$SMOKE_VERSION" >/dev/null 2>&1 || true
   if ! rm -f "$ENV_FILE" "$HOME_BODY_FILE" "$HEALTH_BODY_FILE" "$IMAGE_FILE" 2>/dev/null; then
     echo "  x 临时文件清理失败" >&2
     status=1
@@ -41,7 +43,7 @@ pass() { echo "  PASS $1"; }
 fail() { echo "  FAIL $1 <-- $2"; FAIL=1; }
 
 echo "=== build + up ==="
-if up_output=$(WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" up -d --build 2>&1); then
+if up_output=$(DINGCARD_VERSION="$SMOKE_VERSION" WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" up -d --build 2>&1); then
   printf '%s\n' "$up_output" | tail -4
 else
   printf '%s\n' "$up_output" | tail -4
@@ -49,7 +51,7 @@ else
   exit "$FAIL"
 fi
 
-APP_ID=$(WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" ps -q app)
+APP_ID=$(DINGCARD_VERSION="$SMOKE_VERSION" WEB_PORT="$WEB_PORT" docker compose -p "$PROJECT" --env-file "$ENV_FILE" ps -q app)
 if [ -z "$APP_ID" ]; then
   fail "container lookup" "app container was not created"
   exit "$FAIL"
