@@ -13,6 +13,8 @@ import { OperationNotice } from '../workspaces/OperationNotice'
 import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../workspaces/types'
 import { useImageLease } from '../workspaces/useImageLease'
+import { TemplateGallery } from '../templates/TemplateGallery'
+import type { TemplateDefinition } from '../templates/types'
 import { MAX_EFFECTIVE_SCALE, MIN_EFFECTIVE_SCALE } from './constants'
 import {
   createFreeformDocument,
@@ -403,6 +405,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -2236,6 +2239,35 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }
 
+  function applyFreeformTemplate(template: TemplateDefinition) {
+    if (template.workspace !== 'freeform') return
+    if (blockDocumentMutationDuringInteraction()) return
+    const document = template.createFreeform?.()
+    if (!document) return
+    documentIdentityGenerationRef.current += 1
+    inspectorNumberResetGenerationRef.current += 1
+    shapeFillOperationTokensRef.current.clear()
+    saveGenerationRef.current += 1
+    successfulSaveRef.current = null
+    updateHistory(createHistory(document))
+    setSceneUiState({
+      activeGroupPath: [],
+      selectionPaths: [],
+      identity: {
+        activeSlideId: document.activeSlideId,
+        draftId: null,
+        userId: currentUserIdRef.current,
+      },
+    })
+    setClipboard(null)
+    setMarquee(null)
+    setSnapLines([])
+    updateDraftId(null)
+    setSavedAt(null)
+    setShowDrafts(false)
+    setShowTemplates(false)
+  }
+
   return (
     <div
       className="freeform-workspace"
@@ -2248,6 +2280,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         className="freeform-toolbar"
       >
         <ToolbarGroup>
+          <button className='bar-btn' data-testid='freeform-template-button' onClick={() => setShowTemplates(true)}>
+            模板
+          </button>
           <div className="freeform-page-context">
             <FreeformPageSizePopover
               isActive={isActive}
@@ -3030,6 +3065,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           onClose={() => setShowDrafts(false)}
         />
       )}
+
+      <TemplateGallery
+        open={showTemplates}
+        workspace='freeform'
+        hasCurrentContent={draftId !== null || history.past.length > 0 || doc.slides.length > 1 || doc.slides.some((slide) => slide.nodes.length > 0)}
+        onClose={() => setShowTemplates(false)}
+        onApply={applyFreeformTemplate}
+      />
 
       {showMixedSizeWarning && (
         <div className="sheet-backdrop" onClick={() => setShowMixedSizeWarning(false)}>

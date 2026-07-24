@@ -18,6 +18,8 @@ import { OperationNotice } from '../OperationNotice'
 import { ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../types'
 import { useImageLease } from '../useImageLease'
+import { TemplateGallery } from '../../templates/TemplateGallery'
+import type { TemplateDefinition } from '../../templates/types'
 
 const SAMPLE = `# 图文切片快速上手
 
@@ -73,6 +75,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   const [showProfile, setShowProfile] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [active, setActive] = useState(0)
   const [ctx, setCtx] = useState<Ctx | null>(null)
@@ -517,10 +520,32 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }
 
+  function applyMarkdownTemplate(template: TemplateDefinition) {
+    if (template.workspace !== 'markdown') return
+    const document = template.createMarkdown?.()
+    if (!document) return
+    saveGenerationRef.current += 1
+    draftRevisionRef.current += 1
+    updateDraftId(null)
+    setSavedAt(null)
+    setSource(document.source)
+    setPlatformId(document.platformId)
+    setThemeId(document.themeId)
+    setFontFamily(document.fontFamily)
+    setProfile(document.profile)
+    setRadius(document.radius)
+    setActive(0)
+    setShowDrafts(false)
+    setShowTemplates(false)
+  }
+
   return (
     <div className="app">
       <WorkspaceToolbar testId="markdown-toolbar" label="Markdown 卡片工具栏">
         <ToolbarGroup>
+          <button className='bar-btn' data-testid='markdown-template-button' onClick={() => setShowTemplates(true)}>
+            模板
+          </button>
           <div className="seg" role="tablist" aria-label="平台">
             {PLATFORMS.map((p) => (
               <button
@@ -755,6 +780,14 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           onClose={() => setShowDrafts(false)}
         />
       )}
+
+      <TemplateGallery
+        open={showTemplates}
+        workspace='markdown'
+        hasCurrentContent={draftId !== null || draftRevisionRef.current > 0}
+        onClose={() => setShowTemplates(false)}
+        onApply={applyMarkdownTemplate}
+      />
     </div>
   )
 }

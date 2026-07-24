@@ -3,7 +3,7 @@
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
   <p>
-    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.11.0-e2570f" alt="叮卡版本 0.11.0"></a>
+    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.12.0-e2570f" alt="叮卡版本 0.12.0"></a>
     <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
     <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
     <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.11.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.11.0"></a>
@@ -37,6 +37,7 @@
 
 叮卡把内容排版和轻量设计放在同一个浏览器工具中：
 
+- 不想从空白页开始时，可以从模板中心选择“编辑部、清单、信号、夜航”四套多页作品。
 - 写长文时，用 Markdown 专注内容，实时预览分页效果。
 - 做封面或重点页时，切到自由画布，在页面上安排内容并管理图层。
 - 完成后导出当前页，或把整组图片打包为 ZIP。
@@ -53,6 +54,7 @@
 - 正文中的 `---` 会被当作分页标记，方便你在需要的位置开始下一张卡片。
 - 图片粘贴后可以在预览区域调整宽度，不必重新处理原图。
 - 当前页面可以单独导出，全部分页也可以一次打包下载。
+- 打开模板后会得到一篇三页示例，主题和字体已经配好，正文可以直接改。
 
 ![叮卡 Markdown 推特长文排版工作区](docs/assets/markdown-workspace.png)
 
@@ -65,6 +67,7 @@
 - 暂时不需要的对象可以隐藏，正在调整的对象可以锁定，避免误操作。
 - 多页作品可以分别设置尺寸，页面之间也可以复制和调整。
 - 导出时可以选择当前页面，也可以把全部页面打包成 ZIP。
+- 模板中心提供四套三页作品，打开后仍可逐个修改文字、颜色、尺寸和图层。
 
 ![叮卡自由画布轻设计工作区](docs/assets/freeform-workspace.png)
 
