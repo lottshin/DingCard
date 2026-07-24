@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeFreeformDocumentV3 } from '../freeform/sceneDocument'
-import type { FreeformSceneNode } from '../freeform/types'
+import type { FreeformSceneLeaf, FreeformSceneNode } from '../freeform/types'
 import { FONTS, PLATFORMS, THEMES } from '../theme'
 import { TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
 
@@ -20,6 +20,16 @@ function textFontFamilies(nodes: FreeformSceneNode[]): string[] {
     if (node.type === 'group') return textFontFamilies(node.children)
     return node.type === 'text' ? [node.fontFamily] : []
   })
+}
+
+function sceneLeaves(nodes: FreeformSceneNode[]): FreeformSceneLeaf[] {
+  return nodes.flatMap((node) => node.type === 'group' ? sceneLeaves(node.children) : [node])
+}
+
+function geometrySignature(nodes: FreeformSceneNode[]): string {
+  return sceneLeaves(nodes)
+    .map((node) => [node.type, node.x, node.y, node.width, node.height, node.rotation].join(':'))
+    .join('|')
 }
 
 describe('template registry', () => {
@@ -62,5 +72,23 @@ describe('template registry', () => {
       if (first && second) first.slides[0].name = 'changed'
       expect(second?.slides[0].name).not.toBe('changed')
     }
+  })
+
+  it('ships composition-rich freeform pages instead of palette-only variants', () => {
+    const seriesGeometry: string[] = []
+    for (const template of templatesForWorkspace('freeform')) {
+      const document = template.createFreeform?.()
+      expect(document).toBeDefined()
+      seriesGeometry.push(document!.slides.map((slide) => geometrySignature(slide.nodes)).join('/'))
+
+      for (const slide of document!.slides) {
+        const leaves = sceneLeaves(slide.nodes)
+        expect(leaves.length, `${template.id}/${slide.name}`).toBeGreaterThanOrEqual(8)
+        expect(leaves.filter((node) => node.type === 'text').length, `${template.id}/${slide.name}`).toBeGreaterThanOrEqual(3)
+        expect(leaves.some((node) => node.type === 'shape'), `${template.id}/${slide.name}`).toBe(true)
+        expect(leaves.some((node) => node.type === 'line'), `${template.id}/${slide.name}`).toBe(true)
+      }
+    }
+    expect(new Set(seriesGeometry).size).toBe(4)
   })
 })

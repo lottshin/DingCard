@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Card } from '../Card'
-import { FreeformSceneNodeView } from '../freeform/FreeformSceneNodeView'
+import { FreeformSlidePreview } from '../freeform/FreeformSlidePreview'
 import { parseBlocks } from '../markdown'
 import { buildConfig, DEFAULT_PROFILE, FONTS, PLATFORMS, THEMES } from '../theme'
 import { templatesForWorkspace } from './registry'
@@ -60,22 +60,14 @@ function FreeformTemplatePreview({ template, detail = false }: { template: Templ
   const document = useMemo(() => template.createFreeform?.(), [template])
   const slide = document?.slides[0]
   if (!slide) return null
-  const noop = () => undefined
-  const scale = detail ? 0.207 : 0.15
   return (
-    <div className={detail ? 'template-freeform-preview detail' : 'template-freeform-preview'} style={{ '--template-scale': String(scale) } as CSSProperties}>
-      <div className='template-freeform-artboard' style={{ width: slide.width, height: slide.height, background: slide.background.type === 'solid' ? slide.background.color : undefined }}>
-        <FreeformSceneNodeView
-          nodes={slide.nodes}
-          activeParentPath={[]}
-          selectedPaths={[]}
-          onNodePointerDown={noop}
-          onNodeDoubleClick={noop}
-          onTextChange={noop}
-          onTextFocus={noop}
-        />
-      </div>
-    </div>
+    <FreeformSlidePreview
+      slide={slide}
+      frameWidth={detail ? 224 : 162}
+      frameHeight={detail ? 299 : 216}
+      className={detail ? 'template-freeform-preview detail' : 'template-freeform-preview'}
+      artboardClassName='template-freeform-artboard'
+    />
   )
 }
 

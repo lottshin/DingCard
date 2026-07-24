@@ -15,7 +15,7 @@ test('Markdown gallery renders four previews and applies a complete document', a
   await expect(dialog.locator('.template-tile-preview')).toHaveCount(4)
   await expect(dialog.locator('.template-detail-preview')).toBeVisible()
   await expect.poll(() => dialog.locator('.template-markdown-preview .card-content h1').count()).toBeGreaterThan(0)
-  await expect(dialog.locator('.template-detail .card')).toHaveCSS('border-radius', '8px')
+  await expect(dialog.locator('.template-detail .card')).toHaveCSS('border-radius', '4px')
   const editorialPreview = dialog.getByRole('button', { name: '预览编辑部' })
   const checklistPreview = dialog.getByRole('button', { name: '预览清单' })
   await expect(editorialPreview).toHaveAttribute('aria-pressed', 'true')
@@ -26,7 +26,7 @@ test('Markdown gallery renders four previews and applies a complete document', a
 
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.locator('.cm-content')).toContainText('把一件事讲清楚')
+  await expect(page.locator('.cm-content')).toContainText('开头先把判断写清楚')
   await expect(page.locator('.pane-sub')).toContainText('3 页')
   await expect(page.getByRole('combobox', { name: '主题' })).toContainText('模板 · 编辑部')
 })
@@ -90,12 +90,37 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
   await expect(dialog.locator('.template-tile')).toHaveCount(4)
   await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(5)
-  await expect(dialog.locator('.template-freeform-artboard .freeform-element').first()).toBeVisible()
+  await expect(dialog.locator('.template-freeform-artboard .freeform-preview-element').first()).toBeVisible()
 
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
   await expect(page.locator('.freeform-workspace')).toHaveAttribute('data-history-depth', '0')
   await expect(page.locator('.freeform-thumb')).toHaveCount(3)
+  await expect(page.locator('.freeform-thumb-art .freeform-preview-element').first()).toBeVisible()
+  await expect(page.locator('.freeform-thumb-art .freeform-element')).toHaveCount(0)
+  await expect(page.locator('.freeform-thumb-art [data-testid]')).toHaveCount(0)
+  await expect(page.locator('.freeform-thumb-art [role="textbox"]')).toHaveCount(0)
   await expect(page.locator('.freeform-element')).not.toHaveCount(0)
+  const editorNodeId = await page.getByTestId('freeform-canvas').locator('[data-scene-node-id]').first().getAttribute('data-scene-node-id')
+  expect(editorNodeId).toBeTruthy()
+  await expect(page.locator(`[data-scene-node-id="${editorNodeId}"]`)).toHaveCount(1)
+
+  await page.setViewportSize({ width: 1024, height: 768 })
+  const thumbnailOverflow = await page.locator('.freeform-thumb').first().evaluate((thumbnail) => thumbnail.scrollWidth - thumbnail.clientWidth)
+  expect(thumbnailOverflow).toBeLessThanOrEqual(1)
+  const previewsFit = await page.locator('.freeform-thumb-art').evaluateAll((frames) => frames.every((frame) => {
+    const artboard = frame.querySelector<HTMLElement>('.freeform-slide-preview-artboard')
+    if (!artboard) return false
+    const frameRect = frame.getBoundingClientRect()
+    const artboardRect = artboard.getBoundingClientRect()
+    return artboardRect.left >= frameRect.left - 1
+      && artboardRect.top >= frameRect.top - 1
+      && artboardRect.right <= frameRect.right + 1
+      && artboardRect.bottom <= frameRect.bottom + 1
+  }))
+  expect(previewsFit).toBe(true)
+  const documentOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(documentOverflow).toBeLessThanOrEqual(1)
+  await page.setViewportSize({ width: 1440, height: 900 })
 
   await page.getByTestId('freeform-template-button').click()
   const reopenedDialog = page.getByRole('dialog', { name: '从一套成品开始' })
@@ -105,6 +130,25 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   await confirm.getByRole('button', { name: '继续编辑', exact: true }).click()
   await expect(page.locator('.freeform-thumb')).toHaveCount(3)
   await expect(page.locator('.freeform-workspace')).toHaveAttribute('data-history-depth', '0')
+})
+
+test('Freeform sidebar mounts scene nodes only near the visible thumbnails', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByTestId('freeform-template-button').click()
+  const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
+  await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
+
+  for (let index = 0; index < 10; index += 1) {
+    await page.getByRole('button', { name: '复制页面', exact: true }).click()
+  }
+
+  const thumbnails = page.locator('.freeform-thumb')
+  await expect(thumbnails).toHaveCount(13)
+  await expect.poll(async () => thumbnails.evaluateAll((items) => (
+    items.filter((item) => item.querySelector('.freeform-preview-element')).length
+  ))).toBeLessThan(13)
+  await expect(page.locator('.freeform-thumb.on .freeform-preview-element').first()).toBeVisible()
 })
 
 test('gallery stays inside desktop and narrow viewports', async ({ page }) => {

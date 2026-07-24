@@ -1127,14 +1127,29 @@ html.theme-anim * {
 }
 
 .freeform-thumb-art {
-  width: 100%;
-  min-height: 62px;
-  max-height: 108px;
-  display: block;
+  width: 104px;
+  height: 128px;
   margin: 0 auto;
+}
+
+.freeform-slide-preview {
+  position: relative;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.freeform-slide-preview-artboard {
+  position: absolute;
+  overflow: hidden;
+  transform-origin: top left;
   border: 1px solid var(--line);
   border-radius: var(--control-radius);
   box-shadow: var(--shadow-sm);
+}
+
+.freeform-slide-preview .freeform-preview-element,
+.freeform-slide-preview .freeform-preview-group {
+  pointer-events: none;
 }
 
 .freeform-rail .freeform-thumb-caption {
@@ -1206,7 +1221,8 @@ html.theme-anim * {
   overflow: hidden;
 }
 
-.freeform-element {
+.freeform-element,
+.freeform-preview-element {
   position: absolute;
   touch-action: none;
   user-select: none;
@@ -1357,7 +1373,8 @@ html.theme-anim * {
   box-shadow: 0 0 0 calc(4px * var(--freeform-inverse-scale, 1)) var(--accent-weak);
 }
 
-.freeform-textbox {
+.freeform-textbox,
+.freeform-preview-textbox {
   width: 100%;
   height: 100%;
   display: block;
@@ -1375,14 +1392,18 @@ html.theme-anim * {
 
 .freeform-image,
 .freeform-shape,
-.freeform-line {
+.freeform-line,
+.freeform-preview-image,
+.freeform-preview-shape,
+.freeform-preview-line {
   width: 100%;
   height: 100%;
   display: block;
   pointer-events: none;
 }
 
-.freeform-shape {
+.freeform-shape,
+.freeform-preview-shape {
   border-style: solid;
   background-position: center;
   background-repeat: no-repeat;
@@ -4108,17 +4129,9 @@ html.theme-anim * {
 }
 
 .template-freeform-artboard {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform: scale(var(--template-scale));
-  transform-origin: top left;
-  overflow: hidden;
-}
-
-.template-freeform-artboard .freeform-element,
-.template-freeform-artboard .freeform-scene-group {
-  pointer-events: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .template-confirm-backdrop {

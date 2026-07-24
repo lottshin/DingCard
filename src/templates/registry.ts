@@ -30,11 +30,11 @@ function textNode(
   y: number,
   width: number,
   height: number,
-  options: Partial<Pick<FreeformTextElement, 'fontSize' | 'fontFamily' | 'textFill' | 'align' | 'fontWeight'>> = {},
+  options: Partial<Pick<FreeformTextElement, 'fontSize' | 'fontFamily' | 'textFill' | 'align' | 'fontWeight' | 'rotation' | 'name'>> = {},
 ): FreeformTextElement {
   return {
     id: uuid(),
-    name: '文字',
+    name: options.name ?? '文字',
     locked: false,
     hidden: false,
     type: 'text',
@@ -42,7 +42,7 @@ function textNode(
     y,
     width,
     height,
-    rotation: 0,
+    rotation: options.rotation ?? 0,
     scale: 1,
     text,
     fontSize: options.fontSize ?? 42,
@@ -60,10 +60,16 @@ function shapeNode(
   width: number,
   height: number,
   fill: ColorPaint,
+  options: {
+    name?: string
+    rotation?: number
+    stroke?: string
+    strokeWidth?: number
+  } = {},
 ): FreeformSceneNode {
   return {
     id: uuid(),
-    name: '色块',
+    name: options.name ?? '色块',
     locked: false,
     hidden: false,
     type: 'shape',
@@ -71,12 +77,12 @@ function shapeNode(
     y,
     width,
     height,
-    rotation: 0,
+    rotation: options.rotation ?? 0,
     scale: 1,
     shape,
     fill,
-    stroke: 'transparent',
-    strokeWidth: 0,
+    stroke: options.stroke ?? 'transparent',
+    strokeWidth: options.strokeWidth ?? 0,
   }
 }
 
@@ -86,19 +92,24 @@ function lineNode(
   width: number,
   color: string,
   strokeWidth = 6,
+  options: {
+    name?: string
+    rotation?: number
+    lineKind?: 'line' | 'arrow'
+  } = {},
 ): FreeformSceneNode {
   return {
     id: uuid(),
-    name: '分隔线',
+    name: options.name ?? '分隔线',
     locked: false,
     hidden: false,
     type: 'line',
-    lineKind: 'line',
+    lineKind: options.lineKind ?? 'line',
     x,
     y,
     width,
     height: 12,
-    rotation: 0,
+    rotation: options.rotation ?? 0,
     scale: 1,
     stroke: color,
     strokeWidth,
@@ -129,97 +140,101 @@ function documentFromSlides(slides: FreeformSlide[]): FreeformDocument {
 
 const markdownDocuments: Record<TemplateSeriesId, MarkdownTemplateDocument> = {
   editorial: {
-    source: `# 把一件事讲清楚
+    source: `# 开头先把判断写清楚
 
-先写结论，再补充过程。长文不必从头铺陈，读者滑到这一页时，应该立刻知道你想说什么。
-
----
-
-## 先给结论
-
-好的长图文不是把文章拆成几段，而是让每一页都有明确的任务：提出问题、解释原因，最后给出可以带走的做法。
-
-> 一页只解决一个阅读动作，节奏自然就会出来。
+读者点进来，是想尽快知道这篇内容值不值得继续看。第一屏把判断说透，过程留到后面。
 
 ---
 
-## 留一点空白
+## 每一页都要往前走
 
-删掉不影响理解的句子，把重点留给标题和关键数字。排版不是装饰，它负责让读者更快找到重点。`,
+第二页可以解释原因，第三页再给方法。分页不是把段落切开，而是安排阅读顺序。
+
+> 如果抽掉这一页，文章有没有少一个关键动作？
+
+---
+
+## 结尾不要重复开头
+
+收尾时给出下一步，或者留下一句真正值得记住的话。文章到这里应该落地，而不是再总结一遍。`,
     platformId: 'rednote',
     themeId: 'template-editorial',
     fontFamily: 'Songti SC, serif',
-    radius: 8,
+    radius: 4,
     profile: { ...DEFAULT_PROFILE, nickname: '叮卡编辑部', handle: 'dingcard' },
   },
   checklist: {
-    source: `# 一份可执行的清单
+    source: `# 把计划写到能立刻开工
 
-把模糊的目标改写成今天就能完成的小步骤。每完成一项，就少一点犹豫。
-
----
-
-## 动手前
-
-- 先写清楚这次要解决的问题
-- 找到一个可以验证的结果
-- 把需要的素材放在同一个地方
+“做好内容”太宽了。先确定今天交付什么，再把它拆成看得见的动作。
 
 ---
 
-## 发布前
+## 开工前确认
 
-- 每页只保留一个重点
-- 标题和正文的层级要一眼分开
-- 从头到尾滑一遍，确认没有突然变拥挤的页面`,
+- 这次只解决一个问题
+- 完成标准可以一句话说清
+- 素材已经放进同一个文件夹
+
+不满足的项目先补齐，不急着进入制作。
+
+---
+
+## 发布前走一遍
+
+- 第一页能看懂主题
+- 中间没有突然拥挤的页面
+- 最后一页给出了下一步
+
+全部打勾，再点导出。`,
     platformId: 'rednote',
     themeId: 'template-checklist',
     fontFamily: 'PingFang SC',
-    radius: 16,
+    radius: 6,
     profile: { ...DEFAULT_PROFILE, nickname: '清单研究所', handle: 'checklist' },
   },
   signal: {
-    source: `# 观点先行
+    source: `# 观点要站在第一屏
 
-不要让读者猜你的重点。把最有判断力的一句话放在第一页，后面再用事实支撑它。
-
----
-
-## 为什么现在说
-
-信息越来越多，注意力却没有变长。一个清楚的观点，能帮读者决定要不要继续看，也能帮作者删掉无关内容。
+别让读者读完三段，才发现你真正想说什么。
 
 ---
 
-## 说完之后
+## 证据跟在判断后面
 
-给出一个小而具体的动作：今天试一次，明天看结果。观点只有落到行动上，才不会停在漂亮的口号里。`,
+先说结论，再摆事实。这个顺序不会削弱论证，反而让读者知道每条材料在回答什么。
+
+---
+
+## 最后给一个动作
+
+今天试一次，明天看结果。能被执行的观点，比漂亮的口号更容易留下来。`,
     platformId: 'twitter',
     themeId: 'template-signal',
     fontFamily: 'PingFang SC',
-    radius: 22,
+    radius: 0,
     profile: { ...DEFAULT_PROFILE, nickname: 'Signal Notes', handle: 'signalnotes' },
   },
   'night-flight': {
-    source: `# 夜里记下的灵感
+    source: `# 23:40，先记下来
 
-灵感通常不完整。先把它留下来，第二天再决定它值不值得继续。
-
----
-
-## 一个念头
-
-如果工具能替你处理重复劳动，你就能把时间留给判断、取舍和真正想表达的部分。
+深夜冒出的想法通常不完整。先留住原句，不急着把它修得像成品。
 
 ---
 
-## 明天再看
+## 00:15，补一条线索
 
-不要急着把草稿修成成品。先确认它有没有让你产生下一步动作，这比一开始就追求完整更重要。`,
+它从哪里来，又准备往哪里去？写下这两个答案，明天就有继续工作的入口。
+
+---
+
+## 08:30，重新判断
+
+睡一觉再看：它还让你想往下写吗？答案是肯定的，就排进今天；否则留在草稿里也没关系。`,
     platformId: 'rednote',
     themeId: 'template-night-flight',
     fontFamily: 'system-ui, sans-serif',
-    radius: 18,
+    radius: 4,
     profile: { ...DEFAULT_PROFILE, nickname: '夜航手记', handle: 'nightflight' },
   },
 }
@@ -231,130 +246,261 @@ function cloneMarkdown(series: TemplateSeriesId): MarkdownTemplateDocument {
 
 function createEditorialDocument(): FreeformDocument {
   return documentFromSlides([
-    slide('封面', solid('#f4eee7'), [
-      shapeNode('rect', 72, 78, 936, 460, solid('#b83b2f')),
-      textNode('把一件事\n讲清楚', 132, 138, 730, 250, {
-        fontSize: 92,
-        fontFamily: 'Songti SC, serif',
-        textFill: solid('#fffaf4'),
-        fontWeight: 'bold',
-      }),
-      textNode('叮卡编辑部  /  01', 136, 440, 650, 48, {
-        fontSize: 24,
-        fontFamily: 'system-ui, sans-serif',
-        textFill: solid('#f6d7c7'),
-      }),
-      lineNode(72, 640, 936, '#b83b2f', 4),
-      textNode('先写结论，再补充过程。', 72, 710, 850, 90, {
-        fontSize: 40,
-        fontFamily: 'Songti SC, serif',
-        textFill: solid('#2d2925'),
-      }),
+    slide('封面', solid('#f6f3ea'), [
+      lineNode(72, 132, 936, '#171717', 3, { name: '刊头线' }),
+      shapeNode('rect', 72, 188, 252, 56, solid('#d94836'), { name: '栏目标签' }),
+      lineNode(72, 624, 650, '#171717', 5, { name: '标题线' }),
+      shapeNode('rect', 742, 894, 266, 350, solid('#171717'), { name: '期号底板' }),
+      lineNode(72, 1320, 936, '#171717', 2, { name: '页脚线' }),
+      textNode('DINGCARD EDITORIAL', 72, 62, 610, 48, { name: '刊头', fontSize: 24, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
+      textNode('ISSUE 01 / 2026', 730, 62, 278, 48, { name: '期号', fontSize: 20, fontFamily: 'system-ui, sans-serif', align: 'right' }),
+      textNode('FIELD NOTES', 92, 196, 214, 40, { name: '栏目', fontSize: 20, fontFamily: 'system-ui, sans-serif', textFill: solid('#ffffff'), fontWeight: 'bold' }),
+      textNode('开头先把\n判断写清楚', 64, 288, 880, 274, { name: '主标题', fontSize: 98, fontFamily: 'Songti SC, serif', textFill: solid('#171717'), fontWeight: 'bold' }),
+      textNode('第一屏负责给出判断，后面的页面再交代过程。', 72, 680, 690, 110, { name: '导语', fontSize: 36, fontFamily: 'Songti SC, serif', textFill: solid('#4d4942') }),
+      textNode('01', 780, 936, 190, 150, { name: '大期号', fontSize: 118, fontFamily: 'system-ui, sans-serif', textFill: solid('#f6f3ea'), fontWeight: 'bold', align: 'center' }),
+      textNode('READING ORDER', 778, 1124, 194, 42, { name: '英文注释', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#d94836'), fontWeight: 'bold', align: 'center' }),
+      textNode('叮卡编辑部', 72, 1344, 320, 38, { name: '署名', fontSize: 18, fontFamily: 'system-ui, sans-serif' }),
+      textNode('先判断，再展开', 700, 1344, 308, 38, { name: '页脚主题', fontSize: 18, fontFamily: 'system-ui, sans-serif', align: 'right' }),
     ]),
-    slide('正文', solid('#f4eee7'), [
-      textNode('01', 82, 86, 160, 90, { fontSize: 50, fontFamily: 'system-ui, sans-serif', textFill: solid('#b83b2f'), fontWeight: 'bold' }),
-      textNode('一页只解决\n一个阅读动作', 82, 230, 840, 230, { fontSize: 76, fontFamily: 'Songti SC, serif', textFill: solid('#2d2925'), fontWeight: 'bold' }),
-      lineNode(84, 548, 680, '#b83b2f', 5),
-      textNode('提出问题、解释原因，最后给出可以带走的做法。读者不需要在一张卡片里处理所有信息。', 84, 640, 820, 220, { fontSize: 34, fontFamily: 'Songti SC, serif', textFill: solid('#57504a') }),
-      shapeNode('rect', 84, 1030, 300, 210, solid('#d8b39f')),
-      textNode('留白\n也是内容', 124, 1070, 260, 120, { fontSize: 38, fontFamily: 'Songti SC, serif', textFill: solid('#fffaf4'), fontWeight: 'bold' }),
+    slide('内页', solid('#f6f3ea'), [
+      lineNode(72, 128, 936, '#171717', 3, { name: '刊头线' }),
+      shapeNode('rect', 72, 212, 18, 676, solid('#d94836'), { name: '章节标记' }),
+      lineNode(532, 660, 350, '#171717', 3, { name: '正文分隔线' }),
+      shapeNode('rect', 592, 878, 416, 300, solid('#ded8cb'), { name: '引文底板' }),
+      lineNode(72, 1320, 936, '#171717', 2, { name: '页脚线' }),
+      textNode('DINGCARD / NOTES', 72, 60, 550, 44, { name: '刊头', fontSize: 22, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
+      textNode('02', 866, 58, 142, 46, { name: '页码', fontSize: 24, fontFamily: 'system-ui, sans-serif', textFill: solid('#d94836'), fontWeight: 'bold', align: 'right' }),
+      textNode('每一页\n都要往前走', 126, 204, 760, 220, { name: '标题', fontSize: 78, fontFamily: 'Songti SC, serif', fontWeight: 'bold' }),
+      textNode('分页不是把一段话切开，而是安排读者先看到什么、接着理解什么。', 126, 474, 760, 130, { name: '导语', fontSize: 34, fontFamily: 'Songti SC, serif', textFill: solid('#4d4942') }),
+      textNode('01\n提出问题', 72, 724, 350, 110, { name: '步骤一', fontSize: 34, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
+      textNode('02\n解释原因', 366, 724, 350, 110, { name: '步骤二', fontSize: 34, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
+      textNode('03\n给出下一步', 714, 724, 294, 110, { name: '步骤三', fontSize: 34, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
+      textNode('“抽掉这一页，文章有没有少一个关键动作？”', 628, 928, 344, 146, { name: '引文', fontSize: 33, fontFamily: 'Songti SC, serif', fontWeight: 'bold' }),
+      textNode('用这个问题检查跨页节奏。', 628, 1100, 344, 42, { name: '引文注释', fontSize: 20, fontFamily: 'system-ui, sans-serif', textFill: solid('#6a6259') }),
+      textNode('阅读顺序 / 02', 72, 1344, 360, 38, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif' }),
     ]),
-    slide('结尾', solid('#2d2925'), [
-      textNode('把重点\n留给读者', 92, 154, 840, 240, { fontSize: 84, fontFamily: 'Songti SC, serif', textFill: solid('#fffaf4'), fontWeight: 'bold' }),
-      lineNode(96, 500, 440, '#d8b39f', 5),
-      textNode('删掉不影响理解的句子，留下真正需要被记住的那一句。', 96, 590, 820, 160, { fontSize: 36, fontFamily: 'Songti SC, serif', textFill: solid('#e7d9ce') }),
-      textNode('DINGCARD / 叮卡', 96, 1250, 600, 50, { fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid('#d8b39f'), fontWeight: 'bold' }),
+    slide('结尾', solid('#171717'), [
+      shapeNode('rect', 726, 0, 354, 1440, solid('#d94836'), { name: '红色边栏' }),
+      lineNode(72, 132, 574, '#f6f3ea', 3, { name: '刊头线' }),
+      shapeNode('ellipse', 828, 96, 84, 84, solid('#f6f3ea'), { name: '页码圆点' }),
+      lineNode(72, 910, 574, '#f6f3ea', 3, { name: '正文线' }),
+      lineNode(72, 1320, 574, '#f6f3ea', 2, { name: '页脚线' }),
+      textNode('EDITORIAL / 03', 72, 62, 480, 46, { name: '刊头', fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid('#f6f3ea'), fontWeight: 'bold' }),
+      textNode('03', 826, 112, 88, 48, { name: '页码', fontSize: 24, fontFamily: 'system-ui, sans-serif', textFill: solid('#171717'), fontWeight: 'bold', align: 'center' }),
+      textNode('结尾要让文章\n真正落地', 64, 250, 612, 270, { name: '标题', fontSize: 82, fontFamily: 'Songti SC, serif', textFill: solid('#f6f3ea'), fontWeight: 'bold' }),
+      textNode('给出下一步，或者留下一句值得记住的话。不要把开头再说一遍。', 72, 610, 548, 190, { name: '正文', fontSize: 34, fontFamily: 'Songti SC, serif', textFill: solid('#d8d2c7') }),
+      textNode('NEXT', 770, 360, 268, 104, { name: '边栏标题', fontSize: 68, fontFamily: 'system-ui, sans-serif', textFill: solid('#171717'), fontWeight: 'bold', align: 'center', rotation: 90 }),
+      textNode('一句结论\n一个动作\n到此结束', 72, 986, 530, 190, { name: '结尾清单', fontSize: 38, fontFamily: 'system-ui, sans-serif', textFill: solid('#f6f3ea'), fontWeight: 'bold' }),
+      textNode('DINGCARD EDITORIAL', 72, 1344, 430, 38, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#f6f3ea') }),
     ]),
   ])
 }
 
 function createChecklistDocument(): FreeformDocument {
   return documentFromSlides([
-    slide('封面', solid('#edf3e4'), [
-      shapeNode('ellipse', 760, 86, 210, 210, solid('#b6d69a')),
-      shapeNode('rect', 80, 96, 120, 16, solid('#2f6f4e')),
-      textNode('一份\n可执行的清单', 80, 246, 900, 270, { fontSize: 88, fontFamily: 'PingFang SC', textFill: solid('#203a2d'), fontWeight: 'bold' }),
-      textNode('从模糊的目标，到今天就能完成的小步骤。', 84, 610, 820, 80, { fontSize: 30, textFill: solid('#4a6758') }),
-      lineNode(84, 850, 900, '#9bc181', 4),
-      textNode('CHECKLIST  /  01', 84, 940, 600, 50, { fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid('#2f6f4e'), fontWeight: 'bold' }),
+    slide('封面', solid('#f3f5ed'), [
+      shapeNode('rect', 0, 0, 154, 1440, solid('#174a38'), { name: '装订边栏' }),
+      shapeNode('rect', 72, 174, 238, 58, solid('#f2c84b'), { name: '手册标签' }),
+      lineNode(214, 126, 794, '#174a38', 3, { name: '刊头线' }),
+      shapeNode('rect', 214, 878, 56, 56, solid('#f3f5ed'), { name: '复选框一', stroke: '#174a38', strokeWidth: 4 }),
+      shapeNode('rect', 214, 1000, 56, 56, solid('#f3f5ed'), { name: '复选框二', stroke: '#174a38', strokeWidth: 4 }),
+      shapeNode('rect', 214, 1122, 56, 56, solid('#f3f5ed'), { name: '复选框三', stroke: '#174a38', strokeWidth: 4 }),
+      lineNode(302, 950, 706, '#b7c4b9', 2, { name: '清单线一' }),
+      lineNode(302, 1072, 706, '#b7c4b9', 2, { name: '清单线二' }),
+      lineNode(302, 1194, 706, '#b7c4b9', 2, { name: '清单线三' }),
+      textNode('01', 38, 62, 80, 52, { name: '边栏页码', fontSize: 26, fontFamily: 'system-ui, sans-serif', textFill: solid('#f3f5ed'), fontWeight: 'bold', align: 'center' }),
+      textNode('WORKBOOK', 36, 1136, 240, 42, { name: '边栏标题', fontSize: 20, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2c84b'), fontWeight: 'bold', rotation: -90 }),
+      textNode('START HERE', 92, 184, 198, 40, { name: '标签文字', fontSize: 20, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), fontWeight: 'bold' }),
+      textNode('把计划写到\n能立刻开工', 204, 310, 760, 250, { name: '主标题', fontSize: 84, fontFamily: 'PingFang SC', textFill: solid('#14271f'), fontWeight: 'bold' }),
+      textNode('先确定今天交付什么，再把它拆成看得见的动作。', 214, 650, 718, 110, { name: '导语', fontSize: 34, textFill: solid('#466055') }),
+      textNode('目标已经写清楚', 302, 882, 570, 52, { name: '检查项一', fontSize: 28, fontWeight: 'bold' }),
+      textNode('完成标准可以验证', 302, 1004, 570, 52, { name: '检查项二', fontSize: 28, fontWeight: 'bold' }),
+      textNode('素材集中在一个地方', 302, 1126, 570, 52, { name: '检查项三', fontSize: 28, fontWeight: 'bold' }),
+      textNode('DINGCARD / CHECKLIST', 214, 1324, 540, 38, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), fontWeight: 'bold' }),
     ]),
-    slide('步骤', solid('#edf3e4'), [
-      textNode('动手前', 82, 92, 800, 100, { fontSize: 72, textFill: solid('#203a2d'), fontWeight: 'bold' }),
-      textNode('01', 82, 280, 100, 80, { fontSize: 42, fontFamily: 'system-ui, sans-serif', textFill: solid('#2f6f4e'), fontWeight: 'bold' }),
-      textNode('写清楚这次要解决的问题', 180, 286, 760, 70, { fontSize: 34, textFill: solid('#203a2d') }),
-      textNode('02', 82, 450, 100, 80, { fontSize: 42, fontFamily: 'system-ui, sans-serif', textFill: solid('#2f6f4e'), fontWeight: 'bold' }),
-      textNode('找到一个可以验证的结果', 180, 456, 760, 70, { fontSize: 34, textFill: solid('#203a2d') }),
-      textNode('03', 82, 620, 100, 80, { fontSize: 42, fontFamily: 'system-ui, sans-serif', textFill: solid('#2f6f4e'), fontWeight: 'bold' }),
-      textNode('把素材放在同一个地方', 180, 626, 760, 70, { fontSize: 34, textFill: solid('#203a2d') }),
-      shapeNode('rect', 82, 880, 860, 250, solid('#d7e7c7')),
-      textNode('先完成，再优化。\n行动会告诉你下一步。', 132, 940, 760, 140, { fontSize: 42, textFill: solid('#2f6f4e'), fontWeight: 'bold' }),
+    slide('步骤', solid('#f3f5ed'), [
+      shapeNode('rect', 72, 230, 104, 104, solid('#174a38'), { name: '编号底板一' }),
+      shapeNode('rect', 72, 502, 104, 104, solid('#f2c84b'), { name: '编号底板二' }),
+      shapeNode('rect', 72, 774, 104, 104, solid('#174a38'), { name: '编号底板三' }),
+      lineNode(72, 138, 936, '#174a38', 3, { name: '刊头线' }),
+      lineNode(210, 364, 798, '#b7c4b9', 3, { name: '步骤线一' }),
+      lineNode(210, 636, 798, '#b7c4b9', 3, { name: '步骤线二' }),
+      lineNode(210, 908, 798, '#b7c4b9', 3, { name: '步骤线三' }),
+      shapeNode('rect', 72, 1048, 936, 220, solid('#dde6d9'), { name: '批注底板' }),
+      textNode('CHECKLIST / 02', 72, 62, 560, 46, { name: '刊头', fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), fontWeight: 'bold' }),
+      textNode('开工前确认', 620, 54, 388, 60, { name: '页标题', fontSize: 34, fontWeight: 'bold', align: 'right' }),
+      textNode('01', 84, 246, 80, 68, { name: '编号一', fontSize: 40, fontFamily: 'system-ui, sans-serif', textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center' }),
+      textNode('这次只解决一个问题', 216, 226, 690, 70, { name: '步骤一', fontSize: 40, fontWeight: 'bold' }),
+      textNode('范围越清楚，开始越容易。', 216, 302, 690, 50, { name: '说明一', fontSize: 25, textFill: solid('#567064') }),
+      textNode('02', 84, 518, 80, 68, { name: '编号二', fontSize: 40, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), fontWeight: 'bold', align: 'center' }),
+      textNode('一句话写出完成标准', 216, 498, 690, 70, { name: '步骤二', fontSize: 40, fontWeight: 'bold' }),
+      textNode('最后要交付什么，必须能被检查。', 216, 574, 690, 50, { name: '说明二', fontSize: 25, textFill: solid('#567064') }),
+      textNode('03', 84, 790, 80, 68, { name: '编号三', fontSize: 40, fontFamily: 'system-ui, sans-serif', textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center' }),
+      textNode('把素材收进同一处', 216, 770, 690, 70, { name: '步骤三', fontSize: 40, fontWeight: 'bold' }),
+      textNode('减少寻找和切换，给执行留出连续时间。', 216, 846, 690, 50, { name: '说明三', fontSize: 25, textFill: solid('#567064') }),
+      textNode('批注：不满足的项目先补齐，不急着进入制作。', 112, 1110, 840, 86, { name: '批注', fontSize: 32, textFill: solid('#174a38'), fontWeight: 'bold' }),
+      textNode('READY TO START', 72, 1322, 390, 40, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), fontWeight: 'bold' }),
     ]),
-    slide('结尾', solid('#2f6f4e'), [
-      textNode('发布前\n再检查一遍', 84, 150, 860, 240, { fontSize: 82, textFill: solid('#f4f8ec'), fontWeight: 'bold' }),
-      lineNode(86, 520, 600, '#b6d69a', 5),
-      textNode('每页只保留一个重点。\n从头滑到尾，确认阅读节奏没有突然变拥挤。', 86, 620, 820, 190, { fontSize: 36, textFill: solid('#dbeacb') }),
-      textNode('完成一项，就打一个勾。', 86, 1160, 760, 70, { fontSize: 30, fontFamily: 'system-ui, sans-serif', textFill: solid('#b6d69a'), fontWeight: 'bold' }),
+    slide('验收', solid('#174a38'), [
+      shapeNode('rect', 72, 176, 936, 948, solid('#f3f5ed'), { name: '验收表' }),
+      shapeNode('ellipse', 116, 334, 54, 54, solid('#f2c84b'), { name: '完成点一' }),
+      shapeNode('ellipse', 116, 556, 54, 54, solid('#f2c84b'), { name: '完成点二' }),
+      shapeNode('ellipse', 116, 778, 54, 54, solid('#f2c84b'), { name: '完成点三' }),
+      lineNode(116, 478, 848, '#b7c4b9', 3, { name: '验收线一' }),
+      lineNode(116, 700, 848, '#b7c4b9', 3, { name: '验收线二' }),
+      lineNode(116, 922, 848, '#b7c4b9', 3, { name: '验收线三' }),
+      lineNode(72, 1288, 936, '#f2c84b', 3, { name: '页脚线' }),
+      textNode('FINAL CHECK / 03', 72, 64, 560, 48, { name: '刊头', fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2c84b'), fontWeight: 'bold' }),
+      textNode('发布前，逐项打勾', 110, 210, 820, 80, { name: '标题', fontSize: 52, textFill: solid('#14271f'), fontWeight: 'bold' }),
+      textNode('✓', 116, 330, 54, 54, { name: '勾一', fontSize: 32, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), align: 'center', fontWeight: 'bold' }),
+      textNode('第一页能看懂主题', 204, 326, 660, 66, { name: '验收项一', fontSize: 36, fontWeight: 'bold' }),
+      textNode('✓', 116, 552, 54, 54, { name: '勾二', fontSize: 32, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), align: 'center', fontWeight: 'bold' }),
+      textNode('中间没有突然拥挤', 204, 548, 660, 66, { name: '验收项二', fontSize: 36, fontWeight: 'bold' }),
+      textNode('✓', 116, 774, 54, 54, { name: '勾三', fontSize: 32, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), align: 'center', fontWeight: 'bold' }),
+      textNode('最后一页给出下一步', 204, 770, 660, 66, { name: '验收项三', fontSize: 36, fontWeight: 'bold' }),
+      textNode('03 / 03', 112, 966, 500, 116, { name: '完成进度', fontSize: 78, fontFamily: 'system-ui, sans-serif', textFill: solid('#174a38'), fontWeight: 'bold' }),
+      textNode('全部完成，可以导出。', 72, 1188, 760, 72, { name: '结论', fontSize: 38, textFill: solid('#f3f5ed'), fontWeight: 'bold' }),
+      textNode('DINGCARD WORKBOOK', 72, 1322, 470, 42, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#f3f5ed'), fontWeight: 'bold' }),
     ]),
   ])
 }
 
 function createSignalDocument(): FreeformDocument {
   return documentFromSlides([
-    slide('封面', solid('#f4f4f0'), [
-      shapeNode('rect', 70, 70, 940, 310, solid('#2456d6')),
-      shapeNode('ellipse', 810, 238, 190, 190, solid('#f1c44f')),
-      textNode('观点\n先行', 122, 116, 680, 220, { fontSize: 96, fontFamily: 'PingFang SC', textFill: solid('#ffffff'), fontWeight: 'bold' }),
-      textNode('SIGNAL / 01', 84, 580, 620, 50, { fontSize: 24, fontFamily: 'system-ui, sans-serif', textFill: solid('#2456d6'), fontWeight: 'bold' }),
-      textNode('不要让读者猜你的重点。', 84, 690, 860, 90, { fontSize: 44, textFill: solid('#17191f'), fontWeight: 'bold' }),
-      lineNode(84, 860, 900, '#17191f', 4),
-      textNode('把最有判断力的一句话，放在第一页。', 84, 960, 820, 100, { fontSize: 32, textFill: solid('#50545d') }),
+    slide('封面', solid('#f2f0e8'), [
+      shapeNode('rect', 704, 0, 376, 520, solid('#e4472f'), { name: '红色象限' }),
+      shapeNode('ellipse', 764, 432, 176, 176, solid('#f2c84b'), { name: '信号圆点' }),
+      shapeNode('rect', 72, 704, 18, 500, solid('#2457d6'), { name: '蓝色坐标轴' }),
+      lineNode(72, 128, 560, '#111111', 3, { name: '顶部网格线' }),
+      lineNode(72, 674, 936, '#111111', 3, { name: '中部网格线' }),
+      lineNode(122, 962, 886, '#b8b5ad', 2, { name: '正文网格线一' }),
+      lineNode(122, 1110, 886, '#b8b5ad', 2, { name: '正文网格线二' }),
+      lineNode(72, 1320, 936, '#111111', 3, { name: '页脚线' }),
+      textNode('SIGNAL / POSTER 01', 72, 62, 560, 46, { name: '刊头', fontSize: 22, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
+      textNode('观点', 64, 204, 610, 132, { name: '标题上', fontSize: 116, fontFamily: 'PingFang SC', fontWeight: 'bold' }),
+      textNode('先行', 64, 348, 610, 132, { name: '标题下', fontSize: 116, fontFamily: 'PingFang SC', fontWeight: 'bold' }),
+      textNode('01', 774, 464, 156, 82, { name: '圆点编号', fontSize: 58, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold', align: 'center' }),
+      textNode('别让读者读完三段，\n才发现你真正想说什么。', 122, 756, 780, 150, { name: '主张', fontSize: 44, fontWeight: 'bold' }),
+      textNode('CLAIM FIRST', 122, 1002, 430, 56, { name: '英文主张', fontSize: 30, fontFamily: 'system-ui, sans-serif', textFill: solid('#2457d6'), fontWeight: 'bold' }),
+      textNode('判断站在第一屏，证据跟在后面。', 122, 1150, 760, 58, { name: '说明', fontSize: 28, textFill: solid('#4d4b46') }),
+      textNode('DINGCARD SIGNAL', 72, 1342, 420, 38, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
+      textNode('CN / 2026', 744, 1342, 264, 38, { name: '页脚编号', fontSize: 18, fontFamily: 'system-ui, sans-serif', align: 'right' }),
     ]),
-    slide('论证', solid('#f4f4f0'), [
-      textNode('为什么现在说', 82, 92, 900, 120, { fontSize: 70, textFill: solid('#17191f'), fontWeight: 'bold' }),
-      shapeNode('rect', 82, 300, 30, 530, solid('#2456d6')),
-      textNode('信息越来越多，注意力却没有变长。一个清楚的观点，能帮读者决定要不要继续看，也能帮作者删掉无关内容。', 164, 316, 760, 300, { fontSize: 38, textFill: solid('#30343c') }),
-      shapeNode('ellipse', 700, 940, 240, 240, solid('#f1c44f')),
-      textNode('清楚\n比热闹\n更重要', 720, 990, 220, 160, { fontSize: 34, align: 'center', textFill: solid('#17191f'), fontWeight: 'bold' }),
+    slide('论证', solid('#f2f0e8'), [
+      shapeNode('rect', 0, 0, 454, 1440, solid('#2457d6'), { name: '蓝色分区' }),
+      shapeNode('rect', 454, 934, 626, 188, solid('#e4472f'), { name: '红色结论栏' }),
+      shapeNode('ellipse', 824, 90, 104, 104, solid('#f2c84b'), { name: '页码圆点' }),
+      lineNode(510, 248, 498, '#111111', 3, { name: '右栏顶线' }),
+      lineNode(510, 584, 498, '#b8b5ad', 2, { name: '证据线一' }),
+      lineNode(510, 742, 498, '#b8b5ad', 2, { name: '证据线二' }),
+      lineNode(510, 900, 498, '#b8b5ad', 2, { name: '证据线三' }),
+      lineNode(510, 1320, 498, '#111111', 3, { name: '页脚线' }),
+      textNode('WHY', 42, 74, 370, 146, { name: '英文标题', fontSize: 120, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2f0e8'), fontWeight: 'bold' }),
+      textNode('证据跟在\n判断后面', 42, 326, 360, 250, { name: '主标题', fontSize: 72, textFill: solid('#ffffff'), fontWeight: 'bold' }),
+      textNode('先说结论，不会削弱论证。它只是让读者知道，接下来的材料在回答什么。', 48, 694, 348, 250, { name: '左栏正文', fontSize: 32, textFill: solid('#dfe6ff') }),
+      textNode('02', 826, 116, 100, 56, { name: '页码', fontSize: 34, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold', align: 'center' }),
+      textNode('A', 510, 312, 74, 70, { name: '证据编号一', fontSize: 48, fontFamily: 'system-ui, sans-serif', textFill: solid('#e4472f'), fontWeight: 'bold' }),
+      textNode('先给一个清楚的判断', 610, 318, 360, 66, { name: '证据一', fontSize: 32, fontWeight: 'bold' }),
+      textNode('B', 510, 628, 74, 70, { name: '证据编号二', fontSize: 48, fontFamily: 'system-ui, sans-serif', textFill: solid('#2457d6'), fontWeight: 'bold' }),
+      textNode('再摆最有力的事实', 610, 634, 360, 66, { name: '证据二', fontSize: 32, fontWeight: 'bold' }),
+      textNode('C', 510, 786, 74, 70, { name: '证据编号三', fontSize: 48, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2c84b'), fontWeight: 'bold' }),
+      textNode('删掉不能支撑判断的材料', 610, 792, 380, 76, { name: '证据三', fontSize: 32, fontWeight: 'bold' }),
+      textNode('顺序清楚，论证才有方向。', 510, 980, 500, 88, { name: '结论', fontSize: 38, textFill: solid('#ffffff'), fontWeight: 'bold' }),
+      textNode('SIGNAL / 02', 510, 1342, 280, 38, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
     ]),
-    slide('结尾', solid('#17191f'), [
-      shapeNode('rect', 80, 88, 920, 18, solid('#f1c44f')),
-      textNode('说完之后，\n给一个动作。', 84, 210, 860, 230, { fontSize: 82, textFill: solid('#ffffff'), fontWeight: 'bold' }),
-      textNode('今天试一次，明天看结果。观点只有落到行动上，才不会停在漂亮的口号里。', 86, 620, 820, 190, { fontSize: 38, textFill: solid('#c8ccd5') }),
-      textNode('SIGNAL NOTES  /  END', 86, 1240, 740, 50, { fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid('#f1c44f'), fontWeight: 'bold' }),
+    slide('行动', solid('#111111'), [
+      shapeNode('rect', 0, 0, 1080, 218, solid('#f2c84b'), { name: '黄色刊头' }),
+      shapeNode('rect', 72, 880, 936, 300, solid('#e4472f'), { name: '行动底板' }),
+      shapeNode('triangle', 818, 604, 150, 132, solid('#2457d6'), { name: '方向符号', rotation: 90 }),
+      lineNode(72, 300, 936, '#f2f0e8', 3, { name: '标题线' }),
+      lineNode(72, 790, 936, '#f2f0e8', 3, { name: '正文线' }),
+      lineNode(72, 1320, 936, '#f2c84b', 3, { name: '页脚线' }),
+      textNode('SIGNAL / 03 / ACTION', 72, 76, 650, 52, { name: '刊头', fontSize: 24, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
+      textNode('03', 868, 74, 140, 56, { name: '页码', fontSize: 30, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold', align: 'right' }),
+      textNode('最后，\n给一个动作。', 64, 356, 720, 260, { name: '主标题', fontSize: 92, textFill: solid('#f2f0e8'), fontWeight: 'bold' }),
+      textNode('→', 812, 602, 166, 110, { name: '箭头文字', fontSize: 90, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2f0e8'), fontWeight: 'bold', align: 'center' }),
+      textNode('今天试一次', 112, 930, 620, 90, { name: '行动标题', fontSize: 62, textFill: solid('#ffffff'), fontWeight: 'bold' }),
+      textNode('明天回来，看结果。', 112, 1042, 620, 62, { name: '行动说明', fontSize: 34, textFill: solid('#ffffff') }),
+      textNode('能被执行的观点，才会真正留下来。', 72, 1226, 780, 62, { name: '收束句', fontSize: 30, textFill: solid('#d1d1cf') }),
+      textNode('DINGCARD SIGNAL', 72, 1342, 430, 38, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2f0e8'), fontWeight: 'bold' }),
     ]),
   ])
 }
 
 function createNightFlightDocument(): FreeformDocument {
   return documentFromSlides([
-    slide('封面', solid('#101725'), [
-      shapeNode('ellipse', 760, 112, 180, 180, solid('#c8f35a')),
-      shapeNode('rect', 76, 470, 928, 10, solid('#3259d5')),
-      textNode('夜里记下的\n灵感', 84, 220, 880, 250, { fontSize: 88, fontFamily: 'Songti SC, serif', textFill: solid('#f5f7f0'), fontWeight: 'bold' }),
-      textNode('NIGHT FLIGHT  /  01', 86, 650, 700, 50, { fontSize: 23, fontFamily: 'system-ui, sans-serif', textFill: solid('#c8f35a'), fontWeight: 'bold' }),
-      textNode('灵感通常不完整。先把它留下来。', 86, 820, 850, 90, { fontSize: 38, textFill: solid('#b6c0d6') }),
+    slide('出发', solid('#111820'), [
+      shapeNode('rect', 0, 0, 1080, 166, solid('#ece8dc'), { name: '航班信息栏' }),
+      shapeNode('ellipse', 94, 996, 34, 34, solid('#f2bd4b'), { name: '站点一' }),
+      shapeNode('ellipse', 384, 906, 34, 34, solid('#f2bd4b'), { name: '站点二' }),
+      shapeNode('ellipse', 704, 1018, 34, 34, solid('#f2bd4b'), { name: '站点三' }),
+      shapeNode('ellipse', 934, 884, 54, 54, solid('#e85d3f'), { name: '终点' }),
+      lineNode(112, 990, 288, '#6fb7c8', 5, { name: '航线一', rotation: -17 }),
+      lineNode(402, 920, 322, '#6fb7c8', 5, { name: '航线二', rotation: 20 }),
+      lineNode(720, 1016, 248, '#6fb7c8', 5, { name: '航线三', rotation: -28 }),
+      lineNode(72, 1240, 936, '#53616d', 2, { name: '页脚线' }),
+      textNode('NF 2340', 72, 48, 360, 58, { name: '航班号', fontSize: 34, fontFamily: 'system-ui, sans-serif', textFill: solid('#111820'), fontWeight: 'bold' }),
+      textNode('FRI  /  23:40', 612, 50, 396, 54, { name: '出发时间', fontSize: 28, fontFamily: 'system-ui, sans-serif', textFill: solid('#111820'), fontWeight: 'bold', align: 'right' }),
+      textNode('夜里先记下，\n天亮再判断', 64, 260, 880, 250, { name: '主标题', fontSize: 88, fontFamily: 'Songti SC, serif', textFill: solid('#f2efe6'), fontWeight: 'bold' }),
+      textNode('灵感通常不完整。保留原句，先别急着把它修成成品。', 72, 610, 820, 140, { name: '导语', fontSize: 36, textFill: solid('#aebac3') }),
+      textNode('23:40', 72, 870, 230, 66, { name: '起点时间', fontSize: 36, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2bd4b'), fontWeight: 'bold' }),
+      textNode('00:15', 372, 802, 230, 66, { name: '中途时间', fontSize: 36, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2bd4b'), fontWeight: 'bold' }),
+      textNode('08:30', 792, 1082, 200, 66, { name: '抵达时间', fontSize: 36, fontFamily: 'system-ui, sans-serif', textFill: solid('#e85d3f'), fontWeight: 'bold', align: 'right' }),
+      textNode('NIGHT FLIGHT / ROUTE 01', 72, 1288, 540, 40, { name: '页脚', fontSize: 19, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2efe6'), fontWeight: 'bold' }),
+      textNode('31.23 N  /  121.47 E', 654, 1288, 354, 40, { name: '坐标', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#6fb7c8'), align: 'right' }),
     ]),
-    slide('念头', solid('#101725'), [
-      textNode('一个念头', 84, 100, 850, 110, { fontSize: 72, textFill: solid('#c8f35a'), fontWeight: 'bold' }),
-      lineNode(86, 300, 720, '#3259d5', 5),
-      textNode('如果工具能替你处理重复劳动，你就能把时间留给判断、取舍和真正想表达的部分。', 86, 420, 820, 250, { fontSize: 40, textFill: solid('#f5f7f0') }),
-      shapeNode('rect', 86, 920, 500, 220, solid('#1c2a46')),
-      textNode('留下问题，\n明天再回答。', 132, 972, 410, 120, { fontSize: 42, textFill: solid('#c8f35a'), fontWeight: 'bold' }),
+    slide('中途', solid('#111820'), [
+      shapeNode('rect', 72, 180, 936, 104, solid('#24313b'), { name: '时间栏' }),
+      shapeNode('ellipse', 108, 394, 30, 30, solid('#f2bd4b'), { name: '时间点一' }),
+      shapeNode('ellipse', 108, 674, 30, 30, solid('#6fb7c8'), { name: '时间点二' }),
+      shapeNode('ellipse', 108, 954, 30, 30, solid('#e85d3f'), { name: '时间点三' }),
+      lineNode(72, 128, 936, '#53616d', 2, { name: '刊头线' }),
+      lineNode(122, 416, 12, '#53616d', 5, { name: '时间轴一', rotation: 90 }),
+      lineNode(122, 696, 12, '#53616d', 5, { name: '时间轴二', rotation: 90 }),
+      lineNode(170, 538, 838, '#53616d', 2, { name: '记录线一' }),
+      lineNode(170, 818, 838, '#53616d', 2, { name: '记录线二' }),
+      lineNode(72, 1240, 936, '#53616d', 2, { name: '页脚线' }),
+      textNode('NIGHT FLIGHT / LOG 02', 72, 60, 560, 44, { name: '刊头', fontSize: 21, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2efe6'), fontWeight: 'bold' }),
+      textNode('航行记录', 694, 56, 314, 50, { name: '页标题', fontSize: 30, textFill: solid('#f2bd4b'), fontWeight: 'bold', align: 'right' }),
+      textNode('00:15  /  MIDWAY', 106, 208, 720, 52, { name: '当前时间', fontSize: 28, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2bd4b'), fontWeight: 'bold' }),
+      textNode('23:40', 170, 366, 220, 58, { name: '时间一', fontSize: 34, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2bd4b'), fontWeight: 'bold' }),
+      textNode('留下最初那句话', 426, 360, 500, 66, { name: '记录一', fontSize: 38, textFill: solid('#f2efe6'), fontWeight: 'bold' }),
+      textNode('00:15', 170, 646, 220, 58, { name: '时间二', fontSize: 34, fontFamily: 'system-ui, sans-serif', textFill: solid('#6fb7c8'), fontWeight: 'bold' }),
+      textNode('补上来源和去向', 426, 640, 500, 66, { name: '记录二', fontSize: 38, textFill: solid('#f2efe6'), fontWeight: 'bold' }),
+      textNode('08:30', 170, 926, 220, 58, { name: '时间三', fontSize: 34, fontFamily: 'system-ui, sans-serif', textFill: solid('#e85d3f'), fontWeight: 'bold' }),
+      textNode('醒来后重新判断', 426, 920, 500, 66, { name: '记录三', fontSize: 38, textFill: solid('#f2efe6'), fontWeight: 'bold' }),
+      textNode('先保存线索，不在夜里替明天做完所有决定。', 170, 1080, 754, 90, { name: '注释', fontSize: 30, textFill: solid('#aebac3') }),
+      textNode('31.23 N  /  ROUTE ACTIVE', 72, 1288, 520, 40, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#6fb7c8'), fontWeight: 'bold' }),
     ]),
-    slide('结尾', solid('#101725'), [
-      shapeNode('ellipse', 750, 120, 170, 170, solid('#3259d5')),
-      textNode('先留下来。\n再决定要不要继续。', 86, 300, 850, 240, { fontSize: 78, fontFamily: 'Songti SC, serif', textFill: solid('#f5f7f0'), fontWeight: 'bold' }),
-      textNode('不要急着把草稿修成成品。先确认它有没有让你产生下一步动作。', 86, 720, 820, 180, { fontSize: 38, textFill: solid('#b6c0d6') }),
-      textNode('DINGCARD / NIGHT FLIGHT', 86, 1250, 760, 50, { fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid('#c8f35a'), fontWeight: 'bold' }),
+    slide('抵达', solid('#ece8dc'), [
+      shapeNode('rect', 0, 0, 1080, 190, solid('#111820'), { name: '抵达信息栏' }),
+      shapeNode('rect', 72, 854, 936, 300, solid('#111820'), { name: '结论底板' }),
+      shapeNode('ellipse', 88, 670, 44, 44, solid('#f2bd4b'), { name: '起点' }),
+      shapeNode('ellipse', 508, 670, 44, 44, solid('#6fb7c8'), { name: '中点' }),
+      shapeNode('ellipse', 930, 660, 64, 64, solid('#e85d3f'), { name: '终点' }),
+      lineNode(120, 686, 408, '#111820', 4, { name: '抵达线一' }),
+      lineNode(548, 686, 410, '#111820', 4, { name: '抵达线二' }),
+      lineNode(72, 1260, 936, '#111820', 3, { name: '页脚线' }),
+      textNode('ARRIVAL  /  08:30', 72, 58, 600, 58, { name: '抵达时间', fontSize: 34, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2efe6'), fontWeight: 'bold' }),
+      textNode('ROUTE 03', 758, 60, 250, 52, { name: '路线编号', fontSize: 28, fontFamily: 'system-ui, sans-serif', textFill: solid('#f2bd4b'), fontWeight: 'bold', align: 'right' }),
+      textNode('天亮以后，\n只判断一件事', 64, 286, 880, 220, { name: '主标题', fontSize: 84, fontFamily: 'Songti SC, serif', textFill: solid('#111820'), fontWeight: 'bold' }),
+      textNode('它还让你想继续写吗？', 72, 548, 750, 76, { name: '提问', fontSize: 40, textFill: solid('#45515a'), fontWeight: 'bold' }),
+      textNode('保留原句', 72, 736, 260, 52, { name: '节点一', fontSize: 25, fontWeight: 'bold' }),
+      textNode('补充线索', 414, 736, 260, 52, { name: '节点二', fontSize: 25, fontWeight: 'bold', align: 'center' }),
+      textNode('重新判断', 748, 736, 260, 52, { name: '节点三', fontSize: 25, fontWeight: 'bold', align: 'right' }),
+      textNode('答案是肯定的，\n就排进今天。', 112, 912, 720, 154, { name: '结论', fontSize: 54, textFill: solid('#f2efe6'), fontWeight: 'bold' }),
+      textNode('否则留在草稿里，也没关系。', 112, 1080, 650, 52, { name: '补充结论', fontSize: 28, textFill: solid('#aebac3') }),
+      textNode('DINGCARD / NIGHT FLIGHT', 72, 1298, 520, 40, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#111820'), fontWeight: 'bold' }),
+      textNode('ARRIVED', 760, 1298, 248, 40, { name: '状态', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#e85d3f'), fontWeight: 'bold', align: 'right' }),
     ]),
   ])
 }
 
 const seriesMeta: Record<TemplateSeriesId, Omit<TemplateDefinition, 'id' | 'workspace' | 'createMarkdown' | 'createFreeform'>> = {
-  editorial: { series: 'editorial', title: '编辑部', description: '像一本轻薄的刊物，适合写观点和方法。', pageCount: 3, tags: ['观点', '方法'] },
-  checklist: { series: 'checklist', title: '清单', description: '把复杂事情拆成几步，适合教程、复盘和计划。', pageCount: 3, tags: ['教程', '清单'] },
-  signal: { series: 'signal', title: '信号', description: '大标题配高对比色块，第一眼就能看到观点。', pageCount: 3, tags: ['观点', '短文'] },
-  'night-flight': { series: 'night-flight', title: '夜航', description: '深色页面用酸绿和蓝色提亮，适合随笔和灵感。', pageCount: 3, tags: ['随笔', '灵感'] },
+  editorial: { series: 'editorial', title: '编辑部', description: '用刊头和正文网格组织长文，适合观点与方法文章。', pageCount: 3, tags: ['观点', '方法'] },
+  checklist: { series: 'checklist', title: '清单', description: '把步骤排成可以逐项勾选的工作页，适合教程和计划。', pageCount: 3, tags: ['教程', '清单'] },
+  signal: { series: 'signal', title: '信号', description: '用海报式大标题亮出判断，适合短观点。', pageCount: 3, tags: ['观点', '短文'] },
+  'night-flight': { series: 'night-flight', title: '夜航', description: '沿时间和路线展开一段记录，适合随笔与灵感。', pageCount: 3, tags: ['随笔', '灵感'] },
 }
 
 const freeformFactories: Record<TemplateSeriesId, () => FreeformDocument> = {

@@ -33,6 +33,7 @@ import {
   FreeformSceneNodeView,
   type SceneNodePointerState,
 } from './FreeformSceneNodeView'
+import { FreeformSlidePreview } from './FreeformSlidePreview'
 import {
   FreeformSelectionOverlay,
   type SelectionOverlayTarget,
@@ -2413,12 +2414,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 aria-current={slide.id === activeSlide.id ? 'page' : undefined}
                 onClick={() => selectSlide(slide.id)}
               >
-                <span
+                <FreeformSlidePreview
+                  slide={slide}
+                  frameWidth={104}
+                  frameHeight={128}
                   className="freeform-thumb-art"
-                  style={{
-                    aspectRatio: `${slide.width} / ${slide.height}`,
-                    background: slideBackgroundToCss(slide.background),
-                  }}
+                  deferOffscreen={slide.id !== activeSlide.id}
                 />
                 <span className="freeform-thumb-caption">
                   <span className="freeform-thumb-number">{String(index + 1).padStart(2, '0')}</span>

@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { store } from '../storage'
 import { PlainTextEditable } from './PlainTextEditable'
@@ -16,6 +17,7 @@ export interface SceneNodePointerState {
 
 export interface FreeformSceneNodeViewProps {
   nodes: readonly FreeformSceneNode[]
+  presentationOnly?: boolean
   activeParentPath: ScenePath
   selectedPaths: readonly ScenePath[]
   onNodePointerDown: (
@@ -40,20 +42,34 @@ interface SceneNodeBranchProps extends FreeformSceneNodeViewProps {
   inheritedLocked: boolean
   inheritedHidden: boolean
   selectedKeys: ReadonlySet<string>
+  markerIdPrefix: string
 }
 
 function SceneLeafContent({
   leaf,
   readOnly,
+  presentationOnly,
+  markerIdPrefix,
   onTextChange,
   onTextFocus,
 }: {
   leaf: FreeformSceneLeaf
   readOnly: boolean
+  presentationOnly: boolean
+  markerIdPrefix: string
   onTextChange: (text: string) => void
   onTextFocus: () => void
 }) {
   if (leaf.type === 'text') {
+    const style = {
+      fontFamily: leaf.fontFamily,
+      fontSize: leaf.fontSize,
+      ...textFillToStyle(leaf.textFill),
+      textAlign: leaf.align,
+      fontWeight: leaf.fontWeight,
+    }
+    if (presentationOnly) return <div className="freeform-preview-textbox" style={style}>{leaf.text}</div>
+
     return (
       <PlainTextEditable
         className="freeform-textbox"
@@ -62,13 +78,7 @@ function SceneLeafContent({
         readOnly={readOnly}
         onFocus={onTextFocus}
         onChange={onTextChange}
-        style={{
-          fontFamily: leaf.fontFamily,
-          fontSize: leaf.fontSize,
-          ...textFillToStyle(leaf.textFill),
-          textAlign: leaf.align,
-          fontWeight: leaf.fontWeight,
-        }}
+        style={style}
       />
     )
   }
@@ -76,9 +86,9 @@ function SceneLeafContent({
   if (leaf.type === 'image') {
     return (
       <img
-        className="freeform-image"
+        className={presentationOnly ? 'freeform-preview-image' : 'freeform-image'}
         src={store.images.resolve(leaf.src)}
-        alt={leaf.alt}
+        alt={presentationOnly ? '' : leaf.alt}
         draggable={false}
         style={{ objectFit: leaf.fit }}
       />
@@ -86,11 +96,11 @@ function SceneLeafContent({
   }
 
   if (leaf.type === 'line') {
-    const markerId = `arrow-${leaf.id}`
+    const markerId = `${markerIdPrefix}-arrow-${leaf.id}`
     return (
       <svg
-        className="freeform-line"
-        data-testid={leaf.lineKind === 'arrow' ? 'freeform-arrow' : 'freeform-line'}
+        className={presentationOnly ? 'freeform-preview-line' : 'freeform-line'}
+        data-testid={presentationOnly ? undefined : leaf.lineKind === 'arrow' ? 'freeform-arrow' : 'freeform-line'}
         viewBox={`0 0 ${leaf.width} ${leaf.height}`}
         preserveAspectRatio="none"
         aria-hidden="true"
@@ -126,8 +136,8 @@ function SceneLeafContent({
 
   return (
     <div
-      className={`freeform-shape shape-${leaf.shape}`}
-      data-testid={leaf.fill.type === 'image' ? 'freeform-shape-image-fill' : 'freeform-shape'}
+      className={`${presentationOnly ? 'freeform-preview-shape' : 'freeform-shape'} shape-${leaf.shape}`}
+      data-testid={presentationOnly ? undefined : leaf.fill.type === 'image' ? 'freeform-shape-image-fill' : 'freeform-shape'}
       style={{
         ...shapeFillToStyle(
           leaf.fill.type === 'image'
@@ -153,17 +163,19 @@ function SceneNodeBranch({
   if (hidden) return null
   const locked = inheritedLocked || node.locked
   const selected = selectedKeys.has(scenePathKey(path))
-  const commonData = {
-    'data-scene-node-id': node.id,
-    'data-scene-root-node': path.length === 1 ? 'true' : undefined,
-    'data-selected': selected ? 'true' : 'false',
-  }
+  const commonData = props.presentationOnly
+    ? {}
+    : {
+        'data-scene-node-id': node.id,
+        'data-scene-root-node': path.length === 1 ? 'true' : undefined,
+        'data-selected': selected ? 'true' : 'false',
+      }
 
   if (node.type === 'group') {
     return (
       <div
-        className="freeform-scene-group"
-        data-testid="freeform-scene-group"
+        className={props.presentationOnly ? 'freeform-preview-group' : 'freeform-scene-group'}
+        data-testid={props.presentationOnly ? undefined : 'freeform-scene-group'}
         {...commonData}
         style={{
           position: 'absolute',
@@ -188,21 +200,22 @@ function SceneNodeBranch({
     )
   }
 
-  const directlyEditable = scenePathKey(path.slice(0, -1)) === scenePathKey(props.activeParentPath)
+  const directlyEditable = !props.presentationOnly
+    && scenePathKey(path.slice(0, -1)) === scenePathKey(props.activeParentPath)
   const readOnly = locked || !directlyEditable
 
   return (
     <div
-      className="freeform-element"
-      data-testid="freeform-element"
-      data-scene-leaf="true"
+      className={props.presentationOnly ? 'freeform-preview-element' : 'freeform-element'}
+      data-testid={props.presentationOnly ? undefined : 'freeform-element'}
+      data-scene-leaf={props.presentationOnly ? undefined : 'true'}
       {...commonData}
-      onPointerDown={(event) => {
-        props.onNodePointerDown(event, node, path, { locked, hidden })
-      }}
-      onDoubleClick={(event) => {
-        props.onNodeDoubleClick(event, node, path, { locked, hidden })
-      }}
+      onPointerDown={props.presentationOnly
+        ? undefined
+        : (event) => props.onNodePointerDown(event, node, path, { locked, hidden })}
+      onDoubleClick={props.presentationOnly
+        ? undefined
+        : (event) => props.onNodeDoubleClick(event, node, path, { locked, hidden })}
       style={{
         left: node.x,
         top: node.y,
@@ -214,6 +227,8 @@ function SceneNodeBranch({
       <SceneLeafContent
         leaf={node}
         readOnly={readOnly}
+        presentationOnly={Boolean(props.presentationOnly)}
+        markerIdPrefix={props.markerIdPrefix}
         onTextChange={(text) => {
           if (!readOnly) props.onTextChange(path, text)
         }}
@@ -227,6 +242,7 @@ function SceneNodeBranch({
 
 /** Render a complete scene tree without changing its bottom-to-top order. */
 export function FreeformSceneNodeView(props: FreeformSceneNodeViewProps) {
+  const markerIdPrefix = useId().replace(/:/g, '')
   const selectedKeys = new Set(props.selectedPaths.map(scenePathKey))
   return props.nodes.map((node) => (
     <SceneNodeBranch
@@ -237,6 +253,7 @@ export function FreeformSceneNodeView(props: FreeformSceneNodeViewProps) {
       inheritedLocked={false}
       inheritedHidden={false}
       selectedKeys={selectedKeys}
+      markerIdPrefix={markerIdPrefix}
     />
   ))
 }

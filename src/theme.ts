@@ -31,10 +31,10 @@ export const THEMES: Theme[] = [
   { id: 'warm', label: '暖米色', background: '#faf6f0', color: '#3a3226', accent: '#c2703d' },
   { id: 'dark', label: '深空黑', background: '#1c1c1e', color: '#f2f2f7', accent: '#0a84ff' },
   { id: 'mint', label: '薄荷绿', background: '#eef7f2', color: '#1f3a2e', accent: '#2fa36b' },
-  { id: 'template-editorial', label: '模板 · 编辑部', background: '#f4eee7', color: '#2d2925', accent: '#b83b2f' },
-  { id: 'template-checklist', label: '模板 · 清单', background: '#edf3e4', color: '#203a2d', accent: '#2f6f4e' },
-  { id: 'template-signal', label: '模板 · 信号', background: '#f4f4f0', color: '#17191f', accent: '#2456d6' },
-  { id: 'template-night-flight', label: '模板 · 夜航', background: '#101725', color: '#f5f7f0', accent: '#c8f35a' },
+  { id: 'template-editorial', label: '模板 · 编辑部', background: '#f6f3ea', color: '#171717', accent: '#d94836' },
+  { id: 'template-checklist', label: '模板 · 清单', background: '#f3f5ed', color: '#14271f', accent: '#174a38' },
+  { id: 'template-signal', label: '模板 · 信号', background: '#f2f0e8', color: '#111111', accent: '#e4472f' },
+  { id: 'template-night-flight', label: '模板 · 夜航', background: '#111820', color: '#f2efe6', accent: '#f2bd4b' },
 ]
 
 export const FONTS = [
