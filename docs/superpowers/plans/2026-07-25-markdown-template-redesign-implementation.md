@@ -139,7 +139,7 @@
 - Modify: `src/workspaces/markdown/MarkdownWorkspace.tsx`
 - Create: `e2e/markdown-template-pagination.spec.ts`
 
-- [ ] **Step 1: 先写分页浏览器测试**
+- [x] **Step 1: 先写分页浏览器测试**
 
   测试用较长的五段 Markdown 内容覆盖自动分页和手动分页，检查：
 
@@ -148,13 +148,13 @@
   - 五页以上页码使用实际总页数。
   - 每页 `scrollHeight - clientHeight <= 1`、`scrollWidth - clientWidth <= 1`。
 
-- [ ] **Step 2: 运行测试，确认当前页面没有角色数据**
+- [x] **Step 2: 运行测试，确认当前页面没有角色数据**
 
   Run: `npm run test:e2e -- e2e/markdown-template-pagination.spec.ts`
 
   Expected: FAIL，缺少 `data-page-role` 或角色错误。
 
-- [ ] **Step 3: 改造分页结果与测量探针**
+- [x] **Step 3: 改造分页结果与测量探针**
 
   `Page` 增加 `role`。分页前计算最后一个非分页标记块；每次试放块时重新调用 `resolveMarkdownPageRole()`，并在隐藏探针上同步：
 
@@ -166,11 +166,11 @@
 
   探针继续使用与真实卡片相同的 CSS 变量、页头高度和可用高度。`flush()` 保存最后一次实际测量的角色，不能渲染时再推断。
 
-- [ ] **Step 4: 将分页角色传入工作区页面状态**
+- [x] **Step 4: 将分页角色传入工作区页面状态**
 
   保持现有异步 effect 与图片重排机制不变，主题、字体、圆角、平台或页头策略变化时仍会重新分页。
 
-- [ ] **Step 5: 暂运行类型检查与语义单测**
+- [x] **Step 5: 暂运行类型检查与语义单测**
 
   Run: `npm run build`
 
@@ -186,7 +186,7 @@
 - Modify: `src/templates/TemplateGallery.tsx`
 - Modify: `src/workspaces/markdown/MarkdownWorkspace.tsx`
 
-- [ ] **Step 1: 先写装饰层静态渲染测试**
+- [x] **Step 1: 先写装饰层静态渲染测试**
 
   使用 `renderToStaticMarkup()` 检查：
 
@@ -195,17 +195,17 @@
   - 普通主题、旧主题和未知主题返回空。
   - 页码从 `pageIndex + 1` 与 `pageCount` 动态生成。
 
-- [ ] **Step 2: 运行测试，确认组件尚不存在**
+- [x] **Step 2: 运行测试，确认组件尚不存在**
 
   Run: `npm run test:unit -- src/MarkdownCardChrome.test.tsx`
 
   Expected: FAIL，模块不存在。
 
-- [ ] **Step 3: 实现 `MarkdownCardChrome`**
+- [x] **Step 3: 实现 `MarkdownCardChrome`**
 
   组件只接收 `themeId`、`pageRole`、`pageIndex`、`pageCount`，只输出装饰节点，不读取 Markdown HTML。网格、竖轨、信号线、期数、印章、页签和图片裁切框均位于 `.card` 内。
 
-- [ ] **Step 4: 扩展 `Card` 契约**
+- [x] **Step 4: 扩展 `Card` 契约**
 
   `Card` 必填 `pageIndex`、`pageCount`、`pageRole`，根节点增加：
 
@@ -219,17 +219,17 @@
 
   `.card-content` 同步主题与角色。使用内容区域的捕获阶段 `onError` 标记 `.img-wrap.image-load-error`；非图片事件、已卸载节点和不在 `.img-wrap` 内的图片不得抛异常。
 
-- [ ] **Step 5: 更新全部 `Card` 调用点**
+- [x] **Step 5: 更新全部 `Card` 调用点**
 
   模板缩略图先以第一页角色渲染；工作区使用分页器返回的真实角色和实际页数。不得增加第二套仅供缩略图使用的 HTML。
 
-- [ ] **Step 6: 运行组件测试和构建**
+- [x] **Step 6: 运行组件测试和构建**
 
   Run: `npm run test:unit -- src/MarkdownCardChrome.test.tsx && npm run build`
 
   Expected: PASS。
 
-- [ ] **Step 7: 提交渲染契约**
+- [x] **Step 7: 提交渲染契约**
 
   ```bash
   git add src/paginate.ts src/Card.tsx src/MarkdownCardChrome.tsx src/MarkdownCardChrome.test.tsx src/templates/TemplateGallery.tsx src/workspaces/markdown/MarkdownWorkspace.tsx e2e/markdown-template-pagination.spec.ts

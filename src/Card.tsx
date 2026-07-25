@@ -1,10 +1,16 @@
 import { forwardRef } from 'react'
+import type { SyntheticEvent } from 'react'
+import { MarkdownCardChrome } from './MarkdownCardChrome'
+import type { MarkdownPageRole } from './templates/markdownPresentation'
 import type { CardConfig, Profile } from './theme'
 
 interface CardProps {
   html: string
   config: CardConfig
   profile: Profile
+  pageIndex: number
+  pageCount: number
+  pageRole: MarkdownPageRole
   showHeader?: boolean
 }
 
@@ -126,19 +132,50 @@ function nowStamp(): string {
   return `${yy}-${d.getMonth() + 1}-${d.getDate()} ${hh}:${mm}`
 }
 
+function markImageLoadError(event: SyntheticEvent<HTMLDivElement>) {
+  const target = event.target
+  if (!(target instanceof HTMLImageElement)) return
+
+  const wrapper = target.closest('.img-wrap')
+  if (!(wrapper instanceof HTMLElement) || !event.currentTarget.contains(wrapper)) return
+  wrapper.classList.add('image-load-error')
+}
+
 /**
  * A single exportable card. The forwarded ref points at the exact box that
  * html-to-image snapshots, so everything visual must live inside it.
  */
 export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
-  { html, config, profile, showHeader = true },
+  { html, config, profile, pageIndex, pageCount, pageRole, showHeader = true },
   ref,
 ) {
+  const hasSocialHeader = showHeader && config.header !== 'none'
+
   return (
-    <div className="card" ref={ref}>
+    <div
+      className="card"
+      ref={ref}
+      data-card-theme={config.themeId}
+      data-page-role={pageRole}
+      data-page-index={pageIndex}
+      data-page-count={pageCount}
+      data-has-social-header={String(hasSocialHeader)}
+    >
+      <MarkdownCardChrome
+        themeId={config.themeId}
+        pageRole={pageRole}
+        pageIndex={pageIndex}
+        pageCount={pageCount}
+      />
       {showHeader && config.header === 'weibo' && <WeiboHeader profile={profile} />}
       {showHeader && config.header === 'twitter' && <TwitterHeader profile={profile} />}
-      <div className="card-content" dangerouslySetInnerHTML={{ __html: html }} />
+      <div
+        className="card-content"
+        data-card-theme={config.themeId}
+        data-page-role={pageRole}
+        onErrorCapture={markImageLoadError}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
     </div>
   )
 })

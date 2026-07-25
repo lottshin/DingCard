@@ -125,7 +125,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   const blocks = useMemo(() => parseBlocks(source), [source])
   const imageSources = useMemo(() => collectMarkdownImageSources(source), [source])
-  const [pages, setPages] = useState<Page[]>([{ blocks: [] }])
+  const [pages, setPages] = useState<Page[]>([{ blocks: [], role: 'article' }])
 
   const showOperationError = useCallback(
     (title: string, error: unknown, fallback: string) => {
@@ -696,6 +696,9 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                     ref={cardRef}
                     config={config}
                     profile={profile}
+                    pageIndex={active}
+                    pageCount={pages.length}
+                    pageRole={pages[active]?.role ?? 'article'}
                     showHeader={!profile.headerFirstPageOnly || active === 0}
                     html={(pages[active]?.blocks ?? []).map((b) => b.html).join('')}
                   />

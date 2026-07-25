@@ -3,7 +3,8 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Card } from '../Card'
 import { FreeformSlidePreview } from '../freeform/FreeformSlidePreview'
 import { parseBlocks } from '../markdown'
-import { buildConfig, DEFAULT_PROFILE, FONTS, PLATFORMS, THEMES } from '../theme'
+import { buildConfig, DEFAULT_PROFILE, FONTS, PLATFORMS, resolveTheme } from '../theme'
+import { resolveMarkdownPageRole } from './markdownPresentation'
 import { templatesForWorkspace } from './registry'
 import type { MarkdownTemplateDocument, TemplateDefinition, TemplateWorkspace } from './types'
 
@@ -15,14 +16,24 @@ interface TemplateGalleryProps {
   onApply: (template: TemplateDefinition) => void
 }
 
-function markdownFirstPage(document: MarkdownTemplateDocument): string {
+function markdownFirstPage(document: MarkdownTemplateDocument) {
   const blocks = parseBlocks(document.source)
-  const firstPage = [] as string[]
+  const firstPage = [] as typeof blocks
   for (const block of blocks) {
     if (block.isBreak) break
-    firstPage.push(block.html)
+    firstPage.push(block)
   }
-  return firstPage.join('')
+  const lastContentBlock = [...blocks].reverse().find((block) => !block.isBreak)
+  return {
+    html: firstPage.map((block) => block.html).join(''),
+    role: resolveMarkdownPageRole({
+      themeId: document.themeId,
+      blocks: firstPage,
+      pageIndex: 0,
+      includesLastContentBlock:
+        lastContentBlock !== undefined && firstPage.includes(lastContentBlock),
+    }),
+  }
 }
 
 function previewStyle(scale: number, radius: number, config: ReturnType<typeof buildConfig>): CSSProperties {
@@ -46,12 +57,21 @@ function MarkdownTemplatePreview({ template, detail = false }: { template: Templ
   const document = template.createMarkdown?.()
   if (!document) return null
   const platform = PLATFORMS.find((candidate) => candidate.id === document.platformId) ?? PLATFORMS[0]
-  const theme = THEMES.find((candidate) => candidate.id === document.themeId) ?? THEMES[0]
+  const theme = resolveTheme(document.themeId)
   const font = FONTS.find((candidate) => candidate.id === document.fontFamily) ?? FONTS[0]
   const config = buildConfig(platform, theme, font.id)
+  const firstPage = markdownFirstPage(document)
   return (
     <div className={detail ? 'template-markdown-preview detail' : 'template-markdown-preview'} style={previewStyle(detail ? 0.622 : 0.45, document.radius, config)}>
-      <Card html={markdownFirstPage(document)} config={config} profile={document.profile ?? DEFAULT_PROFILE} showHeader={false} />
+      <Card
+        html={firstPage.html}
+        config={config}
+        profile={document.profile ?? DEFAULT_PROFILE}
+        pageIndex={0}
+        pageCount={template.pageCount}
+        pageRole={firstPage.role}
+        showHeader={false}
+      />
     </div>
   )
 }

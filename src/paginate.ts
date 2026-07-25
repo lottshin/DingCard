@@ -1,8 +1,13 @@
 import type { Block } from './markdown'
+import {
+  resolveMarkdownPageRole,
+  type MarkdownPageRole,
+} from './templates/markdownPresentation'
 import type { CardConfig } from './theme'
 
 export interface Page {
   blocks: Block[]
+  role: MarkdownPageRole
 }
 
 // A small visual breathing room at the bottom. Measurements can be off by a few
@@ -23,6 +28,7 @@ const BOTTOM_SAFE_GAP = 10
 export function paginate(blocks: Block[], config: CardConfig, headerFirstPageOnly = false): Page[] {
   const probe = document.createElement('div')
   probe.className = 'card-content'
+  probe.dataset.cardTheme = config.themeId
   Object.assign(probe.style, {
     position: 'absolute',
     left: '-99999px',
@@ -43,6 +49,8 @@ export function paginate(blocks: Block[], config: CardConfig, headerFirstPageOnl
 
   const pages: Page[] = []
   let current: Block[] = []
+  let currentRole: MarkdownPageRole = 'article'
+  const lastContentBlock = [...blocks].reverse().find((block) => !block.isBreak)
 
   const pageLimit = () => {
     const isFirstPage = pages.length === 0
@@ -50,15 +58,27 @@ export function paginate(blocks: Block[], config: CardConfig, headerFirstPageOnl
     return config.height - config.padding * 2 - headerHeight - BOTTOM_SAFE_GAP
   }
 
-  const measure = (candidate: Block[]): number => {
+  const measure = (candidate: Block[]): { height: number; role: MarkdownPageRole } => {
+    const role = resolveMarkdownPageRole({
+      themeId: config.themeId,
+      blocks: candidate,
+      pageIndex: pages.length,
+      includesLastContentBlock:
+        lastContentBlock !== undefined && candidate.includes(lastContentBlock),
+    })
+    probe.dataset.pageRole = role
     probe.innerHTML = candidate.map((b) => b.html).join('')
-    return Math.max(probe.scrollHeight, probe.getBoundingClientRect().height)
+    return {
+      height: Math.max(probe.scrollHeight, probe.getBoundingClientRect().height),
+      role,
+    }
   }
 
   const flush = () => {
     if (current.length) {
-      pages.push({ blocks: current })
+      pages.push({ blocks: current, role: currentRole })
       current = []
+      currentRole = 'article'
     }
   }
 
@@ -69,23 +89,29 @@ export function paginate(blocks: Block[], config: CardConfig, headerFirstPageOnl
     }
 
     const single = [block]
-    if (measure(single) > pageLimit()) {
+    const singleMeasurement = measure(single)
+    if (singleMeasurement.height > pageLimit()) {
       flush()
-      pages.push({ blocks: single })
+      const isolatedMeasurement = measure(single)
+      pages.push({ blocks: single, role: isolatedMeasurement.role })
       continue
     }
 
     const next = [...current, block]
-    if (current.length > 0 && measure(next) > pageLimit()) {
+    const nextMeasurement = current.length > 0 ? measure(next) : singleMeasurement
+    if (current.length > 0 && nextMeasurement.height > pageLimit()) {
       flush()
-      current.push(block)
+      const newPageMeasurement = measure(single)
+      current = single
+      currentRole = newPageMeasurement.role
     } else {
       current = next
+      currentRole = nextMeasurement.role
     }
   }
 
   flush()
   document.body.removeChild(probe)
 
-  return pages.length ? pages : [{ blocks: [] }]
+  return pages.length ? pages : [{ blocks: [], role: 'article' }]
 }
