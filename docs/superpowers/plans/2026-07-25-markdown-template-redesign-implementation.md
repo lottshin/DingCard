@@ -244,31 +244,31 @@
 - Modify: `src/templates/registry.ts`
 - Modify: `src/templates/registry.test.ts`
 
-- [ ] **Step 1: 先改注册表测试为新契约**
+- [x] **Step 1: 先改注册表测试为新契约**
 
   断言 Markdown 仅有三套新模板、自由画布仍为四套旧模板、全部 ID 唯一。三套 Markdown 源码都应有四页、各自 profile 不共享引用，并使用存在的平台/主题/字体。
 
-- [ ] **Step 2: 运行测试，确认旧注册表不满足要求**
+- [x] **Step 2: 运行测试，确认旧注册表不满足要求**
 
   Run: `npm run test:unit -- src/templates/registry.test.ts`
 
   Expected: FAIL，Markdown 数量和系列 ID 仍为旧值。
 
-- [ ] **Step 3: 拆分系列类型与注册表**
+- [x] **Step 3: 拆分系列类型与注册表**
 
   新建 `MarkdownTemplateSeriesId` 与 `FreeformTemplateSeriesId`，分别维护 `markdownSeriesIds`、`freeformSeriesIds`、`markdownDocuments`、`freeformFactories`。外部仍通过 `templatesForWorkspace()` 查询。
 
-- [ ] **Step 4: 写入用户已确认的四页示例正文**
+- [x] **Step 4: 写入用户已确认的四页示例正文**
 
   三套模板分别使用清楚、短促、可真实发布的中文正文。每套用三个 `---` 形成四页；标题、引用和列表结构要能驱动页面角色，避免宣传口号和模板化 AI 文案。
 
-- [ ] **Step 5: 运行注册表与 Markdown 单测**
+- [x] **Step 5: 运行注册表与 Markdown 单测**
 
   Run: `npm run test:unit -- src/templates/registry.test.ts src/__tests__/markdown.test.ts src/templates/markdownPresentation.test.ts`
 
   Expected: PASS。
 
-- [ ] **Step 6: 提交模板数据**
+- [x] **Step 6: 提交模板数据**
 
   ```bash
   git add src/templates/types.ts src/templates/registry.ts src/templates/registry.test.ts

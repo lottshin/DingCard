@@ -8,9 +8,10 @@ import type {
 } from '../freeform/types'
 import { DEFAULT_PROFILE, type Profile } from '../theme'
 import type {
+  FreeformTemplateSeriesId,
+  MarkdownTemplateSeriesId,
   MarkdownTemplateDocument,
   TemplateDefinition,
-  TemplateSeriesId,
   TemplateWorkspace,
 } from './types'
 
@@ -138,108 +139,106 @@ function documentFromSlides(slides: FreeformSlide[]): FreeformDocument {
   return normalized
 }
 
-const markdownDocuments: Record<TemplateSeriesId, MarkdownTemplateDocument> = {
-  editorial: {
-    source: `# 开头先把判断写清楚
+const markdownDocuments: Record<MarkdownTemplateSeriesId, MarkdownTemplateDocument> = {
+  'editorial-archive': {
+    source: `# 这周事情很多，我先删掉一半
 
-读者点进来，是想尽快知道这篇内容值不值得继续看。第一屏把判断说透，过程留到后面。
+我把任务重新抄了一遍，只留下三件必须完成的事。
 
----
-
-## 每一页都要往前走
-
-第二页可以解释原因，第三页再给方法。分页不是把段落切开，而是安排阅读顺序。
-
-> 如果抽掉这一页，文章有没有少一个关键动作？
+![玻璃与混凝土构成的城市建筑立面](/templates/editorial-building.webp)
 
 ---
 
-## 结尾不要重复开头
+## 任务列了二十多条，今天只做三条
 
-收尾时给出下一步，或者留下一句真正值得记住的话。文章到这里应该落地，而不是再总结一遍。`,
+以前我总觉得每件事都不能拖，结果一天结束，最重要的反而没动。
+
+我把本周任务重新抄了一遍。方案要交，合同要确认，其他事项先挪到下午或下周。
+
+改完以后，上午只剩一件事：把方案写完。
+
+---
+
+> 明天上午先不回消息，把方案写完。
+
+下午再处理回复、整理和临时插进来的事。
+
+---
+
+## 明天上午写完方案第一版
+
+中午十二点前不处理其他事项。`,
     platformId: 'rednote',
-    themeId: 'template-editorial',
+    themeId: 'template-editorial-archive',
     fontFamily: 'Songti SC, serif',
     radius: 4,
-    profile: { ...DEFAULT_PROFILE, nickname: '叮卡编辑部', handle: 'dingcard' },
+    profile: { ...DEFAULT_PROFILE, nickname: '叮卡编辑档案', handle: 'dingcard' },
   },
-  checklist: {
-    source: `# 把计划写到能立刻开工
+  'public-theatre': {
+    source: `# 这一页只说一件事
 
-“做好内容”太宽了。先确定今天交付什么，再把它拆成看得见的动作。
-
----
-
-## 开工前确认
-
-- 这次只解决一个问题
-- 完成标准可以一句话说清
-- 素材已经放进同一个文件夹
-
-不满足的项目先补齐，不急着进入制作。
+别把标题、解释和注释同时推到读者眼前。
 
 ---
 
-## 发布前走一遍
+## 标题、正文和注释挤在一起，读者很难找到重点
 
-- 第一页能看懂主题
-- 中间没有突然拥挤的页面
-- 最后一页给出了下一步
+我把三个层级都放大后，页面没有更清楚。标题缩短，正文只留解释，注释放到页底，阅读顺序才明显。
 
-全部打勾，再点导出。`,
+这一屏先给结论，下一屏再补说明。
+
+---
+
+> 这一页只留这句话。
+
+前一页内容多，这一页留空。翻到下一页时，再继续正文。
+
+---
+
+## 发布前再删一遍
+
+- 上一页已经说过的话
+- 没有讲清楚的例子
+- 只为了填满空白的句子`,
     platformId: 'rednote',
-    themeId: 'template-checklist',
-    fontFamily: 'PingFang SC',
-    radius: 6,
-    profile: { ...DEFAULT_PROFILE, nickname: '清单研究所', handle: 'checklist' },
-  },
-  signal: {
-    source: `# 观点要站在第一屏
-
-别让读者读完三段，才发现你真正想说什么。
-
----
-
-## 证据跟在判断后面
-
-先说结论，再摆事实。这个顺序不会削弱论证，反而让读者知道每条材料在回答什么。
-
----
-
-## 最后给一个动作
-
-今天试一次，明天看结果。能被执行的观点，比漂亮的口号更容易留下来。`,
-    platformId: 'twitter',
-    themeId: 'template-signal',
-    fontFamily: 'PingFang SC',
+    themeId: 'template-public-theatre',
+    fontFamily: "'Noto Sans SC', sans-serif",
     radius: 0,
-    profile: { ...DEFAULT_PROFILE, nickname: 'Signal Notes', handle: 'signalnotes' },
+    profile: { ...DEFAULT_PROFILE, nickname: '公共剧场', handle: 'publictheatre' },
   },
-  'night-flight': {
-    source: `# 23:40，先记下来
+  'issue-cover': {
+    source: `# 我又把这一周排满了
 
-深夜冒出的想法通常不完整。先留住原句，不急着把它修得像成品。
-
----
-
-## 00:15，补一条线索
-
-它从哪里来，又准备往哪里去？写下这两个答案，明天就有继续工作的入口。
+![玻璃与混凝土构成的城市建筑立面](/templates/editorial-building.webp)
 
 ---
 
-## 08:30，重新判断
+## 日程排得很整齐，事情还是没做完
 
-睡一觉再看：它还让你想往下写吗？答案是肯定的，就排进今天；否则留在草稿里也没关系。`,
+周一到周五都填满了。临时任务一来，原来的安排只能往后推。
+
+删掉两项安排后，周三终于留出了完整的两个小时。
+
+---
+
+> 健身课和整理照片，这周先不排。
+
+临时有事再用这段时间，没事就让它空着。
+
+---
+
+## 周三晚上不排事
+
+这两个小时先留着。`,
     platformId: 'rednote',
-    themeId: 'template-night-flight',
-    fontFamily: 'system-ui, sans-serif',
-    radius: 4,
-    profile: { ...DEFAULT_PROFILE, nickname: '夜航手记', handle: 'nightflight' },
+    themeId: 'template-issue-cover',
+    fontFamily: "'Noto Serif SC', serif",
+    radius: 0,
+    profile: { ...DEFAULT_PROFILE, nickname: 'DingCard Issue', handle: 'dingcardissue' },
   },
 }
 
-function cloneMarkdown(series: TemplateSeriesId): MarkdownTemplateDocument {
+function cloneMarkdown(series: MarkdownTemplateSeriesId): MarkdownTemplateDocument {
   const document = markdownDocuments[series]
   return { ...document, profile: copyProfile(document.profile) }
 }
@@ -496,38 +495,79 @@ function createNightFlightDocument(): FreeformDocument {
   ])
 }
 
-const seriesMeta: Record<TemplateSeriesId, Omit<TemplateDefinition, 'id' | 'workspace' | 'createMarkdown' | 'createFreeform'>> = {
-  editorial: { series: 'editorial', title: '编辑部', description: '用刊头和正文网格组织长文，适合观点与方法文章。', pageCount: 3, tags: ['观点', '方法'] },
-  checklist: { series: 'checklist', title: '清单', description: '把步骤排成可以逐项勾选的工作页，适合教程和计划。', pageCount: 3, tags: ['教程', '清单'] },
-  signal: { series: 'signal', title: '信号', description: '用海报式大标题亮出判断，适合短观点。', pageCount: 3, tags: ['观点', '短文'] },
-  'night-flight': { series: 'night-flight', title: '夜航', description: '沿时间和路线展开一段记录，适合随笔与灵感。', pageCount: 3, tags: ['随笔', '灵感'] },
+type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags'>
+
+const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
+  'editorial-archive': {
+    title: '编辑档案',
+    description: '标题沿八栏网格展开，正文保留充足的阅读空间。',
+    pageCount: 4,
+    tags: ['复盘', '长文'],
+  },
+  'public-theatre': {
+    title: '公共剧场',
+    description: '左侧栏和红线贯穿四页，翻页时仍能看出同一条叙事线。',
+    pageCount: 4,
+    tags: ['观点', '倡议'],
+  },
+  'issue-cover': {
+    title: '议题封面',
+    description: '图片和期号先建立主题，后面三页再展开正文。',
+    pageCount: 4,
+    tags: ['生活', '人物'],
+  },
 }
 
-const freeformFactories: Record<TemplateSeriesId, () => FreeformDocument> = {
+const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
+  editorial: { title: '编辑部', description: '用刊头和正文网格组织长文，适合观点与方法文章。', pageCount: 3, tags: ['观点', '方法'] },
+  checklist: { title: '清单', description: '把步骤排成可以逐项勾选的工作页，适合教程和计划。', pageCount: 3, tags: ['教程', '清单'] },
+  signal: { title: '信号', description: '用海报式大标题亮出判断，适合短观点。', pageCount: 3, tags: ['观点', '短文'] },
+  'night-flight': { title: '夜航', description: '沿时间和路线展开一段记录，适合随笔与灵感。', pageCount: 3, tags: ['随笔', '灵感'] },
+}
+
+const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
   editorial: createEditorialDocument,
   checklist: createChecklistDocument,
   signal: createSignalDocument,
   'night-flight': createNightFlightDocument,
 }
 
-const seriesIds: TemplateSeriesId[] = ['editorial', 'checklist', 'signal', 'night-flight']
+const markdownSeriesIds: MarkdownTemplateSeriesId[] = [
+  'editorial-archive',
+  'public-theatre',
+  'issue-cover',
+]
+const freeformSeriesIds: FreeformTemplateSeriesId[] = [
+  'editorial',
+  'checklist',
+  'signal',
+  'night-flight',
+]
 
-function createTemplate(series: TemplateSeriesId, workspace: TemplateWorkspace): TemplateDefinition {
-  const meta = seriesMeta[series]
+function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {
   return {
-    ...meta,
-    id: `${series}-${workspace}`,
-    workspace,
-    ...(workspace === 'markdown'
-      ? { createMarkdown: () => cloneMarkdown(series) }
-      : { createFreeform: () => freeformFactories[series]() }),
+    ...markdownSeriesMeta[series],
+    id: `${series}-markdown`,
+    series,
+    workspace: 'markdown',
+    createMarkdown: () => cloneMarkdown(series),
   }
 }
 
-export const TEMPLATE_REGISTRY: readonly TemplateDefinition[] = seriesIds.flatMap((series) => [
-  createTemplate(series, 'markdown'),
-  createTemplate(series, 'freeform'),
-])
+function createFreeformTemplate(series: FreeformTemplateSeriesId): TemplateDefinition {
+  return {
+    ...freeformSeriesMeta[series],
+    id: `${series}-freeform`,
+    series,
+    workspace: 'freeform',
+    createFreeform: () => freeformFactories[series](),
+  }
+}
+
+export const TEMPLATE_REGISTRY: readonly TemplateDefinition[] = [
+  ...markdownSeriesIds.map(createMarkdownTemplate),
+  ...freeformSeriesIds.map(createFreeformTemplate),
+]
 
 export function templatesForWorkspace(workspace: TemplateWorkspace): readonly TemplateDefinition[] {
   return TEMPLATE_REGISTRY.filter((template) => template.workspace === workspace)

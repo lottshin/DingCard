@@ -1,7 +1,13 @@
 import type { FreeformDocument } from '../freeform/types'
 import type { Profile } from '../theme'
 
-export type TemplateSeriesId = 'editorial' | 'checklist' | 'signal' | 'night-flight'
+export type MarkdownTemplateSeriesId =
+  | 'editorial-archive'
+  | 'public-theatre'
+  | 'issue-cover'
+
+export type FreeformTemplateSeriesId = 'editorial' | 'checklist' | 'signal' | 'night-flight'
+export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId
 export type TemplateWorkspace = 'markdown' | 'freeform'
 
 export interface MarkdownTemplateDocument {

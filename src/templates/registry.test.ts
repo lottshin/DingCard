@@ -33,10 +33,14 @@ function geometrySignature(nodes: FreeformSceneNode[]): string {
 }
 
 describe('template registry', () => {
-  it('exposes four series in both workspaces with unique IDs', () => {
-    expect(TEMPLATE_REGISTRY).toHaveLength(8)
-    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(8)
-    expect(templatesForWorkspace('markdown')).toHaveLength(4)
+  it('exposes three markdown and four freeform series with unique IDs', () => {
+    expect(TEMPLATE_REGISTRY).toHaveLength(7)
+    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(7)
+    expect(templatesForWorkspace('markdown').map((template) => template.series)).toEqual([
+      'editorial-archive',
+      'public-theatre',
+      'issue-cover',
+    ])
     expect(templatesForWorkspace('freeform')).toHaveLength(4)
   })
 
@@ -44,6 +48,7 @@ describe('template registry', () => {
     for (const template of templatesForWorkspace('markdown')) {
       const first = template.createMarkdown?.()
       const second = template.createMarkdown?.()
+      expect(template.pageCount).toBe(4)
       expect(first?.source.split(/\n---\n/)).toHaveLength(template.pageCount)
       expect(first?.source).toContain('---')
       expect(PLATFORMS.some((platform) => platform.id === first?.platformId)).toBe(true)
