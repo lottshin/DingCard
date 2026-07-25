@@ -19,17 +19,17 @@
 - Modify: `src/__tests__/markdown.test.ts`
 - Create: `src/templates/markdownPresentation.test.ts`
 
-- [ ] **Step 1: 先写解析语义的失败测试**
+- [x] **Step 1: 先写解析语义的失败测试**
 
   在 `src/__tests__/markdown.test.ts` 增加标题、段落、纯图片段落、图文混排、引用、列表、代码块、分页标记和未知 token 的断言。测试必须检查 `Block.kind`，并确认分页标记仍由 `isBreak` 单独区分。
 
-- [ ] **Step 2: 运行测试，确认因 `kind` 缺失而失败**
+- [x] **Step 2: 运行测试，确认因 `kind` 缺失而失败**
 
   Run: `npm run test:unit -- src/__tests__/markdown.test.ts`
 
   Expected: FAIL，错误指向 `Block.kind` 或预期语义类型不匹配。
 
-- [ ] **Step 3: 实现块语义映射**
+- [x] **Step 3: 实现块语义映射**
 
   在 `src/markdown.ts` 导出：
 
@@ -46,11 +46,11 @@
 
   每个返回的 `Block` 必须有 `kind`。只含图片的段落归为 `image`，图片与文字共存时仍为 `paragraph`；无法识别的 token 使用 `other`。
 
-- [ ] **Step 4: 先写页面角色与页码格式的失败测试**
+- [x] **Step 4: 先写页面角色与页码格式的失败测试**
 
   `src/templates/markdownPresentation.test.ts` 覆盖：普通/未知主题、空页、单页、首屏、引用页、列表页、尾页、中间正文页以及 1/9、1/10 的补零格式。
 
-- [ ] **Step 5: 实现纯函数**
+- [x] **Step 5: 实现纯函数**
 
   `src/templates/markdownPresentation.ts` 导出：
 
@@ -69,13 +69,13 @@
 
   判定顺序严格按设计规格执行，页码对负值/非有限数值先做安全归一化，不返回 `NaN`。
 
-- [ ] **Step 6: 运行定向测试**
+- [x] **Step 6: 运行定向测试**
 
   Run: `npm run test:unit -- src/__tests__/markdown.test.ts src/templates/markdownPresentation.test.ts`
 
   Expected: PASS。
 
-- [ ] **Step 7: 提交语义基础**
+- [x] **Step 7: 提交语义基础**
 
   ```bash
   git add src/markdown.ts src/__tests__/markdown.test.ts src/templates/markdownPresentation.ts src/templates/markdownPresentation.test.ts
@@ -451,4 +451,3 @@
   git add <only-the-files-fixed-during-verification>
   git commit -m "fix: address markdown template verification findings"
   ```
-

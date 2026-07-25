@@ -1,11 +1,22 @@
 import { marked } from 'marked'
 import { store } from './storage'
 
+export type MarkdownBlockKind =
+  | 'paragraph'
+  | 'heading'
+  | 'blockquote'
+  | 'list'
+  | 'code'
+  | 'image'
+  | 'other'
+
 export interface Block {
   /** rendered HTML for a single top-level markdown block */
   html: string
   /** raw source, kept for debugging / future editing features */
   raw: string
+  /** stable semantic type used by template-aware pagination */
+  kind: MarkdownBlockKind
   /** true when this is a manual page-break marker (a `---` line), not content */
   isBreak?: boolean
 }
@@ -95,11 +106,25 @@ marked.use({
   },
 })
 
+function isImageOnlyParagraph(raw: string): boolean {
+  const token = marked.lexer(raw).find((candidate) => candidate.type !== 'space')
+  if (!token || token.type !== 'paragraph' || !('tokens' in token) || !Array.isArray(token.tokens)) {
+    return false
+  }
+
+  const meaningfulTokens = token.tokens.filter((inlineToken) => {
+    if (inlineToken.type === 'space') return false
+    return inlineToken.type !== 'text' || inlineToken.raw.trim().length > 0
+  })
+
+  return meaningfulTokens.length > 0 && meaningfulTokens.every((inlineToken) => inlineToken.type === 'image')
+}
+
 function renderParagraph(raw: string): Block | null {
   const text = raw.trim()
   if (!text) return null
   const html = `<p>${marked.parseInline(text) as string}</p>\n`
-  return html.trim() ? { html, raw: text } : null
+  return html.trim() ? { html, raw: text, kind: isImageOnlyParagraph(text) ? 'image' : 'paragraph' } : null
 }
 
 function renderListItem(text: string, ordered: boolean, start: number, raw = text): Block | null {
@@ -108,7 +133,14 @@ function renderListItem(text: string, ordered: boolean, start: number, raw = tex
   const tag = ordered ? 'ol' : 'ul'
   const startAttr = ordered ? ` start="${start}"` : ''
   const html = `<${tag}${startAttr}><li>${marked.parseInline(body) as string}</li></${tag}>\n`
-  return { html, raw }
+  return { html, raw, kind: 'list' }
+}
+
+function tokenKind(tokenType: string): MarkdownBlockKind {
+  if (tokenType === 'heading') return 'heading'
+  if (tokenType === 'blockquote') return 'blockquote'
+  if (tokenType === 'code') return 'code'
+  return 'other'
 }
 
 function splitLongLine(line: string): string[] {
@@ -191,7 +223,7 @@ function lexSegment(segment: string): Block[] {
 
     // A stray hr can still appear (e.g. from `***`); treat as a break too.
     if (token.type === 'hr') {
-      blocks.push({ html: '', raw: token.raw ?? '---', isBreak: true })
+      blocks.push({ html: '', raw: token.raw ?? '---', kind: 'other', isBreak: true })
       continue
     }
 
@@ -228,7 +260,7 @@ function lexSegment(segment: string): Block[] {
     }
 
     const html = marked.parser([token as never])
-    if (html.trim()) blocks.push({ html, raw })
+    if (html.trim()) blocks.push({ html, raw, kind: tokenKind(token.type) })
   }
 
   return blocks
@@ -265,7 +297,7 @@ export function parseBlocks(source: string): Block[] {
 
     if (fence === null && isPageBreakLine(line)) {
       flush()
-      blocks.push({ html: '', raw: line.trim(), isBreak: true })
+      blocks.push({ html: '', raw: line.trim(), kind: 'other', isBreak: true })
     } else {
       buffer.push(line)
     }
