@@ -24,6 +24,8 @@ export interface Theme {
   background: string
   color: string
   accent: string
+  /** Loadable for saved drafts but omitted from the normal theme picker. */
+  hidden?: boolean
 }
 
 export const THEMES: Theme[] = [
@@ -31,11 +33,28 @@ export const THEMES: Theme[] = [
   { id: 'warm', label: '暖米色', background: '#faf6f0', color: '#3a3226', accent: '#c2703d' },
   { id: 'dark', label: '深空黑', background: '#1c1c1e', color: '#f2f2f7', accent: '#0a84ff' },
   { id: 'mint', label: '薄荷绿', background: '#eef7f2', color: '#1f3a2e', accent: '#2fa36b' },
-  { id: 'template-editorial', label: '模板 · 编辑部', background: '#f6f3ea', color: '#171717', accent: '#d94836' },
-  { id: 'template-checklist', label: '模板 · 清单', background: '#f3f5ed', color: '#14271f', accent: '#174a38' },
-  { id: 'template-signal', label: '模板 · 信号', background: '#f2f0e8', color: '#111111', accent: '#e4472f' },
-  { id: 'template-night-flight', label: '模板 · 夜航', background: '#111820', color: '#f2efe6', accent: '#f2bd4b' },
+  { id: 'template-editorial-archive', label: '模板 · 编辑档案', background: '#eee8db', color: '#171411', accent: '#dc3f2f' },
+  { id: 'template-public-theatre', label: '模板 · 公共剧场', background: '#11110f', color: '#f3ecdc', accent: '#ed3828' },
+  { id: 'template-issue-cover', label: '模板 · 议题封面', background: '#eee3cf', color: '#18191d', accent: '#ec5a2a' },
+  { id: 'template-editorial', label: '旧模板 · 编辑部', background: '#f6f3ea', color: '#171717', accent: '#d94836', hidden: true },
+  { id: 'template-checklist', label: '旧模板 · 清单', background: '#f3f5ed', color: '#14271f', accent: '#174a38', hidden: true },
+  { id: 'template-signal', label: '旧模板 · 信号', background: '#f2f0e8', color: '#111111', accent: '#e4472f', hidden: true },
+  { id: 'template-night-flight', label: '旧模板 · 夜航', background: '#111820', color: '#f2efe6', accent: '#f2bd4b', hidden: true },
 ]
+
+export function resolveTheme(themeId: unknown): Theme {
+  if (typeof themeId !== 'string' || !themeId) return THEMES[0]
+  return THEMES.find((theme) => theme.id === themeId) ?? THEMES[0]
+}
+
+export function themesForPicker(activeThemeId: unknown): Theme[] {
+  const visibleThemes = THEMES.filter((theme) => theme.hidden !== true)
+  if (typeof activeThemeId !== 'string' || !activeThemeId) return visibleThemes
+
+  const activeTheme = THEMES.find((theme) => theme.id === activeThemeId)
+  if (!activeTheme?.hidden) return visibleThemes
+  return [...visibleThemes, activeTheme]
+}
 
 export const FONTS = [
   { id: 'PingFang SC', label: '苹方 PingFang' },
@@ -94,6 +113,7 @@ export const AVATAR_COLORS = ['#3b82f6', '#e08a2b', '#3a9e5f', '#9b59d0', '#d94a
  * object so measurement and rendering can never drift apart.
  */
 export interface CardConfig {
+  themeId: string
   width: number
   height: number
   padding: number
@@ -110,6 +130,7 @@ export interface CardConfig {
 
 export function buildConfig(platform: Platform, theme: Theme, fontFamily: string): CardConfig {
   return {
+    themeId: theme.id,
     width: platform.width,
     height: platform.height,
     padding: CARD_PADDING,

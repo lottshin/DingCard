@@ -4,7 +4,15 @@ import { buildFontEmbedCSS } from '../../fontEmbed'
 import { isLatestSaveForDraft } from '../../freeform/history'
 import { collectMarkdownImageSources, parseBlocks, setImageWidth } from '../../markdown'
 import { paginate, type Page } from '../../paginate'
-import { PLATFORMS, THEMES, FONTS, buildConfig, DEFAULT_PROFILE } from '../../theme'
+import {
+  PLATFORMS,
+  THEMES,
+  FONTS,
+  buildConfig,
+  DEFAULT_PROFILE,
+  resolveTheme,
+  themesForPicker,
+} from '../../theme'
 import type { CardConfig, Profile } from '../../theme'
 import { Card } from '../../Card'
 import { MarkdownEditor } from '../../MarkdownEditor'
@@ -108,7 +116,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }, [])
 
   const platform = PLATFORMS.find((p) => p.id === platformId)!
-  const theme = THEMES.find((t) => t.id === themeId)!
+  const theme = resolveTheme(themeId)
 
   const config: CardConfig = useMemo(
     () => buildConfig(platform, theme, fontFamily),
@@ -491,7 +499,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     if (document.images) for (const [ref, url] of Object.entries(document.images)) store.images.register(ref, url)
     setSource(document.source)
     setPlatformId(document.platformId)
-    setThemeId(document.themeId)
+    setThemeId(resolveTheme(document.themeId).id)
     setFontFamily(document.fontFamily)
     setProfile(document.profile)
     setRadius(document.radius)
@@ -530,7 +538,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setSavedAt(null)
     setSource(document.source)
     setPlatformId(document.platformId)
-    setThemeId(document.themeId)
+    setThemeId(resolveTheme(document.themeId).id)
     setFontFamily(document.fontFamily)
     setProfile(document.profile)
     setRadius(document.radius)
@@ -570,7 +578,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               markDraftDirty()
             }}
             title="主题"
-            options={THEMES.map((t) => ({ id: t.id, label: t.label }))}
+            options={themesForPicker(themeId).map((t) => ({ id: t.id, label: t.label }))}
           />
 
           <Select

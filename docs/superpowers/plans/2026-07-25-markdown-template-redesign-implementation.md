@@ -90,7 +90,7 @@
 - Create: `src/theme.test.ts`
 - Modify: `src/workspaces/markdown/MarkdownWorkspace.tsx`
 
-- [ ] **Step 1: 先写主题行为的失败测试**
+- [x] **Step 1: 先写主题行为的失败测试**
 
   测试以下契约：
 
@@ -101,13 +101,13 @@
   - 当前草稿正使用旧主题时，选择器临时保留当前旧主题；切换后不再出现。
   - 生成选项的函数不修改 `THEMES`。
 
-- [ ] **Step 2: 运行测试，确认新契约尚未实现**
+- [x] **Step 2: 运行测试，确认新契约尚未实现**
 
   Run: `npm run test:unit -- src/theme.test.ts`
 
   Expected: FAIL。
 
-- [ ] **Step 3: 实现主题与安全归一化**
+- [x] **Step 3: 实现主题与安全归一化**
 
   在 `Theme` 增加 `hidden?: boolean`，在 `CardConfig` 增加 `themeId: string`；新增三个主题，旧模板主题标为隐藏。新增并使用：
 
@@ -118,13 +118,13 @@
 
   `buildConfig()` 始终使用 `resolveTheme()` 的结果，工作区移除 `THEMES.find(...)!`。
 
-- [ ] **Step 4: 运行主题及现有选择器测试**
+- [x] **Step 4: 运行主题及现有选择器测试**
 
   Run: `npm run test:unit -- src/theme.test.ts src/Select.test.tsx`
 
   Expected: PASS。
 
-- [ ] **Step 5: 提交主题兼容层**
+- [x] **Step 5: 提交主题兼容层**
 
   ```bash
   git add src/theme.ts src/theme.test.ts src/workspaces/markdown/MarkdownWorkspace.tsx
