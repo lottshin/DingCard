@@ -129,6 +129,90 @@ for (const template of [
   })
 }
 
+test('issue-cover uses a left profile masthead on every social page', async ({ page }) => {
+  await applyTemplate(page, '议题封面')
+  const platformButtons = page.locator('.seg[role="tablist"]').first().locator('button')
+
+  for (const platformIndex of [1, 2]) {
+    await platformButtons.nth(platformIndex).click()
+
+    for (let pageIndex = 0; pageIndex < 4; pageIndex += 1) {
+      await page.locator('.page-dot').nth(pageIndex).click()
+      const card = page.locator('.stage .card')
+      const geometry = await card.evaluate((element) => {
+        const header = element.querySelector<HTMLElement>('.cardhead')!
+        const avatar = element.querySelector<HTMLElement>('.avatar')!
+        const meta = element.querySelector<HTMLElement>('.cardhead-meta')!
+        const name = element.querySelector<HTMLElement>('.cardhead-name')!
+        const chrome = element.querySelector<HTMLElement>('.markdown-card-chrome')!
+        const cardRect = element.getBoundingClientRect()
+        const headerRect = header.getBoundingClientRect()
+        const avatarRect = avatar.getBoundingClientRect()
+        const headerStyle = getComputedStyle(header)
+        const lineStyle = getComputedStyle(header, '::after')
+        const coverEditionStyle = getComputedStyle(chrome, '::before')
+        const edition = element.querySelector<HTMLElement>('.markdown-chrome-label')
+        const editionRect = edition?.getBoundingClientRect() ?? null
+
+        return {
+          avatarHeight: avatarRect.height,
+          avatarLeft: avatarRect.left,
+          cardLeft: cardRect.left,
+          cardRight: cardRect.right,
+          coverEdition: {
+            borderBottomWidth: coverEditionStyle.borderBottomWidth,
+            fontSize: coverEditionStyle.fontSize,
+            right: coverEditionStyle.right,
+            top: coverEditionStyle.top,
+          },
+          edition: editionRect
+            ? {
+                display: getComputedStyle(edition!).display,
+                left: editionRect.left,
+                right: editionRect.right,
+              }
+            : null,
+          headerColor: headerStyle.color,
+          headerHeight: headerRect.height,
+          headerLeft: headerRect.left,
+          headerRight: headerRect.right,
+          lineRight: lineStyle.right,
+          lineStyle: lineStyle.borderTopStyle,
+          marginBottom: headerStyle.marginBottom,
+          marginRight: headerStyle.marginRight,
+          metaAlign: getComputedStyle(meta).textAlign,
+          nameColor: getComputedStyle(name).color,
+        }
+      })
+
+      expect(geometry.headerHeight).toBe(24)
+      expect(geometry.avatarHeight).toBe(22)
+      expect(Math.abs(geometry.headerLeft - (geometry.cardLeft + 22))).toBeLessThanOrEqual(1)
+      expect(Math.abs(geometry.avatarLeft - geometry.headerLeft)).toBeLessThanOrEqual(1)
+      expect(geometry.marginBottom).toBe('30px')
+      expect(geometry.marginRight).toBe('104px')
+      expect(geometry.metaAlign).toBe('left')
+      expect(geometry.nameColor).toBe(geometry.headerColor)
+      expect(geometry.lineStyle).toBe('solid')
+      expect(geometry.lineRight).toBe('-104px')
+
+      if (pageIndex === 0) {
+        expect(geometry.coverEdition).toEqual({
+          borderBottomWidth: '0px',
+          fontSize: '10px',
+          right: '18px',
+          top: '20px',
+        })
+      } else {
+        expect(geometry.edition).not.toBeNull()
+        expect(geometry.edition!.display).toBe('block')
+        expect(Math.abs(geometry.cardRight - geometry.edition!.right - 18)).toBeLessThanOrEqual(1)
+        expect(geometry.edition!.left - geometry.headerRight).toBeGreaterThanOrEqual(8)
+      }
+    }
+  }
+})
+
 for (const template of [
   { name: '编辑档案', primarySelectors: ['h1', 'h2', 'blockquote', 'h2'] },
   { name: '公共剧场', primarySelectors: ['h1', 'h2', 'blockquote', 'h2'] },
@@ -166,11 +250,16 @@ for (const template of [
         expect(primaryBox!.y - (headerBox!.y + headerBox!.height)).toBeGreaterThanOrEqual(8)
         expect(Math.abs(primaryBox!.y - baselineTops[index])).toBeLessThanOrEqual(32)
         if (platformIndex === 2) {
-          const twitterNameUsesPageColor = await card.evaluate((element) => {
+          const twitterNameUsesHeaderColor = await card.evaluate((element) => {
+            const header = element.querySelector<HTMLElement>('.cardhead-twitter')
             const name = element.querySelector<HTMLElement>('.cardhead-twitter .cardhead-name')
-            return name !== null && getComputedStyle(name).color === getComputedStyle(element).color
+            return (
+              header !== null &&
+              name !== null &&
+              getComputedStyle(name).color === getComputedStyle(header).color
+            )
           })
-          expect(twitterNameUsesPageColor).toBe(true)
+          expect(twitterNameUsesHeaderColor).toBe(true)
         }
       }
     }
@@ -195,7 +284,6 @@ test('public-theatre quote keeps its signal clear of supporting text on every pl
 
 test('social template headers contain long profile text without changing height', async ({ page }) => {
   await applyTemplate(page, '议题封面')
-  await page.locator('.seg[role="tablist"]').first().locator('button').nth(2).click()
   await page.getByRole('button', { name: '个人资料', exact: true }).click()
 
   const profileDialog = page.locator('.modal')
@@ -205,14 +293,33 @@ test('social template headers contain long profile text without changing height'
   await inputs.nth(2).fill('一个同样很长并且需要被安全截断的发布地点')
   await profileDialog.getByRole('button', { name: '保存', exact: true }).click()
 
-  const geometry = await page.locator('.stage .cardhead-twitter').evaluate((header) => ({
-    height: header.getBoundingClientRect().height,
-    overflowX: header.scrollWidth - header.clientWidth,
-  }))
-  expect(geometry.height).toBe(40)
-  expect(geometry.overflowX).toBeLessThanOrEqual(1)
-  await expect(page.locator('.stage .cardhead-name')).toHaveCSS('text-overflow', 'ellipsis')
-  await expect(page.locator('.stage .cardhead-sub')).toHaveCSS('text-overflow', 'ellipsis')
+  const platformButtons = page.locator('.seg[role="tablist"]').first().locator('button')
+  for (const platformIndex of [1, 2]) {
+    await platformButtons.nth(platformIndex).click()
+    const card = page.locator('.stage .card')
+    const geometry = await card.evaluate((element) => {
+      const header = element.querySelector<HTMLElement>('.cardhead')!
+      const name = element.querySelector<HTMLElement>('.cardhead-name')!
+      const sub = element.querySelector<HTMLElement>('.cardhead-sub')!
+      const headerRect = header.getBoundingClientRect()
+      const nameRect = name.getBoundingClientRect()
+      const subRect = sub.getBoundingClientRect()
+      return {
+        cardOverflowX: element.scrollWidth - element.clientWidth,
+        headerHeight: headerRect.height,
+        headerWidth: headerRect.width,
+        nameInside: nameRect.right <= headerRect.right + 1,
+        subInside: subRect.right <= headerRect.right + 1,
+      }
+    })
+    expect(geometry.cardOverflowX).toBeLessThanOrEqual(1)
+    expect(geometry.headerHeight).toBe(24)
+    expect(geometry.headerWidth).toBe(212)
+    expect(geometry.nameInside).toBe(true)
+    expect(geometry.subInside).toBe(true)
+    await expect(card.locator('.cardhead-name')).toHaveCSS('text-overflow', 'ellipsis')
+    await expect(card.locator('.cardhead-sub')).toHaveCSS('text-overflow', 'ellipsis')
+  }
 })
 
 test('template cards keep social headers clear and respect first-page-only mode', async ({ page }) => {
