@@ -371,31 +371,31 @@
 - Modify: `scripts/release-readiness.test.mjs`
 - Modify: `docs/assets/markdown-workspace.png`
 
-- [ ] **Step 1: 先更新发布就绪测试为 0.13.0**
+- [x] **Step 1: 先更新发布就绪测试为 0.13.0**
 
   测试应检查根包、lockfile 顶层/根包、README 徽章、CHANGELOG 章节和后端规划中的前端版本一致。服务端版本继续是 0.3.0，Docker/Compose 文档继续指向已发布的 0.11.0 镜像。
 
-- [ ] **Step 2: 运行测试，确认文档版本尚未同步**
+- [x] **Step 2: 运行测试，确认文档版本尚未同步**
 
   Run: `node --test scripts/release-readiness.test.mjs`
 
   Expected: FAIL，仍检测到 0.12.0。
 
-- [ ] **Step 3: 同步版本和产品文档**
+- [x] **Step 3: 同步版本和产品文档**
 
   使用 `npm version 0.13.0 --no-git-tag-version` 同步根包和 lockfile；README 改为三套 Markdown + 四套自由画布，模板说明采用简洁功能列表，不重复段落、不写宣传式 AI 文案。CHANGELOG 记录页面角色、三套模板、旧主题兼容和本地图片资源。
 
-- [ ] **Step 4: 重截 README 工作区图片**
+- [x] **Step 4: 重截 README 工作区图片**
 
   保持浏览器现有会话，打开本地应用并应用一套新模板；截取与 README 现有布局匹配的工作区画面，覆盖 `docs/assets/markdown-workspace.png`。不得关闭用户当前浏览器。
 
-- [ ] **Step 5: 运行发布就绪测试**
+- [x] **Step 5: 运行发布就绪测试**
 
   Run: `node --test scripts/release-readiness.test.mjs`
 
   Expected: PASS。
 
-- [ ] **Step 6: 提交版本与文档**
+- [x] **Step 6: 提交版本与文档**
 
   ```bash
   git add package.json package-lock.json README.md CHANGELOG.md docs/backend-plan.md scripts/release-readiness.test.mjs docs/assets/markdown-workspace.png
