@@ -213,6 +213,95 @@ test('issue-cover uses a left profile masthead on every social page', async ({ p
   }
 })
 
+test('editorial and theatre templates use the v20 masthead on every social page', async ({ page }) => {
+  const templates = [
+    {
+      name: '编辑档案',
+      colors: ['rgb(23, 20, 17)', 'rgb(23, 20, 17)', 'rgb(23, 20, 17)', 'rgb(242, 236, 223)'],
+    },
+    {
+      name: '公共剧场',
+      colors: ['rgb(245, 239, 227)', 'rgb(16, 17, 15)', 'rgb(16, 17, 15)', 'rgb(245, 239, 227)'],
+    },
+  ]
+
+  for (const template of templates) {
+    await page.goto('/')
+    await page.waitForFunction(() => !!window.__cmView)
+    await applyTemplate(page, template.name)
+    const platformButtons = page.locator('.seg[role="tablist"]').first().locator('button')
+
+    for (const platformIndex of [1, 2]) {
+      await platformButtons.nth(platformIndex).click()
+
+      for (let pageIndex = 0; pageIndex < 4; pageIndex += 1) {
+        await page.locator('.page-dot').nth(pageIndex).click()
+        const card = page.locator('.stage .card')
+        const geometry = await card.evaluate((element) => {
+          const header = element.querySelector<HTMLElement>('.cardhead')!
+          const avatar = element.querySelector<HTMLElement>('.avatar')!
+          const meta = element.querySelector<HTMLElement>('.cardhead-meta')!
+          const name = element.querySelector<HTMLElement>('.cardhead-name')!
+          const label = element.querySelector<HTMLElement>('.markdown-chrome-label')!
+          const cardRect = element.getBoundingClientRect()
+          const headerRect = header.getBoundingClientRect()
+          const avatarRect = avatar.getBoundingClientRect()
+          const labelRect = label.getBoundingClientRect()
+          const headerStyle = getComputedStyle(header)
+          const labelStyle = getComputedStyle(label)
+          const lineStyle = getComputedStyle(header, '::after')
+
+          return {
+            avatarHeight: avatarRect.height,
+            avatarLeft: avatarRect.left,
+            cardLeft: cardRect.left,
+            cardRight: cardRect.right,
+            headerColor: headerStyle.color,
+            headerHeight: headerRect.height,
+            headerLeft: headerRect.left,
+            headerRight: headerRect.right,
+            labelColor: labelStyle.color,
+            labelDisplay: labelStyle.display,
+            labelLeft: labelRect.left,
+            labelRightGap: cardRect.right - labelRect.right,
+            labelText: label.textContent?.trim(),
+            labelTopGap: labelRect.top - cardRect.top,
+            labelWritingMode: labelStyle.writingMode,
+            lineRight: lineStyle.right,
+            lineStyle: lineStyle.borderTopStyle,
+            marginBottom: headerStyle.marginBottom,
+            marginRight: headerStyle.marginRight,
+            metaAlign: getComputedStyle(meta).textAlign,
+            nameColor: getComputedStyle(name).color,
+          }
+        })
+        const isArchiveClose = template.name === '编辑档案' && pageIndex === 3
+        const expectedRightGap = isArchiveClose ? 82 : 18
+        const expectedMarginRight = isArchiveClose ? 140 : 104
+
+        expect(geometry.headerHeight).toBe(24)
+        expect(geometry.avatarHeight).toBe(22)
+        expect(Math.abs(geometry.headerLeft - (geometry.cardLeft + 22))).toBeLessThanOrEqual(1)
+        expect(Math.abs(geometry.avatarLeft - geometry.headerLeft)).toBeLessThanOrEqual(1)
+        expect(geometry.marginBottom).toBe('30px')
+        expect(geometry.marginRight).toBe(`${expectedMarginRight}px`)
+        expect(geometry.metaAlign).toBe('left')
+        expect(geometry.headerColor).toBe(template.colors[pageIndex])
+        expect(geometry.nameColor).toBe(geometry.headerColor)
+        expect(geometry.labelColor).toBe(geometry.headerColor)
+        expect(geometry.lineStyle).toBe('solid')
+        expect(geometry.lineRight).toBe(`-${expectedMarginRight}px`)
+        expect(geometry.labelDisplay).toBe('block')
+        expect(geometry.labelText).toBe(template.name === '编辑档案' ? 'DING / ARCHIVE' : 'PUBLIC / ACT')
+        expect(geometry.labelWritingMode).toBe('horizontal-tb')
+        expect(Math.abs(geometry.labelTopGap - 20)).toBeLessThanOrEqual(1)
+        expect(Math.abs(geometry.labelRightGap - expectedRightGap)).toBeLessThanOrEqual(1)
+        expect(geometry.labelLeft - geometry.headerRight).toBeGreaterThanOrEqual(8)
+      }
+    }
+  }
+})
+
 for (const template of [
   { name: '编辑档案', primarySelectors: ['h1', 'h2', 'blockquote', 'h2'] },
   { name: '公共剧场', primarySelectors: ['h1', 'h2', 'blockquote', 'h2'] },
@@ -283,42 +372,46 @@ test('public-theatre quote keeps its signal clear of supporting text on every pl
 })
 
 test('social template headers contain long profile text without changing height', async ({ page }) => {
-  await applyTemplate(page, '议题封面')
-  await page.getByRole('button', { name: '个人资料', exact: true }).click()
+  for (const templateName of ['编辑档案', '公共剧场', '议题封面']) {
+    await page.goto('/')
+    await page.waitForFunction(() => !!window.__cmView)
+    await applyTemplate(page, templateName)
+    await page.getByRole('button', { name: '个人资料', exact: true }).click()
 
-  const profileDialog = page.locator('.modal')
-  const inputs = profileDialog.locator('.text-input')
-  await inputs.nth(0).fill('一个长度明显超过卡片头部可用空间的账号名称')
-  await inputs.nth(1).fill('a-handle-that-is-deliberately-too-long-for-the-card-header')
-  await inputs.nth(2).fill('一个同样很长并且需要被安全截断的发布地点')
-  await profileDialog.getByRole('button', { name: '保存', exact: true }).click()
+    const profileDialog = page.locator('.modal')
+    const inputs = profileDialog.locator('.text-input')
+    await inputs.nth(0).fill('一个长度明显超过卡片头部可用空间的账号名称')
+    await inputs.nth(1).fill('a-handle-that-is-deliberately-too-long-for-the-card-header')
+    await inputs.nth(2).fill('一个同样很长并且需要被安全截断的发布地点')
+    await profileDialog.getByRole('button', { name: '保存', exact: true }).click()
 
-  const platformButtons = page.locator('.seg[role="tablist"]').first().locator('button')
-  for (const platformIndex of [1, 2]) {
-    await platformButtons.nth(platformIndex).click()
-    const card = page.locator('.stage .card')
-    const geometry = await card.evaluate((element) => {
-      const header = element.querySelector<HTMLElement>('.cardhead')!
-      const name = element.querySelector<HTMLElement>('.cardhead-name')!
-      const sub = element.querySelector<HTMLElement>('.cardhead-sub')!
-      const headerRect = header.getBoundingClientRect()
-      const nameRect = name.getBoundingClientRect()
-      const subRect = sub.getBoundingClientRect()
-      return {
-        cardOverflowX: element.scrollWidth - element.clientWidth,
-        headerHeight: headerRect.height,
-        headerWidth: headerRect.width,
-        nameInside: nameRect.right <= headerRect.right + 1,
-        subInside: subRect.right <= headerRect.right + 1,
-      }
-    })
-    expect(geometry.cardOverflowX).toBeLessThanOrEqual(1)
-    expect(geometry.headerHeight).toBe(24)
-    expect(geometry.headerWidth).toBe(212)
-    expect(geometry.nameInside).toBe(true)
-    expect(geometry.subInside).toBe(true)
-    await expect(card.locator('.cardhead-name')).toHaveCSS('text-overflow', 'ellipsis')
-    await expect(card.locator('.cardhead-sub')).toHaveCSS('text-overflow', 'ellipsis')
+    const platformButtons = page.locator('.seg[role="tablist"]').first().locator('button')
+    for (const platformIndex of [1, 2]) {
+      await platformButtons.nth(platformIndex).click()
+      const card = page.locator('.stage .card')
+      const geometry = await card.evaluate((element) => {
+        const header = element.querySelector<HTMLElement>('.cardhead')!
+        const name = element.querySelector<HTMLElement>('.cardhead-name')!
+        const sub = element.querySelector<HTMLElement>('.cardhead-sub')!
+        const headerRect = header.getBoundingClientRect()
+        const nameRect = name.getBoundingClientRect()
+        const subRect = sub.getBoundingClientRect()
+        return {
+          cardOverflowX: element.scrollWidth - element.clientWidth,
+          headerHeight: headerRect.height,
+          headerWidth: headerRect.width,
+          nameInside: nameRect.right <= headerRect.right + 1,
+          subInside: subRect.right <= headerRect.right + 1,
+        }
+      })
+      expect(geometry.cardOverflowX).toBeLessThanOrEqual(1)
+      expect(geometry.headerHeight).toBe(24)
+      expect(geometry.headerWidth).toBe(212)
+      expect(geometry.nameInside).toBe(true)
+      expect(geometry.subInside).toBe(true)
+      await expect(card.locator('.cardhead-name')).toHaveCSS('text-overflow', 'ellipsis')
+      await expect(card.locator('.cardhead-sub')).toHaveCSS('text-overflow', 'ellipsis')
+    }
   }
 })
 
@@ -341,6 +434,20 @@ test('template cards keep social headers clear and respect first-page-only mode'
 
   await expect(page.locator('.stage .cardhead-weibo')).toHaveCount(0)
   await expect(page.locator('.stage .card')).toHaveAttribute('data-has-social-header', 'false')
+  const fallbackLabel = page.locator('.stage .markdown-chrome-label')
+  const fallbackGeometry = await fallbackLabel.evaluate((label) => {
+    const card = label.closest<HTMLElement>('.card')!
+    const cardRect = card.getBoundingClientRect()
+    const labelRect = label.getBoundingClientRect()
+    return {
+      leftGap: labelRect.left - cardRect.left,
+      topGap: labelRect.top - cardRect.top,
+      writingMode: getComputedStyle(label).writingMode,
+    }
+  })
+  expect(fallbackGeometry.leftGap).toBe(5)
+  expect(fallbackGeometry.topGap).toBe(40)
+  expect(fallbackGeometry.writingMode).toBe('vertical-rl')
   await page.locator('.page-dot').nth(0).click()
   await expect(page.locator('.stage .cardhead-weibo')).toBeVisible()
   await expect(page.locator('.stage .card')).toHaveAttribute('data-has-social-header', 'true')

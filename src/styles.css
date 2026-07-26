@@ -4067,8 +4067,8 @@ html.theme-anim * {
   letter-spacing: 0.08em;
 }
 
-/* Social headers consume 40px plus a 14px gap. Keep template chrome full-bleed,
-   then compensate each designed content position within the remaining space. */
+/* Social headers reserve 54px in total: generic headers use 40px + 14px,
+   designed mastheads use 24px + 30px. Keep template chrome full-bleed. */
 .card[data-has-social-header="true"]
   .card-content[data-card-theme="template-editorial-archive"][data-page-role="cover"] {
   padding-top: 0;
@@ -4287,8 +4287,13 @@ html.theme-anim * {
   font-size: 11.5px;
 }
 
-/* Issue cover turns social identity into a compact editorial masthead. */
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"] .cardhead {
+/* Designed templates turn social identity into the approved v20 masthead. */
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
+  .cardhead {
   height: 24px;
   margin-right: 104px;
   margin-bottom: 30px;
@@ -4298,7 +4303,12 @@ html.theme-anim * {
   gap: 7px;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"] .cardhead::after {
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
+  .cardhead::after {
   content: "";
   position: absolute;
   right: -104px;
@@ -4308,22 +4318,45 @@ html.theme-anim * {
   opacity: 0.72;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"] .avatar,
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"]
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
+  .avatar,
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
   .cardhead-weibo-avatar-wrap,
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"]
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
   .cardhead-weibo
   .avatar {
   width: 22px;
   height: 22px;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"] .avatar-fallback {
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
+  .avatar-fallback {
   border: 1px solid currentColor;
   font-size: 9px;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"] .cardhead-meta {
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
+  .cardhead-meta {
   width: auto;
   max-width: 150px;
   flex: 0 1 auto;
@@ -4332,12 +4365,21 @@ html.theme-anim * {
   text-align: left;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"]
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
   .cardhead-name-row {
   justify-content: flex-start;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"] .cardhead-name {
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
+  .cardhead-name {
   color: inherit !important;
   font-family: "Instrument Sans", system-ui, sans-serif;
   font-size: 9px;
@@ -4347,7 +4389,12 @@ html.theme-anim * {
   text-transform: uppercase;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"] .cardhead-sub {
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
+  .cardhead-sub {
   max-width: 100%;
   color: inherit;
   font-family: "Instrument Sans", system-ui, sans-serif;
@@ -4359,18 +4406,99 @@ html.theme-anim * {
   text-transform: uppercase;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"] .verified {
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
+  .verified {
   width: 9px;
   height: 9px;
 }
 
-.card[data-has-social-header="true"][data-card-theme="template-issue-cover"]
+.card[data-has-social-header="true"]:is(
+    [data-card-theme="template-editorial-archive"],
+    [data-card-theme="template-public-theatre"],
+    [data-card-theme="template-issue-cover"]
+  )
   .cardhead-weibo-avatar-badge {
   right: -2px;
   bottom: -2px;
   width: 10px;
   height: 10px;
   background: transparent;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-editorial-archive"]
+  .cardhead {
+  color: #171411;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-editorial-archive"][data-page-role="close"]
+  .cardhead {
+  margin-right: 140px;
+  color: #f2ecdf;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-editorial-archive"][data-page-role="close"]
+  .cardhead::after {
+  right: -140px;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-public-theatre"]
+  .cardhead {
+  color: #f5efe3;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-public-theatre"][data-page-role="article"]
+  .cardhead,
+.card[data-has-social-header="true"][data-card-theme="template-public-theatre"][data-page-role="quote"]
+  .cardhead {
+  color: #10110f;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-editorial-archive"]
+  .markdown-card-chrome--editorial-archive
+  .markdown-chrome-label,
+.card[data-has-social-header="true"][data-card-theme="template-public-theatre"]
+  .markdown-card-chrome--public-theatre
+  .markdown-chrome-label {
+  top: 20px;
+  right: 18px;
+  left: auto;
+  display: block;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  writing-mode: horizontal-tb;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-editorial-archive"]
+  .markdown-card-chrome--editorial-archive
+  .markdown-chrome-label {
+  color: #171411;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-editorial-archive"][data-page-role="close"]
+  .markdown-card-chrome--editorial-archive
+  .markdown-chrome-label {
+  right: 82px;
+  color: #f2ecdf;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-public-theatre"]
+  .markdown-card-chrome--public-theatre
+  .markdown-chrome-label {
+  color: #f5efe3;
+}
+
+.card[data-has-social-header="true"][data-card-theme="template-public-theatre"][data-page-role="article"]
+  .markdown-card-chrome--public-theatre
+  .markdown-chrome-label,
+.card[data-has-social-header="true"][data-card-theme="template-public-theatre"][data-page-role="quote"]
+  .markdown-card-chrome--public-theatre
+  .markdown-chrome-label {
+  color: #10110f;
 }
 
 .card[data-has-social-header="true"][data-card-theme="template-issue-cover"][data-page-role="cover"]
