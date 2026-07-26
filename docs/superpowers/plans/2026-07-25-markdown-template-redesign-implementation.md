@@ -409,23 +409,23 @@
 - Inspect all changed files
 - Modify only files required by discovered regressions
 
-- [ ] **Step 1: 函数契约与回退检查**
+- [x] **Step 1: 函数契约与回退检查**
 
   人工检查空文档、单页、未知主题、旧主题、图片失败、超高单块、五页以上、页头策略。确认主路径与 fallback 都返回稳定角色和可导出页面。
 
-- [ ] **Step 2: 命名和引用一致性检查**
+- [x] **Step 2: 命名和引用一致性检查**
 
   Run: `rg -n "editorial-archive|public-theatre|issue-cover|MarkdownPageRole|themeId" src e2e docs README.md`
 
   Expected: ID 与字段命名统一，无旧名称误用；自由画布旧 ID 仍只在自由画布或兼容主题中出现。
 
-- [ ] **Step 3: 文档、版本和资源检查**
+- [x] **Step 3: 文档、版本和资源检查**
 
   Run: `rg -n '0\\.12\\.0|0\\.13\\.0|0\\.11\\.0|0\\.3\\.0' package.json package-lock.json README.md CHANGELOG.md docs scripts`
 
   Expected: 当前源码版本统一 0.13.0；历史记录、服务端 0.3.0、已发布 Docker 0.11.0 保留在正确语境。
 
-- [ ] **Step 4: 定向与全量验证**
+- [x] **Step 4: 定向与全量验证**
 
   Run:
 
@@ -441,13 +441,15 @@
 
   Expected: 全部通过；只允许 Vite 已知的大 chunk 警告，不允许测试失败、类型错误、CSS 溢出或未解释的工作区文件。
 
-- [ ] **Step 5: 最终视觉核对**
+- [x] **Step 5: 最终视觉核对**
 
   对照 `docs/assets/markdown-template-redesign-v15.png` 查看三套模板四页截图。确认不是只靠“大字 + 色块”，每套都有稳定的网格、编号、轨道/页签、图像裁切和正文安全区系统。
 
-- [ ] **Step 6: 若自检修复了问题，单独提交**
+- [x] **Step 6: 若自检修复了问题，单独提交**
 
   ```bash
   git add <only-the-files-fixed-during-verification>
   git commit -m "fix: address markdown template verification findings"
   ```
+
+  本轮全量自检没有发现需要另行修复的问题，因此没有创建额外的修复提交。
