@@ -96,4 +96,63 @@ describe('template registry', () => {
     }
     expect(new Set(seriesGeometry).size).toBe(4)
   })
+
+  it('overscans full-bleed rectangles past artboard corners', () => {
+    const seamRisks: string[] = []
+
+    for (const template of templatesForWorkspace('freeform')) {
+      const document = template.createFreeform?.()
+      expect(document).toBeDefined()
+
+      for (const slide of document!.slides) {
+        const rectangles = sceneLeaves(slide.nodes).filter(
+          (node): node is Extract<FreeformSceneLeaf, { type: 'shape' }> =>
+            node.type === 'shape' && node.shape === 'rect',
+        )
+        const corners = [
+          {
+            name: 'top-left',
+            isCovered: (node: Extract<FreeformSceneLeaf, { type: 'shape' }>) =>
+              node.x <= 0 && node.y <= 0 && node.x + node.width >= 0 && node.y + node.height >= 0,
+            hasBleed: (node: Extract<FreeformSceneLeaf, { type: 'shape' }>) =>
+              node.x < 0 || node.y < 0,
+          },
+          {
+            name: 'top-right',
+            isCovered: (node: Extract<FreeformSceneLeaf, { type: 'shape' }>) =>
+              node.x <= slide.width && node.y <= 0
+              && node.x + node.width >= slide.width && node.y + node.height >= 0,
+            hasBleed: (node: Extract<FreeformSceneLeaf, { type: 'shape' }>) =>
+              node.x + node.width > slide.width || node.y < 0,
+          },
+          {
+            name: 'bottom-left',
+            isCovered: (node: Extract<FreeformSceneLeaf, { type: 'shape' }>) =>
+              node.x <= 0 && node.y <= slide.height
+              && node.x + node.width >= 0 && node.y + node.height >= slide.height,
+            hasBleed: (node: Extract<FreeformSceneLeaf, { type: 'shape' }>) =>
+              node.x < 0 || node.y + node.height > slide.height,
+          },
+          {
+            name: 'bottom-right',
+            isCovered: (node: Extract<FreeformSceneLeaf, { type: 'shape' }>) =>
+              node.x <= slide.width && node.y <= slide.height
+              && node.x + node.width >= slide.width && node.y + node.height >= slide.height,
+            hasBleed: (node: Extract<FreeformSceneLeaf, { type: 'shape' }>) =>
+              node.x + node.width > slide.width || node.y + node.height > slide.height,
+          },
+        ]
+
+        for (const rectangle of rectangles) {
+          for (const corner of corners) {
+            if (corner.isCovered(rectangle) && !corner.hasBleed(rectangle)) {
+              seamRisks.push(`${template.id}/${slide.name}/${rectangle.name}/${corner.name}`)
+            }
+          }
+        }
+      }
+    }
+
+    expect(seamRisks).toEqual([])
+  })
 })

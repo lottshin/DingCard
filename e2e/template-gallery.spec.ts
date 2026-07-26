@@ -1,5 +1,41 @@
+import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 import { installOfflineFontRoutes } from './offlineFonts'
+
+async function samplePngPixel(
+  page: import('@playwright/test').Page,
+  filePath: string,
+  x: number,
+  y: number,
+) {
+  const buffer = await readFile(filePath)
+  const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`
+  return page.evaluate(
+    async ({ dataUrl, x, y }) => {
+      const image = new Image()
+      image.src = dataUrl
+      await image.decode()
+      const canvas = document.createElement('canvas')
+      canvas.width = image.width
+      canvas.height = image.height
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('no canvas context')
+      context.drawImage(image, 0, 0)
+      return Array.from(context.getImageData(x, y, 1, 1).data)
+    },
+    { dataUrl, x, y },
+  )
+}
+
+type PixelExpectation = [x: number, y: number, rgba: number[]]
+
+interface ExportScenario {
+  templateIndex: number
+  slides: Array<{
+    slideIndex: number
+    pixels: PixelExpectation[]
+  }>
+}
 
 test.beforeEach(async ({ context }) => {
   await installOfflineFontRoutes(context)
@@ -152,6 +188,58 @@ test('Freeform sidebar mounts scene nodes only near the visible thumbnails', asy
     items.filter((item) => item.querySelector('.freeform-preview-element')).length
   ))).toBeLessThan(13)
   await expect(page.locator('.freeform-thumb.on .freeform-preview-element').first()).toBeVisible()
+})
+
+test('Freeform template exports keep full-bleed corners sealed', async ({ page }) => {
+  const scenarios: ExportScenario[] = [
+    {
+      templateIndex: 0,
+      slides: [{ slideIndex: 2, pixels: [[1079, 0, [217, 72, 54, 255]], [1079, 1439, [217, 72, 54, 255]]] }],
+    },
+    {
+      templateIndex: 1,
+      slides: [{ slideIndex: 0, pixels: [[0, 0, [23, 74, 56, 255]], [0, 1439, [23, 74, 56, 255]]] }],
+    },
+    {
+      templateIndex: 2,
+      slides: [
+        { slideIndex: 0, pixels: [[1079, 0, [228, 71, 47, 255]]] },
+        { slideIndex: 1, pixels: [[0, 0, [36, 87, 214, 255]], [0, 1439, [36, 87, 214, 255]]] },
+        { slideIndex: 2, pixels: [[0, 0, [242, 200, 75, 255]], [1079, 0, [242, 200, 75, 255]]] },
+      ],
+    },
+    {
+      templateIndex: 3,
+      slides: [
+        { slideIndex: 0, pixels: [[0, 0, [236, 232, 220, 255]], [1079, 0, [236, 232, 220, 255]]] },
+        { slideIndex: 2, pixels: [[0, 0, [17, 24, 32, 255]], [1079, 0, [17, 24, 32, 255]]] },
+      ],
+    },
+  ]
+
+  for (const scenario of scenarios) {
+    await page.goto('/')
+    await page.getByTestId('workspace-tab-freeform').click()
+    await page.getByTestId('freeform-template-button').click()
+    const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
+    await dialog.locator('.template-tile-preview').nth(scenario.templateIndex).click()
+    await dialog.locator('.template-use').click()
+    await expect(page.locator('.freeform-thumb')).toHaveCount(3)
+
+    for (const slide of scenario.slides) {
+      await page.locator('.freeform-thumb').nth(slide.slideIndex).click()
+      const [download] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByTestId('freeform-primary-export').click(),
+      ])
+      const path = await download.path()
+      expect(path).toBeTruthy()
+
+      for (const [x, y, expected] of slide.pixels) {
+        expect(await samplePngPixel(page, path!, x, y)).toEqual(expected)
+      }
+    }
+  }
 })
 
 test('gallery stays inside desktop and narrow viewports', async ({ page }) => {

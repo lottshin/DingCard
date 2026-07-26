@@ -3,7 +3,7 @@
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
   <p>
-    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.13.0-e2570f" alt="叮卡版本 0.13.0"></a>
+    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.13.1-e2570f" alt="叮卡版本 0.13.1"></a>
     <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
     <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
     <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.11.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.11.0"></a>

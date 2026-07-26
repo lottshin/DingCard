@@ -16,6 +16,7 @@ import type {
 } from './types'
 
 const solid = (color: string): ColorPaint => ({ type: 'solid', color })
+const TEMPLATE_EDGE_BLEED = 16
 
 function copyProfile(profile: Profile): Profile {
   return { ...profile }
@@ -279,7 +280,7 @@ function createEditorialDocument(): FreeformDocument {
       textNode('阅读顺序 / 02', 72, 1344, 360, 38, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif' }),
     ]),
     slide('结尾', solid('#171717'), [
-      shapeNode('rect', 726, 0, 354, 1440, solid('#d94836'), { name: '红色边栏' }),
+      shapeNode('rect', 726, 0, 354 + TEMPLATE_EDGE_BLEED, 1440, solid('#d94836'), { name: '红色边栏' }),
       lineNode(72, 132, 574, '#f6f3ea', 3, { name: '刊头线' }),
       shapeNode('ellipse', 828, 96, 84, 84, solid('#f6f3ea'), { name: '页码圆点' }),
       lineNode(72, 910, 574, '#f6f3ea', 3, { name: '正文线' }),
@@ -298,7 +299,7 @@ function createEditorialDocument(): FreeformDocument {
 function createChecklistDocument(): FreeformDocument {
   return documentFromSlides([
     slide('封面', solid('#f3f5ed'), [
-      shapeNode('rect', 0, 0, 154, 1440, solid('#174a38'), { name: '装订边栏' }),
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, 0, 154 + TEMPLATE_EDGE_BLEED, 1440, solid('#174a38'), { name: '装订边栏' }),
       shapeNode('rect', 72, 174, 238, 58, solid('#f2c84b'), { name: '手册标签' }),
       lineNode(214, 126, 794, '#174a38', 3, { name: '刊头线' }),
       shapeNode('rect', 214, 878, 56, 56, solid('#f3f5ed'), { name: '复选框一', stroke: '#174a38', strokeWidth: 4 }),
@@ -367,7 +368,7 @@ function createChecklistDocument(): FreeformDocument {
 function createSignalDocument(): FreeformDocument {
   return documentFromSlides([
     slide('封面', solid('#f2f0e8'), [
-      shapeNode('rect', 704, 0, 376, 520, solid('#e4472f'), { name: '红色象限' }),
+      shapeNode('rect', 704, 0, 376 + TEMPLATE_EDGE_BLEED, 520, solid('#e4472f'), { name: '红色象限' }),
       shapeNode('ellipse', 764, 432, 176, 176, solid('#f2c84b'), { name: '信号圆点' }),
       shapeNode('rect', 72, 704, 18, 500, solid('#2457d6'), { name: '蓝色坐标轴' }),
       lineNode(72, 128, 560, '#111111', 3, { name: '顶部网格线' }),
@@ -386,7 +387,7 @@ function createSignalDocument(): FreeformDocument {
       textNode('CN / 2026', 744, 1342, 264, 38, { name: '页脚编号', fontSize: 18, fontFamily: 'system-ui, sans-serif', align: 'right' }),
     ]),
     slide('论证', solid('#f2f0e8'), [
-      shapeNode('rect', 0, 0, 454, 1440, solid('#2457d6'), { name: '蓝色分区' }),
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, 0, 454 + TEMPLATE_EDGE_BLEED, 1440, solid('#2457d6'), { name: '蓝色分区' }),
       shapeNode('rect', 454, 934, 626, 188, solid('#e4472f'), { name: '红色结论栏' }),
       shapeNode('ellipse', 824, 90, 104, 104, solid('#f2c84b'), { name: '页码圆点' }),
       lineNode(510, 248, 498, '#111111', 3, { name: '右栏顶线' }),
@@ -408,7 +409,7 @@ function createSignalDocument(): FreeformDocument {
       textNode('SIGNAL / 02', 510, 1342, 280, 38, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' }),
     ]),
     slide('行动', solid('#111111'), [
-      shapeNode('rect', 0, 0, 1080, 218, solid('#f2c84b'), { name: '黄色刊头' }),
+      shapeNode('rect', 0, -TEMPLATE_EDGE_BLEED, 1080, 218 + TEMPLATE_EDGE_BLEED, solid('#f2c84b'), { name: '黄色刊头' }),
       shapeNode('rect', 72, 880, 936, 300, solid('#e4472f'), { name: '行动底板' }),
       shapeNode('triangle', 818, 604, 150, 132, solid('#2457d6'), { name: '方向符号', rotation: 90 }),
       lineNode(72, 300, 936, '#f2f0e8', 3, { name: '标题线' }),
@@ -429,7 +430,7 @@ function createSignalDocument(): FreeformDocument {
 function createNightFlightDocument(): FreeformDocument {
   return documentFromSlides([
     slide('出发', solid('#111820'), [
-      shapeNode('rect', 0, 0, 1080, 166, solid('#ece8dc'), { name: '航班信息栏' }),
+      shapeNode('rect', 0, -TEMPLATE_EDGE_BLEED, 1080, 166 + TEMPLATE_EDGE_BLEED, solid('#ece8dc'), { name: '航班信息栏' }),
       shapeNode('ellipse', 94, 996, 34, 34, solid('#f2bd4b'), { name: '站点一' }),
       shapeNode('ellipse', 384, 906, 34, 34, solid('#f2bd4b'), { name: '站点二' }),
       shapeNode('ellipse', 704, 1018, 34, 34, solid('#f2bd4b'), { name: '站点三' }),
@@ -472,7 +473,7 @@ function createNightFlightDocument(): FreeformDocument {
       textNode('31.23 N  /  ROUTE ACTIVE', 72, 1288, 520, 40, { name: '页脚', fontSize: 18, fontFamily: 'system-ui, sans-serif', textFill: solid('#6fb7c8'), fontWeight: 'bold' }),
     ]),
     slide('抵达', solid('#ece8dc'), [
-      shapeNode('rect', 0, 0, 1080, 190, solid('#111820'), { name: '抵达信息栏' }),
+      shapeNode('rect', 0, -TEMPLATE_EDGE_BLEED, 1080, 190 + TEMPLATE_EDGE_BLEED, solid('#111820'), { name: '抵达信息栏' }),
       shapeNode('rect', 72, 854, 936, 300, solid('#111820'), { name: '结论底板' }),
       shapeNode('ellipse', 88, 670, 44, 44, solid('#f2bd4b'), { name: '起点' }),
       shapeNode('ellipse', 508, 670, 44, 44, solid('#6fb7c8'), { name: '中点' }),
