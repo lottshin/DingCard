@@ -129,6 +129,92 @@ for (const template of [
   })
 }
 
+for (const template of [
+  { name: '编辑档案', primarySelectors: ['h1', 'h2', 'blockquote', 'h2'] },
+  { name: '公共剧场', primarySelectors: ['h1', 'h2', 'blockquote', 'h2'] },
+  { name: '议题封面', primarySelectors: ['h1', 'h2', 'blockquote', 'h2'] },
+]) {
+  test(`${template.name} integrates social headers without cropping its composition`, async ({ page }) => {
+    await applyTemplate(page, template.name)
+
+    const baselineTops: number[] = []
+    for (const [index, selector] of template.primarySelectors.entries()) {
+      await page.locator('.page-dot').nth(index).click()
+      const primary = await page.locator(`.stage .card-content ${selector}`).first().boundingBox()
+      expect(primary).not.toBeNull()
+      baselineTops.push(primary!.y)
+    }
+
+    const platformButtons = page.locator('.seg[role="tablist"]').first().locator('button')
+    for (const platformIndex of [1, 2]) {
+      await platformButtons.nth(platformIndex).click()
+
+      for (const [index, selector] of template.primarySelectors.entries()) {
+        await page.locator('.page-dot').nth(index).click()
+        const card = page.locator('.stage .card')
+        const cardBox = await card.boundingBox()
+        const chromeBox = await card.locator('.markdown-card-chrome').boundingBox()
+        const headerBox = await card.locator('.cardhead').boundingBox()
+        const primaryBox = await card.locator(`.card-content ${selector}`).first().boundingBox()
+
+        expect(cardBox).not.toBeNull()
+        expect(chromeBox).not.toBeNull()
+        expect(headerBox).not.toBeNull()
+        expect(primaryBox).not.toBeNull()
+        expect(Math.abs(chromeBox!.y - cardBox!.y)).toBeLessThanOrEqual(1)
+        expect(Math.abs(chromeBox!.height - cardBox!.height)).toBeLessThanOrEqual(1)
+        expect(primaryBox!.y - (headerBox!.y + headerBox!.height)).toBeGreaterThanOrEqual(8)
+        expect(Math.abs(primaryBox!.y - baselineTops[index])).toBeLessThanOrEqual(32)
+        if (platformIndex === 2) {
+          const twitterNameUsesPageColor = await card.evaluate((element) => {
+            const name = element.querySelector<HTMLElement>('.cardhead-twitter .cardhead-name')
+            return name !== null && getComputedStyle(name).color === getComputedStyle(element).color
+          })
+          expect(twitterNameUsesPageColor).toBe(true)
+        }
+      }
+    }
+  })
+}
+
+test('public-theatre quote keeps its signal clear of supporting text on every platform', async ({ page }) => {
+  await applyTemplate(page, '公共剧场')
+  const platformButtons = page.locator('.seg[role="tablist"]').first().locator('button')
+
+  for (const platformIndex of [0, 1, 2]) {
+    await platformButtons.nth(platformIndex).click()
+    await page.locator('.page-dot').nth(2).click()
+    const supportingText = await page.locator('.stage .card-content[data-page-role="quote"] > p').boundingBox()
+    const signal = await page.locator('.stage .markdown-card-chrome[data-chrome-role="quote"] .markdown-chrome-signal').boundingBox()
+
+    expect(supportingText).not.toBeNull()
+    expect(signal).not.toBeNull()
+    expect(signal!.y - (supportingText!.y + supportingText!.height)).toBeGreaterThanOrEqual(12)
+  }
+})
+
+test('social template headers contain long profile text without changing height', async ({ page }) => {
+  await applyTemplate(page, '议题封面')
+  await page.locator('.seg[role="tablist"]').first().locator('button').nth(2).click()
+  await page.getByRole('button', { name: '个人资料', exact: true }).click()
+
+  const profileDialog = page.locator('.modal')
+  const inputs = profileDialog.locator('.text-input')
+  await inputs.nth(0).fill('一个长度明显超过卡片头部可用空间的账号名称')
+  await inputs.nth(1).fill('a-handle-that-is-deliberately-too-long-for-the-card-header')
+  await inputs.nth(2).fill('一个同样很长并且需要被安全截断的发布地点')
+  await profileDialog.getByRole('button', { name: '保存', exact: true }).click()
+
+  const geometry = await page.locator('.stage .cardhead-twitter').evaluate((header) => ({
+    height: header.getBoundingClientRect().height,
+    overflowX: header.scrollWidth - header.clientWidth,
+  }))
+  expect(geometry.height).toBe(40)
+  expect(geometry.overflowX).toBeLessThanOrEqual(1)
+  await expect(page.locator('.stage .cardhead-name')).toHaveCSS('text-overflow', 'ellipsis')
+  await expect(page.locator('.stage .cardhead-sub')).toHaveCSS('text-overflow', 'ellipsis')
+})
+
 test('template cards keep social headers clear and respect first-page-only mode', async ({ page }) => {
   await applyTemplate(page, '公共剧场')
   await page.getByRole('tablist', { name: '平台' }).getByRole('button', { name: '微博', exact: true }).click()
