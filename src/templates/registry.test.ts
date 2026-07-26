@@ -155,4 +155,22 @@ describe('template registry', () => {
 
     expect(seamRisks).toEqual([])
   })
+
+  it('aligns the Signal action arrow with the headline center', () => {
+    const template = templatesForWorkspace('freeform').find(
+      (candidate) => candidate.id === 'signal-freeform',
+    )
+    const document = template?.createFreeform?.()
+    const slide = document?.slides.find((candidate) => candidate.name === '行动')
+    const leaves = sceneLeaves(slide?.nodes ?? [])
+    const headline = leaves.find((node) => node.name === '主标题')
+    const direction = leaves.find((node) => node.name === '方向符号')
+    const arrowText = leaves.find((node) => node.name === '箭头文字')
+
+    expect(headline).toBeDefined()
+    expect(direction).toBeDefined()
+    expect(arrowText).toBeDefined()
+    expect(direction!.y + direction!.height / 2).toBe(headline!.y + headline!.height / 2)
+    expect(arrowText!.y - direction!.y).toBe(-2)
+  })
 })
