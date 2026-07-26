@@ -282,7 +282,7 @@
 - Create: `public/templates/editorial-building.webp`
 - Modify: `src/styles.css`
 
-- [ ] **Step 1: 生成并压缩项目自有建筑图**
+- [x] **Step 1: 生成并压缩项目自有建筑图**
 
   生成一张适合杂志裁切的现代建筑立面图，禁止带文字、水印和商标。转为 WebP 后检查：长边不超过 1600px、文件不超过 180KB。两套模板复用同一文件，不复制不同裁切版本。
 
@@ -290,7 +290,7 @@
 
   Expected: `public/templates/editorial-building.webp` 存在且满足尺寸限制。
 
-- [ ] **Step 2: 实现严格限定作用域的 CSS**
+- [x] **Step 2: 实现严格限定作用域的 CSS**
 
   所有规则从 `.card[data-card-theme="..."]` 或 `.card-content[data-card-theme="..."]` 开始，按已确认 v15 稿分别实现：
 
@@ -300,17 +300,17 @@
 
   正文继续使用 `--card-font`；小号英文仅复用现有 `Instrument Sans`。装饰层 `pointer-events: none`，全部被卡片边界裁切。页头偏移使用现有 CSS 变量。
 
-- [ ] **Step 3: 实现图片失败回退样式**
+- [x] **Step 3: 实现图片失败回退样式**
 
   `.image-load-error` 隐藏破图与缩放手柄，但保留布局底色和可读正文。普通主题也不能显示破图图标。
 
-- [ ] **Step 4: 构建并检查产物**
+- [x] **Step 4: 构建并检查产物**
 
   Run: `npm run build`
 
   Expected: PASS；构建产物只包含一份本地建筑图，不出现 `unsplash.com` 等运行时资源。
 
-- [ ] **Step 5: 提交视觉系统**
+- [x] **Step 5: 提交视觉系统**
 
   ```bash
   git add public/templates/editorial-building.webp src/styles.css
