@@ -326,33 +326,33 @@
 - Modify: `src/templates/TemplateGallery.tsx`（仅在验收暴露缺口时）
 - Modify: `src/workspaces/markdown/MarkdownWorkspace.tsx`（仅在验收暴露缺口时）
 
-- [ ] **Step 1: 更新模板中心测试**
+- [x] **Step 1: 更新模板中心测试**
 
   断言 Markdown 显示三套新名称，缩略图为真实 `Card`，自由画布仍显示四套。逐一应用模板，确认四页、主题、字体、角色和装饰均正确。
 
-- [ ] **Step 2: 增加响应式和平台组合**
+- [x] **Step 2: 增加响应式和平台组合**
 
   在 390×844、1024×768、1440×900 下检查模板中心和工作区。切换小红书、微博、推特，并覆盖“所有页显示页头”和“仅首屏页头”。
 
-- [ ] **Step 3: 增加编辑与回退场景**
+- [x] **Step 3: 增加编辑与回退场景**
 
   覆盖长标题、删除图片、追加正文、第五页、普通主题切换、切回模板主题、单页、空文档以及旧隐藏主题草稿。
 
-- [ ] **Step 4: 增加导出一致性检查**
+- [x] **Step 4: 增加导出一致性检查**
 
   触发单页 PNG 导出，确认捕获节点包含装饰、页码和本地图片，并拦截/统计网络请求，确保没有外部图片域名。
 
-- [ ] **Step 5: 运行定向 E2E**
+- [x] **Step 5: 运行定向 E2E**
 
   Run: `npm run test:e2e -- e2e/template-gallery.spec.ts e2e/markdown-template-pagination.spec.ts`
 
   Expected: PASS，所有页面溢出差值不超过 1px。
 
-- [ ] **Step 6: 截图自检并修正细节**
+- [x] **Step 6: 截图自检并修正细节**
 
   在真实浏览器中逐页查看三套模板，重点对照 v15：层级、留白、信号线位置、装饰与正文安全区、四页节奏和缩略图可读性。只修正设计系统内的问题，不改变已确认方向。
 
-- [ ] **Step 7: 提交集成验收**
+- [x] **Step 7: 提交集成验收**
 
   ```bash
   git add e2e/template-gallery.spec.ts e2e/markdown-template-pagination.spec.ts src/templates/TemplateGallery.tsx src/workspaces/markdown/MarkdownWorkspace.tsx

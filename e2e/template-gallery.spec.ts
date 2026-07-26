@@ -5,30 +5,33 @@ test.beforeEach(async ({ context }) => {
   await installOfflineFontRoutes(context)
 })
 
-test('Markdown gallery renders four previews and applies a complete document', async ({ page }) => {
+test('Markdown gallery renders three design systems and applies a complete document', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('markdown-template-button').click()
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
   await expect(dialog).toBeVisible()
-  await expect(dialog.locator('.template-tile')).toHaveCount(4)
-  await expect(dialog.locator('.template-tile-preview')).toHaveCount(4)
+  await expect(dialog.locator('.template-tile')).toHaveCount(3)
+  await expect(dialog.locator('.template-tile-preview')).toHaveCount(3)
   await expect(dialog.locator('.template-detail-preview')).toBeVisible()
   await expect.poll(() => dialog.locator('.template-markdown-preview .card-content h1').count()).toBeGreaterThan(0)
   await expect(dialog.locator('.template-detail .card')).toHaveCSS('border-radius', '4px')
-  const editorialPreview = dialog.getByRole('button', { name: '预览编辑部' })
-  const checklistPreview = dialog.getByRole('button', { name: '预览清单' })
+  await expect(dialog.locator('.template-markdown-preview .card[data-card-theme="template-editorial-archive"]')).toHaveCount(2)
+  await expect(dialog.locator('.template-markdown-preview .card[data-card-theme="template-public-theatre"]')).toHaveCount(1)
+  await expect(dialog.locator('.template-markdown-preview .card[data-card-theme="template-issue-cover"]')).toHaveCount(1)
+  const editorialPreview = dialog.getByRole('button', { name: '预览编辑档案' })
+  const theatrePreview = dialog.getByRole('button', { name: '预览公共剧场' })
   await expect(editorialPreview).toHaveAttribute('aria-pressed', 'true')
-  await checklistPreview.click()
-  await expect(checklistPreview).toHaveAttribute('aria-pressed', 'true')
+  await theatrePreview.click()
+  await expect(theatrePreview).toHaveAttribute('aria-pressed', 'true')
   await expect(editorialPreview).toHaveAttribute('aria-pressed', 'false')
   await editorialPreview.click()
 
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.locator('.cm-content')).toContainText('开头先把判断写清楚')
-  await expect(page.locator('.pane-sub')).toContainText('3 页')
-  await expect(page.getByRole('combobox', { name: '主题' })).toContainText('模板 · 编辑部')
+  await expect(page.locator('.cm-content')).toContainText('这周事情很多，我先删掉一半')
+  await expect(page.locator('.pane-sub')).toContainText('4 页')
+  await expect(page.getByRole('combobox', { name: '主题' })).toContainText('模板 · 编辑档案')
 })
 
 test('Markdown cancel keeps the current unsaved content intact', async ({ page }) => {

@@ -5022,6 +5022,32 @@ html.theme-anim * {
 }
 
 @media (max-width: 860px) {
+  .workspace-toolbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .workspace-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .workspace-toolbar .toolbar-group {
+    flex: 0 0 auto;
+  }
+
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 1fr) minmax(320px, 1fr);
+    gap: 10px;
+    padding: 10px;
+    overflow-y: auto;
+  }
+
+  .stage {
+    padding: 16px;
+  }
+
   .template-backdrop {
     padding: 10px;
   }
@@ -5047,6 +5073,23 @@ html.theme-anim * {
 }
 
 @media (max-width: 520px) {
+  .app-header {
+    gap: 6px;
+    padding-inline: 8px;
+  }
+
+  .app-brand {
+    min-width: auto;
+  }
+
+  .app-brand strong {
+    display: none;
+  }
+
+  .workspace-tab {
+    padding-inline: 10px;
+  }
+
   .template-dialog-head {
     padding: 20px 18px 16px;
   }
