@@ -1,6 +1,6 @@
 # 叮卡 · 后端接入方案
 
-> 当前源码版本：前端 `0.13.5`，后端 `0.3.0`；当前已发布的 GHCR 镜像仍为 `0.11.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
+> 当前源码版本：前端 `0.14.0`，后端 `0.3.0`；当前已发布的 GHCR 镜像仍为 `0.11.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
 
 把当前"纯浏览器存储"改造成真实后端,实现跨设备同步与真实账号。
 
@@ -135,6 +135,7 @@ DELETE /api/drafts/:id        → { ok: true }
 - `document` 缺失或不是对象、`id` 存在但为空/不是字符串时返回 400；GET 查询不到草稿、或带 `id` 更新不存在/属于其他用户的草稿时返回 404。不带 `id` 才创建新草稿。
 - `title` 缺省时后端派生:markdown 取正文首行、freeform 取首页名。
 - `document` 原样存取；草稿 API 不解析内部业务结构，GC 只递归收集托管图片 URL。
+- 自由编辑器当前写入 `documentVersion: 4`，其中图片和形状图片填充带有 `framing`。v1/v2/v3 到 v4 的迁移由前端 LocalStore/RemoteStore 完成；服务端不补字段、不改版本，也不需要为这次升级修改 SQLite 结构。
 - 每个查询都带 `WHERE user_id = ?`,从 JWT 取 userId,**不信任前端传的 user_id**。
 
 ### 图片
@@ -183,7 +184,7 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 
 设计上刻意让**接口形状一致**，两套实现对 UI 基本无感。`AuthStore.onInvalidated` 在 LocalStore 中是空订阅，在 RemoteStore 中只对符合条件的受保护请求 401 发出通知；显式退出和较新的注册/登录请求还会使较早的成功响应失效，避免迟到响应恢复或覆盖会话。`ImageStore.retain` 在 LocalStore 中立即成功；RemoteStore 过滤空值、Data URL、`img:` 和外部 origin，把同源根路径候选交给服务端，由服务端按实际 `UPLOADS_PUBLIC_PATH` 判定托管图片，因此自定义 `/media/...` 前缀也不会被客户端静默漏掉。模式切换只改变之后的读写目标，**不会自动迁移**已有 localStorage 账号、草稿或图片；需要迁移时必须提供显式导入流程。
 
-RemoteStore 的草稿 `list` 与 `save` 都经过 `normalizeDraftForRead`：列表顶层不是数组时明确失败，数组内坏项丢弃，legacy Markdown 与 freeform v1/v2 使用和 LocalStore 一致的迁移；保存输入在任何续租、上传或 POST 前先校验，单项保存响应无效时也拒绝交给工作区。保存自由编辑草稿时，先续租输入文档已有的托管 URL，再把历史 `data:image/...` 克隆、上传并替换为服务器 URL，随后续租转换后的完整 URL 集合，最后才 POST 草稿。任一续租或上传失败都不会提交草稿；映射只在单次保存内去重，提交失败后下次保存会重新上传，输入文档保持不变。
+RemoteStore 的草稿 `list` 与 `save` 都经过 `normalizeDraftForRead`：列表顶层不是数组时明确失败，数组内坏项丢弃，legacy Markdown 与 freeform v1/v2/v3 使用和 LocalStore 一致的迁移；保存输入在任何续租、上传或 POST 前先校验，单项保存响应无效时也拒绝交给工作区。保存自由编辑草稿时，先续租输入文档已有的托管 URL，再把历史 `data:image/...` 克隆、上传并替换为服务器 URL，随后续租转换后的完整 URL 集合，最后才 POST 草稿。任一续租或上传失败都不会提交草稿；映射只在单次保存内去重，提交失败后下次保存会重新上传，输入文档保持不变。
 
 Markdown 粘贴图片、自由编辑普通图片和形状图片填充都统一执行“读取 → 前端降采样 → `store.images.put()`”，渲染时再由 `store.images.resolve()` 解析本地 `img:` 引用或远程 URL。LocalStore 保存自由编辑草稿时只克隆并物化待保存副本，不把活动文档膨胀成 Base64；RemoteStore 会把历史 Data URL 上传并替换为服务器 URL，服务器草稿不会继续积累 Base64。
 
@@ -249,7 +250,7 @@ Markdown 粘贴图片、自由编辑普通图片和形状图片填充都统一�
 |---|---|
 | `npm run test:server` | SQLite 迁移、图片引用/租约/GC、用户级资源锁和后端路由单元/集成测试。 |
 | `node server/smoke-test.mjs` | 直连 Fastify 的认证、跨用户草稿隔离、图片上传/retain/配额/回收及静态图片路径。 |
-| `npm run test:integration` | 真实 Fastify 后端 + RemoteStore 前端，包括 v3 嵌套草稿、隐藏图片租约/GC、延迟保存权威门、认证失效和可恢复错误 UI。 |
+| `npm run test:integration` | 真实 Fastify 后端 + RemoteStore 前端，包括 v3 嵌套草稿迁移并回存 v4、非默认图片取景、隐藏图片租约/GC、延迟保存权威门和认证失效。 |
 | `npm run test:acceptance` | 自由编辑布局、可访问控件、嵌套图层保存/重载和 5000 ms 导出预算。 |
 | `npm run test:e2e` | 默认 LocalStore、离线字体和自由编辑导出等浏览器回归。 |
 | `$env:JWT_SECRET='compose-validation-secret'; docker compose config` | 展开并校验 Compose 配置，确认环境变量进入 `app`。 |
