@@ -141,9 +141,11 @@ Expected: FAIL，断言显示 handle 结果缺失或仍为开始框。
 
 - [ ] **Step 8: 写图片平移和比例预设的失败测试**
 
-覆盖：平移四边夹取、1px/10px 位移、原图/1:1/4:3/3:4/16:9/9:16、比例候选内接当前框、`zoom=4` 阻止比例时整条命令返回原引用。
+覆盖：平移四边夹取、1px/10px 位移、原图/1:1/4:3/3:4/16:9/9:16、比例候选内接当前框、`zoom=4` 阻止比例时整条命令返回原引用。再传入与黑柄相同的 `minimumFrameSize`，断言目标比例会让任一边低于 `40 / worldScale` 时整条命令返回原引用，不生成近似比例。
 
 - [ ] **Step 9: 实现平移和比例预设并运行完整几何测试**
+
+`applyImageCropAspectRatio` 必须和 `projectImageCropHandle` 接收同一个调用方 `minimumFrameSize`，并复用同一候选合法性函数检查原图范围、最小宽高、framing 回代和 `zoom<=4`。比例路径不得另写一套较宽松的校验。
 
 Run: `npm run test:unit -- src/freeform/__tests__/imageCrop.test.ts src/freeform/__tests__/imageFraming.test.ts src/freeform/__tests__/sceneTransform.test.ts`
 
