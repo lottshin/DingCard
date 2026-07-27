@@ -1021,12 +1021,10 @@ async function expectFreeformImagesDecoded(page: import('@playwright/test').Page
     }
   })).toBe(true)
 
-  await expect.poll(() => page.getByTestId('freeform-shape-image-fill').evaluate(async (node) => {
-    const background = getComputedStyle(node).backgroundImage
-    const match = background.match(/^url\(["']?(.*?)["']?\)$/)
-    if (!match) return false
-    const image = new Image()
-    image.src = match[1]
+  await expect.poll(() => page.getByTestId('freeform-shape-image-fill')
+    .locator('[data-framed-image-content="true"]')
+    .evaluate(async (node) => {
+    const image = node as HTMLImageElement
     try {
       await image.decode()
       return image.naturalWidth > 0 && image.naturalHeight > 0

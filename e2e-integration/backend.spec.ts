@@ -147,12 +147,10 @@ async function expectRemoteFreeformImagesDecoded(page: import('@playwright/test'
     }
   })).toBe(true)
 
-  await expect.poll(() => page.getByTestId('freeform-shape-image-fill').evaluate(async (node) => {
-    const background = getComputedStyle(node).backgroundImage
-    const match = background.match(/^url\(["']?(.*?)["']?\)$/)
-    if (!match) return false
-    const image = new Image()
-    image.src = match[1]
+  await expect.poll(() => page.getByTestId('freeform-shape-image-fill')
+    .locator('[data-framed-image-content="true"]')
+    .evaluate(async (node) => {
+    const image = node as HTMLImageElement
     try {
       await image.decode()
       return image.naturalWidth > 0 && image.naturalHeight > 0
@@ -382,10 +380,10 @@ test.describe('remote backend integration', () => {
 
     const imageSource = await page.locator('.freeform-image').getAttribute('src')
     expect(imageSource).toMatch(`${API_BASE}/uploads/`)
-    const shapeBackground = await page.getByTestId('freeform-shape-image-fill').evaluate((node) => (
-      getComputedStyle(node).backgroundImage
-    ))
-    expect(shapeBackground).toContain(`${API_BASE}/uploads/`)
+    const shapeSource = await page.getByTestId('freeform-shape-image-fill')
+      .locator('[data-framed-image-content="true"]')
+      .getAttribute('src')
+    expect(shapeSource).toContain(`${API_BASE}/uploads/`)
 
     await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')

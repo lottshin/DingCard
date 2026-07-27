@@ -47,12 +47,7 @@ describe('paint helpers', () => {
       src: 'data:image/png;base64,abc',
       fit: 'contain',
       framing: { focusX: 0.5, focusY: 0.5, zoom: 1 },
-    })).toMatchObject({
-      backgroundImage: 'url("data:image/png;base64,abc")',
-      backgroundSize: 'contain',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-    })
+    })).toEqual({})
   })
 
   it('renders gradient text with a caret fallback color', () => {

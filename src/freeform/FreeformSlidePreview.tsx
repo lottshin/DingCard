@@ -86,6 +86,7 @@ export const FreeformSlidePreview = memo(function FreeformSlidePreview({
         {renderScene && (
           <FreeformSceneNodeView
             nodes={slide.nodes}
+            slideId={slide.id}
             presentationOnly
             activeParentPath={['__preview__']}
             selectedPaths={[]}

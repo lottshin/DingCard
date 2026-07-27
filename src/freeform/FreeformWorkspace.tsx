@@ -2513,6 +2513,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                   >
                     <FreeformSceneNodeView
                       nodes={activeSlide.nodes}
+                      slideId={activeSlide.id}
+                      scopeGeneration={documentIdentityGenerationRef.current}
                       activeParentPath={activeGroupPath}
                       selectedPaths={selectionPaths}
                       onNodePointerDown={onSceneNodePointerDown}

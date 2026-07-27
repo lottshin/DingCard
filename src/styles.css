@@ -1390,10 +1390,8 @@ html.theme-anim * {
   word-break: break-word;
 }
 
-.freeform-image,
 .freeform-shape,
 .freeform-line,
-.freeform-preview-image,
 .freeform-preview-shape,
 .freeform-preview-line {
   width: 100%;
@@ -1404,9 +1402,34 @@ html.theme-anim * {
 
 .freeform-shape,
 .freeform-preview-shape {
+  position: relative;
+  overflow: hidden;
   border-style: solid;
-  background-position: center;
-  background-repeat: no-repeat;
+}
+
+.freeform-framed-image {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none;
+}
+
+.freeform-framed-image[data-image-load-state='loading'],
+.freeform-framed-image[data-image-load-state='error'] {
+  background: #e4e4e7;
+}
+
+.freeform-image,
+.freeform-preview-image,
+.freeform-shape-image {
+  position: absolute;
+  display: block;
+  max-width: none;
+  max-height: none;
+  pointer-events: none;
+  user-select: none;
 }
 
 .shape-rect {

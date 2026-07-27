@@ -1,9 +1,11 @@
 import { useId } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { store } from '../storage'
+import { FramedImage } from './FramedImage'
 import { PlainTextEditable } from './PlainTextEditable'
 import { shapeFillToStyle, textFillToStyle } from './paint'
 import { scenePathKey } from './sceneTree'
+import type { ImageDecodeIdentity, ImageDecodeReport } from './imageReadiness'
 import type {
   FreeformSceneLeaf,
   FreeformSceneNode,
@@ -17,6 +19,9 @@ export interface SceneNodePointerState {
 
 export interface FreeformSceneNodeViewProps {
   nodes: readonly FreeformSceneNode[]
+  slideId: string
+  scopeGeneration?: number
+  onImageDecodeReport?: (report: ImageDecodeReport) => void
   presentationOnly?: boolean
   activeParentPath: ScenePath
   selectedPaths: readonly ScenePath[]
@@ -50,6 +55,10 @@ function SceneLeafContent({
   readOnly,
   presentationOnly,
   markerIdPrefix,
+  path,
+  slideId,
+  scopeGeneration,
+  onImageDecodeReport,
   onTextChange,
   onTextFocus,
 }: {
@@ -57,9 +66,30 @@ function SceneLeafContent({
   readOnly: boolean
   presentationOnly: boolean
   markerIdPrefix: string
+  path: ScenePath
+  slideId: string
+  scopeGeneration?: number
+  onImageDecodeReport?: (report: ImageDecodeReport) => void
   onTextChange: (text: string) => void
   onTextFocus: () => void
 }) {
+  function decodeIdentity(
+    logicalSrc: string,
+    resolvedSrc: string,
+  ): ImageDecodeIdentity | undefined {
+    return !presentationOnly
+      && scopeGeneration !== undefined
+      && onImageDecodeReport
+      ? {
+          scopeGeneration,
+          slideId,
+          scenePathKey: scenePathKey(path),
+          logicalSrc,
+          resolvedSrc,
+        }
+      : undefined
+  }
+
   if (leaf.type === 'text') {
     const style = {
       fontFamily: leaf.fontFamily,
@@ -84,13 +114,19 @@ function SceneLeafContent({
   }
 
   if (leaf.type === 'image') {
+    const resolvedSrc = store.images.resolve(leaf.src)
     return (
-      <img
+      <FramedImage
+        logicalSrc={leaf.src}
+        resolvedSrc={resolvedSrc}
+        fit={leaf.fit}
+        framing={leaf.framing}
+        frameWidth={leaf.width}
+        frameHeight={leaf.height}
         className={presentationOnly ? 'freeform-preview-image' : 'freeform-image'}
-        src={store.images.resolve(leaf.src)}
         alt={presentationOnly ? '' : leaf.alt}
-        draggable={false}
-        style={{ objectFit: leaf.fit }}
+        decodeIdentity={decodeIdentity(leaf.src, resolvedSrc)}
+        onDecodeReport={presentationOnly ? undefined : onImageDecodeReport}
       />
     )
   }
@@ -134,20 +170,33 @@ function SceneLeafContent({
     )
   }
 
+  const imageFill = leaf.fill.type === 'image' ? leaf.fill : null
+  const resolvedFillSrc = imageFill ? store.images.resolve(imageFill.src) : ''
   return (
     <div
       className={`${presentationOnly ? 'freeform-preview-shape' : 'freeform-shape'} shape-${leaf.shape}`}
       data-testid={presentationOnly ? undefined : leaf.fill.type === 'image' ? 'freeform-shape-image-fill' : 'freeform-shape'}
       style={{
-        ...shapeFillToStyle(
-          leaf.fill.type === 'image'
-            ? { ...leaf.fill, src: store.images.resolve(leaf.fill.src) }
-            : leaf.fill,
-        ),
+        ...(imageFill ? {} : shapeFillToStyle(leaf.fill)),
         borderColor: leaf.stroke,
         borderWidth: leaf.strokeWidth,
       }}
-    />
+    >
+      {imageFill && (
+        <FramedImage
+          logicalSrc={imageFill.src}
+          resolvedSrc={resolvedFillSrc}
+          fit={imageFill.fit}
+          framing={imageFill.framing}
+          frameWidth={leaf.width}
+          frameHeight={leaf.height}
+          className="freeform-shape-image"
+          alt={presentationOnly ? '' : leaf.name}
+          decodeIdentity={decodeIdentity(imageFill.src, resolvedFillSrc)}
+          onDecodeReport={presentationOnly ? undefined : onImageDecodeReport}
+        />
+      )}
+    </div>
   )
 }
 
@@ -229,6 +278,10 @@ function SceneNodeBranch({
         readOnly={readOnly}
         presentationOnly={Boolean(props.presentationOnly)}
         markerIdPrefix={props.markerIdPrefix}
+        path={path}
+        slideId={props.slideId}
+        scopeGeneration={props.scopeGeneration}
+        onImageDecodeReport={props.onImageDecodeReport}
         onTextChange={(text) => {
           if (!readOnly) props.onTextChange(path, text)
         }}

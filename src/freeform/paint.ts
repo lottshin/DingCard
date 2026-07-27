@@ -55,14 +55,7 @@ export function slideBackgroundToCss(background: SlideBackground): string {
 }
 
 export function shapeFillToStyle(fill: ShapeFill): CSSProperties {
-  if (fill.type === 'image') {
-    return {
-      backgroundImage: `url("${fill.src}")`,
-      backgroundSize: fill.fit,
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-    }
-  }
+  if (fill.type === 'image') return {}
 
   return { background: paintToCssBackground(fill) }
 }
