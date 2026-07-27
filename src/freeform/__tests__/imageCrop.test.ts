@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import {
   applyImageCropAspectRatio,
@@ -9,6 +9,7 @@ import {
   panImageCropDraft,
   projectImageCropHandle,
   type ImageCropBounds,
+  type ImageCropDraft,
   type ImageCropHandle,
 } from '../imageCrop'
 import { calculateFramedImageGeometry } from '../imageFraming'
@@ -20,8 +21,9 @@ import {
   transformVector,
   translation,
 } from '../sceneTransform'
+import { validateSceneNodesForMutation } from '../sceneTree'
 import type { Matrix2D, Point } from '../sceneTransform'
-import type { FreeformImageElement } from '../types'
+import type { FreeformGroupNode, FreeformImageElement } from '../types'
 
 function imageNode(overrides: Partial<FreeformImageElement> = {}): FreeformImageElement {
   return {
@@ -187,6 +189,27 @@ describe('image crop draft conversion', () => {
   it('accepts boolean locked and hidden state as valid node data', () => {
     expect(createImageCropDraft({
       startNode: imageNode({ locked: true, hidden: true }),
+      naturalSize: { width: 400, height: 200 },
+    })).not.toBeNull()
+  })
+
+  it('accepts a strict image leaf whose local scale is valid only in its parent context', () => {
+    const nestedImage = imageNode({ scale: 1e8 })
+    const parent: FreeformGroupNode = {
+      id: 'parent',
+      name: 'Parent',
+      locked: false,
+      hidden: false,
+      type: 'group',
+      x: 0,
+      y: 0,
+      rotation: 0,
+      scale: 1e-4,
+      children: [nestedImage],
+    }
+    expect(validateSceneNodesForMutation([parent])).toBeNull()
+    expect(createImageCropDraft({
+      startNode: nestedImage,
       naturalSize: { width: 400, height: 200 },
     })).not.toBeNull()
   })
@@ -362,7 +385,7 @@ describe('image crop handle projection', () => {
   it('keeps every later cumulative sample at the first illegal-gap boundary', () => {
     const input = zoomGapFixture()
     const cumulativeDistances = [0.25, 0.75, 1, 1.0002, 1.001, 2, 10, 1_000_000_000]
-    let firstBoundary: ReturnType<typeof projectImageCropHandle> | null = null
+    let firstBoundary: ImageCropDraft | null = null
 
     for (const distance of cumulativeDistances) {
       const sampled = projectImageCropHandle({
@@ -392,6 +415,23 @@ describe('image crop handle projection', () => {
       localDelta: { x: -1_000_000_000, y: 1_000_000_000 },
     })
     expectBoundsClose(oneEvent.frame, firstBoundary!.frame)
+  })
+
+  it('projects enormous finite total deltas instead of treating tiny progress as a no-op', () => {
+    const input = zoomGapFixture()
+    const ordinary = projectImageCropHandle({
+      ...input,
+      localDelta: { x: -1_000_000_000, y: 1_000_000_000 },
+    })
+
+    for (const distance of [1e100, 1e200, 1e300]) {
+      const projected = projectImageCropHandle({
+        ...input,
+        localDelta: { x: -distance, y: distance },
+      })
+      expect(projected).not.toBe(input.startDraft)
+      expectBoundsClose(projected.frame, ordinary.frame)
+    }
   })
 
   it('keeps invalid gesture input on the exact starting draft reference', () => {
@@ -717,6 +757,14 @@ describe('image crop public boundary contracts', () => {
     expect(imageCropScreenScale(null as never)).toBeNull()
   })
 
+  it('keeps non-object draft transform fallbacks null', () => {
+    for (const invalidInput of [undefined, false, 0, '', []]) {
+      expect(projectImageCropHandle(invalidInput as never)).toBeNull()
+      expect(panImageCropDraft(invalidInput as never)).toBeNull()
+      expect(applyImageCropAspectRatio(invalidInput as never)).toBeNull()
+    }
+  })
+
   it('preserves malformed project draft references without dereferencing them', () => {
     expect(projectImageCropHandle(null as never)).toBeNull()
     expect(projectImageCropHandle({
@@ -803,5 +851,47 @@ describe('image crop public boundary contracts', () => {
       ratio: 1,
       minimumFrameSize: { width: 1, height: 1 },
     } as never)).toBe(malformedDraft)
+  })
+
+  it('exposes the exact static fallback type for every draft transform', () => {
+    const legalProject = projectImageCropHandle({
+      startNode,
+      naturalSize,
+      startDraft: draft,
+      handle: 'e',
+      localDelta: { x: -10, y: 0 },
+      minimumFrameSize: { width: 1, height: 1 },
+    })
+    const legalPan = panImageCropDraft({ draft, localDelta: { x: 1, y: 0 } })
+    const legalAspect = applyImageCropAspectRatio({
+      startNode,
+      naturalSize,
+      draft,
+      ratio: 1,
+      minimumFrameSize: { width: 1, height: 1 },
+    })
+    expectTypeOf(legalProject).toEqualTypeOf<ImageCropDraft>()
+    expectTypeOf(legalPan).toEqualTypeOf<ImageCropDraft>()
+    expectTypeOf(legalAspect).toEqualTypeOf<ImageCropDraft>()
+
+    const nullProject = projectImageCropHandle(null)
+    const nullPan = panImageCropDraft(null)
+    const nullAspect = applyImageCropAspectRatio(null)
+    expectTypeOf(nullProject).toEqualTypeOf<null>()
+    expectTypeOf(nullPan).toEqualTypeOf<null>()
+    expectTypeOf(nullAspect).toEqualTypeOf<null>()
+
+    const projectDraft = { kind: 'project' } as const
+    const panDraft = { kind: 'pan' } as const
+    const aspectDraft = { kind: 'aspect' } as const
+    const malformedProject = projectImageCropHandle({ startDraft: projectDraft })
+    const malformedPan = panImageCropDraft({ draft: panDraft })
+    const malformedAspect = applyImageCropAspectRatio({ draft: aspectDraft })
+    expectTypeOf(malformedProject).toEqualTypeOf<typeof projectDraft>()
+    expectTypeOf(malformedPan).toEqualTypeOf<typeof panDraft>()
+    expectTypeOf(malformedAspect).toEqualTypeOf<typeof aspectDraft>()
+    expect(malformedProject).toBe(projectDraft)
+    expect(malformedPan).toBe(panDraft)
+    expect(malformedAspect).toBe(aspectDraft)
   })
 })

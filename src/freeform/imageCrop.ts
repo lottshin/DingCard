@@ -15,7 +15,6 @@ import {
   transformVector,
   translation,
 } from './sceneTransform'
-import { validateSceneNodesForMutation } from './sceneTree'
 import type { ImageFrameSize } from './imageFraming'
 import type { Matrix2D, Point } from './sceneTransform'
 import type { FreeformImageElement, ImageFraming } from './types'
@@ -80,6 +79,10 @@ export interface ApplyImageCropAspectRatioInput extends CreateImageCropDraftInpu
 const IMAGE_CROP_HANDLES = new Set<ImageCropHandle>([
   'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw',
 ])
+const IMAGE_CROP_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'src', 'alt', 'fit', 'framing',
+])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -139,14 +142,29 @@ function normalizeClosedRange(value: number, minimum: number, maximum: number): 
 }
 
 function validStartNode(node: unknown): node is FreeformImageElement {
-  if (
-    !isRecord(node)
-    || node.type !== 'image'
-    || node.fit !== 'cover'
-  ) {
-    return false
-  }
-  return validateSceneNodesForMutation([node as unknown as FreeformImageElement]) === null
+  if (!isRecord(node)) return false
+  const keys = Object.keys(node)
+  return keys.length === IMAGE_CROP_NODE_KEYS.size
+    && keys.every((key) => IMAGE_CROP_NODE_KEYS.has(key))
+    && typeof node.id === 'string'
+    && node.id.trim().length > 0
+    && typeof node.name === 'string'
+    && typeof node.locked === 'boolean'
+    && typeof node.hidden === 'boolean'
+    && node.type === 'image'
+    && isFiniteNumber(node.x)
+    && isFiniteNumber(node.y)
+    && isFiniteNumber(node.width)
+    && node.width > 0
+    && isFiniteNumber(node.height)
+    && node.height > 0
+    && isFiniteNumber(node.rotation)
+    && isFiniteNumber(node.scale)
+    && node.scale > 0
+    && typeof node.src === 'string'
+    && typeof node.alt === 'string'
+    && node.fit === 'cover'
+    && isValidImageFraming(node.framing)
 }
 
 function isImageCropDraft(value: unknown): value is ImageCropDraft {
@@ -158,10 +176,6 @@ function isImageCropDraft(value: unknown): value is ImageCropDraft {
 
 function isImageCropHandle(value: unknown): value is ImageCropHandle {
   return typeof value === 'string' && IMAGE_CROP_HANDLES.has(value as ImageCropHandle)
-}
-
-function draftFallback(value: unknown): ImageCropDraft {
-  return value as ImageCropDraft
 }
 
 export function createImageCropDraft(input: CreateImageCropDraftInput): ImageCropDraft | null {
@@ -461,17 +475,16 @@ function lastLegalProgress(
   return last
 }
 
-export function projectImageCropHandle(input: ProjectImageCropHandleInput): ImageCropDraft {
+export function projectImageCropHandle(input: ProjectImageCropHandleInput): ImageCropDraft
+export function projectImageCropHandle(input: null): null
+export function projectImageCropHandle<const T extends { readonly startDraft: unknown }>(
+  input: T,
+): T['startDraft']
+export function projectImageCropHandle(input: unknown): unknown {
   const startDraft = isRecord(input) ? input.startDraft : null
-  if (!isRecord(input)) return draftFallback(startDraft)
-  const {
-    startNode,
-    naturalSize,
-    handle,
-    localDelta,
-    minimumFrameSize,
-    symmetric = false,
-  } = input as unknown as ProjectImageCropHandleInput
+  if (!isRecord(input)) return startDraft
+  const { startNode, naturalSize, handle, localDelta, minimumFrameSize } = input
+  const symmetric = input.symmetric === undefined ? false : input.symmetric
   if (
     !validStartNode(startNode)
     || !isPositiveSize(naturalSize)
@@ -482,10 +495,10 @@ export function projectImageCropHandle(input: ProjectImageCropHandleInput): Imag
     || typeof symmetric !== 'boolean'
     || (localDelta.x === 0 && localDelta.y === 0)
   ) {
-    return draftFallback(startDraft)
+    return startDraft
   }
   const raw = rawFrameForHandle(startDraft.frame, handle, localDelta, symmetric)
-  if (!raw) return draftFallback(startDraft)
+  if (!raw) return startDraft
   const breakpoints = cropPathBreakpoints(
     startDraft.frame,
     raw,
@@ -500,7 +513,7 @@ export function projectImageCropHandle(input: ProjectImageCropHandleInput): Imag
     interpolateBounds(startDraft.frame, raw, progress),
     minimumFrameSize,
   ))
-  if (!projected || projected.progress <= Number.EPSILON) return startDraft
+  if (!projected) return startDraft
   if (cropBoundsAlmostEqual(projected.candidate.frame, startDraft.frame)) return startDraft
   return projected.candidate
 }
@@ -542,10 +555,15 @@ export function imageCropScreenScale(
   }
 }
 
-export function panImageCropDraft(input: PanImageCropDraftInput): ImageCropDraft {
+export function panImageCropDraft(input: PanImageCropDraftInput): ImageCropDraft
+export function panImageCropDraft(input: null): null
+export function panImageCropDraft<const T extends { readonly draft: unknown }>(
+  input: T,
+): T['draft']
+export function panImageCropDraft(input: unknown): unknown {
   const draft = isRecord(input) ? input.draft : null
-  if (!isRecord(input)) return draftFallback(draft)
-  const { localDelta } = input as unknown as PanImageCropDraftInput
+  if (!isRecord(input)) return draft
+  const { localDelta } = input
   if (
     !isFinitePoint(localDelta)
     || !isImageCropDraft(draft)
@@ -554,7 +572,7 @@ export function panImageCropDraft(input: PanImageCropDraftInput): ImageCropDraft
     || draft.frame.right > draft.image.right + SCENE_EPSILON
     || draft.frame.bottom > draft.image.bottom + SCENE_EPSILON
   ) {
-    return draftFallback(draft)
+    return draft
   }
 
   const imageWidth = boundsWidth(draft.image)
@@ -606,15 +624,15 @@ export function panImageCropDraft(input: PanImageCropDraftInput): ImageCropDraft
   }
 }
 
-export function applyImageCropAspectRatio(input: ApplyImageCropAspectRatioInput): ImageCropDraft {
+export function applyImageCropAspectRatio(input: ApplyImageCropAspectRatioInput): ImageCropDraft
+export function applyImageCropAspectRatio(input: null): null
+export function applyImageCropAspectRatio<const T extends { readonly draft: unknown }>(
+  input: T,
+): T['draft']
+export function applyImageCropAspectRatio(input: unknown): unknown {
   const draft = isRecord(input) ? input.draft : null
-  if (!isRecord(input)) return draftFallback(draft)
-  const {
-    startNode,
-    naturalSize,
-    ratio,
-    minimumFrameSize,
-  } = input as unknown as ApplyImageCropAspectRatioInput
+  if (!isRecord(input)) return draft
+  const { startNode, naturalSize, ratio, minimumFrameSize } = input
   if (
     !validStartNode(startNode)
     || !isPositiveSize(naturalSize)
@@ -622,7 +640,7 @@ export function applyImageCropAspectRatio(input: ApplyImageCropAspectRatioInput)
     || !isPositiveSize(minimumFrameSize)
     || (ratio !== 'original' && (!isFiniteNumber(ratio) || ratio <= 0))
   ) {
-    return draftFallback(draft)
+    return draft
   }
   const resolvedRatio = ratio === 'original'
     ? naturalSize.width / naturalSize.height
