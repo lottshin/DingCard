@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SetStateAction } from 'react'
+import type { CSSProperties, SetStateAction } from 'react'
 import { toBlob } from 'html-to-image'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
@@ -53,7 +53,25 @@ import {
   collectFreeformFontRequests,
 } from './fontRequests'
 import { collectFreeformImageSources } from './imageAssets'
-import { createDefaultImageFraming } from './imageFraming'
+import {
+  MAX_IMAGE_ZOOM,
+  MIN_IMAGE_ZOOM,
+  createDefaultImageFraming,
+  imageFramingEquals,
+  panImageFraming,
+  panImageFramingFromScreen,
+  type ImageFrameSize,
+} from './imageFraming'
+import {
+  clearAllImageReadiness,
+  clearImageReadinessForSlide,
+  createImageReadinessState,
+  readReadyImage,
+  updateImageReadiness,
+  type ImageDecodeIdentity,
+  type ImageDecodeReport,
+  type ImageReadinessState,
+} from './imageReadiness'
 import { ColorPickerButton, PaintField } from './PaintField'
 import {
   DEFAULT_PAGE_PAINT,
@@ -115,6 +133,7 @@ import type {
   FreeformDocument,
   FreeformElement,
   FreeformImageElement,
+  ImageFraming,
   FreeformLineElement,
   FreeformSceneNode,
   FreeformNodeContentPatch,
@@ -154,6 +173,132 @@ const FITS: Array<{ id: 'cover' | 'contain'; label: string }> = [
   { id: 'cover', label: '填满' },
   { id: 'contain', label: '适应' },
 ]
+
+interface ImageFramingTarget {
+  targetKind: 'image' | 'shape-fill'
+  logicalSrc: string
+  resolvedSrc: string
+  fit: 'cover' | 'contain'
+  framing: ImageFraming
+  frameSize: ImageFrameSize
+  shape: FreeformShapeElement['shape'] | null
+}
+
+interface ImageFramingSession {
+  scopeGeneration: number
+  draftScopeKey: string
+  slideId: string
+  path: ScenePath
+  targetKind: ImageFramingTarget['targetKind']
+  logicalSrc: string
+  resolvedSrc: string
+  naturalSize: ImageFrameSize
+  startDocument: FreeformDocument
+  startFraming: ImageFraming
+}
+
+function imageFramingTargetForNode(node: FreeformSceneNode | undefined): ImageFramingTarget | null {
+  if (node?.type === 'image') {
+    return {
+      targetKind: 'image',
+      logicalSrc: node.src,
+      resolvedSrc: store.images.resolve(node.src),
+      fit: node.fit,
+      framing: node.framing,
+      frameSize: { width: node.width, height: node.height },
+      shape: null,
+    }
+  }
+  if (node?.type === 'shape' && node.fill.type === 'image') {
+    return {
+      targetKind: 'shape-fill',
+      logicalSrc: node.fill.src,
+      resolvedSrc: store.images.resolve(node.fill.src),
+      fit: node.fill.fit,
+      framing: node.fill.framing,
+      frameSize: { width: node.width, height: node.height },
+      shape: node.shape,
+    }
+  }
+  return null
+}
+
+function imageDecodeIdentityForTarget(
+  scopeGeneration: number,
+  slideId: string,
+  path: ScenePath,
+  target: ImageFramingTarget,
+): ImageDecodeIdentity {
+  return {
+    scopeGeneration,
+    slideId,
+    scenePathKey: scenePathKey(path),
+    logicalSrc: target.logicalSrc,
+    resolvedSrc: target.resolvedSrc,
+  }
+}
+
+function imageFramingScopeKey(
+  scopeGeneration: number,
+  userId: string | null,
+  draftId: string | null,
+): string {
+  return JSON.stringify([scopeGeneration, userId, draftId])
+}
+
+function shapeFillOperationKey(
+  scopeGeneration: number,
+  slideId: string,
+  path: ScenePath,
+): string {
+  return JSON.stringify([scopeGeneration, slideId, scenePathKey(path)])
+}
+
+function imageFramingMatrixStyle(matrix: Matrix2D): CSSProperties {
+  return { transform: `matrix(${matrix.join(',')})` }
+}
+
+function imageFramingUpdateAction(
+  slideId: string,
+  path: ScenePath,
+  target: ImageFramingTarget,
+  framing: ImageFraming,
+): FreeformAction {
+  return {
+    type: 'node/update-style',
+    slideId,
+    updates: [{
+      path: [...path],
+      patch: target.targetKind === 'image'
+        ? { framing }
+        : {
+            fill: {
+              type: 'image',
+              src: target.logicalSrc,
+              fit: target.fit,
+              framing,
+            },
+          },
+    }],
+  }
+}
+
+function clampImageZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return MIN_IMAGE_ZOOM
+  const percent = Math.round(zoom * 100)
+  return Math.min(MAX_IMAGE_ZOOM, Math.max(MIN_IMAGE_ZOOM, percent / 100))
+}
+
+function scenePathFromKey(key: string): ScenePath | null {
+  try {
+    const value: unknown = JSON.parse(key)
+    return Array.isArray(value) && value.length > 0 && value.every((id) => typeof id === 'string')
+      ? value
+      : null
+  } catch {
+    return null
+  }
+}
 
 function activeSlideOf(doc: FreeformDocument): FreeformSlide {
   const slide = doc.slides.find((candidate) => candidate.id === doc.activeSlideId)
@@ -417,6 +562,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
   const [activeInteraction, setActiveInteraction] = useState<SelectionOverlayInteraction>(null)
   const activeInteractionRef = useRef<SelectionOverlayInteraction>(null)
+  const [imageReadiness, setImageReadiness] = useState<ImageReadinessState>(
+    createImageReadinessState,
+  )
+  const [imageReadinessRefresh, setImageReadinessRefresh] = useState(0)
+  const imageReadinessRef = useRef<ImageReadinessState>(imageReadiness)
+  const [pendingShapeFillKeys, setPendingShapeFillKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
+  const [framingSession, setFramingSession] = useState<ImageFramingSession | null>(null)
+  const framingSessionRef = useRef<ImageFramingSession | null>(null)
+  const framingSurfaceRef = useRef<HTMLDivElement>(null)
+  const framingDragPointerIdRef = useRef<number | null>(null)
   const renderScale = calculateRenderScale(fitScale, zoomPercent)
   const selectionPaths = useMemo(
     () => normalizeSceneSelection(activeSlide.nodes, activeGroupPath, requestedSelectionPaths),
@@ -469,6 +626,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   currentDocumentRef.current = doc
   currentDraftIdRef.current = draftId
   currentUserIdRef.current = user?.id ?? null
+  imageReadinessRef.current = imageReadiness
+  framingSessionRef.current = framingSession
 
   const updateDraftId = useCallback((nextDraftId: string | null) => {
     currentDraftIdRef.current = nextDraftId
@@ -521,6 +680,54 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }, [activeSlide.nodes, selectedProperties, selectionPaths])
   const propertySelectionReadOnly = Boolean(effectiveLockedSelection || lockedDescendantSelection)
+  const selectedImageTarget = useMemo(
+    () => imageFramingTargetForNode(selectedElement),
+    [selectedElement],
+  )
+  const selectedImageIdentity = useMemo(() => (
+    selectedPath && selectedImageTarget
+      ? imageDecodeIdentityForTarget(
+          documentIdentityGenerationRef.current,
+          activeSlide.id,
+          selectedPath,
+          selectedImageTarget,
+        )
+      : null
+  ), [activeSlide.id, selectedImageTarget, selectedPath])
+  const selectedImageNaturalSize = selectedImageIdentity
+    ? readReadyImage(imageReadiness, selectedImageIdentity)
+    : null
+  const selectedShapeFillPending = Boolean(
+    selectedPath
+    && selectedImageTarget?.targetKind === 'shape-fill'
+    && pendingShapeFillKeys.has(shapeFillOperationKey(
+      documentIdentityGenerationRef.current,
+      activeSlide.id,
+      selectedPath,
+    )),
+  )
+  const selectedFramingDisabledReason = propertySelectionReadOnly
+    ? '请先解锁图片'
+    : selectedShapeFillPending
+      ? '图片正在处理中'
+      : selectedImageTarget?.fit === 'contain'
+        ? '适应模式不支持调整取景'
+        : !selectedImageNaturalSize
+          ? '图片加载完成后可调整取景'
+          : null
+  const canAdjustSelectedFraming = Boolean(
+    selectedImageTarget
+    && selectedPath
+    && selectedImageTarget.fit === 'cover'
+    && !selectedFramingDisabledReason,
+  )
+  const canResetSelectedFraming = Boolean(
+    selectedImageTarget
+    && selectedImageTarget.fit === 'cover'
+    && !selectedShapeFillPending
+    && !propertySelectionReadOnly
+    && !imageFramingEquals(selectedImageTarget.framing, createDefaultImageFraming()),
+  )
   const scopeBreadcrumbs = useMemo(() => {
     const breadcrumbs: Array<{ name: string; path: ScenePath }> = [{ name: '页面', path: [] }]
     for (let length = 1; length <= activeGroupPath.length; length += 1) {
@@ -575,7 +782,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setOperationNotice(LOCKED_OPERATION_NOTICE)
   }, [])
   const blockDocumentMutationDuringInteraction = useCallback(() => {
-    if (!activeInteractionRef.current && marqueePointerIdRef.current === null) return false
+    if (
+      !activeInteractionRef.current
+      && marqueePointerIdRef.current === null
+      && !framingSessionRef.current
+    ) return false
     setOperationNotice(ACTIVE_INTERACTION_NOTICE)
     return true
   }, [])
@@ -587,6 +798,45 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     store.remote && Boolean(user),
     handleImageLeaseError,
   )
+  const clearAllImageReadinessNow = useCallback(() => {
+    setImageReadiness((current) => {
+      const next = clearAllImageReadiness(current)
+      imageReadinessRef.current = next
+      return next
+    })
+    setImageReadinessRefresh((current) => current + 1)
+  }, [])
+  const clearActiveSlideImageReadiness = useCallback((slideId: string) => {
+    const scopeGeneration = documentIdentityGenerationRef.current
+    setImageReadiness((current) => {
+      const next = clearImageReadinessForSlide(current, scopeGeneration, slideId)
+      imageReadinessRef.current = next
+      return next
+    })
+  }, [])
+  const handleImageDecodeReport = useCallback((report: ImageDecodeReport) => {
+    void imageReadinessRefresh
+    if (report.identity.scopeGeneration !== documentIdentityGenerationRef.current) return
+    const path = scenePathFromKey(report.identity.scenePathKey)
+    if (!path) return
+    const slide = currentDocumentRef.current.slides.find(
+      (candidate) => candidate.id === report.identity.slideId,
+    )
+    if (!slide) return
+    const target = imageFramingTargetForNode(findNodeAtPath(slide.nodes, path))
+    if (!target) return
+    const expectedIdentity = imageDecodeIdentityForTarget(
+      documentIdentityGenerationRef.current,
+      slide.id,
+      path,
+      target,
+    )
+    setImageReadiness((current) => {
+      const next = updateImageReadiness(current, report, expectedIdentity)
+      imageReadinessRef.current = next
+      return next
+    })
+  }, [imageReadinessRefresh])
 
   const loadDrafts = useCallback(async (uid: string) => {
     const generation = ++draftListGenerationRef.current
@@ -655,9 +905,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const nextUserId = user?.id ?? null
     const userChanged = previousUserId.current !== nextUserId
     if (userChanged) {
+      cancelFramingBeforeTransition(previousUserId.current, currentDraftIdRef.current)
       previousUserId.current = nextUserId
       documentIdentityGenerationRef.current += 1
       shapeFillOperationTokensRef.current.clear()
+      setPendingShapeFillKeys(new Set())
+      clearAllImageReadinessNow()
       draftListGenerationRef.current += 1
       saveGenerationRef.current += 1
       successfulSaveRef.current = null
@@ -678,7 +931,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     return () => {
       draftListGenerationRef.current += 1
     }
-  }, [loadDrafts, updateDraftId, user])
+  }, [clearAllImageReadinessNow, loadDrafts, updateDraftId, user])
 
   useEffect(() => {
     const identity: SceneUiIdentity = {
@@ -754,19 +1007,37 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function beginShapeFillOperation(slideId: string, path: ScenePath) {
-    const key = `${slideId}:${scenePathKey(path)}`
+    const key = shapeFillOperationKey(
+      documentIdentityGenerationRef.current,
+      slideId,
+      path,
+    )
     const token = Symbol(key)
     shapeFillOperationTokensRef.current.set(key, token)
+    setPendingShapeFillKeys((current) => {
+      const next = new Set(current)
+      next.add(key)
+      return next
+    })
     return { key, token }
+  }
+
+  function finishShapeFillOperation(operation: { key: string; token: symbol }) {
+    if (shapeFillOperationTokensRef.current.get(operation.key) !== operation.token) return
+    shapeFillOperationTokensRef.current.delete(operation.key)
+    setPendingShapeFillKeys((current) => {
+      if (!current.has(operation.key)) return current
+      const next = new Set(current)
+      next.delete(operation.key)
+      return next
+    })
   }
 
   function updateSelectedShapeFill(fill: ShapeFill): boolean {
     if (!selectedPath) return false
     const operation = beginShapeFillOperation(activeSlide.id, selectedPath)
     const changed = updateSelectedStyle({ fill })
-    if (shapeFillOperationTokensRef.current.get(operation.key) === operation.token) {
-      shapeFillOperationTokensRef.current.delete(operation.key)
-    }
+    finishShapeFillOperation(operation)
     return changed
   }
 
@@ -841,8 +1112,272 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }, [updateHistory])
 
+  function currentTargetForFramingSession(
+    session: ImageFramingSession,
+  ): { slide: FreeformSlide; target: ImageFramingTarget } | null {
+    if (!framingSessionBelongsToCurrentScope(session)) return null
+    const slide = currentDocumentRef.current.slides.find(
+      (candidate) => candidate.id === session.slideId,
+    )
+    if (!slide) return null
+    const target = imageFramingTargetForNode(findNodeAtPath(slide.nodes, session.path))
+    if (
+      !target
+      || target.targetKind !== session.targetKind
+      || target.logicalSrc !== session.logicalSrc
+      || target.resolvedSrc !== session.resolvedSrc
+    ) return null
+    return { slide, target }
+  }
+
+  function framingSessionBelongsToCurrentScope(session: ImageFramingSession): boolean {
+    return session.scopeGeneration === documentIdentityGenerationRef.current
+      && session.draftScopeKey === imageFramingScopeKey(
+        documentIdentityGenerationRef.current,
+        currentUserIdRef.current,
+        currentDraftIdRef.current,
+      )
+  }
+
+  function replaceSessionFraming(
+    session: ImageFramingSession,
+    framing: ImageFraming,
+  ): boolean {
+    if (framingSessionRef.current !== session) return false
+    const current = currentTargetForFramingSession(session)
+    if (!current || current.target.fit !== 'cover') return false
+    if (imageFramingEquals(current.target.framing, framing)) return false
+    replaceCurrent(imageFramingUpdateAction(
+      session.slideId,
+      session.path,
+      current.target,
+      framing,
+    ))
+    return true
+  }
+
+  function clearImageFramingSession() {
+    framingSessionRef.current = null
+    framingDragPointerIdRef.current = null
+    setFramingSession(null)
+  }
+
+  function startImageFraming(path: ScenePath): boolean {
+    if (framingSessionRef.current || blockDocumentMutationDuringInteraction()) return false
+    const document = currentDocumentRef.current
+    const slide = document.slides.find((candidate) => candidate.id === document.activeSlideId)
+    if (!slide || slide.id !== activeSlide.id) return false
+    const directPath = directChildPathForScope(slide.nodes, activeGroupPath, path)
+    if (!directPath || scenePathKey(directPath) !== scenePathKey(path)) return false
+    const state = effectiveSceneState(slide.nodes, path)
+    if (!state || state.locked || state.hidden) return false
+    const target = imageFramingTargetForNode(findNodeAtPath(slide.nodes, path))
+    if (!target || target.fit !== 'cover') return false
+    if (
+      target.targetKind === 'shape-fill'
+      && shapeFillOperationTokensRef.current.has(shapeFillOperationKey(
+        documentIdentityGenerationRef.current,
+        slide.id,
+        path,
+      ))
+    ) return false
+    const identity = imageDecodeIdentityForTarget(
+      documentIdentityGenerationRef.current,
+      slide.id,
+      path,
+      target,
+    )
+    const naturalSize = readReadyImage(imageReadinessRef.current, identity)
+    if (!naturalSize) return false
+
+    const session: ImageFramingSession = {
+      scopeGeneration: documentIdentityGenerationRef.current,
+      draftScopeKey: imageFramingScopeKey(
+        documentIdentityGenerationRef.current,
+        currentUserIdRef.current,
+        currentDraftIdRef.current,
+      ),
+      slideId: slide.id,
+      path: [...path],
+      targetKind: target.targetKind,
+      logicalSrc: target.logicalSrc,
+      resolvedSrc: target.resolvedSrc,
+      naturalSize: { ...naturalSize },
+      startDocument: document,
+      startFraming: { ...target.framing },
+    }
+    blurActiveTypingTarget()
+    setSelection([path[path.length - 1]])
+    framingSessionRef.current = session
+    setFramingSession(session)
+    setOperationNotice(null)
+    requestAnimationFrame(() => framingSurfaceRef.current?.focus())
+    return true
+  }
+
+  function finishImageFraming() {
+    const session = framingSessionRef.current
+    if (!session) return
+    if (!framingSessionBelongsToCurrentScope(session)) {
+      clearImageFramingSession()
+      return
+    }
+    const current = currentTargetForFramingSession(session)
+    if (!current || imageFramingEquals(current.target.framing, session.startFraming)) {
+      cancelLiveEdit(session.startDocument)
+    } else {
+      commitLiveEdit(session.startDocument)
+    }
+    clearImageFramingSession()
+  }
+
+  function cancelImageFraming() {
+    const session = framingSessionRef.current
+    if (!session) return
+    if (framingSessionBelongsToCurrentScope(session)) {
+      cancelLiveEdit(session.startDocument)
+    }
+    clearImageFramingSession()
+  }
+
+  function cancelFramingBeforeTransition(
+    scopeUserId = currentUserIdRef.current,
+    scopeDraftId = currentDraftIdRef.current,
+  ) {
+    const session = framingSessionRef.current
+    if (session) {
+      const belongsToTransitionSource = session.scopeGeneration
+        === documentIdentityGenerationRef.current
+        && session.draftScopeKey === imageFramingScopeKey(
+          documentIdentityGenerationRef.current,
+          scopeUserId,
+          scopeDraftId,
+        )
+      if (belongsToTransitionSource) cancelLiveEdit(session.startDocument)
+      clearImageFramingSession()
+    }
+    clearAllImageReadinessNow()
+  }
+
+  function resetSelectedImageFraming() {
+    if (!selectedPath || !selectedImageTarget || !canResetSelectedFraming) return
+    applyAction(imageFramingUpdateAction(
+      activeSlide.id,
+      selectedPath,
+      selectedImageTarget,
+      createDefaultImageFraming(),
+    ))
+  }
+
+  function updateImageFramingZoom(zoom: number) {
+    const session = framingSessionRef.current
+    if (!session) return
+    const current = currentTargetForFramingSession(session)
+    if (!current) return
+    replaceSessionFraming(session, {
+      ...current.target.framing,
+      zoom: clampImageZoom(zoom),
+    })
+  }
+
+  function nudgeImageFraming(localDelta: { x: number; y: number }) {
+    const session = framingSessionRef.current
+    if (!session) return
+    const current = currentTargetForFramingSession(session)
+    if (!current) return
+    replaceSessionFraming(session, panImageFraming({
+      naturalSize: session.naturalSize,
+      frameSize: current.target.frameSize,
+      framing: current.target.framing,
+      localDelta,
+    }))
+  }
+
+  function onImageFramingPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (
+      !event.isPrimary
+      || event.button !== 0
+      || framingDragPointerIdRef.current !== null
+    ) return
+    const session = framingSessionRef.current
+    const current = session ? currentTargetForFramingSession(session) : null
+    const worldMatrix = session && current
+      ? sceneWorldMatrixAtPath(current.slide.nodes, session.path)
+      : null
+    if (!session || !current || !worldMatrix || renderScale === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.focus()
+    const pointerId = event.pointerId
+    framingDragPointerIdRef.current = pointerId
+    const startClient = { x: event.clientX, y: event.clientY }
+    const startFraming = { ...current.target.framing }
+    const frameSize = { ...current.target.frameSize }
+    const activeRenderScale = renderScale
+    let finished = false
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onBlur)
+      if (framingDragPointerIdRef.current === pointerId) {
+        framingDragPointerIdRef.current = null
+      }
+    }
+    const onMove = (moveEvent: PointerEvent) => {
+      if (finished || moveEvent.pointerId !== pointerId) return
+      moveEvent.preventDefault()
+      replaceSessionFraming(session, panImageFramingFromScreen({
+        naturalSize: session.naturalSize,
+        frameSize,
+        framing: startFraming,
+        screenDelta: {
+          x: moveEvent.clientX - startClient.x,
+          y: moveEvent.clientY - startClient.y,
+        },
+        renderScale: activeRenderScale,
+        worldMatrix,
+      }))
+    }
+    const onUp = (upEvent: PointerEvent) => {
+      if (finished || upEvent.pointerId !== pointerId) return
+      finished = true
+      cleanup()
+    }
+    const restoreDragSegment = () => {
+      if (finished) return
+      finished = true
+      cleanup()
+      replaceSessionFraming(session, startFraming)
+    }
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId === pointerId) restoreDragSegment()
+    }
+    const onBlur = () => restoreDragSegment()
+
+    window.addEventListener('pointermove', onMove, { passive: false })
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onBlur)
+  }
+
+  useEffect(() => {
+    if (!framingSession) return
+    const frame = requestAnimationFrame(() => framingSurfaceRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [framingSession])
+
+  useEffect(() => {
+    if (isActive || !framingSessionRef.current) return
+    cancelFramingBeforeTransition()
+  }, [isActive])
+
   function selectSlide(slideId: string) {
+    if (framingSessionRef.current) cancelFramingBeforeTransition()
     if (blockDocumentMutationDuringInteraction()) return
+    if (slideId === activeSlide.id) return
+    clearActiveSlideImageReadiness(activeSlide.id)
     replaceCurrent({ type: 'slide/select', slideId })
     setSelection([])
   }
@@ -1003,9 +1538,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         },
       })
     } finally {
-      if (shapeFillOperationTokensRef.current.get(operation.key) === operation.token) {
-        shapeFillOperationTokensRef.current.delete(operation.key)
-      }
+      finishShapeFillOperation(operation)
     }
   }
 
@@ -1458,6 +1991,40 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     if (!isActive) return
     const onKey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase()
+      const activeFramingSession = framingSessionRef.current
+      if (activeFramingSession) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          cancelImageFraming()
+          return
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          finishImageFraming()
+          return
+        }
+        const framingArrow = event.key === 'ArrowLeft'
+          ? { x: -(event.shiftKey ? 10 : 1), y: 0 }
+          : event.key === 'ArrowRight'
+            ? { x: event.shiftKey ? 10 : 1, y: 0 }
+            : event.key === 'ArrowUp'
+              ? { x: 0, y: -(event.shiftKey ? 10 : 1) }
+              : event.key === 'ArrowDown'
+                ? { x: 0, y: event.shiftKey ? 10 : 1 }
+                : null
+        const targetIsFramingRange = event.target instanceof HTMLInputElement
+          && event.target.dataset.testid === 'freeform-framing-zoom'
+        if (framingArrow && !targetIsFramingRange) {
+          event.preventDefault()
+          nudgeImageFraming(framingArrow)
+          return
+        }
+        if (
+          (event.ctrlKey || event.metaKey)
+          || ['delete', 'backspace'].includes(key)
+        ) event.preventDefault()
+        return
+      }
       const isDocumentShortcut = (
         ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'v', 'g'].includes(key)) ||
         [
@@ -1548,6 +2115,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     hitPath: ScenePath,
     state: SceneNodePointerState,
   ) {
+    if (framingSessionRef.current) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     const directPath = directChildPathForScope(activeSlide.nodes, activeGroupPath, hitPath)
     if (!directPath) return
     const directNode = findNodeAtPath(activeSlide.nodes, directPath)
@@ -1586,11 +2158,32 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     hitPath: ScenePath,
     state: SceneNodePointerState,
   ) {
+    if (framingSessionRef.current) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     const directPath = directChildPathForScope(activeSlide.nodes, activeGroupPath, hitPath)
     const directNode = directPath
       ? findNodeAtPath(activeSlide.nodes, directPath)
       : undefined
-    if (!directPath || directNode?.type !== 'group') return
+    if (!directPath || !directNode) return
+    if (
+      directNode.type !== 'group'
+      && scenePathKey(directPath) === scenePathKey(hitPath)
+      && imageFramingTargetForNode(directNode)
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (state.locked || state.hidden) {
+        showLockedOperationNotice()
+        return
+      }
+      setSelection([directNode.id])
+      startImageFraming(directPath)
+      return
+    }
+    if (directNode.type !== 'group') return
     event.preventDefault()
     event.stopPropagation()
     if (state.locked || state.hidden) {
@@ -2206,9 +2799,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function openDraft(draft: Draft) {
     if (draft.mode !== 'freeform-slide') return
+    cancelFramingBeforeTransition()
     if (blockDocumentMutationDuringInteraction()) return
     documentIdentityGenerationRef.current += 1
     shapeFillOperationTokensRef.current.clear()
+    setPendingShapeFillKeys(new Set())
     saveGenerationRef.current += 1
     successfulSaveRef.current = {
       source: draft.document,
@@ -2231,8 +2826,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       await store.drafts.remove(user.id, id)
       if (currentUserIdRef.current !== user.id) return
       if (id === currentDraftIdRef.current) {
+        cancelFramingBeforeTransition()
         documentIdentityGenerationRef.current += 1
         shapeFillOperationTokensRef.current.clear()
+        setPendingShapeFillKeys(new Set())
         saveGenerationRef.current += 1
         successfulSaveRef.current = null
         updateDraftId(null)
@@ -2248,12 +2845,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function applyFreeformTemplate(template: TemplateDefinition) {
     if (template.workspace !== 'freeform') return
+    cancelFramingBeforeTransition()
     if (blockDocumentMutationDuringInteraction()) return
     const document = template.createFreeform?.()
     if (!document) return
     documentIdentityGenerationRef.current += 1
     inspectorNumberResetGenerationRef.current += 1
     shapeFillOperationTokensRef.current.clear()
+    setPendingShapeFillKeys(new Set())
     saveGenerationRef.current += 1
     successfulSaveRef.current = null
     updateHistory(createHistory(document))
@@ -2275,6 +2874,23 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setShowTemplates(false)
   }
 
+  const framingRenderTarget = framingSession
+    ? currentTargetForFramingSession(framingSession)
+    : null
+  const framingWorldMatrix = framingSession && framingRenderTarget
+    ? sceneWorldMatrixAtPath(framingRenderTarget.slide.nodes, framingSession.path)
+    : null
+  const framingOverlayStyle: CSSProperties | undefined = framingWorldMatrix && framingRenderTarget
+    ? {
+        ...imageFramingMatrixStyle(framingWorldMatrix),
+        width: framingRenderTarget.target.frameSize.width,
+        height: framingRenderTarget.target.frameSize.height,
+      }
+    : undefined
+  const framingShapeClass = framingRenderTarget?.target.shape
+    ? ` shape-${framingRenderTarget.target.shape}`
+    : ''
+
   return (
     <div
       className="freeform-workspace"
@@ -2285,6 +2901,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         testId="freeform-toolbar"
         label="自由编辑工具栏"
         className="freeform-toolbar"
+        disabled={Boolean(framingSession)}
       >
         <ToolbarGroup>
           <button className='bar-btn' data-testid='freeform-template-button' onClick={() => setShowTemplates(true)}>
@@ -2446,7 +3063,28 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
         <section className="freeform-stage-pane" aria-label="自由画布">
           <div className="freeform-stage-head">
-            <div className="zoom-controls" aria-label="预览缩放">
+            {framingSession ? (
+              <div className="freeform-framing-head" role="toolbar" aria-label="图片取景">
+                <button
+                  className="ghost"
+                  type="button"
+                  data-testid="freeform-framing-cancel"
+                  onClick={cancelImageFraming}
+                >
+                  取消
+                </button>
+                <strong>调整取景</strong>
+                <button
+                  className="toolbar-primary"
+                  type="button"
+                  data-testid="freeform-framing-done"
+                  onClick={finishImageFraming}
+                >
+                  完成
+                </button>
+              </div>
+            ) : (
+              <div className="zoom-controls" aria-label="预览缩放">
               <button
                 className="zoom-btn"
                 type="button"
@@ -2479,7 +3117,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                   <path d="M10 4v12M4 10h12" />
                 </svg>
               </button>
-            </div>
+              </div>
+            )}
           </div>
 
           <div
@@ -2515,6 +3154,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       nodes={activeSlide.nodes}
                       slideId={activeSlide.id}
                       scopeGeneration={documentIdentityGenerationRef.current}
+                      onImageDecodeReport={handleImageDecodeReport}
                       activeParentPath={activeGroupPath}
                       selectedPaths={selectionPaths}
                       onNodePointerDown={onSceneNodePointerDown}
@@ -2561,28 +3201,92 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       />
                     ))}
                   </div>
-                  <FreeformSelectionOverlay
-                    nodes={activeSlide.nodes}
-                    selectedPaths={selectionPaths}
-                    renderScale={renderScale}
-                    activeInteraction={activeInteraction}
-                    interactive={!effectiveLockedSelection && !lockedDescendantSelection}
-                    onMovePointerDown={(event, target) => beginMovePointerDown(
-                      event,
-                      target.nodeIds[0],
-                      target.nodeIds,
-                    )}
-                    onResizePointerDown={onResizePointerDown}
-                    onRotatePointerDown={onRotatePointerDown}
-                  />
+                  {framingSession && framingRenderTarget && framingOverlayStyle && (
+                    <div
+                      ref={framingSurfaceRef}
+                      className={`freeform-ui-only freeform-framing-surface${framingShapeClass}`}
+                      data-testid="freeform-framing-surface"
+                      data-framing-focus-x={framingRenderTarget.target.framing.focusX}
+                      data-framing-focus-y={framingRenderTarget.target.framing.focusY}
+                      data-framing-zoom={framingRenderTarget.target.framing.zoom}
+                      role="application"
+                      aria-label="调整图片取景"
+                      tabIndex={0}
+                      style={framingOverlayStyle}
+                      onPointerDown={onImageFramingPointerDown}
+                    >
+                      <span className="freeform-framing-third freeform-framing-third-v first" aria-hidden="true" />
+                      <span className="freeform-framing-third freeform-framing-third-v second" aria-hidden="true" />
+                      <span className="freeform-framing-third freeform-framing-third-h first" aria-hidden="true" />
+                      <span className="freeform-framing-third freeform-framing-third-h second" aria-hidden="true" />
+                    </div>
+                  )}
+                  {!framingSession && (
+                    <FreeformSelectionOverlay
+                      nodes={activeSlide.nodes}
+                      selectedPaths={selectionPaths}
+                      renderScale={renderScale}
+                      activeInteraction={activeInteraction}
+                      interactive={!effectiveLockedSelection && !lockedDescendantSelection}
+                      onMovePointerDown={(event, target) => beginMovePointerDown(
+                        event,
+                        target.nodeIds[0],
+                        target.nodeIds,
+                      )}
+                      onResizePointerDown={onResizePointerDown}
+                      onRotatePointerDown={onRotatePointerDown}
+                    />
+                  )}
                 </div>
               </div>
             )}
           </div>
+          {framingRenderTarget && (
+            <div className="freeform-framing-zoom" role="group" aria-label="图片缩放">
+              <button
+                type="button"
+                aria-label="缩小图片"
+                title="缩小图片"
+                data-testid="freeform-framing-zoom-out"
+                disabled={framingRenderTarget.target.framing.zoom <= MIN_IMAGE_ZOOM}
+                onClick={() => updateImageFramingZoom(
+                  framingRenderTarget.target.framing.zoom - 0.1,
+                )}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12" /></svg>
+              </button>
+              <input
+                type="range"
+                min={MIN_IMAGE_ZOOM * 100}
+                max={MAX_IMAGE_ZOOM * 100}
+                step="1"
+                value={Math.round(framingRenderTarget.target.framing.zoom * 100)}
+                data-testid="freeform-framing-zoom"
+                aria-label="图片缩放比例"
+                onChange={(event) => updateImageFramingZoom(
+                  Number(event.currentTarget.value) / 100,
+                )}
+              />
+              <output>{Math.round(framingRenderTarget.target.framing.zoom * 100)}%</output>
+              <button
+                type="button"
+                aria-label="放大图片"
+                title="放大图片"
+                data-testid="freeform-framing-zoom-in"
+                disabled={framingRenderTarget.target.framing.zoom >= MAX_IMAGE_ZOOM}
+                onClick={() => updateImageFramingZoom(
+                  framingRenderTarget.target.framing.zoom + 0.1,
+                )}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
+              </button>
+            </div>
+          )}
         </section>
 
         <FreeformRightPanel
           propertiesTabRef={propertiesTabRef}
+          disabled={Boolean(framingSession)}
           layers={(
             <FreeformLayersPanel
               nodes={activeSlide.nodes}
@@ -2908,6 +3612,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                                 if (selectedElement.fill.type !== 'image') return
                                 updateSelectedShapeFill({ ...selectedElement.fill, fit })
                               }}
+                              onAdjustImageFraming={() => {
+                                if (selectedPath) startImageFraming(selectedPath)
+                              }}
+                              onResetImageFraming={resetSelectedImageFraming}
+                              imageFramingDisabled={!canAdjustSelectedFraming}
+                              imageFramingDisabledReason={selectedFramingDisabledReason ?? undefined}
+                              imageFramingResetDisabled={!canResetSelectedFraming}
                             />
                           </div>
                           <input
@@ -2928,11 +3639,42 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                                 key={fit.id}
                                 type="button"
                                 className={selectedElement.fit === fit.id ? 'seg-btn on' : 'seg-btn'}
+                                data-testid={`paint-image-fit-${fit.id}`}
                                 onClick={() => updateSelectedStyle({ fit: fit.id })}
                               >
                                 {fit.label}
                               </button>
                             ))}
+                          </div>
+                          <div className="inspector-actions">
+                            <button
+                              className="ghost"
+                              type="button"
+                              data-testid="freeform-adjust-framing"
+                              aria-label="调整图片取景"
+                              title={canAdjustSelectedFraming
+                                ? '调整图片取景'
+                                : selectedFramingDisabledReason ?? undefined}
+                              disabled={!canAdjustSelectedFraming}
+                              onClick={() => {
+                                if (selectedPath) startImageFraming(selectedPath)
+                              }}
+                            >
+                              调整取景
+                            </button>
+                            <button
+                              className="ghost"
+                              type="button"
+                              data-testid="freeform-reset-framing"
+                              aria-label="重置图片取景"
+                              title={canResetSelectedFraming
+                                ? '重置图片取景'
+                                : '当前已经是默认取景'}
+                              disabled={!canResetSelectedFraming}
+                              onClick={resetSelectedImageFraming}
+                            >
+                              重置取景
+                            </button>
                           </div>
                         </>
                       )}

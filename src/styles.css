@@ -1185,6 +1185,7 @@ html.theme-anim * {
 }
 
 .freeform-stage-pane {
+  position: relative;
   display: flex;
   flex-direction: column;
 }
@@ -1192,6 +1193,32 @@ html.theme-anim * {
 .freeform-stage-pane .freeform-stage-head {
   background: var(--surface);
   justify-content: flex-end;
+}
+
+.freeform-framing-head {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.freeform-framing-head strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.freeform-framing-head button {
+  min-width: 68px;
+  height: 32px;
+  justify-self: start;
+  border-radius: 8px;
+}
+
+.freeform-framing-head .toolbar-primary {
+  justify-self: end;
 }
 
 .freeform-stage-pane .freeform-stage-scroll {
@@ -1419,6 +1446,113 @@ html.theme-anim * {
 .freeform-framed-image[data-image-load-state='loading'],
 .freeform-framed-image[data-image-load-state='error'] {
   background: #e4e4e7;
+}
+
+.freeform-framing-surface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  overflow: hidden;
+  transform-origin: 0 0;
+  border: 2px solid rgba(255, 255, 255, 0.96);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  box-shadow: 0 0 0 1px rgba(24, 24, 27, 0.55);
+  cursor: grab;
+  touch-action: none;
+}
+
+.freeform-framing-surface:active {
+  cursor: grabbing;
+}
+
+.freeform-framing-surface:focus-visible {
+  outline-width: 3px;
+}
+
+.freeform-framing-third {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 1px rgba(24, 24, 27, 0.28);
+}
+
+.freeform-framing-third-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.freeform-framing-third-h {
+  right: 0;
+  left: 0;
+  height: 1px;
+}
+
+.freeform-framing-third-v.first { left: 33.333%; }
+.freeform-framing-third-v.second { left: 66.666%; }
+.freeform-framing-third-h.first { top: 33.333%; }
+.freeform-framing-third-h.second { top: 66.666%; }
+
+.freeform-framing-zoom {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  z-index: 60;
+  width: min(360px, calc(100% - 32px));
+  height: 44px;
+  display: grid;
+  grid-template-columns: 32px minmax(100px, 1fr) 48px 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 8px 24px rgba(24, 24, 27, 0.2);
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+}
+
+.freeform-framing-zoom button {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.freeform-framing-zoom button:disabled {
+  opacity: 0.4;
+}
+
+.freeform-framing-zoom button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.freeform-framing-zoom input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.freeform-framing-zoom output {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .freeform-image,

@@ -1,4 +1,4 @@
-import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react'
 
 export type FreeformRightPanelTab = 'properties' | 'layers'
 
@@ -6,6 +6,7 @@ export interface FreeformRightPanelProps {
   children: ReactNode
   layers: ReactNode
   propertiesTabRef?: Ref<HTMLButtonElement>
+  disabled?: boolean
 }
 
 const TABS: Array<{ id: FreeformRightPanelTab; label: string }> = [
@@ -18,12 +19,21 @@ export function FreeformRightPanel({
   children,
   layers,
   propertiesTabRef,
+  disabled = false,
 }: FreeformRightPanelProps) {
+  const rootRef = useRef<HTMLElement>(null)
   const [activeTab, setActiveTab] = useState<FreeformRightPanelTab>('properties')
   const [focusedTab, setFocusedTab] = useState<FreeformRightPanelTab>('properties')
   const baseId = useId().replace(/:/g, '')
   const tabId = (tab: FreeformRightPanelTab) => `freeform-${baseId}-${tab}-tab`
   const panelId = (tab: FreeformRightPanelTab) => `freeform-${baseId}-${tab}-panel`
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    if (disabled) root.setAttribute('inert', '')
+    else root.removeAttribute('inert')
+  }, [disabled])
 
   function moveTab(tab: FreeformRightPanelTab, event: KeyboardEvent<HTMLButtonElement>) {
     const currentIndex = TABS.findIndex((candidate) => candidate.id === tab)
@@ -43,8 +53,10 @@ export function FreeformRightPanel({
 
   return (
     <aside
-      className="freeform-inspector freeform-right-panel"
+      ref={rootRef}
+      className={`freeform-inspector freeform-right-panel${disabled ? ' is-disabled' : ''}`}
       aria-label="属性和图层面板"
+      aria-disabled={disabled || undefined}
     >
       <div className="freeform-right-tabs" role="tablist" aria-label="自由编辑面板">
         {TABS.map((tab) => (

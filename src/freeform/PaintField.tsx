@@ -39,6 +39,11 @@ interface PaintFieldProps {
   onChooseImage?: () => void
   onClearImage?: () => void
   onImageFitChange?: (fit: 'cover' | 'contain') => void
+  onAdjustImageFraming?: () => void
+  onResetImageFraming?: () => void
+  imageFramingDisabled?: boolean
+  imageFramingDisabledReason?: string
+  imageFramingResetDisabled?: boolean
 }
 
 function isPaint(value: PaintValue): value is ColorPaint {
@@ -197,6 +202,11 @@ export function PaintField({
   onChooseImage,
   onClearImage,
   onImageFitChange,
+  onAdjustImageFraming,
+  onResetImageFraming,
+  imageFramingDisabled = false,
+  imageFramingDisabledReason,
+  imageFramingResetDisabled = true,
 }: PaintFieldProps) {
   const activeMode = modeOf(value)
   const paint = currentPaint(value, fallbackPaint)
@@ -319,6 +329,7 @@ export function PaintField({
                 key={fit}
                 type="button"
                 className={value.fit === fit ? 'seg-btn on' : 'seg-btn'}
+                data-testid={`paint-image-fit-${fit}`}
                 onClick={() => onImageFitChange?.(fit)}
               >
                 {fit === 'cover' ? '填满' : '适应'}
@@ -326,6 +337,28 @@ export function PaintField({
             ))}
           </div>
           <div className="inspector-actions">
+            <button
+              className="ghost"
+              type="button"
+              data-testid="freeform-adjust-framing"
+              aria-label="调整图片取景"
+              title={imageFramingDisabled ? imageFramingDisabledReason : '调整图片取景'}
+              disabled={imageFramingDisabled}
+              onClick={onAdjustImageFraming}
+            >
+              调整取景
+            </button>
+            <button
+              className="ghost"
+              type="button"
+              data-testid="freeform-reset-framing"
+              aria-label="重置图片取景"
+              title={imageFramingResetDisabled ? '当前已经是默认取景' : '重置图片取景'}
+              disabled={imageFramingResetDisabled}
+              onClick={onResetImageFraming}
+            >
+              重置取景
+            </button>
             <button className="ghost" type="button" onClick={onChooseImage}>
               替换图片
             </button>
