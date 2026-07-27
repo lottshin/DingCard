@@ -160,6 +160,22 @@ async function expectRemoteFreeformImagesDecoded(page: import('@playwright/test'
   })).toBe(true)
 }
 
+async function setRangeValue(
+  locator: import('@playwright/test').Locator,
+  value: number,
+) {
+  await locator.evaluate((node, nextValue) => {
+    const input = node as HTMLInputElement
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )?.set
+    nativeSetter?.call(input, String(nextValue))
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  }, value)
+}
+
 async function uploadManagedImage(
   page: import('@playwright/test').Page,
   token: string,
@@ -483,6 +499,106 @@ test.describe('remote backend integration', () => {
     await expectRemoteFreeformImagesDecoded(secondPage)
     expect(await draftKeys(secondPage)).toHaveLength(0)
     await secondContext.close()
+  })
+
+  test('migrates a nested v3 image frame and persists it as v4', async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await register(page, uniqueName())
+    const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
+    expect(token).toBeTruthy()
+
+    const image = await uploadManagedImage(page, token!, 'framing-migration-image.png')
+    const shape = await uploadManagedImage(page, token!, 'framing-migration-shape.png')
+    const createResponse = await page.request.post(`${API_BASE}/api/drafts`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: {
+        mode: 'freeform-slide',
+        document: remoteNestedScene(`${API_BASE}${image.url}`, `${API_BASE}${shape.url}`),
+      },
+    })
+    expect(createResponse.ok()).toBe(true)
+    const created = await createResponse.json() as { id: string }
+
+    await page.reload()
+    await expect(page.getByTestId('account-logout')).toBeVisible()
+    await page.getByTestId('workspace-tab-freeform').click()
+    await page.getByRole('button', { name: draftsButton }).click()
+    await page.locator('.draft-item', { hasText: 'Nested remote scene' }).click()
+    await page.getByRole('tab', { name: '图层', exact: true }).click()
+    const tree = page.getByRole('tree', { name: '图层树' })
+    const hiddenGroup = tree.getByRole('treeitem', { name: 'Remote hidden group' })
+    await hiddenGroup.getByRole('button', { name: '隐藏图层 Remote hidden group' }).click()
+    await expectRemoteFreeformImagesDecoded(page)
+
+    await tree.getByRole('treeitem', { name: 'Remote nested image' }).click()
+    await expect(page.getByTestId('freeform-canvas'))
+      .toHaveAttribute('data-active-group-path', 'remote-hidden-group')
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
+    await page.getByTestId('freeform-adjust-framing').click()
+    const surface = page.getByTestId('freeform-framing-surface')
+    await setRangeValue(page.getByTestId('freeform-framing-zoom'), 190)
+    await surface.focus()
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.press('Shift+ArrowUp')
+    const expectedFrame = {
+      focusX: Number(await surface.getAttribute('data-framing-focus-x')),
+      focusY: Number(await surface.getAttribute('data-framing-focus-y')),
+      zoom: Number(await surface.getAttribute('data-framing-zoom')),
+    }
+    await page.getByTestId('freeform-framing-done').click()
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+    const draftsResponse = await page.request.get(`${API_BASE}/api/drafts`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(draftsResponse.ok()).toBe(true)
+    const savedDrafts = await draftsResponse.json() as Array<{
+      id: string
+      document: {
+        documentVersion: number
+        slides: Array<{
+          nodes: Array<{
+            id: string
+            type: string
+            children?: Array<{
+              id: string
+              type: string
+              framing?: { focusX: number; focusY: number; zoom: number }
+            }>
+          }>
+        }>
+      }
+    }>
+    const saved = savedDrafts.find((draft) => draft.id === created.id)
+    expect(saved?.document.documentVersion).toBe(4)
+    const group = saved?.document.slides[0].nodes.find((node) => node.id === 'remote-hidden-group')
+    const savedImage = group?.children?.find((node) => node.id === 'remote-image')
+    expect(savedImage?.framing).toEqual(expectedFrame)
+
+    await page.reload()
+    await expect(page.getByTestId('account-logout')).toBeVisible()
+    await page.getByTestId('workspace-tab-freeform').click()
+    await page.getByRole('button', { name: draftsButton }).click()
+    await page.locator('.draft-item', { hasText: 'Nested remote scene' }).click()
+    await page.getByRole('tab', { name: '图层', exact: true }).click()
+    await page.getByRole('tree', { name: '图层树' })
+      .getByRole('treeitem', { name: 'Remote nested image' })
+      .click()
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
+    await expect(page.locator(
+      '[data-scene-node-id="remote-image"] [data-framed-image="true"]',
+    ))
+      .toHaveAttribute('data-image-load-state', 'ready')
+    await page.getByTestId('freeform-adjust-framing').click()
+    expect({
+      focusX: Number(await surface.getAttribute('data-framing-focus-x')),
+      focusY: Number(await surface.getAttribute('data-framing-focus-y')),
+      zoom: Number(await surface.getAttribute('data-framing-zoom')),
+    }).toEqual(expectedFrame)
+    await page.getByTestId('freeform-framing-cancel').click()
   })
 
   test('keeps a newer draft at root scope when an older nested save resolves late', async ({ page }) => {
@@ -1035,7 +1151,7 @@ test.describe('remote backend integration', () => {
       documentVersion: unknown
       slides: Array<{ nodes: unknown[]; elements?: unknown }>
     }
-    expect(secondDocument.documentVersion).toBe(3)
+    expect(secondDocument.documentVersion).toBe(4)
     expect(secondDocument.slides[0]).not.toHaveProperty('elements')
     expect(secondDocument.slides[0].nodes).toHaveLength(2)
 
@@ -1045,7 +1161,7 @@ test.describe('remote backend integration', () => {
         slides: Array<{ nodes: unknown[]; elements?: unknown }>
       }
     }
-    expect(secondSavedDraft.document.documentVersion).toBe(3)
+    expect(secondSavedDraft.document.documentVersion).toBe(4)
     expect(secondSavedDraft.document.slides[0]).not.toHaveProperty('elements')
     expect(secondSavedDraft.document.slides[0].nodes).toHaveLength(2)
   })

@@ -5613,6 +5613,20 @@ html.theme-anim * {
     padding-inline: 10px;
   }
 
+  .freeform-workspace.is-framing > .freeform-toolbar,
+  .freeform-workspace.is-framing .freeform-rail,
+  .freeform-workspace.is-framing .freeform-right-panel {
+    display: none;
+  }
+
+  .freeform-workspace.is-framing .freeform-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .freeform-workspace.is-framing .freeform-stage-pane .freeform-stage-scroll {
+    padding: 16px;
+  }
+
   .template-dialog-head {
     padding: 20px 18px 16px;
   }

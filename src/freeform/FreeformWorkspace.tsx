@@ -2908,7 +2908,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   return (
     <div
-      className="freeform-workspace"
+      className={`freeform-workspace${framingSession ? ' is-framing' : ''}`}
       aria-label="自由编辑工作区"
       data-history-depth={history.past.length}
     >

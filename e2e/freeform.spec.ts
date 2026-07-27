@@ -1011,14 +1011,18 @@ async function insertImageElementAndShapeFill(page: import('@playwright/test').P
 }
 
 async function expectFreeformImagesDecoded(page: import('@playwright/test').Page) {
-  await expect.poll(() => page.locator('.freeform-image').evaluate(async (node) => {
-    const image = node as HTMLImageElement
-    try {
-      await image.decode()
-      return image.naturalWidth > 0 && image.naturalHeight > 0
-    } catch {
-      return false
-    }
+  await expect.poll(() => page.locator('.freeform-image').evaluateAll(async (nodes) => {
+    if (nodes.length === 0) return false
+    const decoded = await Promise.all(nodes.map(async (node) => {
+      const image = node as HTMLImageElement
+      try {
+        await image.decode()
+        return image.naturalWidth > 0 && image.naturalHeight > 0
+      } catch {
+        return false
+      }
+    }))
+    return decoded.every(Boolean)
   })).toBe(true)
 
   await expect.poll(() => page.getByTestId('freeform-shape-image-fill')
@@ -3417,6 +3421,120 @@ test('image framing commits one history entry and cancel restores the saved fram
   await expect(surface).toHaveCount(0)
 })
 
+test('persists non-default image frames through node copy, page copy, save, and reload', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await insertImageElementAndShapeFill(page)
+  await expectFreeformImagesDecoded(page)
+
+  const surface = page.getByTestId('freeform-framing-surface')
+  const readFrame = async () => ({
+    focusX: Number(await surface.getAttribute('data-framing-focus-x')),
+    focusY: Number(await surface.getAttribute('data-framing-focus-y')),
+    zoom: Number(await surface.getAttribute('data-framing-zoom')),
+  })
+
+  const shapeElement = page.getByTestId('freeform-element').filter({
+    has: page.getByTestId('freeform-shape-image-fill'),
+  })
+  await expect(shapeElement).toHaveAttribute('data-selected', 'true')
+  await page.getByTestId('freeform-adjust-framing').click()
+  await setRangeValue(page.getByTestId('freeform-framing-zoom'), 160)
+  await surface.focus()
+  await page.keyboard.press('Shift+ArrowRight')
+  const shapeFrame = await readFrame()
+  await page.getByTestId('freeform-framing-done').click()
+
+  const imageElements = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await page.getByRole('tree', { name: '图层树' })
+    .getByRole('treeitem', { name: '图片' })
+    .click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await page.getByTestId('freeform-adjust-framing').click()
+  await setRangeValue(page.getByTestId('freeform-framing-zoom'), 210)
+  await surface.focus()
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('Shift+ArrowUp')
+  const imageFrame = await readFrame()
+  await page.getByTestId('freeform-framing-done').click()
+
+  await page.keyboard.press('ControlOrMeta+C')
+  await page.keyboard.press('ControlOrMeta+V')
+  await expect(imageElements).toHaveCount(2)
+  await page.getByRole('button', { name: '复制页面', exact: true }).click()
+  await expect(page.locator('.freeform-thumb')).toHaveCount(2)
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await registerUser(page, `framing-persist-${Date.now()}`)
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+  const storedDocument = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    if (!key) throw new Error('draft storage key missing')
+    const drafts = JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{
+      document: unknown
+    }>
+    if (!drafts[0]) throw new Error('saved draft missing')
+    return drafts[0].document
+  }) as {
+    documentVersion: number
+    slides: Array<{
+      nodes: Array<{
+        type: string
+        framing?: { focusX: number; focusY: number; zoom: number }
+        fill?: {
+          type: string
+          framing?: { focusX: number; focusY: number; zoom: number }
+        }
+      }>
+    }>
+  }
+
+  expect(storedDocument.documentVersion).toBe(4)
+  expect(storedDocument.slides).toHaveLength(2)
+  for (const slide of storedDocument.slides) {
+    const images = slide.nodes.filter((node) => node.type === 'image')
+    const imageShapes = slide.nodes.filter((node) => (
+      node.type === 'shape' && node.fill?.type === 'image'
+    ))
+    expect(images).toHaveLength(2)
+    expect(images.map((node) => node.framing)).toEqual([imageFrame, imageFrame])
+    expect(imageShapes).toHaveLength(1)
+    expect(imageShapes[0].fill?.framing).toEqual(shapeFrame)
+  }
+
+  await page.evaluate(() => sessionStorage.removeItem('slicer.images.v1'))
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.locator('.draft-item', { hasText: 'Page 1' }).click()
+  await expectFreeformImagesDecoded(page)
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  const restoredTree = page.getByRole('tree', { name: '图层树' })
+  await restoredTree.getByRole('treeitem', { name: '图片' }).first().click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await page.getByTestId('freeform-adjust-framing').click()
+  expect(await readFrame()).toEqual(imageFrame)
+  await page.getByTestId('freeform-framing-cancel').click()
+
+  await page.getByRole('tab', { name: '图层', exact: true }).click()
+  await restoredTree.getByRole('treeitem', { name: '形状' }).click()
+  await page.getByRole('tab', { name: '属性', exact: true }).click()
+  await page.getByTestId('freeform-adjust-framing').click()
+  expect(await readFrame()).toEqual(shapeFrame)
+  await page.getByTestId('freeform-framing-cancel').click()
+})
+
 test('image framing keyboard, buttons, drag cancel, and narrow controls stay deterministic', async ({ page }) => {
   await page.setViewportSize({ width: 440, height: 860 })
   await openFreeform(page)
@@ -3505,7 +3623,117 @@ test('image framing keyboard, buttons, drag cancel, and narrow controls stay det
   await page.getByTestId('freeform-framing-cancel').click()
 })
 
-test('shape image framing is disabled for contain and enters again for cover', async ({ page }) => {
+test('image framing stays covered and unobstructed across viewport widths and themes', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto('/')
+  await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'framing-responsive.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+
+  const viewports = [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 440, height: 860 },
+  ]
+  for (const theme of ['light', 'dark'] as const) {
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport)
+      await expect(imageElement).toHaveAttribute('data-selected', 'true')
+      await page.getByTestId('freeform-adjust-framing').click()
+      await setRangeValue(page.getByTestId('freeform-framing-zoom'), 250)
+
+      const layout = await page.evaluate(() => {
+        const surface = document.querySelector<HTMLElement>('[data-testid="freeform-framing-surface"]')!
+        const image = document.querySelector<HTMLImageElement>(
+          '[data-scene-node-id][data-selected="true"] [data-framed-image-content="true"]',
+        )!
+        const head = document.querySelector<HTMLElement>('.freeform-framing-head')!
+        const zoom = document.querySelector<HTMLElement>('.freeform-framing-zoom')!
+        const frameRect = surface.getBoundingClientRect()
+        const imageRect = image.getBoundingClientRect()
+        const headRect = head.getBoundingClientRect()
+        const zoomRect = zoom.getBoundingClientRect()
+        const zoomChildren = [...zoom.children].map((child) => child.getBoundingClientRect())
+        const overlap = (a: DOMRect, b: DOMRect) => (
+          Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) > 0
+          && Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) > 0
+        )
+        return {
+          viewportWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          frame: {
+            left: frameRect.left,
+            top: frameRect.top,
+            right: frameRect.right,
+            bottom: frameRect.bottom,
+          },
+          image: {
+            left: imageRect.left,
+            top: imageRect.top,
+            right: imageRect.right,
+            bottom: imageRect.bottom,
+          },
+          head: { left: headRect.left, right: headRect.right },
+          zoom: { left: zoomRect.left, right: zoomRect.right },
+          zoomContent: {
+            left: Math.min(...zoomChildren.map((rect) => rect.left)),
+            right: Math.max(...zoomChildren.map((rect) => rect.right)),
+          },
+          narrowChrome: {
+            toolbar: getComputedStyle(document.querySelector<HTMLElement>('.freeform-toolbar')!).display,
+            rail: getComputedStyle(document.querySelector<HTMLElement>('.freeform-rail')!).display,
+            inspector: getComputedStyle(document.querySelector<HTMLElement>('.freeform-right-panel')!).display,
+          },
+          controlsOverlap: overlap(headRect, zoomRect),
+        }
+      })
+      expect(layout.scrollWidth).toBe(layout.viewportWidth)
+      expect(layout.head.left).toBeGreaterThanOrEqual(0)
+      expect(layout.head.right).toBeLessThanOrEqual(layout.viewportWidth)
+      expect(layout.zoom.left).toBeGreaterThanOrEqual(0)
+      expect(layout.zoom.right).toBeLessThanOrEqual(layout.viewportWidth)
+      expect(layout.zoomContent.left).toBeGreaterThanOrEqual(0)
+      expect(layout.zoomContent.right).toBeLessThanOrEqual(layout.viewportWidth)
+      expect(layout.controlsOverlap).toBe(false)
+      expect(layout.image.left).toBeLessThanOrEqual(layout.frame.left + 0.5)
+      expect(layout.image.top).toBeLessThanOrEqual(layout.frame.top + 0.5)
+      expect(layout.image.right).toBeGreaterThanOrEqual(layout.frame.right - 0.5)
+      expect(layout.image.bottom).toBeGreaterThanOrEqual(layout.frame.bottom - 0.5)
+      if (viewport.width === 440) {
+        expect(layout.narrowChrome).toEqual({
+          toolbar: 'none',
+          rail: 'none',
+          inspector: 'none',
+        })
+        expect(layout.frame.right - layout.frame.left).toBeGreaterThanOrEqual(120)
+        await expect(page.getByTestId('freeform-framing-cancel')).toBeVisible()
+        await expect(page.getByTestId('freeform-framing-done')).toBeVisible()
+      }
+      await page.getByTestId('freeform-framing-cancel').click()
+      if (viewport.width === 440) {
+        await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
+        await expect(page.locator('.freeform-rail')).toBeVisible()
+        await expect(page.locator('.freeform-right-panel')).toBeVisible()
+      }
+    }
+    if (theme === 'light') {
+      await page.getByRole('button', { name: '切换深浅色' }).click()
+    }
+  }
+})
+
+test('shape image framing supports every shape and is disabled for contain', async ({ page }) => {
   await openFreeform(page)
   await insertImageElementAndShapeFill(page)
   const shapeElement = page.getByTestId('freeform-element').filter({
@@ -3522,9 +3750,18 @@ test('shape image framing is disabled for contain and enters again for cover', a
   await page.getByTestId('paint-image-fit-cover').click()
   await expect(adjust).toBeEnabled()
 
-  await shapeElement.dblclick()
-  await expect(page.getByTestId('freeform-framing-surface')).toBeVisible()
-  await page.getByTestId('freeform-framing-cancel').click()
+  const geometry = page.getByTestId('inspector-geometry')
+  for (const [label, className] of [
+    ['矩形', 'shape-rect'],
+    ['圆形', 'shape-ellipse'],
+    ['三角形', 'shape-triangle'],
+  ] as const) {
+    await geometry.getByRole('button', { name: label, exact: true }).click()
+    await shapeElement.dblclick()
+    await expect(page.getByTestId('freeform-framing-surface'))
+      .toHaveClass(new RegExp(className))
+    await page.getByTestId('freeform-framing-cancel').click()
+  }
 })
 
 test('framing transition restores the image before page and workspace switches', async ({ page }) => {
