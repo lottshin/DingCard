@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SaveDraftInput } from '../drafts'
-import { normalizeFreeformDocumentV3 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV4 } from '../freeform/sceneDocument'
 import type {
-  FreeformDocumentV3,
+  FreeformDocument,
   FreeformGroupNode,
   FreeformSceneLeaf,
   FreeformSceneNode,
 } from '../freeform/types'
 
-function image(id: string, src: string): FreeformSceneLeaf & { legacyField?: string } {
+function image(id: string, src: string): FreeformSceneLeaf {
   return {
     id,
     name: id,
@@ -25,7 +25,7 @@ function image(id: string, src: string): FreeformSceneLeaf & { legacyField?: str
     src,
     alt: 'photo',
     fit: 'cover',
-    legacyField: 'remove-on-normalize',
+    framing: { focusX: 0.2, focusY: 0.75, zoom: 2.5 },
   }
 }
 
@@ -43,7 +43,12 @@ function imageShape(id: string, src: string): FreeformSceneLeaf {
     rotation: 0,
     scale: 1,
     shape: 'rect',
-    fill: { type: 'image', src, fit: 'contain' },
+    fill: {
+      type: 'image',
+      src,
+      fit: 'contain',
+      framing: { focusX: 0.8, focusY: 0.3, zoom: 3.25 },
+    },
     stroke: '#000000',
     strokeWidth: 0,
   }
@@ -68,9 +73,9 @@ function group(
   }
 }
 
-function freeformDocument(imageSrc: string, shapeSrc = imageSrc): FreeformDocumentV3 {
+function freeformDocument(imageSrc: string, shapeSrc = imageSrc): FreeformDocument {
   return {
-    documentVersion: 3,
+    documentVersion: 4,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -293,7 +298,7 @@ describe('LocalStore freeform image persistence', () => {
     }
   })
 
-  it('materializes nested images before writing and returns strict v3', async () => {
+  it('materializes nested images before writing and returns strict v4', async () => {
     const imageRef = 'img:local-image'
     const shapeRef = 'img:local-shape'
     const imageDataUrl = 'data:image/png;base64,image'
@@ -321,7 +326,7 @@ describe('LocalStore freeform image persistence', () => {
 
     expect(saved.mode).toBe('freeform-slide')
     if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(normalizeFreeformDocumentV3(saved.document)).toEqual(saved.document)
+    expect(normalizeFreeformDocumentV4(saved.document)).toEqual(saved.document)
     const outer = saved.document.slides[0].nodes[0]
     expect(outer.type).toBe('group')
     if (outer.type !== 'group') throw new Error('Expected outer group')
@@ -329,6 +334,12 @@ describe('LocalStore freeform image persistence', () => {
     expect(savedImage.type).toBe('image')
     if (savedImage.type !== 'image') throw new Error('Expected image element')
     expect(savedImage.src).toBe(imageDataUrl)
+    expect(savedImage.framing).toEqual({ focusX: 0.2, focusY: 0.75, zoom: 2.5 })
+    const inputOuter = input.slides[0].nodes[0]
+    if (inputOuter.type !== 'group' || inputOuter.children[0].type !== 'image') {
+      throw new Error('Expected source image')
+    }
+    expect(savedImage.framing).not.toBe(inputOuter.children[0].framing)
     expect(savedImage).not.toHaveProperty('legacyField')
     const inner = outer.children[1]
     expect(inner.type).toBe('group')
@@ -339,9 +350,19 @@ describe('LocalStore freeform image persistence', () => {
       throw new Error('Expected image-filled shape')
     }
     expect(savedShape.fill.src).toBe(shapeDataUrl)
+    expect(savedShape.fill.framing).toEqual({ focusX: 0.8, focusY: 0.3, zoom: 3.25 })
+    const inputInner = inputOuter.children[1]
+    if (
+      inputInner.type !== 'group'
+      || inputInner.children[0].type !== 'shape'
+      || inputInner.children[0].fill.type !== 'image'
+    ) throw new Error('Expected source image fill')
+    expect(savedShape.fill.framing).not.toBe(inputInner.children[0].fill.framing)
+    const listed = await store.drafts.list('user-1')
+    expect(listed[0]?.mode === 'freeform-slide' && listed[0].document).toEqual(saved.document)
   })
 
-  it('migrates a v2 save and every later local read to strict v3', async () => {
+  it('migrates a v2 save and every later local read to strict v4', async () => {
     const { createLocalStore } = await import('./local')
     const store = createLocalStore()
 
@@ -357,10 +378,10 @@ describe('LocalStore freeform image persistence', () => {
     if (saved.mode !== 'freeform-slide' || listed[0]?.mode !== 'freeform-slide') {
       throw new Error('Expected freeform drafts')
     }
-    expect(saved.document.documentVersion).toBe(3)
+    expect(saved.document.documentVersion).toBe(4)
     expect(saved.document.slides[0].nodes).toHaveLength(1)
     expect(saved.document.slides[0]).not.toHaveProperty('elements')
     expect(listed[0].document).toEqual(saved.document)
-    expect(normalizeFreeformDocumentV3(listed[0].document)).toEqual(listed[0].document)
+    expect(normalizeFreeformDocumentV4(listed[0].document)).toEqual(listed[0].document)
   })
 })

@@ -3,8 +3,8 @@
 // Drafts are namespaced by user id so two accounts in the same browser don't
 // see each other's work. This is client-only and does not sync across devices.
 
-import { normalizeFreeformDocumentToV3 } from './freeform/sceneDocument'
-import type { FreeformDocumentV3 } from './freeform/types'
+import { normalizeFreeformDocument } from './freeform/sceneDocument'
+import type { FreeformDocument } from './freeform/types'
 import { collectImages } from './imageStore'
 import type { Profile } from './theme'
 import type { WorkspaceMode } from './workspaces/types'
@@ -38,7 +38,7 @@ export type MarkdownDraft = DraftEnvelopeBase & {
 
 export type FreeformDraft = DraftEnvelopeBase & {
   mode: 'freeform-slide'
-  document: FreeformDocumentV3
+  document: FreeformDocument
 }
 
 export type Draft = MarkdownDraft | FreeformDraft
@@ -55,7 +55,7 @@ export type SaveDraftInput = {
     }
   | {
       mode: 'freeform-slide'
-      document: FreeformDocumentV3
+      document: FreeformDocument
     }
 )
 
@@ -146,7 +146,7 @@ export function normalizeDraftForRead(raw: unknown): Draft | null {
       }
     }
     if (raw.mode === 'freeform-slide') {
-      const document = normalizeFreeformDocumentToV3(raw.document)
+      const document = normalizeFreeformDocument(raw.document)
       if (!document) return null
       return {
         id: raw.id,
@@ -229,7 +229,7 @@ function deriveMarkdownTitle(source: string): string {
   return line.length > 24 ? line.slice(0, 24) + '…' : line
 }
 
-function deriveFreeformTitle(document: FreeformDocumentV3): string {
+function deriveFreeformTitle(document: FreeformDocument): string {
   return document.slides[0]?.name?.trim() || '自由编辑作品'
 }
 

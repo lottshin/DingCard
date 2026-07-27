@@ -1,6 +1,6 @@
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { walkScene } from './sceneTree'
-import type { FreeformSlide, FreeformSlideV3, FreeformTextElement } from './types'
+import type { FreeformSlide, FreeformTextElement } from './types'
 
 export interface FreeformFontRequest {
   fontFamily: string
@@ -55,13 +55,6 @@ export function collectFreeformFontRequests(slides: FreeformSlide[]): FreeformFo
   }
 
   return finishFontRequests(groups)
-}
-
-/** Collect v3 font requests recursively, including text under hidden groups. */
-export function collectFreeformFontRequestsV3(
-  slides: readonly FreeformSlideV3[],
-): FreeformFontRequest[] {
-  return collectFreeformFontRequests([...slides])
 }
 
 export async function buildFreeformFontCSS(

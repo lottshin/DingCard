@@ -1,14 +1,10 @@
 import type { ImageStore } from '../storage/types'
 import {
-  mapFreeformDocumentV3Leaves,
-  mapFreeformDocumentV3LeavesAsync,
+  mapFreeformDocumentLeaves,
+  mapFreeformDocumentLeavesAsync,
 } from './sceneDocument'
 import { walkScene } from './sceneTree'
-import type {
-  FreeformDocument,
-  FreeformDocumentV3,
-  FreeformSceneLeaf,
-} from './types'
+import type { FreeformDocument, FreeformSceneLeaf } from './types'
 
 function imageSource(leaf: FreeformSceneLeaf): string | undefined {
   if (leaf.type === 'image') return leaf.src
@@ -40,12 +36,12 @@ export function collectFreeformImageSources(document: FreeformDocument): string[
   return [...sources]
 }
 
-/** Materialize local refs in a recursively owned v3 document clone. */
+/** Materialize local refs in a recursively owned document clone. */
 export function materializeLocalFreeformImages(
   document: FreeformDocument,
   images: Pick<ImageStore, 'isRef' | 'resolve'>,
 ): FreeformDocument {
-  return mapFreeformDocumentV3Leaves(document, (leaf) => {
+  return mapFreeformDocumentLeaves(document, (leaf) => {
     const source = imageSource(leaf)
     if (source === undefined || !images.isRef(source)) return leaf
 
@@ -71,7 +67,7 @@ export async function uploadInlineFreeformImages(
   }
 
   const uploads = new Map<string, Promise<string>>()
-  return mapFreeformDocumentV3LeavesAsync(document, async (leaf) => {
+  return mapFreeformDocumentLeavesAsync(document, async (leaf) => {
     const source = imageSource(leaf)
     if (source === undefined || !source.toLowerCase().startsWith('data:image/')) return leaf
 
@@ -87,23 +83,4 @@ export async function uploadInlineFreeformImages(
     }
     return cloneLeafWithSource(leaf, await pending)
   })
-}
-
-// Additive names remain available while callers finish their v3 migration.
-export function collectFreeformImageSourcesV3(document: FreeformDocumentV3): string[] {
-  return collectFreeformImageSources(document)
-}
-
-export function materializeLocalFreeformImagesV3(
-  document: FreeformDocumentV3,
-  images: Pick<ImageStore, 'isRef' | 'resolve'>,
-): FreeformDocumentV3 {
-  return materializeLocalFreeformImages(document, images)
-}
-
-export function uploadInlineFreeformImagesV3(
-  document: FreeformDocumentV3,
-  upload: (dataUrl: string) => Promise<string>,
-): Promise<FreeformDocumentV3> {
-  return uploadInlineFreeformImages(document, upload)
 }

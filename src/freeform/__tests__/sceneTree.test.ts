@@ -5,8 +5,8 @@ import {
   MAX_SCENE_DEPTH,
   MAX_SCENE_NODES_PER_SLIDE,
 } from '../constants'
-import { reduceFreeformDocumentV3 } from '../document'
-import { normalizeFreeformDocumentV3 } from '../sceneDocument'
+import { reduceFreeformDocument } from '../document'
+import { normalizeFreeformDocumentV4 } from '../sceneDocument'
 import {
   buildScenePathIndex,
   canApplySceneAction,
@@ -43,14 +43,18 @@ import {
 } from '../sceneTransform'
 import type { Matrix2D, Point } from '../sceneTransform'
 import type {
-  FreeformActionV3,
-  FreeformDocumentV3,
+  FreeformAction,
+  FreeformDocument,
   FreeformGroupNode,
   FreeformSceneLeaf,
   FreeformSceneNode,
-  FreeformSlideV3,
+  FreeformSlide,
   ScenePath,
 } from '../types'
+
+function framing() {
+  return { focusX: 0.5, focusY: 0.5, zoom: 1 }
+}
 
 function textLeaf(
   id: string,
@@ -95,7 +99,12 @@ function shapeLeaf(
     rotation: 18,
     scale: 1.25,
     shape: 'rect',
-    fill: { type: 'image', src: 'img:shape-texture', fit: 'cover' },
+    fill: {
+      type: 'image',
+      src: 'img:shape-texture',
+      fit: 'cover',
+      framing: framing(),
+    },
     stroke: '#c2410c',
     strokeWidth: 7,
     ...overrides,
@@ -144,6 +153,7 @@ function imageLeaf(
     src: 'img:photo',
     alt: 'Photo',
     fit: 'contain',
+    framing: framing(),
     ...overrides,
   } as FreeformSceneLeaf
 }
@@ -168,7 +178,7 @@ function groupNode(
   }
 }
 
-function slide(id: string, nodes: FreeformSceneNode[] = []): FreeformSlideV3 {
+function slide(id: string, nodes: FreeformSceneNode[] = []): FreeformSlide {
   return {
     id,
     name: id,
@@ -181,10 +191,10 @@ function slide(id: string, nodes: FreeformSceneNode[] = []): FreeformSlideV3 {
 
 function documentWith(
   nodes: FreeformSceneNode[],
-  slides: FreeformSlideV3[] = [slide('slide-1', nodes)],
-): FreeformDocumentV3 {
+  slides: FreeformSlide[] = [slide('slide-1', nodes)],
+): FreeformDocument {
   return {
-    documentVersion: 3,
+    documentVersion: 4,
     slides,
     activeSlideId: slides[0].id,
   }
@@ -385,7 +395,7 @@ describe('immutable scene path helpers', () => {
       untouched,
     ])
 
-    const reordered = reduceFreeformDocumentV3(original, {
+    const reordered = reduceFreeformDocument(original, {
       type: 'node/reorder-above',
       slideId: 'slide-1',
       parentPath: ['group'],
@@ -401,14 +411,14 @@ describe('immutable scene path helpers', () => {
       'c',
     ])
     expect(reordered.slides[0].nodes[1]).toBe(untouched)
-    expect(reduceFreeformDocumentV3(original, {
+    expect(reduceFreeformDocument(original, {
       type: 'node/reorder-above',
       slideId: 'slide-1',
       parentPath: ['group'],
       nodeIds: ['a', 'c'],
       targetNodeId: 'missing',
     })).toBe(original)
-    expect(reduceFreeformDocumentV3(original, {
+    expect(reduceFreeformDocument(original, {
       type: 'node/reorder-above',
       slideId: 'slide-1',
       parentPath: ['group'],
@@ -456,7 +466,12 @@ describe('immutable scene path helpers', () => {
         imageLeaf('image', { src: 'img:kept' }),
         groupNode('nested', [
           shapeLeaf('shape', {
-            fill: { type: 'image', src: 'img:shape-kept', fit: 'contain' },
+            fill: {
+              type: 'image',
+              src: 'img:shape-kept',
+              fit: 'contain',
+              framing: framing(),
+            },
           }),
         ]),
       ]),
@@ -484,6 +499,22 @@ describe('immutable scene path helpers', () => {
     expect(
       ((clone[0] as FreeformGroupNode).children[1] as FreeformGroupNode).children[0],
     ).toMatchObject({ fill: { type: 'image', src: 'img:shape-kept', fit: 'contain' } })
+    const sourceGroup = source[0] as FreeformGroupNode
+    const clonedGroup = clone[0] as FreeformGroupNode
+    const sourceImage = sourceGroup.children[0]
+    const clonedImage = clonedGroup.children[0]
+    const sourceShape = (sourceGroup.children[1] as FreeformGroupNode).children[0]
+    const clonedShape = (clonedGroup.children[1] as FreeformGroupNode).children[0]
+    if (
+      sourceImage.type !== 'image'
+      || clonedImage.type !== 'image'
+      || sourceShape.type !== 'shape'
+      || clonedShape.type !== 'shape'
+      || sourceShape.fill.type !== 'image'
+      || clonedShape.fill.type !== 'image'
+    ) throw new Error('Expected image-bearing clone fixtures')
+    expect(clonedImage.framing).not.toBe(sourceImage.framing)
+    expect(clonedShape.fill.framing).not.toBe(sourceShape.fill.framing)
   })
 
   it('maps every nested leaf into a fully owned tree while retaining hierarchy and order', () => {
@@ -493,7 +524,12 @@ describe('immutable scene path helpers', () => {
         groupNode('inner', [
           shapeLeaf('texture', {
             hidden: true,
-            fill: { type: 'image', src: 'img:texture', fit: 'contain' },
+            fill: {
+              type: 'image',
+              src: 'img:texture',
+              fit: 'contain',
+              framing: framing(),
+            },
           }),
           textLeaf('caption', { fontFamily: "'Noto Serif SC', serif" }),
         ], { hidden: true }),
@@ -589,7 +625,12 @@ describe('immutable scene path helpers', () => {
   it('enforces async mapper identity and ownership contracts', async () => {
     const source = [shapeLeaf('texture')]
     const external = shapeLeaf('texture', {
-      fill: { type: 'image', src: 'img:external', fit: 'contain' },
+      fill: {
+        type: 'image',
+        src: 'img:external',
+        fit: 'contain',
+        framing: framing(),
+      },
     })
 
     await expect(
@@ -1120,12 +1161,12 @@ describe('lossless grouping and ungrouping', () => {
     expectSnapshotsEqual(snapshotLeaves(grouped.nodes), before)
 
     let transformedDocument = documentWith(grouped.nodes)
-    transformedDocument = reduceFreeformDocumentV3(transformedDocument, {
+    transformedDocument = reduceFreeformDocument(transformedDocument, {
       type: 'node/update-geometry',
       slideId: 'slide-1',
       updates: [{ path: ['transform-group'], patch: { rotation: 37, scale: 1.35 } }],
     })
-    transformedDocument = reduceFreeformDocumentV3(transformedDocument, {
+    transformedDocument = reduceFreeformDocument(transformedDocument, {
       type: 'node/update-geometry',
       slideId: 'slide-1',
       updates: [{ path: ['transform-group'], patch: { rotation: -23, scale: 0.82 } }],
@@ -1175,7 +1216,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
     const intended = snapshotLeaves(rawIntended)
     const document = documentWith(nodes)
 
-    const result = reduceFreeformDocumentV3(document, {
+    const result = reduceFreeformDocument(document, {
       type: 'node/update-geometry',
       slideId: 'slide-1',
       updates: [
@@ -1204,7 +1245,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
     }))
 
     const startedAt = performance.now()
-    const result = reduceFreeformDocumentV3(document, {
+    const result = reduceFreeformDocument(document, {
       type: 'node/update-geometry',
       slideId: 'slide-1',
       updates,
@@ -1232,19 +1273,19 @@ describe('v3 reducer permission and atomicity boundary', () => {
     ]
     const original = documentWith(nodes)
 
-    const unlocked = reduceFreeformDocumentV3(original, {
+    const unlocked = reduceFreeformDocument(original, {
       type: 'node/set-locked',
       slideId: 'slide-1',
       path: ['locked-parent', 'child'],
       locked: false,
     })
-    const hidden = reduceFreeformDocumentV3(unlocked, {
+    const hidden = reduceFreeformDocument(unlocked, {
       type: 'node/set-hidden',
       slideId: 'slide-1',
       path: ['locked-parent', 'child'],
       hidden: true,
     })
-    const renamed = reduceFreeformDocumentV3(hidden, {
+    const renamed = reduceFreeformDocument(hidden, {
       type: 'node/rename',
       slideId: 'slide-1',
       path: ['locked-parent', 'child'],
@@ -1255,7 +1296,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
     expect(child).toMatchObject({ locked: false, hidden: true, name: 'Renamed' })
     expect(renamed).not.toBe(original)
     expect(
-      reduceFreeformDocumentV3(renamed, {
+      reduceFreeformDocument(renamed, {
         type: 'node/rename',
         slideId: 'slide-1',
         path: ['locked-parent', 'child'],
@@ -1269,7 +1310,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
     const inherited = textLeaf('inherited')
     const group = groupNode('locked-group', [inherited, textLeaf('sibling')], { locked: true })
     const document = documentWith([lockedLeaf, group, textLeaf('free')])
-    const actions: FreeformActionV3[] = [
+    const actions: FreeformAction[] = [
       {
         type: 'node/update-content',
         slideId: 'slide-1',
@@ -1324,7 +1365,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
     ]
 
     for (const action of actions) {
-      expect(reduceFreeformDocumentV3(document, action), action.type).toBe(document)
+      expect(reduceFreeformDocument(document, action), action.type).toBe(document)
     }
   })
 
@@ -1332,7 +1373,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
     const nodes = [textLeaf('free'), textLeaf('locked', { locked: true })]
     const document = documentWith(nodes)
 
-    const mixed = reduceFreeformDocumentV3(document, {
+    const mixed = reduceFreeformDocument(document, {
       type: 'node/update-content',
       slideId: 'slide-1',
       updates: [
@@ -1340,7 +1381,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
         { path: ['locked'], patch: { text: 'blocked' } },
       ],
     })
-    const unknown = reduceFreeformDocumentV3(document, {
+    const unknown = reduceFreeformDocument(document, {
       type: 'node/update-geometry',
       slideId: 'slide-1',
       updates: [
@@ -1372,10 +1413,10 @@ describe('v3 reducer permission and atomicity boundary', () => {
         slideId: 'slide-1',
         updates: [{ path: ['leaf'], patch: { x: 500, type: 'group', children: [] } }],
       },
-    ] as unknown as FreeformActionV3[]
+    ] as unknown as FreeformAction[]
 
     for (const action of maliciousActions) {
-      expect(reduceFreeformDocumentV3(document, action), action.type).toBe(document)
+      expect(reduceFreeformDocument(document, action), action.type).toBe(document)
     }
     expect(document.slides[0].nodes[0]).toMatchObject({ id: 'leaf', type: 'text', locked: true })
   })
@@ -1391,7 +1432,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
       to: '#eeeeee',
       angle: 45,
     }
-    const textResult = reduceFreeformDocumentV3(document, {
+    const textResult = reduceFreeformDocument(document, {
       type: 'node/update-style',
       slideId: 'slide-1',
       updates: [{ path: ['text'], patch: { textFill } }],
@@ -1405,8 +1446,9 @@ describe('v3 reducer permission and atomicity boundary', () => {
       type: 'image' as const,
       src: 'img:owned-fill',
       fit: 'contain' as const,
+      framing: framing(),
     }
-    const shapeResult = reduceFreeformDocumentV3(document, {
+    const shapeResult = reduceFreeformDocument(document, {
       type: 'element/update',
       slideId: 'slide-1',
       elementId: 'shape',
@@ -1414,7 +1456,12 @@ describe('v3 reducer permission and atomicity boundary', () => {
     })
     shapeFill.src = 'img:mutated-after-dispatch'
     expect(shapeResult.slides[0].nodes[1]).toMatchObject({
-      fill: { type: 'image', src: 'img:owned-fill', fit: 'contain' },
+      fill: {
+        type: 'image',
+        src: 'img:owned-fill',
+        fit: 'cover',
+        framing: framing(),
+      },
     })
   })
 
@@ -1449,6 +1496,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
             type: 'image',
             src: 'img:extra-fill',
             fit: 'cover',
+            framing: framing(),
             metadata: { nested: true },
           },
         },
@@ -1472,9 +1520,9 @@ describe('v3 reducer permission and atomicity boundary', () => {
     ],
   ])('rejects extra nested schema fields in %s', (_label, rawAction) => {
     const document = documentWith([textLeaf('text'), shapeLeaf('shape')])
-    const action = rawAction as unknown as FreeformActionV3
+    const action = rawAction as unknown as FreeformAction
 
-    expect(reduceFreeformDocumentV3(document, action)).toBe(document)
+    expect(reduceFreeformDocument(document, action)).toBe(document)
   })
 
   it('keeps every accepted nested-schema result strict-readable and payload-owned', () => {
@@ -1489,6 +1537,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
       type: 'image' as const,
       src: 'img:strict-fill',
       fit: 'contain' as const,
+      framing: framing(),
     }
     const background = {
       type: 'linear-gradient' as const,
@@ -1498,31 +1547,31 @@ describe('v3 reducer permission and atomicity boundary', () => {
     }
     const inserted = groupNode('inserted', [imageLeaf('nested-image')])
 
-    const textResult = reduceFreeformDocumentV3(original, {
+    const textResult = reduceFreeformDocument(original, {
       type: 'node/update-style',
       slideId: 'slide-1',
       updates: [{ path: ['text'], patch: { textFill } }],
     })
-    expect(normalizeFreeformDocumentV3(textResult)).toEqual(textResult)
-    const shapeResult = reduceFreeformDocumentV3(textResult, {
+    expect(normalizeFreeformDocumentV4(textResult)).toEqual(textResult)
+    const shapeResult = reduceFreeformDocument(textResult, {
       type: 'node/update-style',
       slideId: 'slide-1',
       updates: [{ path: ['shape'], patch: { fill: shapeFill } }],
     })
-    expect(normalizeFreeformDocumentV3(shapeResult)).toEqual(shapeResult)
-    const backgroundResult = reduceFreeformDocumentV3(shapeResult, {
+    expect(normalizeFreeformDocumentV4(shapeResult)).toEqual(shapeResult)
+    const backgroundResult = reduceFreeformDocument(shapeResult, {
       type: 'slide/update',
       slideId: 'slide-1',
       patch: { background },
     })
-    expect(normalizeFreeformDocumentV3(backgroundResult)).toEqual(backgroundResult)
-    const insertResult = reduceFreeformDocumentV3(backgroundResult, {
+    expect(normalizeFreeformDocumentV4(backgroundResult)).toEqual(backgroundResult)
+    const insertResult = reduceFreeformDocument(backgroundResult, {
       type: 'node/insert-children',
       slideId: 'slide-1',
       parentPath: [],
       nodes: [inserted],
     })
-    expect(normalizeFreeformDocumentV3(insertResult)).toEqual(insertResult)
+    expect(normalizeFreeformDocumentV4(insertResult)).toEqual(insertResult)
 
     expect(
       (insertResult.slides[0].nodes[0] as Extract<FreeformSceneLeaf, { type: 'text' }>).textFill,
@@ -1541,13 +1590,13 @@ describe('v3 reducer permission and atomicity boundary', () => {
       textLeaf('open-child'),
     ])
     const document = documentWith([lockedParent, openParent])
-    const blocked = reduceFreeformDocumentV3(document, {
+    const blocked = reduceFreeformDocument(document, {
       type: 'node/insert-children',
       slideId: 'slide-1',
       parentPath: ['locked-parent'],
       nodes: [textLeaf('blocked-new')],
     })
-    const allowed = reduceFreeformDocumentV3(document, {
+    const allowed = reduceFreeformDocument(document, {
       type: 'node/insert-children',
       slideId: 'slide-1',
       parentPath: ['open-parent'],
@@ -1571,7 +1620,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
       textLeaf('peer-a'),
       textLeaf('peer-b'),
     ])
-    const actions: FreeformActionV3[] = [
+    const actions: FreeformAction[] = [
       { type: 'node/delete', slideId: 'slide-1', parentPath: [], nodeIds: ['protected-group'] },
       {
         type: 'node/reorder',
@@ -1604,10 +1653,10 @@ describe('v3 reducer permission and atomicity boundary', () => {
     ]
 
     for (const action of actions) {
-      expect(reduceFreeformDocumentV3(document, action), action.type).toBe(document)
+      expect(reduceFreeformDocument(document, action), action.type).toBe(document)
     }
 
-    const groupOpenSiblings = reduceFreeformDocumentV3(document, {
+    const groupOpenSiblings = reduceFreeformDocument(document, {
       type: 'group/create',
       slideId: 'slide-1',
       parentPath: [],
@@ -1617,7 +1666,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
     expect(groupOpenSiblings).not.toBe(document)
 
     const beforeCleanup = snapshotLeaves(document.slides[0].nodes).get('locked-child')!
-    const cleaned = reduceFreeformDocumentV3(document, {
+    const cleaned = reduceFreeformDocument(document, {
       type: 'node/delete',
       slideId: 'slide-1',
       parentPath: ['protected-group'],
@@ -1671,7 +1720,7 @@ describe('v3 reducer permission and atomicity boundary', () => {
 describe('v3 reducer safety limits and stable failures', () => {
   it('supports the existing slide actions at the v3 cut-over boundary', () => {
     const original = documentWith([textLeaf('a')])
-    const added = reduceFreeformDocumentV3(original, {
+    const added = reduceFreeformDocument(original, {
       type: 'slide/add-after-active',
       slideId: 'slide-2',
     })
@@ -1679,11 +1728,11 @@ describe('v3 reducer safety limits and stable failures', () => {
     expect(added.activeSlideId).toBe('slide-2')
     expect(added.slides.map((candidate) => candidate.id)).toEqual(['slide-1', 'slide-2'])
 
-    const selected = reduceFreeformDocumentV3(added, {
+    const selected = reduceFreeformDocument(added, {
       type: 'slide/select',
       slideId: 'slide-1',
     })
-    const updated = reduceFreeformDocumentV3(selected, {
+    const updated = reduceFreeformDocument(selected, {
       type: 'slide/update',
       slideId: 'slide-1',
       patch: {
@@ -1691,7 +1740,7 @@ describe('v3 reducer safety limits and stable failures', () => {
         background: { type: 'solid', color: '#fef3c7' },
       },
     })
-    const resized = reduceFreeformDocumentV3(updated, {
+    const resized = reduceFreeformDocument(updated, {
       type: 'slide/resize',
       slideId: 'slide-1',
       width: 1920,
@@ -1704,14 +1753,14 @@ describe('v3 reducer safety limits and stable failures', () => {
       height: 1080,
     })
 
-    const deleted = reduceFreeformDocumentV3(resized, {
+    const deleted = reduceFreeformDocument(resized, {
       type: 'slide/delete',
       slideId: 'slide-1',
     })
     expect(deleted.slides.map((candidate) => candidate.id)).toEqual(['slide-2'])
     expect(deleted.activeSlideId).toBe('slide-2')
     expect(
-      reduceFreeformDocumentV3(deleted, {
+      reduceFreeformDocument(deleted, {
         type: 'slide/delete',
         slideId: 'slide-2',
       }),
@@ -1720,7 +1769,7 @@ describe('v3 reducer safety limits and stable failures', () => {
 
   it('supports successful compatibility delete and reorder on root leaves', () => {
     const original = documentWith([textLeaf('a'), textLeaf('b'), textLeaf('c')])
-    const reordered = reduceFreeformDocumentV3(original, {
+    const reordered = reduceFreeformDocument(original, {
       type: 'element/reorder',
       slideId: 'slide-1',
       elementIds: ['b'],
@@ -1728,7 +1777,7 @@ describe('v3 reducer safety limits and stable failures', () => {
     })
     expect(reordered.slides[0].nodes.map((node) => node.id)).toEqual(['a', 'c', 'b'])
 
-    const deleted = reduceFreeformDocumentV3(reordered, {
+    const deleted = reduceFreeformDocument(reordered, {
       type: 'element/delete',
       slideId: 'slide-1',
       elementIds: ['b'],
@@ -1741,7 +1790,7 @@ describe('v3 reducer safety limits and stable failures', () => {
       textLeaf('locked-root', { locked: true }),
       textLeaf('free-root'),
     ])
-    const added = reduceFreeformDocumentV3(original, {
+    const added = reduceFreeformDocument(original, {
       type: 'element/add',
       slideId: 'slide-1',
       element: textLeaf('adapter-added', {
@@ -1763,7 +1812,7 @@ describe('v3 reducer safety limits and stable failures', () => {
       scale: 1,
     })
 
-    const legacyAdded = reduceFreeformDocumentV3(original, {
+    const legacyAdded = reduceFreeformDocument(original, {
       type: 'element/add',
       slideId: 'slide-1',
       element: {
@@ -1781,7 +1830,7 @@ describe('v3 reducer safety limits and stable failures', () => {
         align: 'left',
         fontWeight: 'normal',
       },
-    } as unknown as FreeformActionV3)
+    } as unknown as FreeformAction)
     expect(legacyAdded.slides[0].nodes[legacyAdded.slides[0].nodes.length - 1]).toMatchObject({
       id: 'legacy-adapter-added',
       name: '文本',
@@ -1790,7 +1839,7 @@ describe('v3 reducer safety limits and stable failures', () => {
       scale: 1,
     })
     expect(
-      reduceFreeformDocumentV3(original, {
+      reduceFreeformDocument(original, {
         type: 'element/update',
         slideId: 'slide-1',
         elementId: 'locked-root',
@@ -1798,14 +1847,14 @@ describe('v3 reducer safety limits and stable failures', () => {
       }),
     ).toBe(original)
     expect(
-      reduceFreeformDocumentV3(original, {
+      reduceFreeformDocument(original, {
         type: 'element/delete',
         slideId: 'slide-1',
         elementIds: ['locked-root'],
       }),
     ).toBe(original)
     expect(
-      reduceFreeformDocumentV3(original, {
+      reduceFreeformDocument(original, {
         type: 'element/reorder',
         slideId: 'slide-1',
         elementIds: ['locked-root'],
@@ -1813,7 +1862,7 @@ describe('v3 reducer safety limits and stable failures', () => {
       }),
     ).toBe(original)
 
-    const updated = reduceFreeformDocumentV3(original, {
+    const updated = reduceFreeformDocument(original, {
       type: 'element/update',
       slideId: 'slide-1',
       elementId: 'free-root',
@@ -1839,8 +1888,8 @@ describe('v3 reducer safety limits and stable failures', () => {
         slideId: 'slide-1',
         parentPath: [],
         nodes: [node],
-      } as unknown as FreeformActionV3
-      expect(reduceFreeformDocumentV3(original, action)).toBe(original)
+      } as unknown as FreeformAction
+      expect(reduceFreeformDocument(original, action)).toBe(original)
     }
   })
 
@@ -1867,6 +1916,7 @@ describe('v3 reducer safety limits and stable failures', () => {
           type: 'image',
           src: 'img:extra',
           fit: 'cover',
+          framing: framing(),
           extension: { nested: true },
         },
       },
@@ -1878,20 +1928,25 @@ describe('v3 reducer safety limits and stable failures', () => {
       slideId: 'slide-1',
       parentPath: [],
       nodes: [node],
-    } as unknown as FreeformActionV3
+    } as unknown as FreeformAction
 
-    expect(reduceFreeformDocumentV3(original, action)).toBe(original)
+    expect(reduceFreeformDocument(original, action)).toBe(original)
   })
 
   it('deep-owns inserted subtrees while preserving their provided IDs', () => {
     const original = documentWith([textLeaf('existing')])
     const inserted = groupNode('inserted-group', [
       shapeLeaf('inserted-shape', {
-        fill: { type: 'image', src: 'img:owned', fit: 'cover' },
+        fill: {
+          type: 'image',
+          src: 'img:owned',
+          fit: 'cover',
+          framing: framing(),
+        },
       }),
     ])
 
-    const result = reduceFreeformDocumentV3(original, {
+    const result = reduceFreeformDocument(original, {
       type: 'node/insert-children',
       slideId: 'slide-1',
       parentPath: [],
@@ -1911,7 +1966,12 @@ describe('v3 reducer safety limits and stable failures', () => {
       children: [
         expect.objectContaining({
           id: 'inserted-shape',
-          fill: { type: 'image', src: 'img:owned', fit: 'cover' },
+          fill: {
+            type: 'image',
+            src: 'img:owned',
+            fit: 'cover',
+            framing: framing(),
+          },
         }),
       ],
     })
@@ -1929,7 +1989,12 @@ describe('v3 reducer safety limits and stable failures', () => {
         }),
         groupNode('nested', [
           shapeLeaf('shape', {
-            fill: { type: 'image', src: 'img:fill-retained', fit: 'contain' },
+            fill: {
+              type: 'image',
+              src: 'img:fill-retained',
+              fit: 'contain',
+              framing: framing(),
+            },
             stroke: '#123456',
           }),
         ], { rotation: 23, scale: 1.4 }),
@@ -1938,7 +2003,7 @@ describe('v3 reducer safety limits and stable failures', () => {
     ])
     const snapshot = structuredClone(original)
 
-    const duplicated = reduceFreeformDocumentV3(original, {
+    const duplicated = reduceFreeformDocument(original, {
       type: 'slide/duplicate',
       slideId: 'slide-1',
       duplicateSlideId: 'slide-copy',
@@ -1982,6 +2047,21 @@ describe('v3 reducer safety limits and stable failures', () => {
     expect(copiedGroup.children).not.toBe(
       (original.slides[0].nodes[0] as FreeformGroupNode).children,
     )
+    const sourceGroup = original.slides[0].nodes[0] as FreeformGroupNode
+    const sourceImage = sourceGroup.children[0]
+    const copiedImage = copiedGroup.children[0]
+    const sourceShape = (sourceGroup.children[1] as FreeformGroupNode).children[0]
+    const copiedShape = (copiedGroup.children[1] as FreeformGroupNode).children[0]
+    if (
+      sourceImage.type !== 'image'
+      || copiedImage.type !== 'image'
+      || sourceShape.type !== 'shape'
+      || copiedShape.type !== 'shape'
+      || sourceShape.fill.type !== 'image'
+      || copiedShape.fill.type !== 'image'
+    ) throw new Error('Expected image-bearing page fixtures')
+    expect(copiedImage.framing).not.toBe(sourceImage.framing)
+    expect(copiedShape.fill.framing).not.toBe(sourceShape.fill.framing)
     expect(original).toEqual(snapshot)
   })
 
@@ -1998,7 +2078,7 @@ describe('v3 reducer safety limits and stable failures', () => {
     ]
 
     reusedFactories.forEach((ids, index) => {
-      const result = reduceFreeformDocumentV3(original, {
+      const result = reduceFreeformDocument(original, {
         type: 'slide/duplicate',
         slideId: 'slide-1',
         duplicateSlideId: `slide-copy-${index}`,
@@ -2023,7 +2103,7 @@ describe('v3 reducer safety limits and stable failures', () => {
     )
     const document = documentWith(nodes)
 
-    const result = reduceFreeformDocumentV3(document, {
+    const result = reduceFreeformDocument(document, {
       type: 'group/create',
       slideId: 'slide-1',
       parentPath: deepestParentPath,
@@ -2041,7 +2121,7 @@ describe('v3 reducer safety limits and stable failures', () => {
     const document = documentWith(nodes)
 
     expect(
-      reduceFreeformDocumentV3(document, {
+      reduceFreeformDocument(document, {
         type: 'node/insert-children',
         slideId: 'slide-1',
         parentPath: [],
@@ -2049,7 +2129,7 @@ describe('v3 reducer safety limits and stable failures', () => {
       }),
     ).toBe(document)
     expect(
-      reduceFreeformDocumentV3(document, {
+      reduceFreeformDocument(document, {
         type: 'node/clone',
         slideId: 'slide-1',
         parentPath: [],
@@ -2058,7 +2138,7 @@ describe('v3 reducer safety limits and stable failures', () => {
       }),
     ).toBe(document)
     expect(
-      reduceFreeformDocumentV3(document, {
+      reduceFreeformDocument(document, {
         type: 'group/create',
         slideId: 'slide-1',
         parentPath: [],
@@ -2076,13 +2156,13 @@ describe('v3 reducer safety limits and stable failures', () => {
     const one = documentWith([], [slide('slide-1')])
 
     expect(
-      reduceFreeformDocumentV3(full, {
+      reduceFreeformDocument(full, {
         type: 'slide/add-after-active',
         slideId: 'new-slide',
       }),
     ).toBe(full)
     expect(
-      reduceFreeformDocumentV3(one, {
+      reduceFreeformDocument(one, {
         type: 'slide/add-after-active',
         slideId: 'slide-1',
       }),
@@ -2093,7 +2173,7 @@ describe('v3 reducer safety limits and stable failures', () => {
     const document = documentWith([textLeaf('a'), textLeaf('b'), textLeaf('taken')])
 
     expect(
-      reduceFreeformDocumentV3(document, {
+      reduceFreeformDocument(document, {
         type: 'group/create',
         slideId: 'slide-1',
         parentPath: [],
@@ -2102,7 +2182,7 @@ describe('v3 reducer safety limits and stable failures', () => {
       }),
     ).toBe(document)
     expect(
-      reduceFreeformDocumentV3(document, {
+      reduceFreeformDocument(document, {
         type: 'node/insert-children',
         slideId: 'slide-1',
         parentPath: [],
@@ -2110,7 +2190,7 @@ describe('v3 reducer safety limits and stable failures', () => {
       }),
     ).toBe(document)
     expect(
-      reduceFreeformDocumentV3(document, {
+      reduceFreeformDocument(document, {
         type: 'node/clone',
         slideId: 'slide-1',
         parentPath: [],
@@ -2146,11 +2226,11 @@ describe('v3 reducer safety limits and stable failures', () => {
         slideId: 'slide-1',
         updates: [{ path: ['extreme'], patch: { rotation: Number.NaN } }],
       },
-    ] as FreeformActionV3[]
+    ] as FreeformAction[]
 
     for (const action of actions) {
-      expect(() => reduceFreeformDocumentV3(document, action)).not.toThrow()
-      expect(reduceFreeformDocumentV3(document, action), action.type).toBe(document)
+      expect(() => reduceFreeformDocument(document, action)).not.toThrow()
+      expect(reduceFreeformDocument(document, action), action.type).toBe(document)
     }
   })
 
@@ -2159,14 +2239,14 @@ describe('v3 reducer safety limits and stable failures', () => {
       groupNode('parent', [textLeaf('child', { scale: 1e8 })], { scale: 1e-4 }),
     ])
 
-    const result = reduceFreeformDocumentV3(document, {
+    const result = reduceFreeformDocument(document, {
       type: 'node/update-geometry',
       slideId: 'slide-1',
       updates: [{ path: ['parent'], patch: { scale: 1e-4 } }],
     })
 
     expect(result).toBe(document)
-    const ungrouped = reduceFreeformDocumentV3(document, {
+    const ungrouped = reduceFreeformDocument(document, {
       type: 'group/ungroup',
       slideId: 'slide-1',
       parentPath: [],

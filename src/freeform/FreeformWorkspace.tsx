@@ -53,6 +53,7 @@ import {
   collectFreeformFontRequests,
 } from './fontRequests'
 import { collectFreeformImageSources } from './imageAssets'
+import { createDefaultImageFraming } from './imageFraming'
 import { ColorPickerButton, PaintField } from './PaintField'
 import {
   DEFAULT_PAGE_PAINT,
@@ -994,7 +995,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       const currentTarget = currentSlide ? findNodeAtPath(currentSlide.nodes, targetPath) : undefined
       if (currentTarget?.type !== 'shape') return
       updateNodeStyleAtPath(targetSlideId, targetPath, {
-        fill: { type: 'image', src, fit: 'cover' },
+        fill: {
+          type: 'image',
+          src,
+          fit: 'cover',
+          framing: createDefaultImageFraming(),
+        },
       })
     } finally {
       if (shapeFillOperationTokensRef.current.get(operation.key) === operation.token) {

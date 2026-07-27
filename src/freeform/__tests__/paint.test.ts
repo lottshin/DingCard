@@ -42,7 +42,12 @@ describe('paint helpers', () => {
   it('renders slide backgrounds and shape fills consistently', () => {
     expect(slideBackgroundToCss({ type: 'transparent' })).toBe('transparent')
     expect(slideBackgroundToCss(DEFAULT_PAGE_PAINT)).toBe('#ffffff')
-    expect(shapeFillToStyle({ type: 'image', src: 'data:image/png;base64,abc', fit: 'contain' })).toMatchObject({
+    expect(shapeFillToStyle({
+      type: 'image',
+      src: 'data:image/png;base64,abc',
+      fit: 'contain',
+      framing: { focusX: 0.5, focusY: 0.5, zoom: 1 },
+    })).toMatchObject({
       backgroundImage: 'url("data:image/png;base64,abc")',
       backgroundSize: 'contain',
       backgroundPosition: 'center',

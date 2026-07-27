@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { draftSubtitle, draftTitle, normalizeDraftForRead } from '../../drafts'
+import {
+  draftSubtitle,
+  draftTitle,
+  normalizeDraftForRead,
+  normalizeDraftForWrite,
+} from '../../drafts'
 
 const profile = {
   nickname: 'A',
@@ -123,7 +128,7 @@ describe('draft migration', () => {
 
     expect(migrated?.mode).toBe('freeform-slide')
     if (migrated?.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(migrated.document.documentVersion).toBe(3)
+    expect(migrated.document.documentVersion).toBe(4)
     expect(migrated.document.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
     expect(migrated.document.slides[0].nodes).toEqual([])
   })
@@ -169,7 +174,7 @@ describe('draft migration', () => {
 
     expect(draft?.mode).toBe('freeform-slide')
     if (draft?.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(draft.document.documentVersion).toBe(3)
+    expect(draft.document.documentVersion).toBe(4)
     expect(draft.document.slides[0].nodes[0]).toMatchObject({
       type: 'text',
       name: '文本',
@@ -241,7 +246,7 @@ describe('draft migration', () => {
       to: '#f97316',
       angle: 46,
     })
-    expect(draft.document.documentVersion).toBe(3)
+    expect(draft.document.documentVersion).toBe(4)
     expect(draft.document.slides[0].nodes[0]).toMatchObject({
       type: 'shape',
       fill: { type: 'linear-gradient', from: '#fed7aa', to: '#f97316', angle: 90 },
@@ -252,7 +257,7 @@ describe('draft migration', () => {
     })
   })
 
-  it('round-trips migrated v2 documents through the strict v3 read path', () => {
+  it('round-trips migrated v2 documents through the strict v4 read path', () => {
     const migrated = normalizeDraftForRead(freeformEnvelope({
       documentVersion: 2,
       activeSlideId: 's1',
@@ -308,7 +313,76 @@ describe('draft migration', () => {
 
     expect(normalized?.mode).toBe('freeform-slide')
     if (normalized?.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(normalized.document).toEqual(document)
+    expect(normalized.document).toEqual({ ...document, documentVersion: 4 })
+  })
+
+  it('preserves owned non-default v4 framing and rejects malformed v4 writes', () => {
+    const imageFraming = { focusX: 0.2, focusY: 0.75, zoom: 2.5 }
+    const fillFraming = { focusX: 0.8, focusY: 0.3, zoom: 3.25 }
+    const document = {
+      documentVersion: 4,
+      activeSlideId: 'slide-1',
+      slides: [strictSlide('slide-1', [{
+        id: 'image-1',
+        name: 'Image',
+        locked: false,
+        hidden: false,
+        type: 'image',
+        x: 0,
+        y: 0,
+        width: 320,
+        height: 180,
+        rotation: 0,
+        scale: 1,
+        src: 'img:photo',
+        alt: 'Photo',
+        fit: 'cover',
+        framing: imageFraming,
+      }, {
+        id: 'shape-1',
+        name: 'Shape',
+        locked: false,
+        hidden: false,
+        type: 'shape',
+        x: 340,
+        y: 0,
+        width: 240,
+        height: 180,
+        rotation: 0,
+        scale: 1,
+        shape: 'rect',
+        fill: {
+          type: 'image',
+          src: 'img:texture',
+          fit: 'contain',
+          framing: fillFraming,
+        },
+        stroke: '#111111',
+        strokeWidth: 0,
+      }])],
+    }
+
+    const normalized = normalizeDraftForRead(freeformEnvelope(document))
+    expect(normalized?.mode).toBe('freeform-slide')
+    if (normalized?.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
+    const normalizedImage = normalized.document.slides[0].nodes[0]
+    const normalizedShape = normalized.document.slides[0].nodes[1]
+    if (
+      normalizedImage.type !== 'image'
+      || normalizedShape.type !== 'shape'
+      || normalizedShape.fill.type !== 'image'
+    ) throw new Error('Expected image-bearing leaves')
+    expect(normalizedImage.framing).toEqual(imageFraming)
+    expect(normalizedImage.framing).not.toBe(imageFraming)
+    expect(normalizedShape.fill.framing).toEqual(fillFraming)
+    expect(normalizedShape.fill.framing).not.toBe(fillFraming)
+
+    const malformed = structuredClone(document)
+    delete (malformed.slides[0].nodes[0] as Record<string, unknown>).framing
+    expect(normalizeDraftForWrite({
+      mode: 'freeform-slide',
+      document: malformed,
+    })).toBeNull()
   })
 
   it.each([

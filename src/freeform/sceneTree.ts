@@ -5,6 +5,7 @@ import {
   MIN_EFFECTIVE_SCALE,
 } from './constants'
 import { isHexColor } from './paint'
+import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
   SCENE_EPSILON,
   groupLocal,
@@ -485,7 +486,12 @@ function copyColorPaint(paint: ColorPaint): ColorPaint {
 
 function copyShapeFill(fill: ShapeFill): ShapeFill {
   return fill.type === 'image'
-    ? { type: 'image', src: fill.src, fit: fill.fit }
+    ? {
+        type: 'image',
+        src: fill.src,
+        fit: fill.fit,
+        framing: cloneImageFraming(fill.framing),
+      }
     : copyColorPaint(fill)
 }
 
@@ -507,7 +513,10 @@ function cloneSceneNode(
     return { ...node, id, textFill: clonePaint(node.textFill) }
   }
   if (node.type === 'shape') {
-    return { ...node, id, fill: clonePaint(node.fill) }
+    return { ...node, id, fill: copyShapeFill(node.fill) }
+  }
+  if (node.type === 'image') {
+    return { ...node, id, framing: cloneImageFraming(node.framing) }
   }
   return { ...node, id }
 }
@@ -565,6 +574,7 @@ function copySceneNodeValue(node: FreeformSceneNode, depth: number): FreeformSce
       src: node.src,
       alt: node.alt,
       fit: node.fit,
+      framing: cloneImageFraming(node.framing),
     }
   }
   if (node.type === 'shape') {
@@ -838,7 +848,7 @@ interface SceneValidationState {
 
 const SOLID_PAINT_KEYS = new Set(['type', 'color'])
 const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
-const IMAGE_FILL_KEYS = new Set(['type', 'src', 'fit'])
+const IMAGE_FILL_KEYS = new Set(['type', 'src', 'fit', 'framing'])
 const GROUP_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'rotation', 'scale', 'children',
 ])
@@ -848,7 +858,7 @@ const TEXT_NODE_KEYS = new Set([
 ])
 const IMAGE_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
-  'scale', 'src', 'alt', 'fit',
+  'scale', 'src', 'alt', 'fit', 'framing',
 ])
 const SHAPE_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
@@ -888,7 +898,8 @@ export function isValidSceneShapeFill(value: unknown): boolean {
     fill.type === 'image' &&
     hasExactKeys(fill, IMAGE_FILL_KEYS) &&
     typeof fill.src === 'string' &&
-    (fill.fit === 'cover' || fill.fit === 'contain')
+    (fill.fit === 'cover' || fill.fit === 'contain') &&
+    isValidImageFraming(fill.framing)
   )
 }
 
@@ -913,7 +924,8 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
       hasExactKeys(record, IMAGE_NODE_KEYS) &&
       typeof node.src === 'string' &&
       typeof node.alt === 'string' &&
-      (node.fit === 'cover' || node.fit === 'contain')
+      (node.fit === 'cover' || node.fit === 'contain') &&
+      isValidImageFraming(node.framing)
     )
   }
   if (node.type === 'shape') {

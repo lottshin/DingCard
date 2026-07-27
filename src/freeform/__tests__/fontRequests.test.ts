@@ -2,14 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   buildFreeformFontCSS,
   collectFreeformFontRequests,
-  collectFreeformFontRequestsV3,
 } from '../fontRequests'
 import type {
   FreeformGroupNode,
   FreeformSceneLeaf,
   FreeformSceneNode,
   FreeformSlide,
-  FreeformSlideV3,
   FreeformTextElement,
 } from '../types'
 
@@ -78,7 +76,7 @@ function hiddenGroup(id: string, children: FreeformSceneNode[]): FreeformGroupNo
   }
 }
 
-function sceneSlide(nodes: FreeformGroupNode[]): FreeformSlideV3 {
+function sceneSlide(nodes: FreeformGroupNode[]): FreeformSlide {
   return {
     id: 'scene-page',
     name: 'Scene page',
@@ -131,8 +129,8 @@ describe('collectFreeformFontRequests', () => {
     expect(builder).toHaveBeenCalledTimes(2)
   })
 
-  it('collects web-font text recursively even below hidden v3 ancestors', () => {
-    const requests = collectFreeformFontRequestsV3([
+  it('collects web-font text recursively even below hidden ancestors', () => {
+    const requests = collectFreeformFontRequests([
       sceneSlide([
         hiddenGroup('outer', [
           hiddenGroup('inner', [

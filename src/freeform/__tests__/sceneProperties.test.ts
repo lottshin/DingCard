@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { MAX_EFFECTIVE_SCALE, MAX_SCENE_DEPTH, MIN_EFFECTIVE_SCALE } from '../constants'
-import { reduceFreeformDocumentV3 } from '../document'
+import { reduceFreeformDocument } from '../document'
 import {
   scenePropertiesForPath,
   scenePropertyMutation,
@@ -99,7 +99,7 @@ function group(
 
 function documentWith(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 3,
+    documentVersion: 4,
     activeSlideId: 'slide',
     slides: [{
       id: 'slide',
@@ -128,12 +128,12 @@ function mutate(
   if (!mutation.update) return { nodes, mutation }
   const document = documentWith(nodes)
   const next = mutation.category === 'geometry'
-    ? reduceFreeformDocumentV3(document, {
+    ? reduceFreeformDocument(document, {
         type: 'node/update-geometry',
         slideId: 'slide',
         updates: [mutation.update],
       })
-    : reduceFreeformDocumentV3(document, {
+    : reduceFreeformDocument(document, {
         type: 'node/update-style',
         slideId: 'slide',
         updates: [mutation.update],
@@ -277,7 +277,7 @@ describe('scene property coordinates', () => {
       text('first', { x: 0, y: 0, scale: 1.25, fontSize: 16 }),
       shape('second', { x: 160, y: 20, scale: 0.75 }),
     ]
-    const groupedDocument = reduceFreeformDocumentV3(documentWith(source), {
+    const groupedDocument = reduceFreeformDocument(documentWith(source), {
       type: 'group/create',
       slideId: 'slide',
       parentPath: [],
@@ -285,7 +285,7 @@ describe('scene property coordinates', () => {
       groupId: 'created-group',
     })
     const grouped = readProperties(groupedDocument.slides[0].nodes, ['created-group', 'first'])
-    const flattenedDocument = reduceFreeformDocumentV3(groupedDocument, {
+    const flattenedDocument = reduceFreeformDocument(groupedDocument, {
       type: 'group/ungroup',
       slideId: 'slide',
       parentPath: [],

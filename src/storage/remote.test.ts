@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SaveDraftInput } from '../drafts'
-import { normalizeFreeformDocumentV3 } from '../freeform/sceneDocument'
-import type { FreeformDocumentV3 } from '../freeform/types'
+import { normalizeFreeformDocumentV4 } from '../freeform/sceneDocument'
+import type { FreeformDocument } from '../freeform/types'
 
 const API_BASE = 'https://api.example'
 const TOKEN_KEY = 'slicer.token.v1'
@@ -45,7 +45,7 @@ function deferred<T>() {
 
 function freeformDocument() {
   return {
-    documentVersion: 3 as const,
+    documentVersion: 4 as const,
     activeSlideId: 'page-1',
     slides: [
       {
@@ -70,6 +70,7 @@ function freeformDocument() {
             src: `${API_BASE}/uploads/existing.png`,
             alt: 'existing',
             fit: 'cover' as const,
+            framing: { focusX: 0.2, focusY: 0.75, zoom: 2.5 },
           },
           {
             id: 'historical-fill',
@@ -84,7 +85,12 @@ function freeformDocument() {
             rotation: 0,
             scale: 1,
             shape: 'rect' as const,
-            fill: { type: 'image' as const, src: INLINE_IMAGE, fit: 'contain' as const },
+            fill: {
+              type: 'image' as const,
+              src: INLINE_IMAGE,
+              fit: 'contain' as const,
+              framing: { focusX: 0.8, focusY: 0.3, zoom: 3.25 },
+            },
             stroke: '#000000',
             strokeWidth: 0,
           },
@@ -94,9 +100,9 @@ function freeformDocument() {
   }
 }
 
-function nestedFreeformDocument(): FreeformDocumentV3 {
+function nestedFreeformDocument(): FreeformDocument {
   return {
-    documentVersion: 3,
+    documentVersion: 4,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -129,6 +135,7 @@ function nestedFreeformDocument(): FreeformDocumentV3 {
           src: `${API_BASE}/uploads/existing.png`,
           alt: 'existing',
           fit: 'cover',
+          framing: { focusX: 0.15, focusY: 0.85, zoom: 2.75 },
         }, {
           id: 'hidden-inner',
           name: 'Hidden inner',
@@ -152,7 +159,12 @@ function nestedFreeformDocument(): FreeformDocumentV3 {
             rotation: 0,
             scale: 1,
             shape: 'rect',
-            fill: { type: 'image', src: INLINE_IMAGE, fit: 'contain' },
+            fill: {
+              type: 'image',
+              src: INLINE_IMAGE,
+              fit: 'contain',
+              framing: { focusX: 0.9, focusY: 0.25, zoom: 3.5 },
+            },
             stroke: '#000000',
             strokeWidth: 0,
           }],
@@ -620,9 +632,28 @@ describe('RemoteStore draft normalization and image retention', () => {
       ['legacy-markdown', 'markdown-card', 2],
       ['freeform-v1', 'freeform-slide', 2],
     ])
-    expect(drafts[1].mode === 'freeform-slide' && drafts[1].document.documentVersion).toBe(3)
+    expect(drafts[1].mode === 'freeform-slide' && drafts[1].document.documentVersion).toBe(4)
     if (drafts[1].mode !== 'freeform-slide') throw new Error('Expected freeform draft')
     expect(drafts[1].document.slides[0].nodes).toEqual([])
+  })
+
+  it('preserves non-default v4 framing returned by the remote draft list', async () => {
+    const document = freeformDocument()
+    fetchMock.mockResolvedValueOnce(jsonResponse([savedFreeformDraft(document)]))
+    const store = await createStore()
+
+    const drafts = await store.drafts.list('user-1')
+
+    expect(drafts).toHaveLength(1)
+    const draft = drafts[0]
+    if (draft.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
+    const image = draft.document.slides[0].nodes[0]
+    const shape = draft.document.slides[0].nodes[1]
+    if (image.type !== 'image' || shape.type !== 'shape' || shape.fill.type !== 'image') {
+      throw new Error('Expected image-bearing leaves')
+    }
+    expect(image.framing).toEqual({ focusX: 0.2, focusY: 0.75, zoom: 2.5 })
+    expect(shape.fill.framing).toEqual({ focusX: 0.8, focusY: 0.3, zoom: 3.25 })
   })
 
   it('rejects an invalid saved draft response instead of returning it to the workspace', async () => {
@@ -635,6 +666,22 @@ describe('RemoteStore draft normalization and image retention', () => {
       mode: 'freeform-slide',
       document,
     }), 200, '服务器返回了无效草稿')
+  })
+
+  it('rejects a complete v4 saved response when image framing is missing', async () => {
+    const input = freeformDocument()
+    input.slides[0].nodes = []
+    const malformed = structuredClone(freeformDocument())
+    const malformedImage = malformed.slides[0].nodes[0]
+    if (malformedImage.type !== 'image') throw new Error('Expected image fixture')
+    delete (malformedImage as Partial<typeof malformedImage>).framing
+    fetchMock.mockResolvedValueOnce(jsonResponse(savedFreeformDraft(malformed)))
+    const store = await createStore()
+
+    await expectApiError(store.drafts.save('user-1', {
+      mode: 'freeform-slide',
+      document: input,
+    }), 200)
   })
 
   it('rejects invalid save input before any remote mutation', async () => {
@@ -701,7 +748,7 @@ describe('RemoteStore draft normalization and image retention', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('migrates a v2 save before serialization and returns strict v3', async () => {
+  it('migrates a v2 save before serialization and returns strict v4', async () => {
     const legacy = {
       documentVersion: 2,
       activeSlideId: 'page-1',
@@ -735,14 +782,14 @@ describe('RemoteStore draft normalization and image retention', () => {
       document: legacy,
     } as unknown as SaveDraftInput)
 
-    expect(submitted?.document).toMatchObject({ documentVersion: 3 })
+    expect(submitted?.document).toMatchObject({ documentVersion: 4 })
     expect(JSON.stringify(submitted?.document)).not.toContain('"elements"')
     expect(saved.mode).toBe('freeform-slide')
     if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(normalizeFreeformDocumentV3(saved.document)).toEqual(saved.document)
+    expect(normalizeFreeformDocumentV4(saved.document)).toEqual(saved.document)
   })
 
-  it('uploads and retains nested hidden v3 image sources atomically', async () => {
+  it('uploads and retains nested hidden v4 image sources atomically', async () => {
     const events: string[] = []
     const retentionBodies: unknown[] = []
     let submitted: Record<string, unknown> | undefined
@@ -795,7 +842,23 @@ describe('RemoteStore draft normalization and image retention', () => {
     expect(JSON.stringify(submitted)).toContain('"hidden":true')
     expect(saved.mode).toBe('freeform-slide')
     if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(normalizeFreeformDocumentV3(saved.document)).toEqual(saved.document)
+    expect(normalizeFreeformDocumentV4(saved.document)).toEqual(saved.document)
+    const savedOuter = saved.document.slides[0].nodes[0]
+    if (savedOuter.type !== 'group') throw new Error('Expected nested group')
+    const savedImage = savedOuter.children[0]
+    const savedInner = savedOuter.children[1]
+    if (
+      savedImage.type !== 'image'
+      || savedInner.type !== 'group'
+      || savedInner.children[0].type !== 'shape'
+      || savedInner.children[0].fill.type !== 'image'
+    ) throw new Error('Expected nested image-bearing leaves')
+    expect(savedImage.framing).toEqual({ focusX: 0.15, focusY: 0.85, zoom: 2.75 })
+    expect(savedInner.children[0].fill.framing).toEqual({
+      focusX: 0.9,
+      focusY: 0.25,
+      zoom: 3.5,
+    })
   })
 
   it('does not request retention for empty or external-only URLs and forwards same-origin candidates once', async () => {
@@ -885,6 +948,13 @@ describe('RemoteStore draft normalization and image retention', () => {
     expect(serialized).not.toContain('data:image/')
     expect(serialized).toContain(`${API_BASE}/uploads/new.png`)
     expect(JSON.stringify(submittedBodies[0])).not.toContain('data:image/')
+    const savedImage = saved.document.slides[0].nodes[0]
+    const savedShape = saved.document.slides[0].nodes[1]
+    if (savedImage.type !== 'image' || savedShape.type !== 'shape' || savedShape.fill.type !== 'image') {
+      throw new Error('Expected image-bearing leaves')
+    }
+    expect(savedImage.framing).toEqual({ focusX: 0.2, focusY: 0.75, zoom: 2.5 })
+    expect(savedShape.fill.framing).toEqual({ focusX: 0.8, focusY: 0.3, zoom: 3.25 })
   })
 
   it.each(['initial-retain', 'upload', 'final-retain'] as const)(

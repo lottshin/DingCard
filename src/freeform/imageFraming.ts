@@ -4,15 +4,12 @@ import {
   transformVector,
 } from './sceneTransform'
 import type { Matrix2D, Point } from './sceneTransform'
+import type { ImageFraming } from './types'
+
+export type { ImageFraming } from './types'
 
 export const MIN_IMAGE_ZOOM = 1
 export const MAX_IMAGE_ZOOM = 4
-
-export interface ImageFraming {
-  focusX: number
-  focusY: number
-  zoom: number
-}
 
 export interface ImageFrameSize {
   width: number

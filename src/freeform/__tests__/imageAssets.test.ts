@@ -2,16 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   collectFreeformImageSources,
-  collectFreeformImageSourcesV3,
   materializeLocalFreeformImages,
-  materializeLocalFreeformImagesV3,
   uploadInlineFreeformImages,
-  uploadInlineFreeformImagesV3,
 } from '../imageAssets'
-import { normalizeFreeformDocumentV3 } from '../sceneDocument'
+import { normalizeFreeformDocumentV4 } from '../sceneDocument'
 import type {
   FreeformDocument,
-  FreeformDocumentV3,
   FreeformElement,
   FreeformGroupNode,
   FreeformImageElement,
@@ -37,6 +33,7 @@ function image(id: string, src: string): FreeformImageElement {
     src,
     alt: id,
     fit: 'cover',
+    framing: { focusX: 0.2, focusY: 0.75, zoom: 2.5 },
   }
 }
 
@@ -54,7 +51,12 @@ function imageShape(id: string, src: string): FreeformShapeElement {
     rotation: 0,
     scale: 1,
     shape: 'rect',
-    fill: { type: 'image', src, fit: 'contain' },
+    fill: {
+      type: 'image',
+      src,
+      fit: 'contain',
+      framing: { focusX: 0.8, focusY: 0.3, zoom: 3.25 },
+    },
     stroke: '#000000',
     strokeWidth: 0,
   }
@@ -72,7 +74,7 @@ function slide(id: string, nodes: FreeformElement[]): FreeformSlide {
 }
 
 function document(...slides: FreeformSlide[]): FreeformDocument {
-  return { documentVersion: 3, activeSlideId: slides[0].id, slides }
+  return { documentVersion: 4, activeSlideId: slides[0].id, slides }
 }
 
 function sceneImage(id: string, src: string): FreeformSceneLeaf {
@@ -108,9 +110,9 @@ function sceneGroup(
   }
 }
 
-function sceneDocument(nodes: FreeformSceneNode[]): FreeformDocumentV3 {
+function sceneDocument(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 3,
+    documentVersion: 4,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -159,8 +161,21 @@ describe('freeform image assets', () => {
     expect(output.slides[0].nodes[1]).not.toBe(input.slides[0].nodes[1])
     const outputShape = output.slides[0].nodes[1]
     const inputShape = input.slides[0].nodes[1]
-    if (outputShape.type !== 'shape' || inputShape.type !== 'shape') throw new Error('Expected shapes')
+    const outputImage = output.slides[0].nodes[0]
+    const inputImage = input.slides[0].nodes[0]
+    if (
+      outputImage.type !== 'image'
+      || inputImage.type !== 'image'
+      || outputShape.type !== 'shape'
+      || inputShape.type !== 'shape'
+      || outputShape.fill.type !== 'image'
+      || inputShape.fill.type !== 'image'
+    ) throw new Error('Expected image-bearing leaves')
+    expect(outputImage.framing).toEqual({ focusX: 0.2, focusY: 0.75, zoom: 2.5 })
+    expect(outputImage.framing).not.toBe(inputImage.framing)
     expect(outputShape.fill).not.toBe(inputShape.fill)
+    expect(outputShape.fill.framing).toEqual({ focusX: 0.8, focusY: 0.3, zoom: 3.25 })
+    expect(outputShape.fill.framing).not.toBe(inputShape.fill.framing)
     expect(collectFreeformImageSources(output)).toEqual([
       'data:image/png;base64,photo',
       'data:image/webp;base64,fill',
@@ -216,6 +231,22 @@ describe('freeform image assets', () => {
       '/uploads/uploaded.png',
       '/uploads/already.png',
     ])
+    const outputImage = output.slides[0].nodes[0]
+    const inputImage = input.slides[0].nodes[0]
+    const outputShape = output.slides[0].nodes[1]
+    const inputShape = input.slides[0].nodes[1]
+    if (
+      outputImage.type !== 'image'
+      || inputImage.type !== 'image'
+      || outputShape.type !== 'shape'
+      || inputShape.type !== 'shape'
+      || outputShape.fill.type !== 'image'
+      || inputShape.fill.type !== 'image'
+    ) throw new Error('Expected image-bearing leaves')
+    expect(outputImage.framing).toEqual(inputImage.framing)
+    expect(outputImage.framing).not.toBe(inputImage.framing)
+    expect(outputShape.fill.framing).toEqual(inputShape.fill.framing)
+    expect(outputShape.fill.framing).not.toBe(inputShape.fill.framing)
     expect(input).toEqual(snapshot)
   })
 
@@ -268,7 +299,7 @@ describe('freeform image assets', () => {
     expect(upload).not.toHaveBeenCalled()
   })
 
-  it('collects and materializes hidden image sources recursively in v3 without mutating the source', () => {
+  it('collects and materializes hidden image sources recursively without mutating the source', () => {
     const input = sceneDocument([
       sceneGroup('outer', [
         sceneImage('photo', 'img:photo'),
@@ -281,25 +312,25 @@ describe('freeform image assets', () => {
       ['img:texture', 'data:image/webp;base64,texture'],
     ])
 
-    expect(collectFreeformImageSourcesV3(input)).toEqual(['img:photo', 'img:texture'])
+    expect(collectFreeformImageSources(input)).toEqual(['img:photo', 'img:texture'])
 
-    const output = materializeLocalFreeformImagesV3(input, {
+    const output = materializeLocalFreeformImages(input, {
       isRef: (src) => src.startsWith('img:'),
       resolve: (src) => resolved.get(src) ?? '',
     })
 
-    expect(collectFreeformImageSourcesV3(output)).toEqual([
+    expect(collectFreeformImageSources(output)).toEqual([
       'data:image/png;base64,photo',
       'data:image/webp;base64,texture',
     ])
     expect(output).not.toBe(input)
     expect(output.slides[0]).not.toBe(input.slides[0])
     expect(output.slides[0].nodes[0]).not.toBe(input.slides[0].nodes[0])
-    expect(normalizeFreeformDocumentV3(output)).toEqual(output)
+    expect(normalizeFreeformDocumentV4(output)).toEqual(output)
     expect(input).toEqual(snapshot)
   })
 
-  it('throws the stable materialization error for an unresolved nested v3 ref without mutating the source', () => {
+  it('throws the stable materialization error for an unresolved nested ref without mutating the source', () => {
     const input = sceneDocument([
       sceneGroup('outer', [
         sceneGroup('inner', [sceneImageShape('missing', 'img:missing')], true),
@@ -307,14 +338,14 @@ describe('freeform image assets', () => {
     ])
     const snapshot = structuredClone(input)
 
-    expect(() => materializeLocalFreeformImagesV3(input, {
+    expect(() => materializeLocalFreeformImages(input, {
       isRef: (src) => src.startsWith('img:'),
       resolve: () => '',
     })).toThrow('本地图片引用无法解析：img:missing')
     expect(input).toEqual(snapshot)
   })
 
-  it('uploads duplicate inline v3 sources once and returns a strict-readable owned document', async () => {
+  it('uploads duplicate inline sources once and returns a strict-readable owned document', async () => {
     const inline = 'data:image/png;base64,shared'
     const input = sceneDocument([
       sceneGroup('outer', [
@@ -325,16 +356,16 @@ describe('freeform image assets', () => {
     const snapshot = structuredClone(input)
     const upload = vi.fn(async () => '/uploads/shared.png')
 
-    const output = await uploadInlineFreeformImagesV3(input, upload)
+    const output = await uploadInlineFreeformImages(input, upload)
 
     expect(upload).toHaveBeenCalledTimes(1)
     expect(upload).toHaveBeenCalledWith(inline)
-    expect(collectFreeformImageSourcesV3(output)).toEqual(['/uploads/shared.png'])
-    expect(normalizeFreeformDocumentV3(output)).toEqual(output)
+    expect(collectFreeformImageSources(output)).toEqual(['/uploads/shared.png'])
+    expect(normalizeFreeformDocumentV4(output)).toEqual(output)
     expect(input).toEqual(snapshot)
   })
 
-  it('recursively preflights v3 img refs before starting any inline upload', async () => {
+  it('recursively preflights img refs before starting any inline upload', async () => {
     const input = sceneDocument([
       sceneGroup('outer', [
         sceneImage('inline', 'data:image/png;base64,would-upload'),
@@ -343,7 +374,7 @@ describe('freeform image assets', () => {
     ])
     const upload = vi.fn<(dataUrl: string) => Promise<string>>()
 
-    await expect(uploadInlineFreeformImagesV3(input, upload)).rejects.toThrow(
+    await expect(uploadInlineFreeformImages(input, upload)).rejects.toThrow(
       '远程保存不支持本地图片引用：img:local-only',
     )
     expect(upload).not.toHaveBeenCalled()
@@ -352,19 +383,19 @@ describe('freeform image assets', () => {
   it.each([
     ['empty', ''],
     ['whitespace', '   '],
-  ])('rejects an %s v3 upload result without mutating the source', async (_label, result) => {
+  ])('rejects an %s upload result without mutating the source', async (_label, result) => {
     const input = sceneDocument([
       sceneGroup('outer', [sceneImage('photo', 'data:image/png;base64,invalid')], true),
     ])
     const snapshot = structuredClone(input)
 
     await expect(
-      uploadInlineFreeformImagesV3(input, async () => result),
+      uploadInlineFreeformImages(input, async () => result),
     ).rejects.toThrow('图片上传未返回有效地址')
     expect(input).toEqual(snapshot)
   })
 
-  it('leaves non-image data and URL v3 sources unchanged without calling upload', async () => {
+  it('leaves non-image data and URL sources unchanged without calling upload', async () => {
     const sources = [
       'data:text/plain;base64,dGV4dA==',
       '/uploads/relative.png',
@@ -377,15 +408,15 @@ describe('freeform image assets', () => {
     const snapshot = structuredClone(input)
     const upload = vi.fn<(dataUrl: string) => Promise<string>>()
 
-    const output = await uploadInlineFreeformImagesV3(input, upload)
+    const output = await uploadInlineFreeformImages(input, upload)
 
-    expect(collectFreeformImageSourcesV3(output)).toEqual(sources)
+    expect(collectFreeformImageSources(output)).toEqual(sources)
     expect(upload).not.toHaveBeenCalled()
-    expect(normalizeFreeformDocumentV3(output)).toEqual(output)
+    expect(normalizeFreeformDocumentV4(output)).toEqual(output)
     expect(input).toEqual(snapshot)
   })
 
-  it('rejects a failed recursive v3 upload without exposing a partial document or mutating the source', async () => {
+  it('rejects a failed recursive upload without exposing a partial document or mutating the source', async () => {
     const first = 'data:image/png;base64,first'
     const failing = 'data:image/png;base64,failing'
     const input = sceneDocument([
@@ -395,14 +426,14 @@ describe('freeform image assets', () => {
       ], true),
     ])
     const snapshot = structuredClone(input)
-    let exposed: FreeformDocumentV3 | undefined
+    let exposed: FreeformDocument | undefined
     const upload = vi.fn(async (source: string) => {
       if (source === failing) throw new Error('upload failed')
       return '/uploads/first.png'
     })
 
     await expect(
-      uploadInlineFreeformImagesV3(input, upload).then((output) => {
+      uploadInlineFreeformImages(input, upload).then((output) => {
         exposed = output
         return output
       }),
@@ -410,6 +441,6 @@ describe('freeform image assets', () => {
 
     expect(exposed).toBeUndefined()
     expect(input).toEqual(snapshot)
-    expect(collectFreeformImageSourcesV3(input)).toEqual([first, failing])
+    expect(collectFreeformImageSources(input)).toEqual([first, failing])
   })
 })

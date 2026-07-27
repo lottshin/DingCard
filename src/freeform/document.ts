@@ -10,6 +10,12 @@ import {
   DEFAULT_TEXT_PAINT,
 } from './paint'
 import {
+  cloneImageFraming,
+  createDefaultImageFraming,
+  imageFramingEquals,
+  isValidImageFraming,
+} from './imageFraming'
+import {
   buildScenePathIndex,
   canApplySceneAction,
   cloneSceneNodes,
@@ -32,9 +38,7 @@ import {
 import type {
   ColorPaint,
   FreeformAction,
-  FreeformActionV3,
   FreeformDocument,
-  FreeformDocumentV3,
   FreeformElement,
   FreeformImageElement,
   FreeformLineElement,
@@ -45,8 +49,8 @@ import type {
   FreeformSceneNode,
   FreeformShapeElement,
   FreeformSlide,
-  FreeformSlideV3,
   FreeformTextElement,
+  ImageFraming,
   ScenePath,
   ShapeFill,
   SlideBackground,
@@ -94,7 +98,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 3,
+    documentVersion: 4,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -145,6 +149,7 @@ export function createImageElement(
     src,
     alt,
     fit: 'cover',
+    framing: createDefaultImageFraming(),
   }
 }
 
@@ -236,8 +241,24 @@ function cloneColorPaint(paint: ColorPaint): ColorPaint {
 
 function cloneShapeFill(fill: ShapeFill): ShapeFill {
   return fill.type === 'image'
-    ? { type: 'image', src: fill.src, fit: fill.fit }
+    ? {
+        type: 'image',
+        src: fill.src,
+        fit: fill.fit,
+        framing: cloneImageFraming(fill.framing),
+      }
     : cloneColorPaint(fill)
+}
+
+function shapeFillEquals(left: ShapeFill, right: ShapeFill): boolean {
+  if (left === right) return true
+  if (left.type !== right.type) return false
+  if (left.type === 'image' && right.type === 'image') {
+    return left.src === right.src
+      && left.fit === right.fit
+      && imageFramingEquals(left.framing, right.framing)
+  }
+  return paintEquals(left, right)
 }
 
 function cloneSlideBackground(background: SlideBackground): SlideBackground {
@@ -253,11 +274,11 @@ function validSlideBackground(value: unknown): value is SlideBackground {
   return isValidSceneColorPaint(value)
 }
 
-function withSlideV3(
-  document: FreeformDocumentV3,
+function withSlide(
+  document: FreeformDocument,
   slideId: string,
-  update: (slide: FreeformSlideV3) => FreeformSlideV3,
-): FreeformDocumentV3 {
+  update: (slide: FreeformSlide) => FreeformSlide,
+): FreeformDocument {
   const index = document.slides.findIndex((slide) => slide.id === slideId)
   if (index < 0) return document
   const slide = document.slides[index]
@@ -268,12 +289,12 @@ function withSlideV3(
   return { ...document, slides }
 }
 
-function withSlideNodesV3(
-  document: FreeformDocumentV3,
+function withSlideNodes(
+  document: FreeformDocument,
   slideId: string,
   update: (nodes: FreeformSceneNode[]) => FreeformSceneNode[],
-): FreeformDocumentV3 {
-  return withSlideV3(document, slideId, (slide) => {
+): FreeformDocument {
+  return withSlide(document, slideId, (slide) => {
     const nodes = update(slide.nodes)
     return nodes === slide.nodes ? slide : { ...slide, nodes }
   })
@@ -298,6 +319,7 @@ const STYLE_KEYS = new Set([
   'align',
   'fontWeight',
   'fit',
+  'framing',
   'shape',
   'fill',
   'stroke',
@@ -334,9 +356,17 @@ function applyContentPatch(
     }
     const src = 'src' in record ? (record.src as string) : node.src
     const alt = 'alt' in record ? (record.alt as string) : node.alt
+    const sourceChanged = src !== node.src
     return {
       ok: true,
-      node: src === node.src && alt === node.alt ? node : { ...node, src, alt },
+      node: !sourceChanged && alt === node.alt
+        ? node
+        : {
+            ...node,
+            src,
+            alt,
+            framing: sourceChanged ? createDefaultImageFraming() : node.framing,
+          },
     }
   }
   return { ok: false, node }
@@ -374,9 +404,30 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'image') {
-    if (keys.some((key) => key !== 'fit')) return { ok: false, node }
-    const next = { ...node, fit: patch.fit as typeof node.fit }
-    return { ok: true, node: next.fit === node.fit ? node : next }
+    if (keys.some((key) => key !== 'fit' && key !== 'framing')) {
+      return { ok: false, node }
+    }
+    if (
+      ('fit' in patch && patch.fit !== 'cover' && patch.fit !== 'contain')
+      || ('framing' in patch && !isValidImageFraming(patch.framing))
+    ) {
+      return { ok: false, node }
+    }
+    const fit = 'fit' in patch ? patch.fit as typeof node.fit : node.fit
+    const framing = 'framing' in patch
+      ? patch.framing as ImageFraming
+      : node.framing
+    if (fit === node.fit && imageFramingEquals(framing, node.framing)) {
+      return { ok: true, node }
+    }
+    return {
+      ok: true,
+      node: {
+        ...node,
+        fit,
+        framing: 'framing' in patch ? cloneImageFraming(framing) : node.framing,
+      },
+    }
   }
   if (node.type === 'shape') {
     const allowed = new Set(['shape', 'fill', 'stroke', 'strokeWidth'])
@@ -384,16 +435,39 @@ function applyStylePatch(
     if ('fill' in patch && !isValidSceneShapeFill(patch.fill)) {
       return { ok: false, node }
     }
+    let fill = node.fill
+    if ('fill' in patch) {
+      const incoming = patch.fill as ShapeFill
+      if (incoming.type !== 'image') {
+        fill = cloneShapeFill(incoming)
+      } else if (node.fill.type !== 'image') {
+        fill = {
+          type: 'image',
+          src: incoming.src,
+          fit: 'cover',
+          framing: createDefaultImageFraming(),
+        }
+      } else if (incoming.src !== node.fill.src) {
+        fill = {
+          type: 'image',
+          src: incoming.src,
+          fit: node.fill.fit,
+          framing: createDefaultImageFraming(),
+        }
+      } else {
+        fill = cloneShapeFill(incoming)
+      }
+    }
     const next = {
       ...node,
       ...('shape' in patch ? { shape: patch.shape as typeof node.shape } : {}),
-      ...('fill' in patch ? { fill: cloneShapeFill(patch.fill as ShapeFill) } : {}),
+      ...('fill' in patch ? { fill } : {}),
       ...('stroke' in patch ? { stroke: patch.stroke as string } : {}),
       ...('strokeWidth' in patch ? { strokeWidth: patch.strokeWidth as number } : {}),
     }
     const same = keys.every((key) =>
       key === 'fill'
-        ? paintEquals(node.fill, next.fill)
+        ? shapeFillEquals(node.fill, next.fill)
         : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
     )
     return { ok: true, node: same ? node : next }
@@ -457,11 +531,11 @@ function applyGeometryPatch(
 type NodeUpdateCategory = 'content' | 'style' | 'geometry'
 
 function reduceNodeUpdateBatch(
-  document: FreeformDocumentV3,
+  document: FreeformDocument,
   slideId: string,
   category: NodeUpdateCategory,
   updates: unknown,
-): FreeformDocumentV3 {
+): FreeformDocument {
   const slide = document.slides.find((candidate) => candidate.id === slideId)
   if (!slide || !Array.isArray(updates) || updates.length === 0) return document
 
@@ -522,7 +596,7 @@ function reduceNodeUpdateBatch(
   })
   if (!nodes || invalidPatch || nodes === slide.nodes) return document
   if (validateSceneNodesForMutation(nodes)) return document
-  return withSlideNodesV3(document, slideId, () => nodes)
+  return withSlideNodes(document, slideId, () => nodes)
 }
 
 function defaultSceneNodeName(element: FreeformElement): string {
@@ -557,7 +631,7 @@ function adaptLegacyElement(element: unknown): FreeformSceneLeaf | null {
       'align',
       'fontWeight',
     ],
-    image: ['src', 'alt', 'fit'],
+    image: ['src', 'alt', 'fit', 'framing'],
     shape: ['shape', 'fill', 'stroke', 'strokeWidth'],
     line: ['lineKind', 'stroke', 'strokeWidth'],
   }
@@ -592,12 +666,14 @@ function adaptLegacyElement(element: unknown): FreeformSceneLeaf | null {
     }
   }
   if (element.type === 'image') {
+    if (!isValidImageFraming(element.framing)) return null
     return {
       ...base,
       type: 'image',
       src: element.src as string,
       alt: element.alt as string,
       fit: element.fit as 'cover' | 'contain',
+      framing: cloneImageFraming(element.framing),
     }
   }
   if (element.type === 'shape') {
@@ -639,7 +715,9 @@ function applyLegacyElementPatch(
   if (node.type === 'group' || !isRecord(patch)) return { ok: false, node }
   const allowedByType: Record<FreeformSceneLeaf['type'], ReadonlySet<string>> = {
     text: new Set(['x', 'y', 'width', 'height', 'rotation', 'text', 'fontSize', 'fontFamily', 'textFill', 'align', 'fontWeight']),
-    image: new Set(['x', 'y', 'width', 'height', 'rotation', 'src', 'alt', 'fit']),
+    image: new Set([
+      'x', 'y', 'width', 'height', 'rotation', 'src', 'alt', 'fit', 'framing',
+    ]),
     shape: new Set(['x', 'y', 'width', 'height', 'rotation', 'shape', 'fill', 'stroke', 'strokeWidth']),
     line: new Set(['x', 'y', 'width', 'height', 'rotation', 'lineKind', 'stroke', 'strokeWidth']),
   }
@@ -677,24 +755,24 @@ function validIdList(value: unknown): value is string[] {
 }
 
 function applyMutationToSlide(
-  document: FreeformDocumentV3,
+  document: FreeformDocument,
   slideId: string,
   mutation: { ok: true; nodes: FreeformSceneNode[] } | { ok: false },
-): FreeformDocumentV3 {
+): FreeformDocument {
   return mutation.ok
-    ? withSlideNodesV3(document, slideId, () => mutation.nodes)
+    ? withSlideNodes(document, slideId, () => mutation.nodes)
     : document
 }
 
 /**
- * Final v3 reducer boundary. Every accepted node mutation passes
+ * Current reducer boundary. Every accepted node mutation passes
  * typed permission classification, runtime patch whitelists, and complete
  * scene validation before a new document snapshot is returned.
  */
-export function reduceFreeformDocumentV3(
-  document: FreeformDocumentV3,
-  action: FreeformActionV3,
-): FreeformDocumentV3 {
+export function reduceFreeformDocument(
+  document: FreeformDocument,
+  action: FreeformAction,
+): FreeformDocument {
   try {
     switch (action.type) {
       case 'slide/add-after-active': {
@@ -712,7 +790,7 @@ export function reduceFreeformDocumentV3(
           return document
         }
         const active = document.slides[activeIndex]
-        const nextSlide: FreeformSlideV3 = {
+        const nextSlide: FreeformSlide = {
           id,
           name: `Page ${document.slides.length + 1}`,
           width: active.width,
@@ -752,7 +830,7 @@ export function reduceFreeformDocumentV3(
         ) {
           return document
         }
-        const duplicate: FreeformSlideV3 = {
+        const duplicate: FreeformSlide = {
           ...source,
           id,
           name: `${source.name} copy`,
@@ -799,7 +877,7 @@ export function reduceFreeformDocumentV3(
         if ('background' in action.patch && !validSlideBackground(action.patch.background)) {
           return document
         }
-        return withSlideV3(document, action.slideId, (slide) => {
+        return withSlide(document, action.slideId, (slide) => {
           const name = action.patch.name ?? slide.name
           const background = action.patch.background ?? slide.background
           if (name === slide.name && paintEquals(background, slide.background)) return slide
@@ -812,7 +890,7 @@ export function reduceFreeformDocumentV3(
       }
       case 'slide/resize': {
         if (!validatePageSize(action.width, action.height).ok) return document
-        return withSlideV3(document, action.slideId, (slide) =>
+        return withSlide(document, action.slideId, (slide) =>
           slide.width === action.width && slide.height === action.height
             ? slide
             : { ...slide, width: action.width, height: action.height },
@@ -833,7 +911,7 @@ export function reduceFreeformDocumentV3(
         if (!slide || !canApplySceneAction(slide.nodes, { kind: 'metadata', paths: [action.path] })) {
           return document
         }
-        return withSlideNodesV3(document, action.slideId, (nodes) =>
+        return withSlideNodes(document, action.slideId, (nodes) =>
           updateNodeAtPath(nodes, action.path, (node) => {
             if (action.type === 'node/set-locked') {
               return node.locked === action.locked ? node : { ...node, locked: action.locked }
@@ -893,7 +971,7 @@ export function reduceFreeformDocumentV3(
           action.direction,
         )
         if (nodes === slide.nodes || validateSceneNodesForMutation(nodes)) return document
-        return withSlideNodesV3(document, action.slideId, () => nodes)
+        return withSlideNodes(document, action.slideId, () => nodes)
       }
       case 'node/reorder-above': {
         if (
@@ -929,7 +1007,7 @@ export function reduceFreeformDocumentV3(
           action.targetNodeId,
         )
         if (nodes === slide.nodes || validateSceneNodesForMutation(nodes)) return document
-        return withSlideNodesV3(document, action.slideId, () => nodes)
+        return withSlideNodes(document, action.slideId, () => nodes)
       }
       case 'node/clone': {
         if (!validContainerPath(action.parentPath) || !validIdList(action.nodeIds)) return document
@@ -1020,7 +1098,7 @@ export function reduceFreeformDocumentV3(
         if (!patched.ok || patched.node === node) return document
         const nodes = updateNodeAtPath(slide.nodes, [node.id], () => patched.node)
         if (validateSceneNodesForMutation(nodes)) return document
-        return withSlideNodesV3(document, action.slideId, () => nodes)
+        return withSlideNodes(document, action.slideId, () => nodes)
       }
       case 'element/delete': {
         if (!validIdList(action.elementIds)) return document
@@ -1034,7 +1112,7 @@ export function reduceFreeformDocumentV3(
           : document
       }
       case 'element/reorder': {
-        return reduceFreeformDocumentV3(document, {
+        return reduceFreeformDocument(document, {
           type: 'node/reorder',
           slideId: action.slideId,
           parentPath: [],
@@ -1050,10 +1128,12 @@ export function reduceFreeformDocumentV3(
   }
 }
 
-/** Shipping reducer alias: the runtime document is v3 from this task onward. */
+/** Shipping reducer alias. */
 export function freeformReducer(
   document: FreeformDocument,
   action: FreeformAction,
 ): FreeformDocument {
-  return reduceFreeformDocumentV3(document, action)
+  return reduceFreeformDocument(document, action)
 }
+
+/** @deprecated Use reduceFreeformDocument. */

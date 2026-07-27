@@ -1,7 +1,13 @@
 export interface FreeformDocument {
-  documentVersion: 3
+  documentVersion: 4
   slides: FreeformSlide[]
   activeSlideId: string
+}
+
+export interface ImageFraming {
+  focusX: number
+  focusY: number
+  zoom: number
 }
 
 export interface FreeformSlide {
@@ -54,6 +60,7 @@ export interface FreeformImageElement extends FreeformElementBase {
   src: string
   alt: string
   fit: 'cover' | 'contain'
+  framing: ImageFraming
 }
 
 export interface FreeformShapeElement extends FreeformElementBase {
@@ -97,10 +104,6 @@ export interface FreeformGroupNode extends SceneNodeState {
 
 export type FreeformSceneNode = FreeformSceneLeaf | FreeformGroupNode
 
-/** Compatibility aliases retained for code written during the additive v3 phase. */
-export type FreeformSlideV3 = FreeformSlide
-export type FreeformDocumentV3 = FreeformDocument
-
 export type SceneIdFactory = () => string
 
 export interface FreeformNodeContentPatch {
@@ -116,6 +119,7 @@ export interface FreeformNodeStylePatch {
   align?: 'left' | 'center' | 'right'
   fontWeight?: 'normal' | 'bold'
   fit?: 'cover' | 'contain'
+  framing?: ImageFraming
   shape?: 'rect' | 'ellipse' | 'triangle'
   fill?: ShapeFill
   stroke?: string
@@ -147,8 +151,8 @@ export interface FreeformNodeGeometryUpdate {
   patch: FreeformNodeGeometryPatch
 }
 
-/** Path-based action model for the shipping recursive v3 scene runtime. */
-export type FreeformActionV3 =
+/** Path-based action model for the current recursive scene runtime. */
+export type FreeformAction =
   | { type: 'slide/add-after-active'; slideId?: string }
   | {
       type: 'slide/duplicate'
@@ -161,7 +165,7 @@ export type FreeformActionV3 =
   | {
       type: 'slide/update'
       slideId: string
-      patch: Partial<Pick<FreeformSlideV3, 'name' | 'background'>>
+      patch: Partial<Pick<FreeformSlide, 'name' | 'background'>>
     }
   | { type: 'slide/resize'; slideId: string; width: number; height: number }
   | { type: 'node/set-locked'; slideId: string; path: ScenePath; locked: boolean }
@@ -235,6 +239,4 @@ export type FreeformActionV3 =
 
 export type ShapeFill =
   | ColorPaint
-  | { type: 'image'; src: string; fit: 'cover' | 'contain' }
-
-export type FreeformAction = FreeformActionV3
+  | { type: 'image'; src: string; fit: 'cover' | 'contain'; framing: ImageFraming }
