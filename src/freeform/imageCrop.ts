@@ -15,6 +15,7 @@ import {
   transformVector,
   translation,
 } from './sceneTransform'
+import { validateSceneNodesForMutation } from './sceneTree'
 import type { ImageFrameSize } from './imageFraming'
 import type { Matrix2D, Point } from './sceneTransform'
 import type { FreeformImageElement, ImageFraming } from './types'
@@ -76,26 +77,41 @@ export interface ApplyImageCropAspectRatioInput extends CreateImageCropDraftInpu
   minimumFrameSize: ImageFrameSize
 }
 
+const IMAGE_CROP_HANDLES = new Set<ImageCropHandle>([
+  'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw',
+])
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function isPositiveSize(size: ImageFrameSize): boolean {
-  return isFiniteNumber(size?.width) && size.width > 0
-    && isFiniteNumber(size?.height) && size.height > 0
+function isPositiveSize(size: unknown): size is ImageFrameSize {
+  return isRecord(size)
+    && isFiniteNumber(size.width) && size.width > 0
+    && isFiniteNumber(size.height) && size.height > 0
 }
 
-function isFinitePoint(point: Point): boolean {
-  return isFiniteNumber(point?.x) && isFiniteNumber(point?.y)
+function isFinitePoint(point: unknown): point is Point {
+  return isRecord(point) && isFiniteNumber(point.x) && isFiniteNumber(point.y)
 }
 
-function isCropBounds(bounds: ImageCropBounds): boolean {
-  return isFiniteNumber(bounds?.left)
-    && isFiniteNumber(bounds?.top)
-    && isFiniteNumber(bounds?.right)
-    && isFiniteNumber(bounds?.bottom)
-    && bounds.right > bounds.left
-    && bounds.bottom > bounds.top
+function isCropBounds(bounds: unknown): bounds is ImageCropBounds {
+  if (
+    !isRecord(bounds)
+    || !isFiniteNumber(bounds.left)
+    || !isFiniteNumber(bounds.top)
+    || !isFiniteNumber(bounds.right)
+    || !isFiniteNumber(bounds.bottom)
+  ) {
+    return false
+  }
+  const width = bounds.right - bounds.left
+  const height = bounds.bottom - bounds.top
+  return isFiniteNumber(width) && width > 0 && isFiniteNumber(height) && height > 0
 }
 
 function boundsWidth(bounds: ImageCropBounds): number {
@@ -122,30 +138,35 @@ function normalizeClosedRange(value: number, minimum: number, maximum: number): 
   return Math.min(maximum, Math.max(minimum, value))
 }
 
-function validStartNode(node: FreeformImageElement): boolean {
+function validStartNode(node: unknown): node is FreeformImageElement {
   if (
-    node === null
-    || typeof node !== 'object'
+    !isRecord(node)
     || node.type !== 'image'
     || node.fit !== 'cover'
-    || !isPositiveSize(node)
-    || !isValidImageFraming(node.framing)
   ) {
     return false
   }
-
-  try {
-    sceneNodeLocalMatrix(node)
-    return true
-  } catch {
-    return false
-  }
+  return validateSceneNodesForMutation([node as unknown as FreeformImageElement]) === null
 }
 
-export function createImageCropDraft({
-  startNode,
-  naturalSize,
-}: CreateImageCropDraftInput): ImageCropDraft | null {
+function isImageCropDraft(value: unknown): value is ImageCropDraft {
+  return isRecord(value)
+    && isCropBounds(value.frame)
+    && isCropBounds(value.image)
+    && isValidImageFraming(value.framing)
+}
+
+function isImageCropHandle(value: unknown): value is ImageCropHandle {
+  return typeof value === 'string' && IMAGE_CROP_HANDLES.has(value as ImageCropHandle)
+}
+
+function draftFallback(value: unknown): ImageCropDraft {
+  return value as ImageCropDraft
+}
+
+export function createImageCropDraft(input: CreateImageCropDraftInput): ImageCropDraft | null {
+  if (!isRecord(input)) return null
+  const { startNode, naturalSize } = input as unknown as CreateImageCropDraftInput
   if (!validStartNode(startNode) || !isPositiveSize(naturalSize)) return null
   const geometry = calculateFramedImageGeometry({
     naturalSize,
@@ -175,19 +196,15 @@ export function createImageCropDraft({
   }
 }
 
-export function imageCropDraftToUpdate({
-  startNode,
-  naturalSize,
-  draft,
-}: ImageCropDraftToUpdateInput): ImageCropNodeUpdate | null {
+export function imageCropDraftToUpdate(
+  input: ImageCropDraftToUpdateInput,
+): ImageCropNodeUpdate | null {
+  if (!isRecord(input)) return null
+  const { startNode, naturalSize, draft } = input as unknown as ImageCropDraftToUpdateInput
   if (
     !validStartNode(startNode)
     || !isPositiveSize(naturalSize)
-    || draft === null
-    || typeof draft !== 'object'
-    || !isCropBounds(draft.frame)
-    || !isCropBounds(draft.image)
-    || !isValidImageFraming(draft.framing)
+    || !isImageCropDraft(draft)
   ) {
     return null
   }
@@ -402,9 +419,7 @@ function cropPathBreakpoints(
   const rawDominance = rawWidth / naturalSize.width - rawHeight / naturalSize.height
   addProgressAtTarget(progress, startDominance, rawDominance, 0)
 
-  return progress
-    .sort((left, right) => left - right)
-    .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 1e-12)
+  return [...new Set(progress)].sort((left, right) => left - right)
 }
 
 function lastLegalProgress(
@@ -446,24 +461,31 @@ function lastLegalProgress(
   return last
 }
 
-export function projectImageCropHandle({
-  startNode,
-  naturalSize,
-  startDraft,
-  handle,
-  localDelta,
-  minimumFrameSize,
-  symmetric = false,
-}: ProjectImageCropHandleInput): ImageCropDraft {
+export function projectImageCropHandle(input: ProjectImageCropHandleInput): ImageCropDraft {
+  const startDraft = isRecord(input) ? input.startDraft : null
+  if (!isRecord(input)) return draftFallback(startDraft)
+  const {
+    startNode,
+    naturalSize,
+    handle,
+    localDelta,
+    minimumFrameSize,
+    symmetric = false,
+  } = input as unknown as ProjectImageCropHandleInput
   if (
-    !isFinitePoint(localDelta)
+    !validStartNode(startNode)
+    || !isPositiveSize(naturalSize)
+    || !isImageCropDraft(startDraft)
+    || !isImageCropHandle(handle)
+    || !isFinitePoint(localDelta)
     || !isPositiveSize(minimumFrameSize)
+    || typeof symmetric !== 'boolean'
     || (localDelta.x === 0 && localDelta.y === 0)
   ) {
-    return startDraft
+    return draftFallback(startDraft)
   }
   const raw = rawFrameForHandle(startDraft.frame, handle, localDelta, symmetric)
-  if (!raw) return startDraft
+  if (!raw) return draftFallback(startDraft)
   const breakpoints = cropPathBreakpoints(
     startDraft.frame,
     raw,
@@ -483,11 +505,10 @@ export function projectImageCropHandle({
   return projected.candidate
 }
 
-export function imageCropLocalDeltaFromScreen({
-  screenDelta,
-  renderScale,
-  startWorldMatrix,
-}: ImageCropScreenTransformInput): Point | null {
+export function imageCropLocalDeltaFromScreen(input: ImageCropScreenTransformInput): Point | null {
+  if (!isRecord(input)) return null
+  const transformInput = input as unknown as ImageCropScreenTransformInput
+  const { screenDelta, renderScale, startWorldMatrix } = transformInput
   if (!isFinitePoint(screenDelta) || !isFiniteNumber(renderScale) || renderScale <= 0) return null
   try {
     const inverse = invert(startWorldMatrix)
@@ -502,10 +523,14 @@ export function imageCropLocalDeltaFromScreen({
   }
 }
 
-export function imageCropScreenScale({
-  renderScale,
-  startWorldMatrix,
-}: Pick<ImageCropScreenTransformInput, 'renderScale' | 'startWorldMatrix'>): number | null {
+export function imageCropScreenScale(
+  input: Pick<ImageCropScreenTransformInput, 'renderScale' | 'startWorldMatrix'>,
+): number | null {
+  if (!isRecord(input)) return null
+  const { renderScale, startWorldMatrix } = input as unknown as Pick<
+    ImageCropScreenTransformInput,
+    'renderScale' | 'startWorldMatrix'
+  >
   if (!isFiniteNumber(renderScale) || renderScale <= 0) return null
   try {
     const transform = decomposeSimilarity(startWorldMatrix)
@@ -517,23 +542,19 @@ export function imageCropScreenScale({
   }
 }
 
-export function panImageCropDraft({
-  draft,
-  localDelta,
-}: PanImageCropDraftInput): ImageCropDraft {
+export function panImageCropDraft(input: PanImageCropDraftInput): ImageCropDraft {
+  const draft = isRecord(input) ? input.draft : null
+  if (!isRecord(input)) return draftFallback(draft)
+  const { localDelta } = input as unknown as PanImageCropDraftInput
   if (
     !isFinitePoint(localDelta)
-    || draft === null
-    || typeof draft !== 'object'
-    || !isCropBounds(draft.frame)
-    || !isCropBounds(draft.image)
-    || !isValidImageFraming(draft.framing)
+    || !isImageCropDraft(draft)
     || draft.frame.left < draft.image.left - SCENE_EPSILON
     || draft.frame.top < draft.image.top - SCENE_EPSILON
     || draft.frame.right > draft.image.right + SCENE_EPSILON
     || draft.frame.bottom > draft.image.bottom + SCENE_EPSILON
   ) {
-    return draft
+    return draftFallback(draft)
   }
 
   const imageWidth = boundsWidth(draft.image)
@@ -583,19 +604,28 @@ export function panImageCropDraft({
   }
 }
 
-export function applyImageCropAspectRatio({
-  startNode,
-  naturalSize,
-  draft,
-  ratio,
-  minimumFrameSize,
-}: ApplyImageCropAspectRatioInput): ImageCropDraft {
+export function applyImageCropAspectRatio(input: ApplyImageCropAspectRatioInput): ImageCropDraft {
+  const draft = isRecord(input) ? input.draft : null
+  if (!isRecord(input)) return draftFallback(draft)
+  const {
+    startNode,
+    naturalSize,
+    ratio,
+    minimumFrameSize,
+  } = input as unknown as ApplyImageCropAspectRatioInput
+  if (
+    !validStartNode(startNode)
+    || !isPositiveSize(naturalSize)
+    || !isImageCropDraft(draft)
+    || !isPositiveSize(minimumFrameSize)
+    || (ratio !== 'original' && (!isFiniteNumber(ratio) || ratio <= 0))
+  ) {
+    return draftFallback(draft)
+  }
   const resolvedRatio = ratio === 'original'
     ? naturalSize.width / naturalSize.height
     : ratio
-  if (!isFiniteNumber(resolvedRatio) || resolvedRatio <= 0 || !isPositiveSize(minimumFrameSize)) {
-    return draft
-  }
+  if (!isFiniteNumber(resolvedRatio) || resolvedRatio <= 0) return draft
 
   const width = boundsWidth(draft.frame)
   const height = boundsHeight(draft.frame)

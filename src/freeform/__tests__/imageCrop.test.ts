@@ -161,6 +161,35 @@ describe('image crop draft conversion', () => {
       },
     })).toBeNull()
   })
+
+  it.each([
+    ['missing id', { id: undefined }],
+    ['blank id', { id: '   ' }],
+    ['non-string id', { id: 42 }],
+    ['missing name', { name: undefined }],
+    ['non-string name', { name: 42 }],
+    ['missing locked', { locked: undefined }],
+    ['non-boolean locked', { locked: 'false' }],
+    ['missing hidden', { hidden: undefined }],
+    ['non-boolean hidden', { hidden: 0 }],
+    ['missing src', { src: undefined }],
+    ['non-string src', { src: 42 }],
+    ['missing alt', { alt: undefined }],
+    ['non-string alt', { alt: 42 }],
+    ['an unexpected field', { unexpected: true }],
+  ])('rejects a strict image node with %s', (_label, patch) => {
+    expect(createImageCropDraft({
+      startNode: imageNode(patch as Partial<FreeformImageElement>),
+      naturalSize: { width: 400, height: 200 },
+    })).toBeNull()
+  })
+
+  it('accepts boolean locked and hidden state as valid node data', () => {
+    expect(createImageCropDraft({
+      startNode: imageNode({ locked: true, hidden: true }),
+      naturalSize: { width: 400, height: 200 },
+    })).not.toBeNull()
+  })
 })
 
 describe('image crop handle projection', () => {
@@ -306,6 +335,30 @@ describe('image crop handle projection', () => {
     expectBoundsClose(stopped.frame, { left: 0, top: 0, right: 150, bottom: 150 })
   })
 
+  it('does not cross a representable zoom gap between nearly adjacent constraint roots', () => {
+    const startNode = imageNode({ width: 101, height: 98.9995, rotation: 0, scale: 1 })
+    const startDraft = {
+      frame: { left: 0, top: 0, right: 101, bottom: 98.9995 },
+      image: { left: 0, top: 0, right: 400, bottom: 400 },
+      framing: { focusX: 0.12625, focusY: 0.123749375, zoom: 400 / 101 },
+    }
+
+    const projected = projectImageCropHandle({
+      startNode,
+      naturalSize: { width: 100, height: 100 },
+      startDraft,
+      handle: 'se',
+      localDelta: { x: -1_000_000_000, y: 1_000_000_000 },
+      minimumFrameSize: { width: 1, height: 1 },
+    })
+
+    const width = projected.frame.right - projected.frame.left
+    const height = projected.frame.bottom - projected.frame.top
+    expect(width).toBeGreaterThan(99.999)
+    expect(height).toBeLessThan(100)
+    expect(width).toBeGreaterThan(height)
+  })
+
   it('depends on total gesture displacement instead of pointer event sampling', () => {
     const startNode = imageNode({ width: 100, height: 100 })
     const startDraft = createImageCropDraft({ startNode, naturalSize })!
@@ -316,21 +369,30 @@ describe('image crop handle projection', () => {
       handle: 'se' as const,
       minimumFrameSize,
     }
-    const oneEvent = projectImageCropHandle({ ...input, localDelta: { x: -95, y: -95 } })
-    let manyEvents = startDraft
-    for (let step = 1; step <= 120; step += 1) {
-      manyEvents = projectImageCropHandle({
-        ...input,
-        localDelta: { x: (-95 * step) / 120, y: (-95 * step) / 120 },
+    const finalDelta = { x: -95, y: -95 }
+    const oneEvent = projectImageCropHandle({ ...input, localDelta: finalDelta })
+    const sampleSequences = [
+      [finalDelta],
+      [{ x: -10, y: -10 }, { x: -70, y: -70 }, finalDelta],
+      [{ x: -80, y: -80 }, { x: -20, y: -20 }, finalDelta],
+      Array.from({ length: 120 }, (_, index) => ({
+        x: (-95 * (index + 1)) / 120,
+        y: (-95 * (index + 1)) / 120,
+      })),
+    ]
+
+    for (const samples of sampleSequences) {
+      let sampled = startDraft
+      for (const localDelta of samples) {
+        sampled = projectImageCropHandle({ ...input, localDelta })
+      }
+      expectBoundsClose(sampled.frame, oneEvent.frame)
+      expect(sampled.framing).toEqual({
+        focusX: expect.closeTo(oneEvent.framing.focusX),
+        focusY: expect.closeTo(oneEvent.framing.focusY),
+        zoom: expect.closeTo(oneEvent.framing.zoom),
       })
     }
-
-    expectBoundsClose(manyEvents.frame, oneEvent.frame)
-    expect(manyEvents.framing).toEqual({
-      focusX: expect.closeTo(oneEvent.framing.focusX),
-      focusY: expect.closeTo(oneEvent.framing.focusY),
-      zoom: expect.closeTo(oneEvent.framing.zoom),
-    })
   })
 
   it('keeps invalid gesture input on the exact starting draft reference', () => {
@@ -609,5 +671,106 @@ describe('image crop aspect ratio presets', () => {
       ratio: 1.6,
       minimumFrameSize: { width: 1, height: 1 },
     })).toBe(draft)
+  })
+})
+
+describe('image crop public boundary contracts', () => {
+  const naturalSize = { width: 400, height: 200 }
+  const startNode = imageNode()
+  const draft = createImageCropDraft({ startNode, naturalSize })!
+
+  it('returns null instead of throwing for malformed conversion inputs', () => {
+    expect(createImageCropDraft(null as never)).toBeNull()
+    expect(imageCropDraftToUpdate(null as never)).toBeNull()
+    expect(imageCropLocalDeltaFromScreen(null as never)).toBeNull()
+    expect(imageCropScreenScale(null as never)).toBeNull()
+  })
+
+  it('preserves malformed project draft references without dereferencing them', () => {
+    expect(projectImageCropHandle(null as never)).toBeNull()
+    expect(projectImageCropHandle({
+      startNode,
+      naturalSize,
+      startDraft: null,
+      handle: 'e',
+      localDelta: { x: 10, y: 0 },
+      minimumFrameSize: { width: 1, height: 1 },
+    } as never)).toBeNull()
+    expect(projectImageCropHandle({
+      startNode,
+      naturalSize: null,
+      startDraft: draft,
+      handle: 'e',
+      localDelta: { x: 10, y: 0 },
+      minimumFrameSize: { width: 1, height: 1 },
+    } as never)).toBe(draft)
+
+    const missingImage = { ...draft, image: undefined }
+    expect(projectImageCropHandle({
+      startNode,
+      naturalSize,
+      startDraft: missingImage,
+      handle: 'e',
+      localDelta: { x: 10, y: 0 },
+      minimumFrameSize: { width: 1, height: 1 },
+    } as never)).toBe(missingImage)
+  })
+
+  it('preserves malformed aspect-ratio draft references before resolving original size', () => {
+    expect(applyImageCropAspectRatio({
+      startNode,
+      naturalSize,
+      draft: null,
+      ratio: 1,
+      minimumFrameSize: { width: 1, height: 1 },
+    } as never)).toBeNull()
+    expect(applyImageCropAspectRatio({
+      startNode,
+      naturalSize: null,
+      draft,
+      ratio: 'original',
+      minimumFrameSize: { width: 1, height: 1 },
+    } as never)).toBe(draft)
+    expect(applyImageCropAspectRatio(null as never)).toBeNull()
+  })
+
+  it('keeps malformed pan inputs and overflowing finite bounds unchanged', () => {
+    expect(panImageCropDraft(null as never)).toBeNull()
+    expect(panImageCropDraft({ draft: null, localDelta: { x: 1, y: 0 } } as never)).toBeNull()
+
+    const overflowing = {
+      ...draft,
+      image: {
+        left: -Number.MAX_VALUE,
+        top: -50,
+        right: Number.MAX_VALUE,
+        bottom: 150,
+      },
+    }
+    const result = panImageCropDraft({
+      draft: overflowing,
+      localDelta: { x: Number.MAX_VALUE, y: 0 },
+    })
+    expect(result).toBe(overflowing)
+    expect(Object.values(result.image).every(Number.isFinite)).toBe(true)
+  })
+
+  it('returns the original draft for other malformed projection and ratio objects', () => {
+    const malformedDraft = { ...draft, frame: null }
+    expect(projectImageCropHandle({
+      startNode,
+      naturalSize,
+      startDraft: malformedDraft,
+      handle: 'e',
+      localDelta: { x: 10, y: 0 },
+      minimumFrameSize: { width: 1, height: 1 },
+    } as never)).toBe(malformedDraft)
+    expect(applyImageCropAspectRatio({
+      startNode,
+      naturalSize,
+      draft: malformedDraft,
+      ratio: 1,
+      minimumFrameSize: { width: 1, height: 1 },
+    } as never)).toBe(malformedDraft)
   })
 })
