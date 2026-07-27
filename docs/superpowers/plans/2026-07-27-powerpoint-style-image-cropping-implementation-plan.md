@@ -23,7 +23,8 @@
 - Modify `src/freeform/FreeformWorkspace.tsx`：独立图片裁剪入口、工具栏、退出分派和命令阻断。
 - Modify `src/styles.css`：PowerPoint 式裁剪视觉、命中区域和窄视口。
 - Modify `e2e/freeform.spec.ts`：独立图片裁剪、形状取景回归、历史、性能和响应式验收。
-- Modify `README.md`、`CHANGELOG.md`、`docs/freeform-editor.md` 和旧取景规格：同步用户行为与设计后续说明。
+- Modify `e2e-integration/backend.spec.ts`：远端 v4 草稿改用新裁剪入口并保留恢复断言。
+- Modify `README.md`、`CHANGELOG.md`、`docs/freeform-editor.md`、`docs/backend-plan.md` 和旧取景规格：同步用户行为、版本与设计后续说明。
 - Modify `package.json`、`package-lock.json`：根版本升到 `0.15.0`；不修改 `server` 版本。
 
 ## Task 1: 固定平面的裁剪几何
@@ -85,6 +86,12 @@ export interface ImageCropNodeUpdate {
   height: number
   framing: ImageFraming
 }
+
+export interface ImageCropScreenTransformInput {
+  screenDelta: Point
+  renderScale: number
+  startWorldMatrix: Matrix2D
+}
 ```
 
 `createImageCropDraft` 只接受正有限自然尺寸、合法图片节点和可计算的 cover 几何。`imageCropDraftToUpdate` 使用规格中的 `s/baseScale/focus` 公式回代；再调用 `calculateFramedImageGeometry` 做等价检查。节点位置使用：
@@ -113,6 +120,9 @@ Expected: PASS 基础草稿和回代用例。
 - 原图边界、最小 24 本地像素、`zoom=4`。
 - cover 主导轴合法切换可以继续，宽高同时越界停在合法连续分量末端。
 - 一次大位移和拆成 120 次相同总位移得到同一结果。
+- 屏幕位移经过 30/90 度旋转图片、缩放组和两层嵌套缩放组后，得到正确起始裁剪平面位移。
+- `renderScale`、节点/祖先 scale 都进入屏幕比例；本地 `24 / screenScale` 命中区在屏幕上仍为 24px。
+- 零/非有限 renderScale、非有限矩阵和不可逆矩阵返回 `null`，调用方保持原草稿引用。
 
 - [ ] **Step 6: 运行测试并确认失败来自未实现的投影**
 
@@ -125,6 +135,8 @@ Expected: FAIL，断言显示 handle 结果缺失或仍为开始框。
 `projectImageCropHandle` 从手势开始框和总本地位移构造 `C(t)`。收集 `t=0/1` 以及边碰原图、宽高碰最小值、宽高触发 `zoom=4`、cover 主导轴相等的分段点；排序去重后检查端点和区间中点，选择包含 `t=0` 的合法连续分量最大值。主导轴切换只分段，不自动判非法。
 
 每个候选统一通过 `imageCropDraftToUpdate` 回代；无效时返回输入草稿的原引用。
+
+同时实现 `imageCropLocalDeltaFromScreen`：先除正有限 `renderScale`，再用固定 `startWorldMatrix` 的逆矩阵调用 `transformVector`。实现 `imageCropScreenScale`：使用 `decomposeSimilarity(startWorldMatrix).scale * renderScale`；任一输入无效返回 `null`。组件不得自行只除画布缩放。
 
 - [ ] **Step 8: 写图片平移和比例预设的失败测试**
 
@@ -163,7 +175,7 @@ const action: FreeformAction = {
 }
 ```
 
-断言一次 reducer 调用同时更新五个字段；同值返回原 document；目标不是 `image`、未知路径、锁定祖先、隐藏目标、额外键、非有限几何和非法 framing 都返回原 document。再断言更新嵌套图片会重算祖先组边界，且输入 framing 被深复制。
+断言一次 reducer 调用同时更新五个字段；同值返回原 document；目标不是 `image`、未知路径、锁定祖先、隐藏目标、**隐藏祖先**、额外键、非有限几何和非法 framing 都返回原 document。再断言更新嵌套图片会重算祖先组边界，且输入 framing 被深复制。
 
 - [ ] **Step 2: 运行测试并确认 action 类型或 reducer 分支缺失**
 
@@ -201,10 +213,11 @@ export interface FreeformImageCropPatch {
 
 1. 严格检查 action、path 和 patch 精确键集合。
 2. 用 `canApplySceneAction` 同时检查 `geometry` 和 `style` 权限。
-3. 只接受独立 `image`。
-4. 先在局部节点上调用既有 `applyGeometryPatch`，再调用 `applyStylePatch({ framing })`。
-5. 用一次 `updateNodesAtPaths(..., { recenterChangedGroups: true })` 写回。
-6. 完整 `validateSceneNodesForMutation` 后才返回新文档。
+3. 用现有 `effectiveSceneState(slide.nodes, path)` 显式拒绝目标或任意祖先 hidden；不能假设 `canApplySceneAction` 会检查 hidden。
+4. 只接受独立 `image`。
+5. 先在局部节点上调用既有 `applyGeometryPatch`，再调用 `applyStylePatch({ framing })`。
+6. 用一次 `updateNodesAtPaths(..., { recenterChangedGroups: true })` 写回。
+7. 完整 `validateSceneNodesForMutation` 后才返回新文档。
 
 任一步失败都返回传入 document 原引用；不能先写几何再丢掉 framing。
 
@@ -235,6 +248,7 @@ git commit -m "feat: update image crop geometry atomically"
 新增 `PowerPoint crop shows the full source around the crop frame`：上传宽图，选择并点击“裁剪”，断言：
 
 - 独立图片入口文案为“裁剪”，形状仍为“调整取景”。
+- 双击独立图片进入 crop overlay；双击图片填充形状仍进入旧 framing surface。
 - 存在 `freeform-image-crop-overlay`、暗图、亮图和 8 个有名称的 handle。
 - 暗图矩形超出 crop frame，亮图被 frame 裁切。
 - 原场景图片内容带 `data-image-crop-hidden=true`，但节点仍存在。
@@ -267,7 +281,7 @@ Expected: FAIL，找不到“裁剪”按钮或 crop overlay。
 
 - [ ] **Step 5: 接入最小裁剪入口和 CSS**
 
-独立图片点击“裁剪”时创建只读初始 draft 并展示 overlay；形状仍走原 `ImageFramingSession`。CSS 使用黑色短粗柄、1px 白色描边/阴影和半透明暗层；命中区域用 `24 / screenScale` 本地像素计算，保证屏幕至少 24px。不得增加卡片、渐变或装饰动画。
+独立图片点击“裁剪”或双击时创建只读初始 draft 并展示 overlay；形状仍走原 `ImageFramingSession`。入口统一核对 active scope、effective lock/hidden、cover、readiness identity 和 pending replacement。CSS 使用黑色短粗柄、1px 白色描边/阴影和半透明暗层；命中区域用 `24 / screenScale` 本地像素计算，保证屏幕至少 24px。不得增加卡片、渐变或装饰动画。
 
 - [ ] **Step 6: 运行结构 E2E 和明暗主题截图检查**
 
@@ -294,7 +308,13 @@ git commit -m "feat: render PowerPoint-style image crop overlay"
 
 新增 `PowerPoint crop pans the picture and crops from every handle`。用带四角标记的测试图，分别拖动画面、四条边和四个角；断言 DOM draft 数据与视觉边界变化正确，固定边不动，原图矩形在黑柄裁剪时不动。
 
-再覆盖 `Ctrl` + 边柄对称变化、角柄不对称、键盘 1px/Shift 10px。
+同一批失败测试在实现前继续覆盖：
+
+- `Ctrl` + 边柄对称变化、角柄不对称、键盘 1px/Shift 10px。
+- 旋转图片、缩放组、两层嵌套组与非 100% 画布 zoom 下，屏幕拖动方向和距离正确。
+- `pointercancel`、window blur 回滚本段；外来 pointer 和第二 pointer 不抢占；卸载 cleanup 后迟到事件无效。
+- gesture 中触发 viewport resize 迫使 React 父级重渲染，预览仍保持最新 rAF draft，不回到 settled draft。
+- 不可逆/失效矩阵通过纯函数测试返回原引用；E2E 不制造非法持久化场景。
 
 - [ ] **Step 2: 运行 E2E 并确认指针操作尚未生效**
 
@@ -309,6 +329,8 @@ Hook 对外暴露：
 ```ts
 interface ImageCropSessionApi {
   session: ImageCropSession | null
+  overlayRef: RefObject<ImageCropOverlayHandle>
+  renderDraft: ImageCropDraft | null
   start(input: StartImageCropInput): boolean
   finish(reason: ImageCropFinishReason): ImageCropFinishResult
   invalidate(): void
@@ -320,7 +342,9 @@ interface ImageCropSessionApi {
 }
 ```
 
-Hook 保存 settled draft、活动 gesture 起点、最新指针、rAF id、pointer id 和 overlay DOM refs。`pointermove` 只覆盖最新指针；同一帧最多调用一次 `projectImageCropHandle` 或 `panImageCropDraft`，随后直接写 overlay 层的 style/data 属性。
+Hook 保存 settled draft、活动 gesture 起点、`previewDraftRef`、最新指针、rAF id、pointer id 和 imperative overlay binding。`pointermove` 只覆盖最新指针；同一帧最多调用一次 `projectImageCropHandle` 或 `panImageCropDraft`，把结果先写 `previewDraftRef`，再通过 `overlayRef.current.renderDraft()` 写 overlay 层的 style/data 属性。
+
+Hook 每次 React render 返回 `previewDraftRef.current` 作为 `renderDraft`，而不是只返回 settled state；`useLayoutEffect` 在 overlay 挂载或父级重渲染后再次把该 preview 写入 imperative binding。这样无关重渲染不会用旧 settled draft 覆盖正在拖动的 DOM。
 
 - [ ] **Step 4: 实现手势结算与回滚**
 
@@ -331,6 +355,8 @@ Hook 保存 settled draft、活动 gesture 起点、最新指针、rAF id、poin
 - effect cleanup：cancel rAF、移除 window listener、释放可释放的 capture。
 
 DOM 快速更新调用与 React render 共用 `imageCropDraftToOverlayStyle` 纯格式化函数，禁止复制第二套几何公式。
+
+这些所有权、回滚、cleanup 和重渲染规则必须由 Step 1 的失败测试先覆盖；本步骤不得边实现边补测试。
 
 - [ ] **Step 5: 添加 120 次 pointermove 的提交次数测试**
 
@@ -357,6 +383,7 @@ git commit -m "feat: add frame-scheduled image crop gestures"
 - Modify: `src/freeform/FreeformWorkspace.tsx`
 - Modify: `src/freeform/ImageCropOverlay.tsx`
 - Modify: `e2e/freeform.spec.ts`
+- Modify: `e2e-integration/backend.spec.ts`
 
 - [ ] **Step 1: 写比例和完成语义的失败 E2E**
 
@@ -368,10 +395,14 @@ git commit -m "feat: add frame-scheduled image crop gestures"
 - 完成后一次 undo 同时恢复几何和 framing；无改动不写历史。
 - `Escape` 在 pending rAF 手势中提交最新指针状态，退出后没有迟到 mutation。
 - 形状取景仍有完成/取消/缩放条，`Escape` 仍取消。
+- page、draft、account、workspace 四类切换都做对照：独立 crop 先 flush pending rAF 并完成，shape framing 取消。
+- 模拟权威草稿作用域或 readiness identity 已变化后再切换，两类会话都只清临时状态，不把旧结果写进新文档。
+- crop 期间保存、导出、undo/redo、fit、换图、锁定、隐藏、删除、粘贴、重排和结构命令全部禁用或 no-op。
+- 图片 decode/error 报告、源/path/scope 不匹配或目标被权威状态隐藏/锁定时立即取消 rAF、释放指针并丢弃 crop session，开始文档不变。
 
 - [ ] **Step 2: 运行测试并确认旧 Escape/transition 语义失败**
 
-Run: `npm run test:e2e -- e2e/freeform.spec.ts --grep "(crop aspect ratios|crop finish semantics|shape image framing)"`
+Run: `npm run test:e2e -- e2e/freeform.spec.ts --grep "(crop aspect ratios|crop finish semantics|crop transition|crop blocks commands|crop invalidates|shape image framing)"`
 
 Expected: FAIL，独立图片仍走旧取消路径或缺少比例菜单。
 
@@ -381,13 +412,22 @@ Expected: FAIL，独立图片仍走旧取消路径或缺少比例菜单。
 
 - [ ] **Step 4: 实现严格完成顺序**
 
-`finishImageCrop` 必须：settle gesture → 核对 scope/path/source/fit/readiness → 构造 `node/update-image-crop` → `replaceCurrent` → 验证文档确实变化 → `commitLiveEdit(startDocument)` → 清理。无变化调用 `cancelLiveEdit(startDocument)` 后清理。
+`finishImageCrop` 必须：settle gesture → 核对 scope/path/source/fit/readiness → 构造 `node/update-image-crop` → 在一次同步 history updater 中运行 reducer、验证命中并提交 → 清理。不要调用返回 `void` 的 `replaceCurrent` 后立刻读取 `currentDocumentRef`，那会读到旧快照。
+
+新增内部 `applyAndCommitLiveEdit(startDocument, action)`，在同一个 `updateHistory(current => ...)` 中：
+
+1. 对 `current.current` 调用 `freeformReducer` 得到 `next`。
+2. 若 reducer 返回原引用，恢复/保留 `startDocument`，不写 past。
+3. 若变化，复用 `commitLiveEdit` 对 successful-save rebase 的 `historyStart` 选择规则，一次返回 `{ past: [...past, historyStart], current: next, future: [] }`。
+4. 同一个 updater 之外只更新 `savedAt` 和会话清理；不得先产生只有 geometry 或只有 framing 的中间 current。
 
 `Escape`、`Enter`、外部画布 pointerdown 和“完成”共用这一入口。外部点击在 capture 阶段同步清理 session ref，使同一次点击可以继续执行普通选择。
 
+把 crop session ref 纳入 `blockDocumentMutationDuringInteraction`、toolbar/right-panel `disabled`、保存/导出入口和全局快捷键分支。readiness effect 和权威目标核对失败统一调用 hook 的 `invalidate()`，不能走完成路径。
+
 - [ ] **Step 5: 分派切换行为**
 
-把现有切换 helper 改成模式分派：
+在 Step 1 的四类失败测试已经存在后，把现有切换 helper 改成模式分派：
 
 - 独立 image crop：有效同作用域先完成，再切页/切草稿/切账号/切工作区。
 - shape framing：继续 `cancelLiveEdit(startDocument)`，再切换。
@@ -399,18 +439,22 @@ Expected: FAIL，独立图片仍走旧取消路径或缺少比例菜单。
 
 把原来混合测试拆成独立图片 crop 与形状 framing 两组。删除只属于旧独立图片 UI 的 slider/cancel 断言；保留形状对应断言。保存、复制、页面复制测试改用 crop 完成后的 v4 数据。
 
+同步修改 `e2e-integration/backend.spec.ts` 中远端图片取景流程：使用 `freeform-image-crop` 入口、黑柄/图片平移和“完成”，删除独立图片 `freeform-framing-zoom` / `freeform-framing-cancel` 操作，同时继续断言远端保存与重载后的 v4 `framing` 和几何一致。
+
 - [ ] **Step 7: 运行相关 E2E 与历史测试**
 
 Run: `npm run test:unit -- src/freeform/__tests__/history.test.ts src/freeform/__tests__/document.test.ts`
 
 Run: `npm run test:e2e -- e2e/freeform.spec.ts --grep "(crop|framing)"`
 
+Run: `npm run test:integration -- --grep "remote.*image"`
+
 Expected: PASS。
 
 - [ ] **Step 8: 提交完整命令语义**
 
 ```bash
-git add src/freeform/FreeformWorkspace.tsx src/freeform/ImageCropOverlay.tsx e2e/freeform.spec.ts
+git add src/freeform/FreeformWorkspace.tsx src/freeform/ImageCropOverlay.tsx e2e/freeform.spec.ts e2e-integration/backend.spec.ts
 git commit -m "feat: complete PowerPoint-style crop commands"
 ```
 
@@ -469,13 +513,14 @@ git commit -m "fix: polish image crop controls across viewports"
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
 - Modify: `docs/freeform-editor.md`
+- Modify: `docs/backend-plan.md`
 - Modify: `docs/superpowers/specs/2026-07-26-freeform-image-framing-design.md`
 - Modify: `package.json`
 - Modify: `package-lock.json`
 
 - [ ] **Step 1: 更新根版本**
 
-运行 `npm version 0.15.0 --no-git-tag-version`，确认只修改根 `package.json` 与根 `package-lock.json` 的应用版本。`server/package.json` 和 `server/package-lock.json` 保持 `0.3.0`。
+运行 `npm version 0.15.0 --no-git-tag-version`，确认只修改根 `package.json` 与根 `package-lock.json` 的应用版本。`server/package.json` 和 `server/package-lock.json` 保持 `0.3.0`。把 `docs/backend-plan.md` 顶部“当前源码版本”的前端值同步为 `0.15.0`，后端值保持 `0.3.0`；其 v4 存储说明不变。
 
 - [ ] **Step 2: 更新用户文档**
 
@@ -498,7 +543,7 @@ Expected: 新命名一致；旧 `0.14.0` 只存在历史 changelog/设计语境�
 Run: `git diff --check`
 
 ```bash
-git add README.md CHANGELOG.md docs/freeform-editor.md docs/superpowers/specs/2026-07-26-freeform-image-framing-design.md package.json package-lock.json
+git add README.md CHANGELOG.md docs/freeform-editor.md docs/backend-plan.md docs/superpowers/specs/2026-07-26-freeform-image-framing-design.md package.json package-lock.json
 git commit -m "docs: release PowerPoint-style crop in 0.15.0"
 ```
 
