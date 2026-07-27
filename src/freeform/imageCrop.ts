@@ -572,6 +572,13 @@ export function panImageCropDraft(input: PanImageCropDraftInput): ImageCropDraft
   const movedX = Math.abs(nextLeft - draft.image.left) > SCENE_EPSILON
   const movedY = Math.abs(nextTop - draft.image.top) > SCENE_EPSILON
   if (!movedX && !movedY) return draft
+  const nextImage = {
+    left: nextLeft,
+    top: nextTop,
+    right: nextLeft + imageWidth,
+    bottom: nextTop + imageHeight,
+  }
+  if (!isCropBounds(nextImage)) return draft
 
   const frameWidth = boundsWidth(draft.frame)
   const frameHeight = boundsHeight(draft.frame)
@@ -594,12 +601,7 @@ export function panImageCropDraft(input: PanImageCropDraftInput): ImageCropDraft
   if (!isValidImageFraming(framing)) return draft
   return {
     frame: draft.frame,
-    image: {
-      left: nextLeft,
-      top: nextTop,
-      right: nextLeft + imageWidth,
-      bottom: nextTop + imageHeight,
-    },
+    image: nextImage,
     framing,
   }
 }

@@ -195,6 +195,17 @@ describe('image crop draft conversion', () => {
 describe('image crop handle projection', () => {
   const naturalSize = { width: 400, height: 200 }
   const minimumFrameSize = { width: 1, height: 1 }
+  const zoomGapFixture = () => ({
+    startNode: imageNode({ width: 101, height: 98.9995, rotation: 0, scale: 1 }),
+    naturalSize: { width: 100, height: 100 },
+    startDraft: {
+      frame: { left: 0, top: 0, right: 101, bottom: 98.9995 },
+      image: { left: 0, top: 0, right: 400, bottom: 400 },
+      framing: { focusX: 0.12625, focusY: 0.123749375, zoom: 400 / 101 },
+    },
+    handle: 'se' as const,
+    minimumFrameSize,
+  })
   const inwardCases: Array<{
     handle: ImageCropHandle
     localDelta: Point
@@ -336,20 +347,9 @@ describe('image crop handle projection', () => {
   })
 
   it('does not cross a representable zoom gap between nearly adjacent constraint roots', () => {
-    const startNode = imageNode({ width: 101, height: 98.9995, rotation: 0, scale: 1 })
-    const startDraft = {
-      frame: { left: 0, top: 0, right: 101, bottom: 98.9995 },
-      image: { left: 0, top: 0, right: 400, bottom: 400 },
-      framing: { focusX: 0.12625, focusY: 0.123749375, zoom: 400 / 101 },
-    }
-
     const projected = projectImageCropHandle({
-      startNode,
-      naturalSize: { width: 100, height: 100 },
-      startDraft,
-      handle: 'se',
+      ...zoomGapFixture(),
       localDelta: { x: -1_000_000_000, y: 1_000_000_000 },
-      minimumFrameSize: { width: 1, height: 1 },
     })
 
     const width = projected.frame.right - projected.frame.left
@@ -359,40 +359,39 @@ describe('image crop handle projection', () => {
     expect(width).toBeGreaterThan(height)
   })
 
-  it('depends on total gesture displacement instead of pointer event sampling', () => {
-    const startNode = imageNode({ width: 100, height: 100 })
-    const startDraft = createImageCropDraft({ startNode, naturalSize })!
-    const input = {
-      startNode,
-      naturalSize,
-      startDraft,
-      handle: 'se' as const,
-      minimumFrameSize,
-    }
-    const finalDelta = { x: -95, y: -95 }
-    const oneEvent = projectImageCropHandle({ ...input, localDelta: finalDelta })
-    const sampleSequences = [
-      [finalDelta],
-      [{ x: -10, y: -10 }, { x: -70, y: -70 }, finalDelta],
-      [{ x: -80, y: -80 }, { x: -20, y: -20 }, finalDelta],
-      Array.from({ length: 120 }, (_, index) => ({
-        x: (-95 * (index + 1)) / 120,
-        y: (-95 * (index + 1)) / 120,
-      })),
-    ]
+  it('keeps every later cumulative sample at the first illegal-gap boundary', () => {
+    const input = zoomGapFixture()
+    const cumulativeDistances = [0.25, 0.75, 1, 1.0002, 1.001, 2, 10, 1_000_000_000]
+    let firstBoundary: ReturnType<typeof projectImageCropHandle> | null = null
 
-    for (const samples of sampleSequences) {
-      let sampled = startDraft
-      for (const localDelta of samples) {
-        sampled = projectImageCropHandle({ ...input, localDelta })
-      }
-      expectBoundsClose(sampled.frame, oneEvent.frame)
-      expect(sampled.framing).toEqual({
-        focusX: expect.closeTo(oneEvent.framing.focusX),
-        focusY: expect.closeTo(oneEvent.framing.focusY),
-        zoom: expect.closeTo(oneEvent.framing.zoom),
+    for (const distance of cumulativeDistances) {
+      const sampled = projectImageCropHandle({
+        ...input,
+        localDelta: { x: -distance, y: distance },
       })
+      if (distance < 1.0002) {
+        expectBoundsClose(sampled.frame, {
+          left: 0,
+          top: 0,
+          right: 101 - distance,
+          bottom: 98.9995 + distance,
+        })
+        continue
+      }
+
+      firstBoundary ??= sampled
+      expectBoundsClose(sampled.frame, firstBoundary.frame)
+      const width = sampled.frame.right - sampled.frame.left
+      const height = sampled.frame.bottom - sampled.frame.top
+      expect(width).toBeGreaterThan(99.999)
+      expect(width).toBeGreaterThan(height)
     }
+
+    const oneEvent = projectImageCropHandle({
+      ...input,
+      localDelta: { x: -1_000_000_000, y: 1_000_000_000 },
+    })
+    expectBoundsClose(oneEvent.frame, firstBoundary!.frame)
   })
 
   it('keeps invalid gesture input on the exact starting draft reference', () => {
@@ -574,6 +573,38 @@ describe('image crop picture movement', () => {
       draft: atTopLeft,
       localDelta: { x: 1, y: 1 },
     })).toBe(atTopLeft)
+  })
+
+  it('rejects a reachable finite pan whose resulting image bounds overflow', () => {
+    const extremeNode = imageNode({
+      width: 4e307,
+      height: 4e307,
+      rotation: 0,
+      scale: 1,
+      framing: { focusX: 0.5, focusY: 0.5, zoom: 4 },
+    })
+    const created = createImageCropDraft({
+      startNode: extremeNode,
+      naturalSize: { width: 1, height: 1 },
+    })!
+    const projected = projectImageCropHandle({
+      startNode: extremeNode,
+      naturalSize: { width: 1, height: 1 },
+      startDraft: created,
+      handle: 'w',
+      localDelta: { x: 3e307, y: 0 },
+      minimumFrameSize: { width: 1, height: 1 },
+    })
+    expect(Object.values(projected.frame).every(Number.isFinite)).toBe(true)
+    expect(Object.values(projected.image).every(Number.isFinite)).toBe(true)
+
+    const moved = panImageCropDraft({
+      draft: projected,
+      localDelta: { x: Number.MAX_VALUE, y: 0 },
+    })
+
+    expect(moved).toBe(projected)
+    expect(Object.values(moved.image).every(Number.isFinite)).toBe(true)
   })
 })
 
