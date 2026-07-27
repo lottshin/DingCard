@@ -3639,6 +3639,74 @@ test('exports the current slide as a PNG at slide dimensions', async ({ page }) 
   await expect(page.getByRole('button', { name: '导出当前页' })).toBeEnabled()
 })
 
+test('framed image export waits for the current image decode', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'delayed-export.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  const image = page.locator('.freeform-artboard img[data-framed-image-content="true"]')
+  await expect(image).toHaveJSProperty('complete', true)
+  await page.evaluate(() => {
+    const target = document.querySelector<HTMLImageElement>(
+      '.freeform-artboard img[data-framed-image-content="true"]',
+    )!
+    let release = () => undefined
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const state = { called: false, release }
+    ;(window as typeof window & { __framedDecodeGate?: typeof state }).__framedDecodeGate = state
+    Object.defineProperty(target, 'decode', {
+      configurable: true,
+      value: () => {
+        state.called = true
+        return gate
+      },
+    })
+  })
+
+  const downloads: string[] = []
+  page.on('download', (download) => downloads.push(download.suggestedFilename()))
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByTestId('freeform-primary-export').click()
+  await expect.poll(() => page.evaluate(() => Boolean(
+    (window as typeof window & { __framedDecodeGate?: { called: boolean } })
+      .__framedDecodeGate?.called,
+  ))).toBe(true)
+  await page.waitForTimeout(100)
+  expect(downloads).toHaveLength(0)
+  await page.evaluate(() => {
+    (window as typeof window & { __framedDecodeGate?: { release: () => void } })
+      .__framedDecodeGate?.release()
+  })
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('slide-01.png')
+})
+
+test('framed image export reports decode failure without downloading', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'failed-export.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  const image = page.locator('.freeform-artboard img[data-framed-image-content="true"]')
+  await expect(image).toHaveJSProperty('complete', true)
+  await image.evaluate((target) => {
+    Object.defineProperty(target, 'decode', {
+      configurable: true,
+      value: async () => { throw new Error('forced decode failure') },
+    })
+  })
+
+  const downloads: string[] = []
+  page.on('download', (download) => downloads.push(download.suggestedFilename()))
+  await page.getByTestId('freeform-primary-export').click()
+  await expect(page.getByRole('alert')).toContainText('图片加载失败，导出已取消')
+  expect(downloads).toHaveLength(0)
+  await expect(page.getByTestId('freeform-primary-export')).toBeEnabled()
+})
+
 test('exports current freeform slide with gradient pixels and without editor ui', async ({ page }) => {
   await openFreeform(page)
 

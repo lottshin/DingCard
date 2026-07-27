@@ -7,8 +7,10 @@ import {
   imageDecodeIdentityEquals,
   readReadyImage,
   updateImageReadiness,
+  waitForFramedImages,
   type ImageDecodeIdentity,
   type ImageDecodeReport,
+  type ImageWaitClock,
 } from '../imageReadiness'
 
 function identity(overrides: Partial<ImageDecodeIdentity> = {}): ImageDecodeIdentity {
@@ -141,5 +143,113 @@ describe('image readiness identity', () => {
       logicalSrc: standalone.logicalSrc,
     }), shapeFill)).toBe(state)
     expect(readReadyImage(state, shapeFill)).toBeNull()
+  })
+})
+
+interface FakeFramedImage {
+  source: string
+  complete: boolean
+  naturalWidth: number
+  naturalHeight: number
+  decode: () => Promise<void>
+  getAttribute: (name: string) => string | null
+  addEventListener: () => void
+  removeEventListener: () => void
+}
+
+function framedImage(
+  overrides: Partial<FakeFramedImage> = {},
+): FakeFramedImage {
+  const image: FakeFramedImage = {
+    source: 'data:image/png;base64,current',
+    complete: true,
+    naturalWidth: 1200,
+    naturalHeight: 800,
+    decode: async () => undefined,
+    getAttribute: (name) => name === 'src' ? image.source : null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    ...overrides,
+  }
+  return image
+}
+
+function framedRoot(images: FakeFramedImage[]) {
+  return {
+    querySelectorAll: (selector: string) => {
+      expect(selector).toBe('img[data-framed-image-content="true"]')
+      return images
+    },
+  } as unknown as ParentNode
+}
+
+const NEVER_TIMEOUT_CLOCK: ImageWaitClock = {
+  now: () => 0,
+  wait: () => new Promise(() => undefined),
+}
+
+describe('framed image export readiness', () => {
+  it('succeeds immediately for an empty artboard', async () => {
+    await expect(waitForFramedImages(framedRoot([]), {
+      timeoutMs: 0,
+      clock: NEVER_TIMEOUT_CLOCK,
+    })).resolves.toEqual({ ok: true })
+  })
+
+  it('decodes every image even when it is already complete', async () => {
+    let firstDecodes = 0
+    let secondDecodes = 0
+    const first = framedImage({ decode: async () => { firstDecodes += 1 } })
+    const second = framedImage({
+      source: 'data:image/png;base64,second',
+      decode: async () => { secondDecodes += 1 },
+    })
+
+    await expect(waitForFramedImages(framedRoot([first, second]), {
+      timeoutMs: 100,
+      clock: NEVER_TIMEOUT_CLOCK,
+    })).resolves.toEqual({ ok: true })
+    expect(firstDecodes).toBe(1)
+    expect(secondDecodes).toBe(1)
+  })
+
+  it('restarts for the current source when a source changes during decode', async () => {
+    let decodeCalls = 0
+    const image = framedImage()
+    image.decode = async () => {
+      decodeCalls += 1
+      if (decodeCalls === 1) image.source = 'data:image/png;base64,replacement'
+    }
+
+    await expect(waitForFramedImages(framedRoot([image]), {
+      timeoutMs: 100,
+      clock: NEVER_TIMEOUT_CLOCK,
+    })).resolves.toEqual({ ok: true })
+    expect(decodeCalls).toBe(2)
+  })
+
+  it('returns image-load for a current decode rejection', async () => {
+    const image = framedImage({
+      decode: async () => { throw new Error('decode failed') },
+    })
+
+    await expect(waitForFramedImages(framedRoot([image]), {
+      timeoutMs: 100,
+      clock: NEVER_TIMEOUT_CLOCK,
+    })).resolves.toEqual({ ok: false, reason: 'image-load' })
+  })
+
+  it('returns timeout without hanging when decode never settles', async () => {
+    let now = 10
+    const clock: ImageWaitClock = {
+      now: () => now,
+      wait: async (milliseconds) => { now += milliseconds },
+    }
+    const image = framedImage({ decode: () => new Promise(() => undefined) })
+
+    await expect(waitForFramedImages(framedRoot([image]), {
+      timeoutMs: 75,
+      clock,
+    })).resolves.toEqual({ ok: false, reason: 'timeout' })
   })
 })

@@ -19,6 +19,29 @@ export type ImageDecodeReport =
 
 export type ImageReadinessState = ReadonlyMap<string, ImageDecodeReport>
 
+export type FramedImageWaitResult =
+  | { ok: true }
+  | { ok: false; reason: 'image-load' | 'timeout' }
+
+export interface ImageWaitClock {
+  now: () => number
+  wait: (milliseconds: number) => Promise<void>
+}
+
+export interface WaitForFramedImagesOptions {
+  timeoutMs: number
+  clock?: ImageWaitClock
+}
+
+const DEFAULT_IMAGE_WAIT_CLOCK: ImageWaitClock = {
+  now: () => globalThis.performance?.now?.() ?? Date.now(),
+  wait: (milliseconds) => new Promise((resolve) => {
+    globalThis.setTimeout(resolve, milliseconds)
+  }),
+}
+
+const FRAMED_IMAGE_SELECTOR = 'img[data-framed-image-content="true"]'
+
 function imageDecodeSlotKey(identity: ImageDecodeIdentity): string {
   return JSON.stringify([
     identity.scopeGeneration,
@@ -29,6 +52,109 @@ function imageDecodeSlotKey(identity: ImageDecodeIdentity): string {
 
 function positiveFinite(value: number): boolean {
   return Number.isFinite(value) && value > 0
+}
+
+function currentImageSource(image: HTMLImageElement): string {
+  return image.getAttribute('src') ?? ''
+}
+
+function currentImageIsDecoded(image: HTMLImageElement): boolean {
+  return image.complete
+    && positiveFinite(image.naturalWidth)
+    && positiveFinite(image.naturalHeight)
+}
+
+function decodeImage(image: HTMLImageElement): Promise<void> {
+  if (typeof image.decode === 'function') return image.decode()
+  if (currentImageIsDecoded(image)) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      image.removeEventListener('load', onLoad)
+      image.removeEventListener('error', onError)
+    }
+    const onLoad = () => {
+      cleanup()
+      if (currentImageIsDecoded(image)) resolve()
+      else reject(new Error('Image loaded without positive natural dimensions'))
+    }
+    const onError = () => {
+      cleanup()
+      reject(new Error('Image failed to load'))
+    }
+    image.addEventListener('load', onLoad, { once: true })
+    image.addEventListener('error', onError, { once: true })
+  })
+}
+
+type DecodeAttempt = 'decoded' | 'decode-error' | 'timeout'
+
+async function decodeCurrentSource(
+  image: HTMLImageElement,
+  deadline: number,
+  clock: ImageWaitClock,
+): Promise<FramedImageWaitResult> {
+  while (true) {
+    const source = currentImageSource(image)
+    if (!source) return { ok: false, reason: 'image-load' }
+    const remaining = deadline - clock.now()
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      return { ok: false, reason: 'timeout' }
+    }
+
+    const attempt = await Promise.race<DecodeAttempt>([
+      decodeImage(image).then<DecodeAttempt, DecodeAttempt>(
+        () => 'decoded',
+        () => 'decode-error',
+      ),
+      clock.wait(remaining).then<DecodeAttempt>(() => 'timeout'),
+    ])
+    if (attempt === 'timeout') return { ok: false, reason: 'timeout' }
+    if (currentImageSource(image) !== source) continue
+    if (attempt === 'decode-error' || !currentImageIsDecoded(image)) {
+      return { ok: false, reason: 'image-load' }
+    }
+    return { ok: true }
+  }
+}
+
+function framedImagesIn(root: ParentNode): HTMLImageElement[] {
+  return Array.from(root.querySelectorAll<HTMLImageElement>(FRAMED_IMAGE_SELECTOR))
+}
+
+function sameCurrentImages(
+  previous: readonly HTMLImageElement[],
+  current: readonly HTMLImageElement[],
+  sources: readonly string[],
+): boolean {
+  return previous.length === current.length
+    && previous.every((image, index) => (
+      current[index] === image && currentImageSource(image) === sources[index]
+    ))
+}
+
+export async function waitForFramedImages(
+  root: ParentNode,
+  options: WaitForFramedImagesOptions,
+): Promise<FramedImageWaitResult> {
+  const clock = options.clock ?? DEFAULT_IMAGE_WAIT_CLOCK
+  const timeoutMs = Number.isFinite(options.timeoutMs)
+    ? Math.max(0, options.timeoutMs)
+    : 0
+  const deadline = clock.now() + timeoutMs
+
+  while (true) {
+    const images = framedImagesIn(root)
+    if (images.length === 0) return { ok: true }
+    const decodedSources: string[] = []
+    for (const image of images) {
+      const result = await decodeCurrentSource(image, deadline, clock)
+      if (!result.ok) return result
+      decodedSources.push(currentImageSource(image))
+    }
+    const current = framedImagesIn(root)
+    if (sameCurrentImages(images, current, decodedSources)) return { ok: true }
+    if (clock.now() >= deadline) return { ok: false, reason: 'timeout' }
+  }
 }
 
 function validReadyReport(

@@ -68,6 +68,7 @@ import {
   createImageReadinessState,
   readReadyImage,
   updateImageReadiness,
+  waitForFramedImages,
   type ImageDecodeIdentity,
   type ImageDecodeReport,
   type ImageReadinessState,
@@ -157,6 +158,7 @@ import {
 } from './viewportScale'
 
 const FIT_SCALE_EPSILON = 0.0001
+const EXPORT_IMAGE_WAIT_MS = 3_500
 
 const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
   { id: 'rect', label: '矩形' },
@@ -2647,6 +2649,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS: string): Promise<Blob | null> {
     const node = artboardRef.current
     if (!node) return null
+    const imageWait = await waitForFramedImages(node, {
+      timeoutMs: EXPORT_IMAGE_WAIT_MS,
+    })
+    if (!imageWait.ok) {
+      throw new Error(imageWait.reason === 'timeout'
+        ? '图片加载超时，导出已取消'
+        : '图片加载失败，导出已取消')
+    }
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     return toBlob(node, {
       pixelRatio: 1,
       width: slide.width,
@@ -2684,6 +2695,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         )
         downloadBlob(blob, slidePngName(activeIndex))
       }
+    } catch (error) {
+      showOperationError(error, '导出失败，请稍后重试')
     } finally {
       setExporting(false)
     }
@@ -2711,6 +2724,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         const stamp = new Date().toISOString().slice(0, 10)
         await downloadZip(entries, `freeform-slides-${stamp}.zip`)
       }
+    } catch (error) {
+      showOperationError(error, '打包导出失败，请稍后重试')
     } finally {
       replaceCurrent({ type: 'slide/select', slideId: originalSlideId })
       setExportProgress(null)
