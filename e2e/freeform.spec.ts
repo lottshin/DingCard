@@ -14,6 +14,13 @@ const TEST_PNG = Buffer.from(
   'base64',
 )
 const TEST_PNG_DATA_URL = `data:image/png;base64,${TEST_PNG.toString('base64')}`
+const WIDE_TEST_SVG = Buffer.from(`
+  <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+    <rect width="800" height="400" fill="#d97706" />
+    <rect x="0" y="0" width="260" height="400" fill="#0f172a" />
+    <rect x="540" y="0" width="260" height="400" fill="#0ea5e9" />
+  </svg>
+`)
 
 function nestedV3Draft() {
   return {
@@ -3361,6 +3368,129 @@ test('fills a shape with an image', async ({ page }) => {
   await fileChooser.setFiles('public/favicon.svg')
 
   await expect(page.getByTestId('freeform-shape-image-fill')).toBeVisible()
+})
+
+test('PowerPoint crop shows the full source around the crop frame', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'wide-crop-source.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement).toHaveCount(1)
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await expect(imageElement).toHaveAttribute('data-selected', 'true')
+
+  const cropButton = page.getByTestId('freeform-crop-image')
+  await expect(cropButton).toHaveText('裁剪')
+  await page.getByTestId('paint-image-fit-contain').click()
+  await expect(cropButton).toBeDisabled()
+  await page.getByTestId('paint-image-fit-cover').click()
+  await expect(cropButton).toBeEnabled()
+  await cropButton.click()
+
+  const overlay = page.getByTestId('freeform-image-crop-overlay')
+  const dimImage = overlay.locator('.freeform-image-crop-dim')
+  const cropWindow = overlay.locator('.freeform-image-crop-window')
+  const brightImage = cropWindow.locator('.freeform-image-crop-bright')
+  const cropFrame = overlay.locator('.freeform-image-crop-frame')
+  await expect(overlay).toBeVisible()
+  await expect(dimImage).toBeVisible()
+  await expect(brightImage).toBeVisible()
+  await expect(cropFrame.locator('[data-crop-handle]')).toHaveCount(8)
+  for (const name of [
+    '裁剪上边',
+    '裁剪右上角',
+    '裁剪右边',
+    '裁剪右下角',
+    '裁剪下边',
+    '裁剪左下角',
+    '裁剪左边',
+    '裁剪左上角',
+  ]) {
+    await expect(cropFrame.getByRole('button', { name, exact: true })).toBeVisible()
+  }
+
+  const cropGeometry = await page.evaluate(() => {
+    const overlay = document.querySelector<HTMLElement>(
+      '[data-testid="freeform-image-crop-overlay"]',
+    )!
+    const dim = overlay.querySelector<HTMLImageElement>('.freeform-image-crop-dim')!
+    const windowElement = overlay.querySelector<HTMLElement>('.freeform-image-crop-window')!
+    const bright = overlay.querySelector<HTMLImageElement>('.freeform-image-crop-bright')!
+    const frame = overlay.querySelector<HTMLElement>('.freeform-image-crop-frame')!
+    const dimRect = dim.getBoundingClientRect()
+    const windowRect = windowElement.getBoundingClientRect()
+    const brightRect = bright.getBoundingClientRect()
+    const frameRect = frame.getBoundingClientRect()
+    return {
+      sameSource: dim.currentSrc === bright.currentSrc,
+      windowOverflow: getComputedStyle(windowElement).overflow,
+      sourceBeyondFrame: dimRect.left < frameRect.left - 0.5
+        || dimRect.top < frameRect.top - 0.5
+        || dimRect.right > frameRect.right + 0.5
+        || dimRect.bottom > frameRect.bottom + 0.5,
+      windowMatchesFrame: Math.abs(windowRect.left - frameRect.left) <= 0.5
+        && Math.abs(windowRect.top - frameRect.top) <= 0.5
+        && Math.abs(windowRect.right - frameRect.right) <= 0.5
+        && Math.abs(windowRect.bottom - frameRect.bottom) <= 0.5,
+      brightCoversWindow: brightRect.left <= windowRect.left + 0.5
+        && brightRect.top <= windowRect.top + 0.5
+        && brightRect.right >= windowRect.right - 0.5
+        && brightRect.bottom >= windowRect.bottom - 0.5,
+    }
+  })
+  expect(cropGeometry).toEqual({
+    sameSource: true,
+    windowOverflow: 'hidden',
+    sourceBeyondFrame: true,
+    windowMatchesFrame: true,
+    brightCoversWindow: true,
+  })
+
+  await expect(imageElement).toHaveAttribute('data-scene-node-id', /.+/)
+  await expect(imageElement.locator('[data-image-crop-hidden="true"]')).toHaveCount(1)
+  await expect(page.getByTestId('freeform-selection-box')).toHaveCount(0)
+  await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
+  await expect(page.getByTestId('freeform-framing-zoom')).toHaveCount(0)
+  await expect(page.getByTestId('freeform-framing-zoom-in')).toHaveCount(0)
+  await expect(page.getByTestId('freeform-framing-zoom-out')).toHaveCount(0)
+  await expect(page.locator('.freeform-framing-third')).toHaveCount(0)
+
+  await page.getByTestId('theme-toggle').click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(cropFrame.locator('[data-crop-handle]')).toHaveCount(8)
+  await page.getByTestId('freeform-image-crop-done').click()
+  await expect(overlay).toHaveCount(0)
+
+  await imageElement.dblclick()
+  await expect(overlay).toBeVisible()
+  await page.getByTestId('freeform-image-crop-done').click()
+
+  await insertShape(page)
+  await page.locator('input.freeform-file').nth(1).setInputFiles({
+    name: 'shape-fill.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const shapeElement = page.getByTestId('freeform-element').filter({
+    has: page.getByTestId('freeform-shape-image-fill'),
+  })
+  await expect(shapeElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await expect(page.getByTestId('freeform-adjust-framing')).toHaveText('调整取景')
+  await shapeElement.dblclick()
+  await expect(page.getByTestId('freeform-framing-surface')).toBeVisible()
+  await expect(overlay).toHaveCount(0)
+  await page.getByTestId('freeform-framing-cancel').click()
 })
 
 test('image framing commits one history entry and cancel restores the saved frame', async ({ page }) => {

@@ -33,6 +33,7 @@ import {
   FreeformSceneNodeView,
   type SceneNodePointerState,
 } from './FreeformSceneNodeView'
+import { ImageCropOverlay } from './ImageCropOverlay'
 import { FreeformSlidePreview } from './FreeformSlidePreview'
 import {
   FreeformSelectionOverlay,
@@ -73,6 +74,11 @@ import {
   type ImageDecodeReport,
   type ImageReadinessState,
 } from './imageReadiness'
+import {
+  createImageCropDraft,
+  imageCropScreenScale,
+  type ImageCropDraft,
+} from './imageCrop'
 import { ColorPickerButton, PaintField } from './PaintField'
 import {
   DEFAULT_PAGE_PAINT,
@@ -197,6 +203,20 @@ interface ImageFramingSession {
   naturalSize: ImageFrameSize
   startDocument: FreeformDocument
   startFraming: ImageFraming
+}
+
+interface ImageCropDisplaySession {
+  scopeGeneration: number
+  draftScopeKey: string
+  slideId: string
+  path: ScenePath
+  logicalSrc: string
+  resolvedSrc: string
+  naturalSize: ImageFrameSize
+  startDocument: FreeformDocument
+  startNode: FreeformImageElement
+  startWorldMatrix: Matrix2D
+  draft: ImageCropDraft
 }
 
 function imageFramingTargetForNode(node: FreeformSceneNode | undefined): ImageFramingTarget | null {
@@ -574,6 +594,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   )
   const [framingSession, setFramingSession] = useState<ImageFramingSession | null>(null)
   const framingSessionRef = useRef<ImageFramingSession | null>(null)
+  const [imageCropSession, setImageCropSession] = useState<ImageCropDisplaySession | null>(null)
+  const imageCropSessionRef = useRef<ImageCropDisplaySession | null>(null)
   const framingSurfaceRef = useRef<HTMLDivElement>(null)
   const framingDragPointerIdRef = useRef<number | null>(null)
   const renderScale = calculateRenderScale(fitScale, zoomPercent)
@@ -630,6 +652,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   currentUserIdRef.current = user?.id ?? null
   imageReadinessRef.current = imageReadiness
   framingSessionRef.current = framingSession
+  imageCropSessionRef.current = imageCropSession
 
   const updateDraftId = useCallback((nextDraftId: string | null) => {
     currentDraftIdRef.current = nextDraftId
@@ -713,15 +736,22 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     : selectedShapeFillPending
       ? '图片正在处理中'
       : selectedImageTarget?.fit === 'contain'
-        ? '适应模式不支持调整取景'
+        ? selectedImageTarget.targetKind === 'image'
+          ? '请先切换到填满模式后裁剪'
+          : '适应模式不支持调整取景'
         : !selectedImageNaturalSize
-          ? '图片加载完成后可调整取景'
+          ? selectedImageTarget?.targetKind === 'image'
+            ? '图片加载完成后可裁剪'
+            : '图片加载完成后可调整取景'
           : null
   const canAdjustSelectedFraming = Boolean(
     selectedImageTarget
     && selectedPath
     && selectedImageTarget.fit === 'cover'
     && !selectedFramingDisabledReason,
+  )
+  const canCropSelectedImage = Boolean(
+    canAdjustSelectedFraming && selectedImageTarget?.targetKind === 'image',
   )
   const canResetSelectedFraming = Boolean(
     selectedImageTarget
@@ -788,6 +818,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       !activeInteractionRef.current
       && marqueePointerIdRef.current === null
       && !framingSessionRef.current
+      && !imageCropSessionRef.current
     ) return false
     setOperationNotice(ACTIVE_INTERACTION_NOTICE)
     return true
@@ -1141,6 +1172,123 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       )
   }
 
+  function imageCropSessionBelongsToCurrentScope(
+    session: ImageCropDisplaySession,
+  ): boolean {
+    return session.scopeGeneration === documentIdentityGenerationRef.current
+      && session.draftScopeKey === imageFramingScopeKey(
+        documentIdentityGenerationRef.current,
+        currentUserIdRef.current,
+        currentDraftIdRef.current,
+      )
+  }
+
+  function currentTargetForImageCropSession(
+    session: ImageCropDisplaySession,
+  ): { slide: FreeformSlide; node: FreeformImageElement } | null {
+    if (!imageCropSessionBelongsToCurrentScope(session)) return null
+    const document = currentDocumentRef.current
+    if (document.activeSlideId !== session.slideId) return null
+    const slide = document.slides.find((candidate) => candidate.id === session.slideId)
+    if (!slide) return null
+    const directPath = directChildPathForScope(slide.nodes, activeGroupPath, session.path)
+    if (!directPath || scenePathKey(directPath) !== scenePathKey(session.path)) return null
+    const state = effectiveSceneState(slide.nodes, session.path)
+    const node = findNodeAtPath(slide.nodes, session.path)
+    if (
+      !state
+      || state.locked
+      || state.hidden
+      || node?.type !== 'image'
+      || node.fit !== 'cover'
+      || node.src !== session.logicalSrc
+      || store.images.resolve(node.src) !== session.resolvedSrc
+    ) return null
+    const target = imageFramingTargetForNode(node)
+    if (!target || target.targetKind !== 'image') return null
+    const identity = imageDecodeIdentityForTarget(
+      session.scopeGeneration,
+      slide.id,
+      session.path,
+      target,
+    )
+    const naturalSize = readReadyImage(imageReadinessRef.current, identity)
+    if (
+      !naturalSize
+      || naturalSize.width !== session.naturalSize.width
+      || naturalSize.height !== session.naturalSize.height
+    ) return null
+    return { slide, node }
+  }
+
+  function clearImageCropSession() {
+    imageCropSessionRef.current = null
+    setImageCropSession(null)
+  }
+
+  function startImageCrop(path: ScenePath): boolean {
+    if (
+      imageCropSessionRef.current
+      || framingSessionRef.current
+      || blockDocumentMutationDuringInteraction()
+    ) return false
+    const document = currentDocumentRef.current
+    const slide = document.slides.find((candidate) => candidate.id === document.activeSlideId)
+    if (!slide || slide.id !== activeSlide.id || renderScale === null) return false
+    const directPath = directChildPathForScope(slide.nodes, activeGroupPath, path)
+    if (!directPath || scenePathKey(directPath) !== scenePathKey(path)) return false
+    const state = effectiveSceneState(slide.nodes, path)
+    const node = findNodeAtPath(slide.nodes, path)
+    if (!state || state.locked || state.hidden || node?.type !== 'image' || node.fit !== 'cover') {
+      return false
+    }
+    const target = imageFramingTargetForNode(node)
+    if (!target || target.targetKind !== 'image') return false
+    const identity = imageDecodeIdentityForTarget(
+      documentIdentityGenerationRef.current,
+      slide.id,
+      path,
+      target,
+    )
+    const naturalSize = readReadyImage(imageReadinessRef.current, identity)
+    const worldMatrix = sceneWorldMatrixAtPath(slide.nodes, path)
+    if (!naturalSize || !worldMatrix) return false
+    const draft = createImageCropDraft({ startNode: node, naturalSize })
+    if (
+      !draft
+      || imageCropScreenScale({ renderScale, startWorldMatrix: worldMatrix }) === null
+    ) return false
+
+    const session: ImageCropDisplaySession = {
+      scopeGeneration: documentIdentityGenerationRef.current,
+      draftScopeKey: imageFramingScopeKey(
+        documentIdentityGenerationRef.current,
+        currentUserIdRef.current,
+        currentDraftIdRef.current,
+      ),
+      slideId: slide.id,
+      path: [...path],
+      logicalSrc: node.src,
+      resolvedSrc: target.resolvedSrc,
+      naturalSize: { ...naturalSize },
+      startDocument: document,
+      startNode: { ...node, framing: { ...node.framing } },
+      startWorldMatrix: [...worldMatrix] as Matrix2D,
+      draft,
+    }
+    blurActiveTypingTarget()
+    setSelection([path[path.length - 1]])
+    imageCropSessionRef.current = session
+    setImageCropSession(session)
+    setOperationNotice(null)
+    return true
+  }
+
+  function finishImageCrop() {
+    if (!imageCropSessionRef.current) return
+    clearImageCropSession()
+  }
+
   function replaceSessionFraming(
     session: ImageFramingSession,
     framing: ImageFraming,
@@ -1246,6 +1394,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     scopeUserId = currentUserIdRef.current,
     scopeDraftId = currentDraftIdRef.current,
   ) {
+    if (imageCropSessionRef.current) clearImageCropSession()
     const session = framingSessionRef.current
     if (session) {
       const belongsToTransitionSource = session.scopeGeneration
@@ -1371,12 +1520,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }, [framingSession])
 
   useEffect(() => {
-    if (isActive || !framingSessionRef.current) return
-    cancelFramingBeforeTransition()
+    if (isActive) return
+    if (framingSessionRef.current || imageCropSessionRef.current) {
+      cancelFramingBeforeTransition()
+    }
   }, [isActive])
 
   function selectSlide(slideId: string) {
-    if (framingSessionRef.current) cancelFramingBeforeTransition()
+    if (framingSessionRef.current || imageCropSessionRef.current) {
+      cancelFramingBeforeTransition()
+    }
     if (blockDocumentMutationDuringInteraction()) return
     if (slideId === activeSlide.id) return
     clearActiveSlideImageReadiness(activeSlide.id)
@@ -1993,6 +2146,20 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     if (!isActive) return
     const onKey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase()
+      const activeCropSession = imageCropSessionRef.current
+      if (activeCropSession) {
+        if (event.key === 'Escape' || event.key === 'Enter') {
+          event.preventDefault()
+          finishImageCrop()
+          return
+        }
+        if (
+          event.key.startsWith('Arrow')
+          || (event.ctrlKey || event.metaKey)
+          || ['delete', 'backspace'].includes(key)
+        ) event.preventDefault()
+        return
+      }
       const activeFramingSession = framingSessionRef.current
       if (activeFramingSession) {
         if (event.key === 'Escape') {
@@ -2117,7 +2284,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     hitPath: ScenePath,
     state: SceneNodePointerState,
   ) {
-    if (framingSessionRef.current) {
+    if (framingSessionRef.current || imageCropSessionRef.current) {
       event.preventDefault()
       event.stopPropagation()
       return
@@ -2160,7 +2327,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     hitPath: ScenePath,
     state: SceneNodePointerState,
   ) {
-    if (framingSessionRef.current) {
+    if (framingSessionRef.current || imageCropSessionRef.current) {
       event.preventDefault()
       event.stopPropagation()
       return
@@ -2182,7 +2349,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         return
       }
       setSelection([directNode.id])
-      startImageFraming(directPath)
+      if (directNode.type === 'image') startImageCrop(directPath)
+      else startImageFraming(directPath)
       return
     }
     if (directNode.type !== 'group') return
@@ -2905,10 +3073,27 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const framingShapeClass = framingRenderTarget?.target.shape
     ? ` shape-${framingRenderTarget.target.shape}`
     : ''
+  const imageCropRenderTarget = imageCropSession
+    ? currentTargetForImageCropSession(imageCropSession)
+    : null
+  const imageCropRenderScale = imageCropSession && imageCropRenderTarget && renderScale !== null
+    ? imageCropScreenScale({
+        renderScale,
+        startWorldMatrix: imageCropSession.startWorldMatrix,
+      })
+    : null
+  const imageCropPathKey = imageCropRenderTarget && imageCropSession
+    ? scenePathKey(imageCropSession.path)
+    : undefined
+  const hasImageEditSession = Boolean(framingSession || imageCropSession)
 
   return (
     <div
-      className={`freeform-workspace${framingSession ? ' is-framing' : ''}`}
+      className={[
+        'freeform-workspace',
+        framingSession ? 'is-framing' : '',
+        imageCropSession ? 'is-image-cropping' : '',
+      ].filter(Boolean).join(' ')}
       aria-label="自由编辑工作区"
       data-history-depth={history.past.length}
     >
@@ -2916,7 +3101,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         testId="freeform-toolbar"
         label="自由编辑工具栏"
         className="freeform-toolbar"
-        disabled={Boolean(framingSession)}
+        disabled={hasImageEditSession}
       >
         <ToolbarGroup>
           <button className='bar-btn' data-testid='freeform-template-button' onClick={() => setShowTemplates(true)}>
@@ -3078,7 +3263,24 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
         <section className="freeform-stage-pane" aria-label="自由画布">
           <div className="freeform-stage-head">
-            {framingSession ? (
+            {imageCropSession ? (
+              <div
+                className="freeform-framing-head freeform-crop-head"
+                role="toolbar"
+                aria-label="图片裁剪"
+              >
+                <span aria-hidden="true" />
+                <strong>裁剪</strong>
+                <button
+                  className="toolbar-primary"
+                  type="button"
+                  data-testid="freeform-image-crop-done"
+                  onClick={finishImageCrop}
+                >
+                  完成
+                </button>
+              </div>
+            ) : framingSession ? (
               <div className="freeform-framing-head" role="toolbar" aria-label="图片取景">
                 <button
                   className="ghost"
@@ -3170,6 +3372,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       slideId={activeSlide.id}
                       scopeGeneration={documentIdentityGenerationRef.current}
                       onImageDecodeReport={handleImageDecodeReport}
+                      hiddenImageContentPathKey={imageCropPathKey}
                       activeParentPath={activeGroupPath}
                       selectedPaths={selectionPaths}
                       onNodePointerDown={onSceneNodePointerDown}
@@ -3216,6 +3419,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       />
                     ))}
                   </div>
+                  {imageCropSession && imageCropRenderTarget && imageCropRenderScale && (
+                    <ImageCropOverlay
+                      draft={imageCropSession.draft}
+                      worldMatrix={imageCropSession.startWorldMatrix}
+                      screenScale={imageCropRenderScale}
+                      resolvedSrc={imageCropSession.resolvedSrc}
+                      alt={imageCropSession.startNode.alt}
+                    />
+                  )}
                   {framingSession && framingRenderTarget && framingOverlayStyle && (
                     <div
                       ref={framingSurfaceRef}
@@ -3236,7 +3448,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       <span className="freeform-framing-third freeform-framing-third-h second" aria-hidden="true" />
                     </div>
                   )}
-                  {!framingSession && (
+                  {!framingSession && !imageCropSession && (
                     <FreeformSelectionOverlay
                       nodes={activeSlide.nodes}
                       selectedPaths={selectionPaths}
@@ -3301,7 +3513,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
         <FreeformRightPanel
           propertiesTabRef={propertiesTabRef}
-          disabled={Boolean(framingSession)}
+          disabled={hasImageEditSession}
           layers={(
             <FreeformLayersPanel
               nodes={activeSlide.nodes}
@@ -3665,17 +3877,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                             <button
                               className="ghost"
                               type="button"
-                              data-testid="freeform-adjust-framing"
-                              aria-label="调整图片取景"
-                              title={canAdjustSelectedFraming
-                                ? '调整图片取景'
+                              data-testid="freeform-crop-image"
+                              aria-label="裁剪图片"
+                              title={canCropSelectedImage
+                                ? '裁剪图片'
                                 : selectedFramingDisabledReason ?? undefined}
-                              disabled={!canAdjustSelectedFraming}
+                              disabled={!canCropSelectedImage}
                               onClick={() => {
-                                if (selectedPath) startImageFraming(selectedPath)
+                                if (selectedPath) startImageCrop(selectedPath)
                               }}
                             >
-                              调整取景
+                              裁剪
                             </button>
                             <button
                               className="ghost"

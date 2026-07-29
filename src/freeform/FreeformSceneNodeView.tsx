@@ -23,6 +23,7 @@ export interface FreeformSceneNodeViewProps {
   scopeGeneration?: number
   onImageDecodeReport?: (report: ImageDecodeReport) => void
   presentationOnly?: boolean
+  hiddenImageContentPathKey?: string
   activeParentPath: ScenePath
   selectedPaths: readonly ScenePath[]
   onNodePointerDown: (
@@ -59,6 +60,7 @@ function SceneLeafContent({
   slideId,
   scopeGeneration,
   onImageDecodeReport,
+  hiddenImageContentPathKey,
   onTextChange,
   onTextFocus,
 }: {
@@ -70,6 +72,7 @@ function SceneLeafContent({
   slideId: string
   scopeGeneration?: number
   onImageDecodeReport?: (report: ImageDecodeReport) => void
+  hiddenImageContentPathKey?: string
   onTextChange: (text: string) => void
   onTextFocus: () => void
 }) {
@@ -115,19 +118,26 @@ function SceneLeafContent({
 
   if (leaf.type === 'image') {
     const resolvedSrc = store.images.resolve(leaf.src)
+    const imageContentIsHidden = !presentationOnly
+      && hiddenImageContentPathKey === scenePathKey(path)
     return (
-      <FramedImage
-        logicalSrc={leaf.src}
-        resolvedSrc={resolvedSrc}
-        fit={leaf.fit}
-        framing={leaf.framing}
-        frameWidth={leaf.width}
-        frameHeight={leaf.height}
-        className={presentationOnly ? 'freeform-preview-image' : 'freeform-image'}
-        alt={presentationOnly ? '' : leaf.alt}
-        decodeIdentity={decodeIdentity(leaf.src, resolvedSrc)}
-        onDecodeReport={presentationOnly ? undefined : onImageDecodeReport}
-      />
+      <div
+        className="freeform-image-content-layer"
+        data-image-crop-hidden={imageContentIsHidden ? 'true' : undefined}
+      >
+        <FramedImage
+          logicalSrc={leaf.src}
+          resolvedSrc={resolvedSrc}
+          fit={leaf.fit}
+          framing={leaf.framing}
+          frameWidth={leaf.width}
+          frameHeight={leaf.height}
+          className={presentationOnly ? 'freeform-preview-image' : 'freeform-image'}
+          alt={presentationOnly ? '' : leaf.alt}
+          decodeIdentity={decodeIdentity(leaf.src, resolvedSrc)}
+          onDecodeReport={presentationOnly ? undefined : onImageDecodeReport}
+        />
+      </div>
     )
   }
 
@@ -282,6 +292,7 @@ function SceneNodeBranch({
         slideId={props.slideId}
         scopeGeneration={props.scopeGeneration}
         onImageDecodeReport={props.onImageDecodeReport}
+        hiddenImageContentPathKey={props.hiddenImageContentPathKey}
         onTextChange={(text) => {
           if (!readOnly) props.onTextChange(path, text)
         }}
