@@ -35,11 +35,13 @@ import {
   validateSelectionForParent,
   walkScene,
 } from './sceneTree'
+import { effectiveSceneState } from './sceneSelection'
 import type {
   ColorPaint,
   FreeformAction,
   FreeformDocument,
   FreeformElement,
+  FreeformImageCropPatch,
   FreeformImageElement,
   FreeformLineElement,
   FreeformNodeContentPatch,
@@ -327,6 +329,8 @@ const STYLE_KEYS = new Set([
   'lineKind',
 ])
 const GEOMETRY_KEYS = new Set(['x', 'y', 'width', 'height', 'rotation', 'scale'])
+const IMAGE_CROP_ACTION_KEYS = new Set(['type', 'slideId', 'path', 'patch'])
+const IMAGE_CROP_PATCH_KEYS = new Set(['x', 'y', 'width', 'height', 'framing'])
 
 function applyContentPatch(
   node: FreeformSceneNode,
@@ -597,6 +601,65 @@ function reduceNodeUpdateBatch(
   if (!nodes || invalidPatch || nodes === slide.nodes) return document
   if (validateSceneNodesForMutation(nodes)) return document
   return withSlideNodes(document, slideId, () => nodes)
+}
+
+function reduceImageCropUpdate(
+  document: FreeformDocument,
+  action: Extract<FreeformAction, { type: 'node/update-image-crop' }>,
+): FreeformDocument {
+  if (
+    !isRecord(action) ||
+    !hasExactKeys(action, IMAGE_CROP_ACTION_KEYS) ||
+    typeof action.slideId !== 'string' ||
+    !validScenePath(action.path) ||
+    !isRecord(action.patch) ||
+    !hasExactKeys(action.patch, IMAGE_CROP_PATCH_KEYS)
+  ) {
+    return document
+  }
+
+  const slide = document.slides.find((candidate) => candidate.id === action.slideId)
+  if (!slide) return document
+
+  let pathIndex: ReturnType<typeof buildScenePathIndex>
+  try {
+    pathIndex = buildScenePathIndex(slide.nodes)
+  } catch {
+    return document
+  }
+  const paths = [action.path]
+  if (
+    !canApplySceneAction(slide.nodes, { kind: 'geometry', paths }, pathIndex) ||
+    !canApplySceneAction(slide.nodes, { kind: 'style', paths }, pathIndex)
+  ) {
+    return document
+  }
+  const state = effectiveSceneState(slide.nodes, action.path)
+  if (!state || state.hidden) return document
+
+  const node = pathIndex.get(scenePathKey(action.path))?.node
+  if (!node || node.type !== 'image') return document
+
+  const patch = action.patch as FreeformImageCropPatch
+  const geometryResult = applyGeometryPatch(node, {
+    x: patch.x,
+    y: patch.y,
+    width: patch.width,
+    height: patch.height,
+  })
+  if (!geometryResult.ok) return document
+  const styleResult = applyStylePatch(geometryResult.node, {
+    framing: patch.framing,
+  })
+  if (!styleResult.ok || styleResult.node === node) return document
+
+  const nodes = updateNodesAtPaths(
+    slide.nodes,
+    new Map([[scenePathKey(action.path), () => styleResult.node]]),
+    { recenterChangedGroups: true },
+  )
+  if (!nodes || nodes === slide.nodes || validateSceneNodesForMutation(nodes)) return document
+  return withSlideNodes(document, action.slideId, () => nodes)
 }
 
 function defaultSceneNodeName(element: FreeformElement): string {
@@ -929,6 +992,8 @@ export function reduceFreeformDocument(
         return reduceNodeUpdateBatch(document, action.slideId, 'style', action.updates)
       case 'node/update-geometry':
         return reduceNodeUpdateBatch(document, action.slideId, 'geometry', action.updates)
+      case 'node/update-image-crop':
+        return reduceImageCropUpdate(document, action)
       case 'node/delete': {
         if (!validContainerPath(action.parentPath) || !validIdList(action.nodeIds)) return document
         const slide = document.slides.find((candidate) => candidate.id === action.slideId)

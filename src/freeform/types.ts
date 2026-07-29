@@ -136,6 +136,14 @@ export interface FreeformNodeGeometryPatch {
   scale?: number
 }
 
+export interface FreeformImageCropPatch {
+  x: number
+  y: number
+  width: number
+  height: number
+  framing: ImageFraming
+}
+
 export interface FreeformNodeContentUpdate {
   path: ScenePath
   patch: FreeformNodeContentPatch
@@ -174,6 +182,12 @@ export type FreeformAction =
   | { type: 'node/update-content'; slideId: string; updates: FreeformNodeContentUpdate[] }
   | { type: 'node/update-style'; slideId: string; updates: FreeformNodeStyleUpdate[] }
   | { type: 'node/update-geometry'; slideId: string; updates: FreeformNodeGeometryUpdate[] }
+  | {
+      type: 'node/update-image-crop'
+      slideId: string
+      path: ScenePath
+      patch: FreeformImageCropPatch
+    }
   | { type: 'node/delete'; slideId: string; parentPath: ScenePath; nodeIds: string[] }
   | {
       type: 'node/reorder'

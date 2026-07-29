@@ -11,9 +11,11 @@ import {
   reduceFreeformDocument,
   validatePageSize,
 } from '../document'
-import { SCENE_EPSILON } from '../sceneTransform'
+import { SCENE_EPSILON, sceneNodesBoundsInParent } from '../sceneTransform'
 import type {
+  FreeformAction,
   FreeformDocument,
+  FreeformGroupNode,
   FreeformImageElement,
   FreeformSceneNode,
   FreeformShapeElement,
@@ -29,6 +31,26 @@ function documentWith(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
     ...document,
     slides: [{ ...document.slides[0], nodes }],
+  }
+}
+
+function groupWith(
+  id: string,
+  children: FreeformSceneNode[],
+  overrides: Partial<FreeformGroupNode> = {},
+): FreeformGroupNode {
+  return {
+    id,
+    name: `Group ${id}`,
+    locked: false,
+    hidden: false,
+    type: 'group',
+    x: 200,
+    y: 180,
+    rotation: 0,
+    scale: 1,
+    children,
+    ...overrides,
   }
 }
 
@@ -175,6 +197,276 @@ describe('freeform document', () => {
         patch: { fit: 'contain', framing: framing({ focusX: 2 }) },
       }],
     })).toBe(document)
+  })
+
+  it('updates image crop geometry and framing atomically while owning the framing payload', () => {
+    const image = createImageElement(createSlide(), 'img:photo', 'Photo')
+    Object.assign(image, {
+      x: 30,
+      y: 40,
+      width: 180,
+      height: 120,
+      rotation: 17,
+      scale: 1.25,
+      fit: 'cover',
+      framing: framing({ focusX: 0.25, focusY: 0.7, zoom: 2 }),
+    })
+    const document = documentWith([image])
+    const nextFraming = framing({ focusX: 0.8, focusY: 0.3, zoom: 3 })
+    const action: FreeformAction = {
+      type: 'node/update-image-crop',
+      slideId: document.activeSlideId,
+      path: [image.id],
+      patch: {
+        x: 120,
+        y: 160,
+        width: 240,
+        height: 180,
+        framing: nextFraming,
+      },
+    }
+
+    const updated = reduceFreeformDocument(document, action)
+    nextFraming.focusX = 0.1
+
+    expect(updated).not.toBe(document)
+    expect(updated.slides[0].nodes[0]).toMatchObject({
+      id: image.id,
+      type: 'image',
+      x: 120,
+      y: 160,
+      width: 240,
+      height: 180,
+      framing: framing({ focusX: 0.8, focusY: 0.3, zoom: 3 }),
+      rotation: 17,
+      scale: 1.25,
+      src: 'img:photo',
+      alt: 'Photo',
+      fit: 'cover',
+    })
+    expect((updated.slides[0].nodes[0] as FreeformImageElement).framing).not.toBe(nextFraming)
+
+    const same = reduceFreeformDocument(updated, {
+      type: 'node/update-image-crop',
+      slideId: updated.activeSlideId,
+      path: [image.id],
+      patch: {
+        x: 120,
+        y: 160,
+        width: 240,
+        height: 180,
+        framing: framing({ focusX: 0.8, focusY: 0.3, zoom: 3 }),
+      },
+    })
+    expect(same).toBe(updated)
+  })
+
+  it('recenters every affected ancestor once after updating a nested image crop', () => {
+    const image = createImageElement(createSlide(), 'img:nested', 'Nested photo')
+    Object.assign(image, {
+      id: 'nested-image',
+      x: -70,
+      y: -45,
+      width: 140,
+      height: 90,
+      rotation: 13,
+      scale: 0.8,
+      framing: framing({ focusX: 0.3, focusY: 0.6, zoom: 1.5 }),
+    })
+    const innerSibling = createShapeElement(createSlide(), 'rect')
+    Object.assign(innerSibling, { id: 'inner-sibling', x: 90, y: 25, rotation: -9, scale: 1.1 })
+    const outerSibling = createShapeElement(createSlide(), 'ellipse')
+    Object.assign(outerSibling, { id: 'outer-sibling', x: 170, y: -30, rotation: 6, scale: 0.7 })
+    const inner = groupWith('inner', [image, innerSibling], {
+      x: -110,
+      y: 80,
+      rotation: 21,
+      scale: 1.2,
+    })
+    const outer = groupWith('outer', [inner, outerSibling], {
+      x: 430,
+      y: 360,
+      rotation: -14,
+      scale: 0.9,
+    })
+    const document = documentWith([outer])
+
+    const updated = reduceFreeformDocument(document, {
+      type: 'node/update-image-crop',
+      slideId: document.activeSlideId,
+      path: ['outer', 'inner', 'nested-image'],
+      patch: {
+        x: 180,
+        y: 130,
+        width: 260,
+        height: 190,
+        framing: framing({ focusX: 0.75, focusY: 0.2, zoom: 3.25 }),
+      },
+    })
+
+    expect(updated).not.toBe(document)
+    const updatedOuter = updated.slides[0].nodes[0] as FreeformGroupNode
+    const updatedInner = updatedOuter.children.find((node) => node.id === 'inner') as FreeformGroupNode
+    const updatedImage = updatedInner.children.find(
+      (node) => node.id === 'nested-image',
+    ) as FreeformImageElement
+    const innerBounds = sceneNodesBoundsInParent(updatedInner.children)
+    const outerBounds = sceneNodesBoundsInParent(updatedOuter.children)
+
+    expect(updatedInner.x).not.toBe(inner.x)
+    expect(updatedInner.y).not.toBe(inner.y)
+    expect(updatedOuter.x).not.toBe(outer.x)
+    expect(updatedOuter.y).not.toBe(outer.y)
+    expect(innerBounds).not.toBeNull()
+    expect(outerBounds).not.toBeNull()
+    expect(innerBounds!.x + innerBounds!.width / 2).toBeCloseTo(0, 6)
+    expect(innerBounds!.y + innerBounds!.height / 2).toBeCloseTo(0, 6)
+    expect(outerBounds!.x + outerBounds!.width / 2).toBeCloseTo(0, 6)
+    expect(outerBounds!.y + outerBounds!.height / 2).toBeCloseTo(0, 6)
+    expect(updatedOuter).toMatchObject({ rotation: -14, scale: 0.9 })
+    expect(updatedInner).toMatchObject({ rotation: 21, scale: 1.2 })
+    expect(updatedImage).toMatchObject({
+      width: 260,
+      height: 190,
+      src: 'img:nested',
+      alt: 'Nested photo',
+      framing: framing({ focusX: 0.75, focusY: 0.2, zoom: 3.25 }),
+    })
+    expect(updatedImage.rotation).toBeCloseTo(13, 10)
+    expect(updatedImage.scale).toBeCloseTo(0.8, 10)
+  })
+
+  it('rejects malformed, unauthorized, hidden, and non-image crop actions atomically', () => {
+    const visible = createImageElement(createSlide(), 'img:visible')
+    visible.id = 'visible'
+    const locked = createImageElement(createSlide(), 'img:locked')
+    Object.assign(locked, { id: 'locked', locked: true })
+    const hidden = createImageElement(createSlide(), 'img:hidden')
+    Object.assign(hidden, { id: 'hidden', hidden: true })
+    const lockedChild = createImageElement(createSlide(), 'img:locked-child')
+    lockedChild.id = 'locked-child'
+    const hiddenChild = createImageElement(createSlide(), 'img:hidden-child')
+    hiddenChild.id = 'hidden-child'
+    const shape = createShapeElement(createSlide(), 'rect')
+    shape.id = 'shape'
+    const document = documentWith([
+      visible,
+      locked,
+      hidden,
+      groupWith('locked-parent', [lockedChild], { locked: true }),
+      groupWith('hidden-parent', [hiddenChild], { hidden: true }),
+      shape,
+    ])
+    const validPatch = {
+      x: 100,
+      y: 120,
+      width: 260,
+      height: 180,
+      framing: framing({ focusX: 0.7, focusY: 0.2, zoom: 2.5 }),
+    }
+    const action = (path: readonly string[], patch: unknown = validPatch): FreeformAction => ({
+      type: 'node/update-image-crop',
+      slideId: document.activeSlideId,
+      path,
+      patch,
+    } as FreeformAction)
+    const invalidActions: Array<[string, FreeformAction]> = [
+      ['non-image target', action(['shape'])],
+      ['unknown path', action(['missing'])],
+      ['empty path', action([])],
+      ['locked target', action(['locked'])],
+      ['locked ancestor', action(['locked-parent', 'locked-child'])],
+      ['hidden target', action(['hidden'])],
+      ['hidden ancestor', action(['hidden-parent', 'hidden-child'])],
+      ['extra action key', { ...action(['visible']), extension: true } as unknown as FreeformAction],
+      ['missing slideId', {
+        type: 'node/update-image-crop',
+        path: ['visible'],
+        patch: validPatch,
+      } as unknown as FreeformAction],
+      ['extra patch key', action(['visible'], { ...validPatch, rotation: 4 })],
+      ['missing patch key', action(['visible'], {
+        x: validPatch.x,
+        y: validPatch.y,
+        width: validPatch.width,
+        framing: validPatch.framing,
+      })],
+      ['non-finite x', action(['visible'], { ...validPatch, x: Number.NaN })],
+      ['non-finite y', action(['visible'], { ...validPatch, y: Number.POSITIVE_INFINITY })],
+      ['non-finite width', action(['visible'], { ...validPatch, width: Number.NEGATIVE_INFINITY })],
+      ['non-finite height', action(['visible'], { ...validPatch, height: Number.NaN })],
+      ['zero width', action(['visible'], { ...validPatch, width: 0 })],
+      ['negative height', action(['visible'], { ...validPatch, height: -1 })],
+      ['framing extra key', action(['visible'], {
+        ...validPatch,
+        framing: { ...validPatch.framing, extension: true },
+      })],
+      ['framing missing key', action(['visible'], {
+        ...validPatch,
+        framing: { focusX: 0.5, focusY: 0.5 },
+      })],
+      ['focusX below range', action(['visible'], {
+        ...validPatch,
+        framing: framing({ focusX: -0.01 }),
+      })],
+      ['focusY above range', action(['visible'], {
+        ...validPatch,
+        framing: framing({ focusY: 1.01 }),
+      })],
+      ['zoom below range', action(['visible'], {
+        ...validPatch,
+        framing: framing({ zoom: 0.99 }),
+      })],
+      ['zoom above range', action(['visible'], {
+        ...validPatch,
+        framing: framing({ zoom: 4.01 }),
+      })],
+      ['non-finite focus', action(['visible'], {
+        ...validPatch,
+        framing: framing({ focusX: Number.NaN }),
+      })],
+      ['non-finite zoom', action(['visible'], {
+        ...validPatch,
+        framing: framing({ zoom: Number.POSITIVE_INFINITY }),
+      })],
+    ]
+
+    for (const [label, invalidAction] of invalidActions) {
+      expect(reduceFreeformDocument(document, invalidAction), label).toBe(document)
+    }
+  })
+
+  it('keeps the original document when crop validation throws after geometry is prepared', () => {
+    const image = createImageElement(createSlide(), 'img:photo')
+    image.id = 'image'
+    const document = documentWith([image])
+    const originalImage = {
+      x: image.x,
+      y: image.y,
+      width: image.width,
+      height: image.height,
+      framing: { ...image.framing },
+    }
+    const throwingPatch = {
+      x: 140,
+      y: 160,
+      width: 280,
+      height: 200,
+      get framing(): ImageFraming {
+        throw new Error('framing validation failed')
+      },
+    }
+    const action = {
+      type: 'node/update-image-crop',
+      slideId: document.activeSlideId,
+      path: ['image'],
+      patch: throwingPatch,
+    } as unknown as FreeformAction
+
+    expect(() => reduceFreeformDocument(document, action)).not.toThrow()
+    expect(reduceFreeformDocument(document, action)).toBe(document)
+    expect(document.slides[0].nodes[0]).toBe(image)
+    expect(image).toMatchObject(originalImage)
   })
 
   it('resets framing only when a standalone source actually changes', () => {
