@@ -462,9 +462,12 @@ describe('freeform document', () => {
       path: ['image'],
       patch: throwingPatch,
     } as unknown as FreeformAction
+    let result: FreeformDocument | undefined
 
-    expect(() => reduceFreeformDocument(document, action)).not.toThrow()
-    expect(reduceFreeformDocument(document, action)).toBe(document)
+    expect(() => {
+      result = reduceFreeformDocument(document, action)
+    }).not.toThrow()
+    expect(result).toBe(document)
     expect(document.slides[0].nodes[0]).toBe(image)
     expect(image).toMatchObject(originalImage)
   })
