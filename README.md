@@ -3,7 +3,7 @@
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
   <p>
-    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.14.0-e2570f" alt="叮卡版本 0.14.0"></a>
+    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.15.0-e2570f" alt="叮卡版本 0.15.0"></a>
     <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
     <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
     <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.11.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.11.0"></a>
@@ -63,7 +63,8 @@
 需要自己安排版面时，可以切到自由画布，在同一个作品里完成封面和多页内容。
 
 - 画布里可以加入文字、图片和基础图形，并直接拖动它们的位置和大小。
-- 图片可以在原来的画框内移动和缩放；矩形、圆形和三角形的图片填充也能单独调整取景。
+- 独立图片进入“裁剪”后，可以在原画框里移动图片、拖动八个黑柄，并用“比例”菜单快速调整画框。
+- 矩形、圆形和三角形的图片填充仍使用“调整取景”，只改变图片在形状里的位置和缩放。
 - 图层面板可以修改名称和顺序；相关对象也可以编成一组。
 - 暂时不需要的对象可以隐藏，正在调整的对象可以锁定，避免误操作。
 - 多页作品可以分别设置尺寸，页面之间也可以复制和调整。
