@@ -10,8 +10,8 @@ import {
 } from 'react'
 import {
   applyImageCropAspectRatio,
-  imageCropLocalDeltaFromScreen,
   panImageCropDraft,
+  projectImageCropGesture,
   projectImageCropHandle,
   type ImageCropDraft,
   type ImageCropHandle,
@@ -291,26 +291,18 @@ export function useImageCropSession(): ImageCropSessionApi {
   const calculateGestureDraft = useCallback((gesture: CropGesture): ImageCropDraft => {
     const current = sessionStateRef.current
     if (!current) return gesture.startDraft
-    const screenDelta = {
-      x: gesture.latestClient.x - gesture.startClient.x,
-      y: gesture.latestClient.y - gesture.startClient.y,
-    }
-    const localDelta = imageCropLocalDeltaFromScreen({
-      screenDelta,
-      renderScale: current.renderScale,
-      startWorldMatrix: current.startWorldMatrix,
-    })
-    if (!localDelta) return gesture.startDraft
-    if (gesture.kind === 'pan') {
-      return panImageCropDraft({ draft: gesture.startDraft, localDelta })
-    }
-    if (!gesture.handle) return gesture.startDraft
-    return projectImageCropHandle({
+    return projectImageCropGesture({
       startNode: current.startNode,
       naturalSize: current.naturalSize,
       startDraft: gesture.startDraft,
+      kind: gesture.kind,
       handle: gesture.handle,
-      localDelta,
+      screenDelta: {
+        x: gesture.latestClient.x - gesture.startClient.x,
+        y: gesture.latestClient.y - gesture.startClient.y,
+      },
+      renderScale: current.renderScale,
+      startWorldMatrix: current.startWorldMatrix,
       minimumFrameSize: current.minimumFrameSize,
       symmetric: gesture.symmetric,
     })

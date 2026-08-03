@@ -7,6 +7,7 @@ import {
   imageCropScreenScale,
   imageCropDraftToUpdate,
   panImageCropDraft,
+  projectImageCropGesture,
   projectImageCropHandle,
   type ImageCropBounds,
   type ImageCropDraft,
@@ -546,6 +547,27 @@ describe('image crop screen transforms', () => {
     expect(imageCropLocalDeltaFromScreen(input)).toBeNull()
     expect(imageCropScreenScale(input)).toBeNull()
   })
+
+  it.each([
+    ['a singular matrix', [1, 0, 0, 0, 0, 0] as Matrix2D],
+    ['a non-finite matrix', [Number.NaN, 0, 0, 1, 0, 0] as Matrix2D],
+  ])('keeps pan and handle gestures on the starting draft for %s', (_label, startWorldMatrix) => {
+    const startNode = imageNode({ rotation: 0, scale: 1 })
+    const naturalSize = { width: 400, height: 200 }
+    const startDraft = createImageCropDraft({ startNode, naturalSize })!
+    const base = {
+      startNode,
+      naturalSize,
+      startDraft,
+      screenDelta: { x: 10, y: 5 },
+      renderScale: 1,
+      startWorldMatrix,
+      minimumFrameSize: { width: 1, height: 1 },
+    }
+
+    expect(projectImageCropGesture({ ...base, kind: 'pan' })).toBe(startDraft)
+    expect(projectImageCropGesture({ ...base, kind: 'handle', handle: 'e' })).toBe(startDraft)
+  })
 })
 
 describe('image crop picture movement', () => {
@@ -759,6 +781,7 @@ describe('image crop public boundary contracts', () => {
 
   it('keeps non-object draft transform fallbacks null', () => {
     for (const invalidInput of [undefined, false, 0, '', []]) {
+      expect(projectImageCropGesture(invalidInput as never)).toBeNull()
       expect(projectImageCropHandle(invalidInput as never)).toBeNull()
       expect(panImageCropDraft(invalidInput as never)).toBeNull()
       expect(applyImageCropAspectRatio(invalidInput as never)).toBeNull()
@@ -854,6 +877,16 @@ describe('image crop public boundary contracts', () => {
   })
 
   it('exposes the exact static fallback type for every draft transform', () => {
+    const legalGesture = projectImageCropGesture({
+      startNode,
+      naturalSize,
+      startDraft: draft,
+      kind: 'pan',
+      screenDelta: { x: 1, y: 0 },
+      renderScale: 1,
+      startWorldMatrix: [1, 0, 0, 1, 0, 0],
+      minimumFrameSize: { width: 1, height: 1 },
+    })
     const legalProject = projectImageCropHandle({
       startNode,
       naturalSize,
@@ -870,26 +903,33 @@ describe('image crop public boundary contracts', () => {
       ratio: 1,
       minimumFrameSize: { width: 1, height: 1 },
     })
+    expectTypeOf(legalGesture).toEqualTypeOf<ImageCropDraft>()
     expectTypeOf(legalProject).toEqualTypeOf<ImageCropDraft>()
     expectTypeOf(legalPan).toEqualTypeOf<ImageCropDraft>()
     expectTypeOf(legalAspect).toEqualTypeOf<ImageCropDraft>()
 
+    const nullGesture = projectImageCropGesture(null)
     const nullProject = projectImageCropHandle(null)
     const nullPan = panImageCropDraft(null)
     const nullAspect = applyImageCropAspectRatio(null)
+    expectTypeOf(nullGesture).toEqualTypeOf<null>()
     expectTypeOf(nullProject).toEqualTypeOf<null>()
     expectTypeOf(nullPan).toEqualTypeOf<null>()
     expectTypeOf(nullAspect).toEqualTypeOf<null>()
 
+    const gestureDraft = { kind: 'gesture' } as const
     const projectDraft = { kind: 'project' } as const
     const panDraft = { kind: 'pan' } as const
     const aspectDraft = { kind: 'aspect' } as const
+    const malformedGesture = projectImageCropGesture({ startDraft: gestureDraft })
     const malformedProject = projectImageCropHandle({ startDraft: projectDraft })
     const malformedPan = panImageCropDraft({ draft: panDraft })
     const malformedAspect = applyImageCropAspectRatio({ draft: aspectDraft })
+    expectTypeOf(malformedGesture).toEqualTypeOf<typeof gestureDraft>()
     expectTypeOf(malformedProject).toEqualTypeOf<typeof projectDraft>()
     expectTypeOf(malformedPan).toEqualTypeOf<typeof panDraft>()
     expectTypeOf(malformedAspect).toEqualTypeOf<typeof aspectDraft>()
+    expect(malformedGesture).toBe(gestureDraft)
     expect(malformedProject).toBe(projectDraft)
     expect(malformedPan).toBe(panDraft)
     expect(malformedAspect).toBe(aspectDraft)

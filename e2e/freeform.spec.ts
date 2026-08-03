@@ -23,9 +23,12 @@ const TEST_PNG = Buffer.from(
 const TEST_PNG_DATA_URL = `data:image/png;base64,${TEST_PNG.toString('base64')}`
 const WIDE_TEST_SVG = Buffer.from(`
   <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
-    <rect width="800" height="400" fill="#d97706" />
-    <rect x="0" y="0" width="260" height="400" fill="#0f172a" />
-    <rect x="540" y="0" width="260" height="400" fill="#0ea5e9" />
+    <rect width="800" height="400" fill="#f8fafc" />
+    <path d="M0 200h800M400 0v400" stroke="#64748b" stroke-width="8" />
+    <rect x="8" y="8" width="48" height="48" fill="#ff1744" />
+    <rect x="744" y="8" width="48" height="48" fill="#00c853" />
+    <rect x="8" y="344" width="48" height="48" fill="#2962ff" />
+    <rect x="744" y="344" width="48" height="48" fill="#d500f9" />
   </svg>
 `)
 const WIDE_TEST_SVG_DATA_URL = `data:image/svg+xml;base64,${WIDE_TEST_SVG.toString('base64')}`
@@ -3567,37 +3570,97 @@ async function readCropOverlayDraft(page: import('@playwright/test').Page) {
       '[data-testid="freeform-image-crop-overlay"]',
     )
     if (!overlay) throw new Error('crop overlay missing')
-    const readBounds = (selector: string) => {
-      const element = overlay.querySelector<HTMLElement>(selector)
-      if (!element) throw new Error(`${selector} missing`)
+    const readBounds = (prefix: 'Frame' | 'Image') => {
+      const read = (edge: 'Left' | 'Top' | 'Right' | 'Bottom') => {
+        const value = overlay.dataset[`crop${prefix}${edge}`]
+        if (value === undefined) throw new Error(`crop ${prefix} ${edge} data missing`)
+        return Number.parseFloat(value)
+      }
       return {
-        left: Number.parseFloat(element.style.left),
-        top: Number.parseFloat(element.style.top),
-        width: Number.parseFloat(element.style.width),
-        height: Number.parseFloat(element.style.height),
+        left: read('Left'),
+        top: read('Top'),
+        right: read('Right'),
+        bottom: read('Bottom'),
       }
     }
-    const frame = readBounds('.freeform-image-crop-frame')
-    const image = readBounds('.freeform-image-crop-dim')
+    const frame = readBounds('Frame')
+    const image = readBounds('Image')
     return {
-      frame: {
-        left: frame.left,
-        top: frame.top,
-        right: frame.left + frame.width,
-        bottom: frame.top + frame.height,
-      },
-      image: {
-        left: image.left,
-        top: image.top,
-        right: image.left + image.width,
-        bottom: image.top + image.height,
-      },
+      frame,
+      image,
       overlaySize: {
         width: Number.parseFloat(overlay.style.width),
         height: Number.parseFloat(overlay.style.height),
       },
     }
   })
+}
+
+async function readCropVisualGeometry(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const overlay = document.querySelector<HTMLElement>(
+      '[data-testid="freeform-image-crop-overlay"]',
+    )
+    const frame = overlay?.querySelector<HTMLElement>('.freeform-image-crop-frame')
+    const image = overlay?.querySelector<HTMLImageElement>('.freeform-image-crop-dim')
+    if (!overlay || !frame || !image) throw new Error('crop visual geometry missing')
+    const plainRect = (rect: DOMRect) => ({
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    })
+    const imageRect = image.getBoundingClientRect()
+    const markerCenter = (naturalX: number, naturalY: number) => ({
+      x: imageRect.left + imageRect.width * (naturalX / 800),
+      y: imageRect.top + imageRect.height * (naturalY / 400),
+    })
+    return {
+      frame: plainRect(frame.getBoundingClientRect()),
+      image: plainRect(imageRect),
+      markers: {
+        topLeft: markerCenter(32, 32),
+        topRight: markerCenter(768, 32),
+        bottomLeft: markerCenter(32, 368),
+        bottomRight: markerCenter(768, 368),
+      },
+    }
+  })
+}
+
+async function sampleViewportPixels(
+  page: import('@playwright/test').Page,
+  points: Array<{ x: number; y: number }>,
+) {
+  const screenshot = await page.screenshot()
+  const source = `data:image/png;base64,${screenshot.toString('base64')}`
+  return page.evaluate(async ({ dataUrl, samples }) => {
+    const image = new Image()
+    image.src = dataUrl
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('no screenshot canvas context')
+    context.drawImage(image, 0, 0)
+    return samples.map((point) => Array.from(context.getImageData(
+      Math.round(point.x),
+      Math.round(point.y),
+      1,
+      1,
+    ).data))
+  }, { dataUrl: source, samples: points })
+}
+
+function cropMarkerColorSignatures(pixels: number[][]) {
+  return pixels.map(([red, green, blue]) => ([
+    ['r', red],
+    ['g', green],
+    ['b', blue],
+  ] as const).sort((left, right) => right[1] - left[1]).map(([channel]) => channel).join(''))
 }
 
 async function observeCropDraftCommits(page: import('@playwright/test').Page) {
@@ -3832,28 +3895,44 @@ test('PowerPoint crop pans the picture and crops from every handle', async ({ pa
   const overlay = page.getByTestId('freeform-image-crop-overlay')
   const dim = overlay.locator('.freeform-image-crop-dim')
   const beforePan = await readCropOverlayDraft(page)
+  const beforePanVisual = await readCropVisualGeometry(page)
   await dispatchCropPointerGesture(page, dim, 701, { x: 24, y: 0 })
   await expect.poll(() => readCropOverlayDraft(page)).not.toEqual(beforePan)
   const afterPan = await readCropOverlayDraft(page)
+  const afterPanVisual = await readCropVisualGeometry(page)
   expect(afterPan.frame).toEqual(beforePan.frame)
   expect(afterPan.image.left).not.toBeCloseTo(beforePan.image.left, 4)
+  expect(afterPanVisual.frame).toEqual(beforePanVisual.frame)
+  expect(afterPanVisual.image.left).not.toBeCloseTo(beforePanVisual.image.left, 2)
+  expect(afterPanVisual.markers.topLeft.x).not.toBeCloseTo(
+    beforePanVisual.markers.topLeft.x,
+    2,
+  )
 
+  type CropEdge = 'left' | 'top' | 'right' | 'bottom'
   const cases: Array<{
     handle: string
     delta: { x: number; y: number }
-    fixed: Array<'left' | 'top' | 'right' | 'bottom'>
+    active: CropEdge[]
+    fixed: CropEdge[]
   }> = [
-    { handle: 'n', delta: { x: 0, y: 10 }, fixed: ['left', 'right', 'bottom'] },
-    { handle: 'ne', delta: { x: -10, y: 10 }, fixed: ['left', 'bottom'] },
-    { handle: 'e', delta: { x: -10, y: 0 }, fixed: ['left', 'top', 'bottom'] },
-    { handle: 'se', delta: { x: -10, y: -10 }, fixed: ['left', 'top'] },
-    { handle: 's', delta: { x: 0, y: -10 }, fixed: ['left', 'top', 'right'] },
-    { handle: 'sw', delta: { x: 10, y: -10 }, fixed: ['right', 'top'] },
-    { handle: 'w', delta: { x: 10, y: 0 }, fixed: ['top', 'right', 'bottom'] },
-    { handle: 'nw', delta: { x: 10, y: 10 }, fixed: ['right', 'bottom'] },
+    { handle: 'n', delta: { x: 0, y: 10 }, active: ['top'], fixed: ['left', 'right', 'bottom'] },
+    { handle: 'ne', delta: { x: -10, y: 10 }, active: ['top', 'right'], fixed: ['left', 'bottom'] },
+    { handle: 'e', delta: { x: -10, y: 0 }, active: ['right'], fixed: ['left', 'top', 'bottom'] },
+    { handle: 'se', delta: { x: -10, y: -10 }, active: ['right', 'bottom'], fixed: ['left', 'top'] },
+    { handle: 's', delta: { x: 0, y: -10 }, active: ['bottom'], fixed: ['left', 'top', 'right'] },
+    { handle: 'sw', delta: { x: 10, y: -10 }, active: ['left', 'bottom'], fixed: ['right', 'top'] },
+    { handle: 'w', delta: { x: 10, y: 0 }, active: ['left'], fixed: ['top', 'right', 'bottom'] },
+    { handle: 'nw', delta: { x: 10, y: 10 }, active: ['left', 'top'], fixed: ['right', 'bottom'] },
   ]
   for (const [index, item] of cases.entries()) {
     const before = await readCropOverlayDraft(page)
+    const beforeVisual = await readCropVisualGeometry(page)
+    const beforeMarkerPoints = Object.values(beforeVisual.markers)
+    const beforeMarkerPixels = await sampleViewportPixels(page, beforeMarkerPoints)
+    const beforeMarkerColors = cropMarkerColorSignatures(beforeMarkerPixels)
+    expect(beforeMarkerColors, `${item.handle} distinct marker colors`)
+      .toEqual(['rbg', 'gbr', 'bgr', 'brg'])
     await dispatchCropPointerGesture(
       page,
       overlay.locator(`[data-crop-handle="${item.handle}"]`),
@@ -3861,22 +3940,32 @@ test('PowerPoint crop pans the picture and crops from every handle', async ({ pa
       item.delta,
     )
     const after = await readCropOverlayDraft(page)
-    const changedEdge = item.handle.includes('e')
-      ? 'right'
-      : item.handle.includes('w')
-        ? 'left'
-        : item.handle.includes('n')
-          ? 'top'
-          : 'bottom'
-    expect(after.frame[changedEdge], `${item.handle} changed ${changedEdge}`)
-      .not.toBeCloseTo(before.frame[changedEdge], 3)
+    const afterVisual = await readCropVisualGeometry(page)
+    for (const edge of item.active) {
+      expect(after.frame[edge], `${item.handle} draft changed ${edge}`)
+        .not.toBeCloseTo(before.frame[edge], 3)
+      expect(afterVisual.frame[edge], `${item.handle} visual changed ${edge}`)
+        .not.toBeCloseTo(beforeVisual.frame[edge], 2)
+    }
     for (const edge of item.fixed) {
+      expect(after.frame[edge], `${item.handle} draft fixed ${edge}`)
+        .toBeCloseTo(before.frame[edge], 3)
       expect(
-        Math.abs(after.frame[edge] - before.frame[edge]),
-        `${item.handle} fixed ${edge}`,
-      ).toBeLessThan(0.01)
+        Math.abs(afterVisual.frame[edge] - beforeVisual.frame[edge]),
+        `${item.handle} visual fixed ${edge}`,
+      ).toBeLessThan(0.05)
     }
     expect(after.image).toEqual(before.image)
+    expect(afterVisual.image).toEqual(beforeVisual.image)
+    for (const marker of Object.keys(beforeVisual.markers) as Array<keyof typeof beforeVisual.markers>) {
+      expect(afterVisual.markers[marker].x, `${item.handle} ${marker} marker x`)
+        .toBeCloseTo(beforeVisual.markers[marker].x, 3)
+      expect(afterVisual.markers[marker].y, `${item.handle} ${marker} marker y`)
+        .toBeCloseTo(beforeVisual.markers[marker].y, 3)
+    }
+    const afterMarkerPixels = await sampleViewportPixels(page, beforeMarkerPoints)
+    expect(cropMarkerColorSignatures(afterMarkerPixels), `${item.handle} stable marker colors`)
+      .toEqual(beforeMarkerColors)
   }
   await page.getByTestId('freeform-image-crop-done').click()
 })
@@ -3913,7 +4002,7 @@ test('PowerPoint crop owns one pointer and rolls back interrupted gestures', asy
   await overlay.locator('[data-crop-handle="e"]').dispatchEvent('pointerdown', {
     pointerId: 802,
     pointerType: 'touch',
-    isPrimary: false,
+    isPrimary: true,
     button: 0,
     buttons: 1,
     clientX: start.x,
@@ -3923,7 +4012,7 @@ test('PowerPoint crop owns one pointer and rolls back interrupted gestures', asy
     window.dispatchEvent(new PointerEvent('pointermove', {
       bubbles: true,
       pointerId: 802,
-      pointerType: 'mouse',
+      pointerType: 'touch',
       isPrimary: true,
       buttons: 1,
       clientX: x + 120,
@@ -3932,7 +4021,7 @@ test('PowerPoint crop owns one pointer and rolls back interrupted gestures', asy
     window.dispatchEvent(new PointerEvent('pointerup', {
       bubbles: true,
       pointerId: 802,
-      pointerType: 'mouse',
+      pointerType: 'touch',
       isPrimary: true,
       clientX: x + 120,
       clientY: y,
@@ -3965,6 +4054,34 @@ test('PowerPoint crop owns one pointer and rolls back interrupted gestures', asy
     bubbles: true,
     pointerId: 801,
     pointerType: 'pen',
+    isPrimary: true,
+  })))
+  await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page)))
+    .toEqual(cropGeometryOf(initial))
+
+  await dim.dispatchEvent('pointerdown', {
+    pointerId: 805,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointermove', {
+    bubbles: true,
+    pointerId: 805,
+    pointerType: 'mouse',
+    isPrimary: true,
+    buttons: 1,
+    clientX: x + 35,
+    clientY: y,
+  })), start)
+  await expect.poll(() => readCropOverlayDraft(page)).not.toEqual(initial)
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', {
+    bubbles: true,
+    pointerId: 805,
+    pointerType: 'mouse',
     isPrimary: true,
   })))
   await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page)))
@@ -4014,6 +4131,8 @@ test('PowerPoint crop batches pointer moves and preserves preview through rerend
   const box = await dim.boundingBox()
   expect(box).toBeTruthy()
   const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  const renderScale = await freeformCanvasScale(page)
+  const finalScreenDelta = Math.min(24, renderScale * 40)
 
   await dim.dispatchEvent('pointerdown', {
     pointerId: 901,
@@ -4026,7 +4145,7 @@ test('PowerPoint crop batches pointer moves and preserves preview through rerend
   })
   const beforeBatch = await readCropOverlayDraft(page)
   await observeCropDraftCommits(page)
-  await page.evaluate(({ x, y }) => {
+  await page.evaluate(({ x, y, total }) => {
     for (let index = 1; index <= 120; index += 1) {
       window.dispatchEvent(new PointerEvent('pointermove', {
         bubbles: true,
@@ -4034,15 +4153,22 @@ test('PowerPoint crop batches pointer moves and preserves preview through rerend
         pointerType: 'mouse',
         isPrimary: true,
         buttons: 1,
-        clientX: x + index,
+        clientX: x + total * (index / 120),
         clientY: y,
       }))
     }
-  }, start)
+  }, { ...start, total: finalScreenDelta })
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
   const afterBatch = await readCropOverlayDraft(page)
   await expect(page.locator('html')).toHaveAttribute('data-crop-dom-commit-count', '1')
-  expect(afterBatch.image.left).not.toBeCloseTo(beforeBatch.image.left, 3)
+  expect(afterBatch.image.left - beforeBatch.image.left).toBeCloseTo(
+    finalScreenDelta / renderScale,
+    3,
+  )
+  expect(afterBatch.image.right - beforeBatch.image.right).toBeCloseTo(
+    finalScreenDelta / renderScale,
+    3,
+  )
   expect(afterBatch.overlaySize.width).toBeCloseTo(Math.max(
     1,
     afterBatch.frame.right,
@@ -4054,16 +4180,22 @@ test('PowerPoint crop batches pointer moves and preserves preview through rerend
     afterBatch.image.bottom,
   ), 4)
 
+  const hitSizeBeforeRerender = await overlay.evaluate((element) => (
+    (element as HTMLElement).style.getPropertyValue('--crop-hit-size')
+  ))
   await page.setViewportSize({ width: 980, height: 780 })
+  await expect.poll(() => overlay.evaluate((element) => (
+    (element as HTMLElement).style.getPropertyValue('--crop-hit-size')
+  ))).not.toBe(hitSizeBeforeRerender)
   await expect.poll(() => readCropOverlayDraft(page)).toEqual(afterBatch)
-  await page.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointerup', {
+  await page.evaluate(({ x, y, total }) => window.dispatchEvent(new PointerEvent('pointerup', {
     bubbles: true,
     pointerId: 901,
     pointerType: 'mouse',
     isPrimary: true,
-    clientX: x + 120,
+    clientX: x + total,
     clientY: y,
-  })), start)
+  })), { ...start, total: finalScreenDelta })
   await expect.poll(() => readCropOverlayDraft(page)).toEqual(afterBatch)
   await page.getByTestId('freeform-image-crop-done').click()
 })

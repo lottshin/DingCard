@@ -70,6 +70,15 @@ export interface PanImageCropDraftInput {
   localDelta: Point
 }
 
+export interface ProjectImageCropGestureInput
+  extends CreateImageCropDraftInput, ImageCropScreenTransformInput {
+  startDraft: ImageCropDraft
+  kind: 'pan' | 'handle'
+  handle?: ImageCropHandle
+  minimumFrameSize: ImageFrameSize
+  symmetric?: boolean
+}
+
 export interface ApplyImageCropAspectRatioInput extends CreateImageCropDraftInput {
   draft: ImageCropDraft
   ratio: number | 'original'
@@ -622,6 +631,35 @@ export function panImageCropDraft(input: unknown): unknown {
     image: nextImage,
     framing,
   }
+}
+
+export function projectImageCropGesture(input: ProjectImageCropGestureInput): ImageCropDraft
+export function projectImageCropGesture(input: null): null
+export function projectImageCropGesture<const T extends { readonly startDraft: unknown }>(
+  input: T,
+): T['startDraft']
+export function projectImageCropGesture(input: unknown): unknown {
+  const startDraft = isRecord(input) ? input.startDraft : null
+  if (!isRecord(input)) return startDraft
+  const localDelta = imageCropLocalDeltaFromScreen({
+    screenDelta: input.screenDelta,
+    renderScale: input.renderScale,
+    startWorldMatrix: input.startWorldMatrix,
+  } as ImageCropScreenTransformInput)
+  if (!localDelta) return startDraft
+  if (input.kind === 'pan') {
+    return panImageCropDraft({ draft: startDraft, localDelta })
+  }
+  if (input.kind !== 'handle') return startDraft
+  return projectImageCropHandle({
+    startNode: input.startNode,
+    naturalSize: input.naturalSize,
+    startDraft,
+    handle: input.handle,
+    localDelta,
+    minimumFrameSize: input.minimumFrameSize,
+    symmetric: input.symmetric,
+  })
 }
 
 export function applyImageCropAspectRatio(input: ApplyImageCropAspectRatioInput): ImageCropDraft
