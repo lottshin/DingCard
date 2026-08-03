@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect } from 'react'
+import { Component, forwardRef, useEffect, useImperativeHandle, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { createImageCropDraft, type ImageCropDraft } from '../src/freeform/imageCrop'
@@ -13,6 +13,8 @@ interface HarnessSnapshot {
   startResult: boolean | null
   unmounted: boolean
   layoutCommitCount: number
+  beforeMutationFrameFlushCount: number
+  beforeMutationRenderDraftMatchedLastCommit: boolean | null
   overlayWriteCount: number
   lastRenderedDraft: ImageCropDraft | null
   requestedFrameIds: number[]
@@ -29,6 +31,7 @@ interface ImageCropSessionHarnessApi {
   arm(): void
   finish(): void
   setRenderScale(renderScale: number | null): void
+  rerenderAndFlushPendingFrameBeforeMutation(): void
   unmount(): void
   fireCanceledFrames(): void
   dispatchLateEvents(): void
@@ -57,6 +60,8 @@ const state = {
   startResult: null as boolean | null,
   unmounted: false,
   layoutCommitCount: 0,
+  beforeMutationFrameFlushCount: 0,
+  beforeMutationRenderDraftMatchedLastCommit: null as boolean | null,
   overlayWriteCount: 0,
   lastRenderedDraft: null as ImageCropDraft | null,
   requestedFrameIds: [] as number[],
@@ -81,11 +86,20 @@ const nativeAddEventListener = window.addEventListener.bind(window)
 const nativeRemoveEventListener = window.removeEventListener.bind(window)
 let nextFrameId = 3_000_000_000
 let armed = false
+let flushPendingFrameBeforeMutation = false
+let lastCommittedRenderDraft: ImageCropDraft | null | undefined
 
 function trackedListenerType(type: string): TrackedListenerType | null {
   return TRACKED_LISTENER_TYPES.includes(type as TrackedListenerType)
     ? type as TrackedListenerType
     : null
+}
+
+function flushHeldFrames(): number {
+  const callbacks = [...heldFrames.values()]
+  heldFrames.clear()
+  for (const callback of callbacks) callback(performance.now())
+  return callbacks.length
 }
 
 function armHarness(): void {
@@ -185,6 +199,26 @@ const FakeCropOverlay = forwardRef<ImageCropOverlayHandle>(function FakeCropOver
   return null
 })
 
+class BeforeMutationFrameFlush extends Component<{ renderDraft: ImageCropDraft | null }> {
+  getSnapshotBeforeUpdate(): null {
+    if (!flushPendingFrameBeforeMutation) return null
+    flushPendingFrameBeforeMutation = false
+    state.beforeMutationRenderDraftMatchedLastCommit = (
+      this.props.renderDraft === lastCommittedRenderDraft
+    )
+    state.beforeMutationFrameFlushCount += flushHeldFrames()
+    return null
+  }
+
+  componentDidUpdate(): void {
+    // React requires this lifecycle when getSnapshotBeforeUpdate is present.
+  }
+
+  render(): null {
+    return null
+  }
+}
+
 const startNode: FreeformImageElement = {
   id: 'crop-image',
   name: 'Crop image',
@@ -229,6 +263,7 @@ function HookHarness({ renderScale }: { renderScale: number | null }) {
   }
 
   useLayoutEffect(() => {
+    lastCommittedRenderDraft = session.renderDraft
     state.layoutCommitCount += 1
     document.documentElement.dataset.imageCropHarnessRenderScale = String(renderScale)
   })
@@ -254,6 +289,7 @@ function HookHarness({ renderScale }: { renderScale: number | null }) {
 
   return (
     <>
+      <BeforeMutationFrameFlush renderDraft={session.renderDraft} />
       <FakeCropOverlay ref={session.overlayRef} />
       <img
         data-testid="crop-pointer-target"
@@ -285,6 +321,11 @@ window.__imageCropSessionHarness = {
     currentRenderScale = renderScale
     renderHarness()
   },
+  rerenderAndFlushPendingFrameBeforeMutation: () => {
+    if (heldFrames.size === 0) throw new Error('pending crop frame missing')
+    flushPendingFrameBeforeMutation = true
+    renderHarness()
+  },
   unmount: () => {
     root.unmount()
     state.unmounted = true
@@ -292,9 +333,7 @@ window.__imageCropSessionHarness = {
   fireCanceledFrames: () => {
     window.requestAnimationFrame = nativeRequestAnimationFrame
     window.cancelAnimationFrame = nativeCancelAnimationFrame
-    const callbacks = [...heldFrames.values()]
-    heldFrames.clear()
-    for (const callback of callbacks) callback(performance.now())
+    flushHeldFrames()
   },
   dispatchLateEvents: () => {
     window.dispatchEvent(new PointerEvent('pointermove', {

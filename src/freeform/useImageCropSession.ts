@@ -543,7 +543,7 @@ export function useImageCropSession(displayRenderScale: number | null): ImageCro
   useLayoutEffect(() => {
     const latestDraft = previewDraftRef.current
     if (latestDraft !== renderDraft) renderPreview(latestDraft)
-  }, [renderDraft, renderPreview])
+  })
 
   useEffect(() => {
     mountedRef.current = true

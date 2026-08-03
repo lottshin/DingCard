@@ -5,6 +5,8 @@ interface HarnessSnapshot {
   startResult: boolean | null
   unmounted: boolean
   layoutCommitCount: number
+  beforeMutationFrameFlushCount: number
+  beforeMutationRenderDraftMatchedLastCommit: boolean | null
   overlayWriteCount: number
   lastRenderedDraft: {
     frame: { left: number; top: number; right: number; bottom: number }
@@ -117,6 +119,31 @@ test('image crop session writes a pending finish draft once across React commit'
   expect(afterFinishCommit.overlayWriteCount - beforeFinish.overlayWriteCount).toBe(1)
   expect(afterFinishCommit.canceledFrameIds).toEqual(beforeFinish.requestedFrameIds)
   expect(afterFinishCommit.captureReleaseIds).toEqual([43])
+})
+
+test('image crop session recovers a preview advanced between render and commit', async ({ page }) => {
+  await openHarness(page)
+  await beginPendingPan(page, 44, 10)
+  const beforeRerender = await harnessSnapshot(page)
+  expect(beforeRerender.lastRenderedDraft?.image.left).toBeCloseTo(-20)
+  expect(beforeRerender.requestedFrameIds).toHaveLength(1)
+  expect(beforeRerender.beforeMutationFrameFlushCount).toBe(0)
+
+  await page.evaluate(() => (
+    window as typeof window & {
+      __imageCropSessionHarness: {
+        rerenderAndFlushPendingFrameBeforeMutation(): void
+      }
+    }
+  ).__imageCropSessionHarness.rerenderAndFlushPendingFrameBeforeMutation())
+
+  await expect.poll(async () => (await harnessSnapshot(page)).layoutCommitCount)
+    .toBeGreaterThan(beforeRerender.layoutCommitCount)
+  const afterCommit = await harnessSnapshot(page)
+  expect(afterCommit.beforeMutationFrameFlushCount).toBe(1)
+  expect(afterCommit.beforeMutationRenderDraftMatchedLastCommit).toBe(true)
+  expect(afterCommit.lastRenderedDraft?.image.left).toBeCloseTo(-10)
+  expect(afterCommit.overlayWriteCount - beforeRerender.overlayWriteCount).toBe(2)
 })
 
 for (const initialScale of [
