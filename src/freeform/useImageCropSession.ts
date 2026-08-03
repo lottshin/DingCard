@@ -233,10 +233,10 @@ export function useImageCropSession(displayRenderScale: number | null): ImageCro
     blur: () => blurHandlerRef.current(),
   })
   const [session, setSession] = useState<ImageCropSession | null>(null)
-
-  displayRenderScaleRef.current = isFiniteNumber(displayRenderScale) && displayRenderScale > 0
+  const normalizedDisplayRenderScale = isFiniteNumber(displayRenderScale) && displayRenderScale > 0
     ? displayRenderScale
     : null
+  const renderDraft = previewDraftRef.current
 
   const renderPreview = useCallback((draft: ImageCropDraft | null) => {
     if (!draft || !mountedRef.current) return
@@ -537,8 +537,13 @@ export function useImageCropSession(displayRenderScale: number | null): ImageCro
   }
 
   useLayoutEffect(() => {
-    renderPreview(previewDraftRef.current)
-  })
+    displayRenderScaleRef.current = normalizedDisplayRenderScale
+  }, [normalizedDisplayRenderScale])
+
+  useLayoutEffect(() => {
+    const latestDraft = previewDraftRef.current
+    if (latestDraft !== renderDraft) renderPreview(latestDraft)
+  }, [renderDraft, renderPreview])
 
   useEffect(() => {
     mountedRef.current = true
@@ -554,7 +559,7 @@ export function useImageCropSession(displayRenderScale: number | null): ImageCro
   return {
     session,
     overlayRef,
-    renderDraft: previewDraftRef.current,
+    renderDraft,
     start,
     finish,
     invalidate,

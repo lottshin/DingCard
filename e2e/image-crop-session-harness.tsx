@@ -10,8 +10,11 @@ type TrackedListenerType = 'pointermove' | 'pointerup' | 'pointercancel' | 'blur
 
 interface HarnessSnapshot {
   ready: boolean
+  startResult: boolean | null
   unmounted: boolean
+  layoutCommitCount: number
   overlayWriteCount: number
+  lastRenderedDraft: ImageCropDraft | null
   requestedFrameIds: number[]
   canceledFrameIds: number[]
   listenerAdds: Record<TrackedListenerType, number>
@@ -51,8 +54,11 @@ function listenerCounts(): Record<TrackedListenerType, number> {
 
 const state = {
   ready: false,
+  startResult: null as boolean | null,
   unmounted: false,
+  layoutCommitCount: 0,
   overlayWriteCount: 0,
+  lastRenderedDraft: null as ImageCropDraft | null,
   requestedFrameIds: [] as number[],
   canceledFrameIds: [] as number[],
   listenerAdds: listenerCounts(),
@@ -151,6 +157,11 @@ function snapshot(): HarnessSnapshot {
     canceledFrameIds: [...state.canceledFrameIds],
     listenerAdds: { ...state.listenerAdds },
     listenerRemoves: { ...state.listenerRemoves },
+    lastRenderedDraft: state.lastRenderedDraft ? {
+      frame: { ...state.lastRenderedDraft.frame },
+      image: { ...state.lastRenderedDraft.image },
+      framing: { ...state.lastRenderedDraft.framing },
+    } : null,
     activeListeners: {
       pointermove: activeListeners.pointermove.size,
       pointerup: activeListeners.pointerup.size,
@@ -165,8 +176,9 @@ function snapshot(): HarnessSnapshot {
 
 const FakeCropOverlay = forwardRef<ImageCropOverlayHandle>(function FakeCropOverlay(_props, ref) {
   useImperativeHandle(ref, () => ({
-    renderDraft: (_draft: ImageCropDraft) => {
+    renderDraft: (draft: ImageCropDraft) => {
       state.overlayWriteCount += 1
+      state.lastRenderedDraft = draft
     },
     focusHandle: () => undefined,
   }), [])
@@ -217,8 +229,9 @@ function HookHarness({ renderScale }: { renderScale: number | null }) {
   }
 
   useLayoutEffect(() => {
+    state.layoutCommitCount += 1
     document.documentElement.dataset.imageCropHarnessRenderScale = String(renderScale)
-  }, [renderScale])
+  })
 
   useEffect(() => {
     const started = session.start({
@@ -234,7 +247,7 @@ function HookHarness({ renderScale }: { renderScale: number | null }) {
       startWorldMatrix: [1, 0, 0, 1, 0, 0],
       draft: startDraft,
     })
-    if (!started) throw new Error('crop session setup failed')
+    state.startResult = started
     state.ready = true
     document.documentElement.dataset.imageCropHarnessReady = 'true'
   }, [session.start])
@@ -254,7 +267,14 @@ function HookHarness({ renderScale }: { renderScale: number | null }) {
 const container = document.getElementById('root')
 if (!container) throw new Error('harness root missing')
 const root = createRoot(container)
-let currentRenderScale: number | null = 1
+const initialRenderScale = new URLSearchParams(window.location.search).get('initialRenderScale')
+let currentRenderScale: number | null = initialRenderScale === 'null'
+  ? null
+  : initialRenderScale === 'zero'
+    ? 0
+    : initialRenderScale === 'nan'
+      ? Number.NaN
+      : 1
 const renderHarness = () => root.render(<HookHarness renderScale={currentRenderScale} />)
 renderHarness()
 
