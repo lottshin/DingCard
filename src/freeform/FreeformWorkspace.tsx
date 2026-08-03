@@ -34,6 +34,10 @@ import {
   type SceneNodePointerState,
 } from './FreeformSceneNodeView'
 import { ImageCropOverlay } from './ImageCropOverlay'
+import {
+  useImageCropSession,
+  type ImageCropSession,
+} from './useImageCropSession'
 import { FreeformSlidePreview } from './FreeformSlidePreview'
 import {
   FreeformSelectionOverlay,
@@ -77,7 +81,6 @@ import {
 import {
   createImageCropDraft,
   imageCropScreenScale,
-  type ImageCropDraft,
 } from './imageCrop'
 import { ColorPickerButton, PaintField } from './PaintField'
 import {
@@ -205,19 +208,7 @@ interface ImageFramingSession {
   startFraming: ImageFraming
 }
 
-interface ImageCropDisplaySession {
-  scopeGeneration: number
-  draftScopeKey: string
-  slideId: string
-  path: ScenePath
-  logicalSrc: string
-  resolvedSrc: string
-  naturalSize: ImageFrameSize
-  startDocument: FreeformDocument
-  startNode: FreeformImageElement
-  startWorldMatrix: Matrix2D
-  draft: ImageCropDraft
-}
+type ImageCropDisplaySession = ImageCropSession
 
 function imageFramingTargetForNode(node: FreeformSceneNode | undefined): ImageFramingTarget | null {
   if (node?.type === 'image') {
@@ -594,7 +585,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   )
   const [framingSession, setFramingSession] = useState<ImageFramingSession | null>(null)
   const framingSessionRef = useRef<ImageFramingSession | null>(null)
-  const [imageCropSession, setImageCropSession] = useState<ImageCropDisplaySession | null>(null)
+  const imageCropSessionApi = useImageCropSession()
+  const imageCropSession = imageCropSessionApi.session
   const imageCropSessionRef = useRef<ImageCropDisplaySession | null>(null)
   const framingSurfaceRef = useRef<HTMLDivElement>(null)
   const framingDragPointerIdRef = useRef<number | null>(null)
@@ -1222,8 +1214,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function clearImageCropSession() {
+    imageCropSessionApi.invalidate()
     imageCropSessionRef.current = null
-    setImageCropSession(null)
   }
 
   function startImageCrop(path: ScenePath): boolean {
@@ -1259,7 +1251,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       || imageCropScreenScale({ renderScale, startWorldMatrix: worldMatrix }) === null
     ) return false
 
-    const session: ImageCropDisplaySession = {
+    const started = imageCropSessionApi.start({
       scopeGeneration: documentIdentityGenerationRef.current,
       draftScopeKey: imageFramingScopeKey(
         documentIdentityGenerationRef.current,
@@ -1274,19 +1266,20 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       startDocument: document,
       startNode: { ...node, framing: { ...node.framing } },
       startWorldMatrix: [...worldMatrix] as Matrix2D,
+      renderScale,
       draft,
-    }
+    })
+    if (!started) return false
     blurActiveTypingTarget()
     setSelection([path[path.length - 1]])
-    imageCropSessionRef.current = session
-    setImageCropSession(session)
     setOperationNotice(null)
     return true
   }
 
   function finishImageCrop() {
     if (!imageCropSessionRef.current) return
-    clearImageCropSession()
+    imageCropSessionApi.finish('done')
+    imageCropSessionRef.current = null
   }
 
   function replaceSessionFraming(
@@ -3419,13 +3412,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       />
                     ))}
                   </div>
-                  {imageCropSession && imageCropRenderTarget && imageCropRenderScale && (
+                  {imageCropSession
+                    && imageCropRenderTarget
+                    && imageCropRenderScale
+                    && imageCropSessionApi.renderDraft && (
                     <ImageCropOverlay
-                      draft={imageCropSession.draft}
+                      ref={imageCropSessionApi.overlayRef}
+                      draft={imageCropSessionApi.renderDraft}
                       worldMatrix={imageCropSession.startWorldMatrix}
                       screenScale={imageCropRenderScale}
                       resolvedSrc={imageCropSession.resolvedSrc}
                       alt={imageCropSession.startNode.alt}
+                      onImagePointerDown={imageCropSessionApi.panPointerDown}
+                      onHandlePointerDown={(event, handle) => (
+                        imageCropSessionApi.handlePointerDown(handle, event)
+                      )}
+                      onHandleKeyDown={(event, handle) => (
+                        imageCropSessionApi.handleKeyDown(handle, event)
+                      )}
+                      onKeyDown={imageCropSessionApi.overlayKeyDown}
                     />
                   )}
                   {framingSession && framingRenderTarget && framingOverlayStyle && (

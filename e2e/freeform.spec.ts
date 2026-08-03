@@ -1,7 +1,14 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import JSZip from 'jszip'
-import { groupLocal, sceneNodesBoundsInParent, transformPoint } from '../src/freeform/sceneTransform'
+import {
+  groupLocal,
+  multiply,
+  sceneNodeLocalMatrix,
+  sceneNodesBoundsInParent,
+  transformPoint,
+  transformVector,
+} from '../src/freeform/sceneTransform'
 import type { FreeformSceneNode } from '../src/freeform/types'
 import { installOfflineFontRoutes } from './offlineFonts'
 
@@ -21,6 +28,67 @@ const WIDE_TEST_SVG = Buffer.from(`
     <rect x="540" y="0" width="260" height="400" fill="#0ea5e9" />
   </svg>
 `)
+const WIDE_TEST_SVG_DATA_URL = `data:image/svg+xml;base64,${WIDE_TEST_SVG.toString('base64')}`
+
+function imageCropTransformDraft() {
+  return {
+    id: 'image-crop-transform-draft',
+    title: 'Nested v3 scene',
+    schemaVersion: 2,
+    mode: 'freeform-slide',
+    updatedAt: Date.now(),
+    document: {
+      documentVersion: 4,
+      activeSlideId: 'image-crop-transform-slide',
+      slides: [{
+        id: 'image-crop-transform-slide',
+        name: 'Nested image crop',
+        width: 1000,
+        height: 800,
+        background: { type: 'solid', color: '#ffffff' },
+        nodes: [{
+          id: 'crop-outer',
+          name: 'Crop outer',
+          locked: false,
+          hidden: false,
+          type: 'group',
+          x: 480,
+          y: 360,
+          rotation: 30,
+          scale: 1.5,
+          children: [{
+            id: 'crop-inner',
+            name: 'Crop inner',
+            locked: false,
+            hidden: false,
+            type: 'group',
+            x: 80,
+            y: 40,
+            rotation: -90,
+            scale: 0.8,
+            children: [{
+              id: 'crop-image',
+              name: 'Crop image',
+              locked: false,
+              hidden: false,
+              type: 'image',
+              x: -120,
+              y: -80,
+              width: 240,
+              height: 160,
+              rotation: 20,
+              scale: 1.25,
+              src: WIDE_TEST_SVG_DATA_URL,
+              alt: 'Nested crop image',
+              fit: 'cover',
+              framing: { focusX: 0.5, focusY: 0.5, zoom: 1 },
+            }],
+          }],
+        }],
+      }],
+    },
+  }
+}
 
 function nestedV3Draft() {
   return {
@@ -3491,6 +3559,693 @@ test('PowerPoint crop shows the full source around the crop frame', async ({ pag
   await expect(page.getByTestId('freeform-framing-surface')).toBeVisible()
   await expect(overlay).toHaveCount(0)
   await page.getByTestId('freeform-framing-cancel').click()
+})
+
+async function readCropOverlayDraft(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const overlay = document.querySelector<HTMLElement>(
+      '[data-testid="freeform-image-crop-overlay"]',
+    )
+    if (!overlay) throw new Error('crop overlay missing')
+    const readBounds = (selector: string) => {
+      const element = overlay.querySelector<HTMLElement>(selector)
+      if (!element) throw new Error(`${selector} missing`)
+      return {
+        left: Number.parseFloat(element.style.left),
+        top: Number.parseFloat(element.style.top),
+        width: Number.parseFloat(element.style.width),
+        height: Number.parseFloat(element.style.height),
+      }
+    }
+    const frame = readBounds('.freeform-image-crop-frame')
+    const image = readBounds('.freeform-image-crop-dim')
+    return {
+      frame: {
+        left: frame.left,
+        top: frame.top,
+        right: frame.left + frame.width,
+        bottom: frame.top + frame.height,
+      },
+      image: {
+        left: image.left,
+        top: image.top,
+        right: image.left + image.width,
+        bottom: image.top + image.height,
+      },
+      overlaySize: {
+        width: Number.parseFloat(overlay.style.width),
+        height: Number.parseFloat(overlay.style.height),
+      },
+    }
+  })
+}
+
+async function observeCropDraftCommits(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const overlay = document.querySelector<HTMLElement>(
+      '[data-testid="freeform-image-crop-overlay"]',
+    )
+    if (!overlay) throw new Error('crop overlay missing')
+    const testWindow = window as typeof window & {
+      __cropCommitObserver?: MutationObserver
+    }
+    testWindow.__cropCommitObserver?.disconnect()
+    document.documentElement.dataset.cropDomCommitCount = '0'
+    const observer = new MutationObserver((records) => {
+      const current = Number(document.documentElement.dataset.cropDomCommitCount ?? '0')
+      document.documentElement.dataset.cropDomCommitCount = String(current + records.length)
+    })
+    observer.observe(overlay, {
+      attributes: true,
+      attributeFilter: ['data-crop-draft-key'],
+    })
+    testWindow.__cropCommitObserver = observer
+  })
+}
+
+function cropGeometryOf(value: Awaited<ReturnType<typeof readCropOverlayDraft>>) {
+  return { frame: value.frame, image: value.image }
+}
+
+async function dispatchCropPointerGesture(
+  page: import('@playwright/test').Page,
+  locator: import('@playwright/test').Locator,
+  pointerId: number,
+  delta: { x: number; y: number },
+  pointerType: 'mouse' | 'touch' | 'pen' = 'mouse',
+) {
+  const box = await locator.boundingBox()
+  expect(box).toBeTruthy()
+  const start = {
+    x: box!.x + box!.width / 2,
+    y: box!.y + box!.height / 2,
+  }
+  const end = { x: start.x + delta.x, y: start.y + delta.y }
+  await locator.dispatchEvent('pointerdown', {
+    pointerId,
+    pointerType,
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ pointerId: id, pointerType: type, start: from, end: to }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: id,
+      pointerType: type,
+      isPrimary: true,
+      buttons: 1,
+      clientX: to.x,
+      clientY: to.y,
+    }))
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: id,
+      pointerType: type,
+      isPrimary: true,
+      clientX: to.x,
+      clientY: to.y,
+    }))
+    void from
+  }, { pointerId, pointerType, start, end })
+}
+
+async function installCropDraftObserver(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const overlay = document.querySelector<HTMLElement>(
+      '[data-testid="freeform-image-crop-overlay"]',
+    )
+    if (!overlay) throw new Error('crop overlay missing')
+    const testWindow = window as typeof window & {
+      __cropDraftObserver?: MutationObserver
+    }
+    testWindow.__cropDraftObserver?.disconnect()
+    const snapshot = () => {
+      const readBounds = (selector: string) => {
+        const element = overlay.querySelector<HTMLElement>(selector)
+        if (!element) throw new Error(`${selector} missing`)
+        const left = Number.parseFloat(element.style.left)
+        const top = Number.parseFloat(element.style.top)
+        const width = Number.parseFloat(element.style.width)
+        const height = Number.parseFloat(element.style.height)
+        return { left, top, right: left + width, bottom: top + height }
+      }
+      document.documentElement.dataset.cropObservedDraft = JSON.stringify({
+        frame: readBounds('.freeform-image-crop-frame'),
+        image: readBounds('.freeform-image-crop-dim'),
+      })
+    }
+    snapshot()
+    const observer = new MutationObserver(snapshot)
+    observer.observe(overlay, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ['style', 'data-crop-draft-key'],
+    })
+    testWindow.__cropDraftObserver = observer
+  })
+}
+
+async function readObservedCropDraft(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const value = document.documentElement.dataset.cropObservedDraft
+    if (!value) throw new Error('observed crop draft missing')
+    return JSON.parse(value) as {
+      frame: { left: number; top: number; right: number; bottom: number }
+      image: { left: number; top: number; right: number; bottom: number }
+    }
+  })
+}
+
+async function beginPendingCropPointerMove(
+  page: import('@playwright/test').Page,
+  locator: import('@playwright/test').Locator,
+  pointerId: number,
+  delta: { x: number; y: number },
+) {
+  const box = await locator.boundingBox()
+  expect(box).toBeTruthy()
+  const start = {
+    x: box!.x + box!.width / 2,
+    y: box!.y + box!.height / 2,
+  }
+  await locator.dispatchEvent('pointerdown', {
+    pointerId,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ id, from, move }) => {
+    const testWindow = window as typeof window & {
+      __releaseLateCropFrame?: () => void
+    }
+    const nativeRequest = window.requestAnimationFrame.bind(window)
+    const nativeCancel = window.cancelAnimationFrame.bind(window)
+    const heldFrameId = 2_000_000_001
+    let heldFrame: FrameRequestCallback | null = null
+    let requested = false
+    document.documentElement.dataset.cropFrameCanceled = 'false'
+    window.requestAnimationFrame = (callback) => {
+      requested = true
+      heldFrame = callback
+      window.requestAnimationFrame = nativeRequest
+      return heldFrameId
+    }
+    window.cancelAnimationFrame = (frameId) => {
+      if (frameId === heldFrameId) {
+        document.documentElement.dataset.cropFrameCanceled = 'true'
+        window.cancelAnimationFrame = nativeCancel
+        return
+      }
+      nativeCancel(frameId)
+    }
+    testWindow.__releaseLateCropFrame = () => {
+      window.requestAnimationFrame = nativeRequest
+      window.cancelAnimationFrame = nativeCancel
+      const callback = heldFrame
+      heldFrame = null
+      callback?.(performance.now())
+    }
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: id,
+      pointerType: 'mouse',
+      isPrimary: true,
+      buttons: 1,
+      clientX: from.x + move.x,
+      clientY: from.y + move.y,
+    }))
+    if (!requested) {
+      window.requestAnimationFrame = nativeRequest
+      window.cancelAnimationFrame = nativeCancel
+      throw new Error('crop move did not request an animation frame')
+    }
+  }, { id: pointerId, from: start, move: delta })
+  return start
+}
+
+async function releaseLateCropFrame(
+  page: import('@playwright/test').Page,
+  pointerId: number,
+  point: { x: number; y: number },
+) {
+  await page.evaluate(({ id, position }) => {
+    const testWindow = window as typeof window & {
+      __releaseLateCropFrame?: () => void
+    }
+    const release = testWindow.__releaseLateCropFrame
+    delete testWindow.__releaseLateCropFrame
+    release?.()
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: id,
+      pointerType: 'mouse',
+      isPrimary: true,
+      clientX: position.x,
+      clientY: position.y,
+    }))
+  }, { id: pointerId, position: point })
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
+}
+
+test('PowerPoint crop pans the picture and crops from every handle', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-gestures.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await page.getByTestId('freeform-crop-image').click()
+
+  const overlay = page.getByTestId('freeform-image-crop-overlay')
+  const dim = overlay.locator('.freeform-image-crop-dim')
+  const beforePan = await readCropOverlayDraft(page)
+  await dispatchCropPointerGesture(page, dim, 701, { x: 24, y: 0 })
+  await expect.poll(() => readCropOverlayDraft(page)).not.toEqual(beforePan)
+  const afterPan = await readCropOverlayDraft(page)
+  expect(afterPan.frame).toEqual(beforePan.frame)
+  expect(afterPan.image.left).not.toBeCloseTo(beforePan.image.left, 4)
+
+  const cases: Array<{
+    handle: string
+    delta: { x: number; y: number }
+    fixed: Array<'left' | 'top' | 'right' | 'bottom'>
+  }> = [
+    { handle: 'n', delta: { x: 0, y: 10 }, fixed: ['left', 'right', 'bottom'] },
+    { handle: 'ne', delta: { x: -10, y: 10 }, fixed: ['left', 'bottom'] },
+    { handle: 'e', delta: { x: -10, y: 0 }, fixed: ['left', 'top', 'bottom'] },
+    { handle: 'se', delta: { x: -10, y: -10 }, fixed: ['left', 'top'] },
+    { handle: 's', delta: { x: 0, y: -10 }, fixed: ['left', 'top', 'right'] },
+    { handle: 'sw', delta: { x: 10, y: -10 }, fixed: ['right', 'top'] },
+    { handle: 'w', delta: { x: 10, y: 0 }, fixed: ['top', 'right', 'bottom'] },
+    { handle: 'nw', delta: { x: 10, y: 10 }, fixed: ['right', 'bottom'] },
+  ]
+  for (const [index, item] of cases.entries()) {
+    const before = await readCropOverlayDraft(page)
+    await dispatchCropPointerGesture(
+      page,
+      overlay.locator(`[data-crop-handle="${item.handle}"]`),
+      720 + index,
+      item.delta,
+    )
+    const after = await readCropOverlayDraft(page)
+    const changedEdge = item.handle.includes('e')
+      ? 'right'
+      : item.handle.includes('w')
+        ? 'left'
+        : item.handle.includes('n')
+          ? 'top'
+          : 'bottom'
+    expect(after.frame[changedEdge], `${item.handle} changed ${changedEdge}`)
+      .not.toBeCloseTo(before.frame[changedEdge], 3)
+    for (const edge of item.fixed) {
+      expect(
+        Math.abs(after.frame[edge] - before.frame[edge]),
+        `${item.handle} fixed ${edge}`,
+      ).toBeLessThan(0.01)
+    }
+    expect(after.image).toEqual(before.image)
+  }
+  await page.getByTestId('freeform-image-crop-done').click()
+})
+
+test('PowerPoint crop owns one pointer and rolls back interrupted gestures', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-pointer-ownership.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await page.getByTestId('freeform-crop-image').click()
+  const overlay = page.getByTestId('freeform-image-crop-overlay')
+  const dim = overlay.locator('.freeform-image-crop-dim')
+  const initial = await readCropOverlayDraft(page)
+  const dimBox = await dim.boundingBox()
+  expect(dimBox).toBeTruthy()
+  const start = { x: dimBox!.x + dimBox!.width / 2, y: dimBox!.y + dimBox!.height / 2 }
+
+  await dim.dispatchEvent('pointerdown', {
+    pointerId: 801,
+    pointerType: 'pen',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await overlay.locator('[data-crop-handle="e"]').dispatchEvent('pointerdown', {
+    pointerId: 802,
+    pointerType: 'touch',
+    isPrimary: false,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 802,
+      pointerType: 'mouse',
+      isPrimary: true,
+      buttons: 1,
+      clientX: x + 120,
+      clientY: y,
+    }))
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: 802,
+      pointerType: 'mouse',
+      isPrimary: true,
+      clientX: x + 120,
+      clientY: y,
+    }))
+  }, start)
+  await expect.poll(() => readCropOverlayDraft(page)).toEqual(initial)
+
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 801,
+      pointerType: 'pen',
+      isPrimary: true,
+      buttons: 1,
+      clientX: x + 40,
+      clientY: y,
+    }))
+  }, start)
+  await expect.poll(() => readCropOverlayDraft(page)).not.toEqual(initial)
+  const moved = await readCropOverlayDraft(page)
+
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', {
+    bubbles: true,
+    pointerId: 802,
+    pointerType: 'mouse',
+    isPrimary: true,
+  })))
+  await expect.poll(() => readCropOverlayDraft(page)).toEqual(moved)
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', {
+    bubbles: true,
+    pointerId: 801,
+    pointerType: 'pen',
+    isPrimary: true,
+  })))
+  await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page)))
+    .toEqual(cropGeometryOf(initial))
+
+  await dispatchCropPointerGesture(page, dim, 803, { x: 30, y: 0 }, 'pen')
+  const afterCompletedSegment = await readCropOverlayDraft(page)
+  await dim.dispatchEvent('pointerdown', {
+    pointerId: 804,
+    pointerType: 'pen',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointermove', {
+    bubbles: true,
+    pointerId: 804,
+    pointerType: 'pen',
+    isPrimary: true,
+    buttons: 1,
+    clientX: x + 40,
+    clientY: y,
+  })), start)
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+  await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page)))
+    .toEqual(cropGeometryOf(afterCompletedSegment))
+  await page.getByTestId('freeform-image-crop-done').click()
+})
+
+test('PowerPoint crop batches pointer moves and preserves preview through rerenders', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-batching.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await page.getByTestId('freeform-crop-image').click()
+  const overlay = page.getByTestId('freeform-image-crop-overlay')
+  const dim = overlay.locator('.freeform-image-crop-dim')
+  const box = await dim.boundingBox()
+  expect(box).toBeTruthy()
+  const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+
+  await dim.dispatchEvent('pointerdown', {
+    pointerId: 901,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  const beforeBatch = await readCropOverlayDraft(page)
+  await observeCropDraftCommits(page)
+  await page.evaluate(({ x, y }) => {
+    for (let index = 1; index <= 120; index += 1) {
+      window.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true,
+        pointerId: 901,
+        pointerType: 'mouse',
+        isPrimary: true,
+        buttons: 1,
+        clientX: x + index,
+        clientY: y,
+      }))
+    }
+  }, start)
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  const afterBatch = await readCropOverlayDraft(page)
+  await expect(page.locator('html')).toHaveAttribute('data-crop-dom-commit-count', '1')
+  expect(afterBatch.image.left).not.toBeCloseTo(beforeBatch.image.left, 3)
+  expect(afterBatch.overlaySize.width).toBeCloseTo(Math.max(
+    1,
+    afterBatch.frame.right,
+    afterBatch.image.right,
+  ), 4)
+  expect(afterBatch.overlaySize.height).toBeCloseTo(Math.max(
+    1,
+    afterBatch.frame.bottom,
+    afterBatch.image.bottom,
+  ), 4)
+
+  await page.setViewportSize({ width: 980, height: 780 })
+  await expect.poll(() => readCropOverlayDraft(page)).toEqual(afterBatch)
+  await page.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointerup', {
+    bubbles: true,
+    pointerId: 901,
+    pointerType: 'mouse',
+    isPrimary: true,
+    clientX: x + 120,
+    clientY: y,
+  })), start)
+  await expect.poll(() => readCropOverlayDraft(page)).toEqual(afterBatch)
+  await page.getByTestId('freeform-image-crop-done').click()
+})
+
+test('PowerPoint crop settles or invalidates pending frames without late writes', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-pending-cleanup.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  const cropButton = page.getByTestId('freeform-crop-image')
+  const doneButton = page.getByTestId('freeform-image-crop-done')
+  await cropButton.click()
+
+  let overlay = page.getByTestId('freeform-image-crop-overlay')
+  let dim = overlay.locator('.freeform-image-crop-dim')
+  const beforeFinish = cropGeometryOf(await readCropOverlayDraft(page))
+  await installCropDraftObserver(page)
+  const finishStart = await beginPendingCropPointerMove(page, dim, 921, { x: 40, y: 0 })
+  expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(beforeFinish)
+  await doneButton.click()
+  await expect(overlay).toHaveCount(0)
+  await expect(page.locator('html')).toHaveAttribute('data-crop-frame-canceled', 'true')
+  const finishedDraft = await readObservedCropDraft(page)
+  expect(finishedDraft.frame).toEqual(beforeFinish.frame)
+  expect(finishedDraft.image.left).not.toBeCloseTo(beforeFinish.image.left, 4)
+  await releaseLateCropFrame(page, 921, { x: finishStart.x + 80, y: finishStart.y })
+  expect(await readObservedCropDraft(page)).toEqual(finishedDraft)
+
+  await cropButton.click()
+  overlay = page.getByTestId('freeform-image-crop-overlay')
+  dim = overlay.locator('.freeform-image-crop-dim')
+  const beforeInvalidate = cropGeometryOf(await readCropOverlayDraft(page))
+  await installCropDraftObserver(page)
+  const invalidateStart = await beginPendingCropPointerMove(page, dim, 922, { x: -40, y: 0 })
+  expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(beforeInvalidate)
+  await page.getByTestId('workspace-tab-markdown').click()
+  await expect(overlay).toHaveCount(0)
+  await expect(page.locator('html')).toHaveAttribute('data-crop-frame-canceled', 'true')
+  expect(await readObservedCropDraft(page)).toEqual(beforeInvalidate)
+  await releaseLateCropFrame(page, 922, { x: invalidateStart.x - 80, y: invalidateStart.y })
+  expect(await readObservedCropDraft(page)).toEqual(beforeInvalidate)
+
+  await page.getByTestId('workspace-tab-freeform').click()
+  await imageElement.click()
+  await cropButton.click()
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
+  expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(beforeInvalidate)
+  await doneButton.click()
+})
+
+test('PowerPoint crop keeps local controls exact through nested screen transforms', async ({ page }) => {
+  await openNestedV3Draft(
+    page,
+    `crop-transform-${Date.now()}`,
+    false,
+    imageCropTransformDraft,
+  )
+  await setFreeformZoom(page, 150)
+  const canvas = page.getByTestId('freeform-canvas')
+  const imageElement = page.locator('[data-scene-node-id="crop-image"]')
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await imageElement.dblclick()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'crop-outer')
+  await imageElement.dblclick()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'crop-outer/crop-inner')
+  await imageElement.click()
+  await page.getByTestId('freeform-crop-image').click()
+
+  const fixture = imageCropTransformDraft()
+  const outer = fixture.document.slides[0].nodes[0]
+  const inner = outer.children[0]
+  const imageNode = inner.children[0] as unknown as FreeformSceneNode
+  const worldMatrix = multiply(
+    groupLocal(outer.x, outer.y, outer.rotation, outer.scale),
+    multiply(
+      groupLocal(inner.x, inner.y, inner.rotation, inner.scale),
+      sceneNodeLocalMatrix(imageNode),
+    ),
+  )
+  const renderScale = await freeformCanvasScale(page)
+  const toScreen = (local: { x: number; y: number }) => {
+    const world = transformVector(worldMatrix, local)
+    return { x: world.x * renderScale, y: world.y * renderScale }
+  }
+
+  const overlay = page.getByTestId('freeform-image-crop-overlay')
+  const beforePan = await readCropOverlayDraft(page)
+  await dispatchCropPointerGesture(
+    page,
+    overlay.locator('.freeform-image-crop-dim'),
+    951,
+    toScreen({ x: 20, y: 0 }),
+  )
+  const afterPan = await readCropOverlayDraft(page)
+  expect(afterPan.image.left - beforePan.image.left).toBeCloseTo(20, 3)
+  expect(afterPan.image.top).toBeCloseTo(beforePan.image.top, 3)
+
+  const east = overlay.locator('[data-crop-handle="e"]')
+  const beforeEast = await readCropOverlayDraft(page)
+  await dispatchCropPointerGesture(page, east, 952, toScreen({ x: -12, y: 0 }))
+  const afterEast = await readCropOverlayDraft(page)
+  expect(afterEast.frame.left).toBeCloseTo(beforeEast.frame.left, 3)
+  expect(afterEast.frame.right - beforeEast.frame.right).toBeCloseTo(-12, 3)
+
+  const eastBox = await east.boundingBox()
+  expect(eastBox).toBeTruthy()
+  const symmetricStart = {
+    x: eastBox!.x + eastBox!.width / 2,
+    y: eastBox!.y + eastBox!.height / 2,
+  }
+  const symmetricDelta = toScreen({ x: -5, y: 0 })
+  const beforeSymmetricPointer = await readCropOverlayDraft(page)
+  await east.dispatchEvent('pointerdown', {
+    pointerId: 953,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    ctrlKey: true,
+    clientX: symmetricStart.x,
+    clientY: symmetricStart.y,
+  })
+  await page.evaluate(({ start, delta }) => {
+    const end = { x: start.x + delta.x, y: start.y + delta.y }
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: 953,
+      pointerType: 'mouse',
+      isPrimary: true,
+      buttons: 1,
+      clientX: end.x,
+      clientY: end.y,
+    }))
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: 953,
+      pointerType: 'mouse',
+      isPrimary: true,
+      ctrlKey: true,
+      clientX: end.x,
+      clientY: end.y,
+    }))
+  }, { start: symmetricStart, delta: symmetricDelta })
+  const afterSymmetricPointer = await readCropOverlayDraft(page)
+  expect(afterSymmetricPointer.frame.left - beforeSymmetricPointer.frame.left).toBeCloseTo(5, 3)
+  expect(afterSymmetricPointer.frame.right - beforeSymmetricPointer.frame.right).toBeCloseTo(-5, 3)
+
+  await east.focus()
+  const beforeOne = await readCropOverlayDraft(page)
+  await page.keyboard.press('ArrowLeft')
+  const afterOne = await readCropOverlayDraft(page)
+  expect(afterOne.frame.right - beforeOne.frame.right).toBeCloseTo(-1, 4)
+  await page.keyboard.press('Shift+ArrowLeft')
+  const afterTen = await readCropOverlayDraft(page)
+  expect(afterTen.frame.right - afterOne.frame.right).toBeCloseTo(-10, 4)
+
+  const beforeSymmetric = await readCropOverlayDraft(page)
+  await page.keyboard.press('Control+ArrowLeft')
+  const afterSymmetric = await readCropOverlayDraft(page)
+  expect(afterSymmetric.frame.left - beforeSymmetric.frame.left).toBeCloseTo(1, 4)
+  expect(afterSymmetric.frame.right - beforeSymmetric.frame.right).toBeCloseTo(-1, 4)
+  expect(
+    (afterSymmetric.frame.left + afterSymmetric.frame.right)
+      - (beforeSymmetric.frame.left + beforeSymmetric.frame.right),
+  ).toBeCloseTo(0, 4)
+
+  const northEast = overlay.locator('[data-crop-handle="ne"]')
+  await northEast.focus()
+  const beforeCorner = await readCropOverlayDraft(page)
+  await page.keyboard.press('Control+ArrowLeft')
+  const afterCorner = await readCropOverlayDraft(page)
+  expect(afterCorner.frame.left).toBeCloseTo(beforeCorner.frame.left, 4)
+  expect(afterCorner.frame.right - beforeCorner.frame.right).toBeCloseTo(-1, 4)
+  await page.getByTestId('freeform-image-crop-done').click()
 })
 
 test('image framing commits one history entry and cancel restores the saved frame', async ({ page }) => {
