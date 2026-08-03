@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { createImageCropDraft, type ImageCropDraft } from '../src/freeform/imageCrop'
@@ -24,6 +24,8 @@ interface HarnessSnapshot {
 
 interface ImageCropSessionHarnessApi {
   arm(): void
+  finish(): void
+  setRenderScale(renderScale: number | null): void
   unmount(): void
   fireCanceledFrames(): void
   dispatchLateEvents(): void
@@ -206,8 +208,17 @@ const startDraft = createImageCropDraft({
 })
 if (!startDraft) throw new Error('crop draft setup failed')
 
-function HookHarness() {
-  const session = useImageCropSession()
+let finishCropSession: (() => void) | null = null
+
+function HookHarness({ renderScale }: { renderScale: number | null }) {
+  const session = useImageCropSession(renderScale)
+  finishCropSession = () => {
+    session.finish('done')
+  }
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.imageCropHarnessRenderScale = String(renderScale)
+  }, [renderScale])
 
   useEffect(() => {
     const started = session.start({
@@ -221,7 +232,6 @@ function HookHarness() {
       startDocument,
       startNode,
       startWorldMatrix: [1, 0, 0, 1, 0, 0],
-      renderScale: 1,
       draft: startDraft,
     })
     if (!started) throw new Error('crop session setup failed')
@@ -243,11 +253,18 @@ function HookHarness() {
 
 const container = document.getElementById('root')
 if (!container) throw new Error('harness root missing')
-let root = createRoot(container)
-root.render(<HookHarness />)
+const root = createRoot(container)
+let currentRenderScale: number | null = 1
+const renderHarness = () => root.render(<HookHarness renderScale={currentRenderScale} />)
+renderHarness()
 
 window.__imageCropSessionHarness = {
   arm: armHarness,
+  finish: () => finishCropSession?.(),
+  setRenderScale: (renderScale) => {
+    currentRenderScale = renderScale
+    renderHarness()
+  },
   unmount: () => {
     root.unmount()
     state.unmounted = true

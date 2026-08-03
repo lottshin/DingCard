@@ -585,12 +585,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   )
   const [framingSession, setFramingSession] = useState<ImageFramingSession | null>(null)
   const framingSessionRef = useRef<ImageFramingSession | null>(null)
-  const imageCropSessionApi = useImageCropSession()
+  const renderScale = calculateRenderScale(fitScale, zoomPercent)
+  const imageCropSessionApi = useImageCropSession(renderScale)
   const imageCropSession = imageCropSessionApi.session
   const imageCropSessionRef = useRef<ImageCropDisplaySession | null>(null)
   const framingSurfaceRef = useRef<HTMLDivElement>(null)
   const framingDragPointerIdRef = useRef<number | null>(null)
-  const renderScale = calculateRenderScale(fitScale, zoomPercent)
   const selectionPaths = useMemo(
     () => normalizeSceneSelection(activeSlide.nodes, activeGroupPath, requestedSelectionPaths),
     [activeGroupPath, activeSlide.nodes, requestedSelectionPaths],
@@ -1266,7 +1266,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       startDocument: document,
       startNode: { ...node, framing: { ...node.framing } },
       startWorldMatrix: [...worldMatrix] as Matrix2D,
-      renderScale,
       draft,
     })
     if (!started) return false

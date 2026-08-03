@@ -38,7 +38,6 @@ export interface ImageCropSession {
   startDocument: FreeformDocument
   startNode: FreeformImageElement
   startWorldMatrix: Matrix2D
-  renderScale: number
   minimumFrameSize: ImageFrameSize
   startDraft: ImageCropDraft
   /** The last draft settled by a completed keyboard or pointer segment. */
@@ -56,7 +55,6 @@ export interface StartImageCropInput {
   startDocument: FreeformDocument
   startNode: FreeformImageElement
   startWorldMatrix: Matrix2D
-  renderScale: number
   minimumFrameSize?: ImageFrameSize
   draft: ImageCropDraft
 }
@@ -97,6 +95,7 @@ interface CropGesture {
   startClient: Point
   latestClient: Point
   startDraft: ImageCropDraft
+  renderScale: number
   target: HTMLElement | null
   frameId: number | null
 }
@@ -172,8 +171,6 @@ function validStartInput(input: unknown): input is StartImageCropInput {
     && Boolean(value.startDocument)
     && value.startNode?.type === 'image'
     && isFiniteMatrix(value.startWorldMatrix)
-    && isFiniteNumber(value.renderScale)
-    && value.renderScale > 0
     && validDraft(value.draft)
     && (value.minimumFrameSize === undefined || isPositiveSize(value.minimumFrameSize))
 }
@@ -217,8 +214,9 @@ function keyDeltaForHandle(handle: ImageCropHandle, event: ReactKeyboardEvent): 
  * Owns transient crop drafts and all pointer listeners. Document writes are
  * intentionally left to the workspace so a gesture can become one action.
  */
-export function useImageCropSession(): ImageCropSessionApi {
+export function useImageCropSession(displayRenderScale: number | null): ImageCropSessionApi {
   const overlayRef = useRef<ImageCropOverlayHandle>(null)
+  const displayRenderScaleRef = useRef<number | null>(null)
   const sessionStateRef = useRef<ImageCropSession | null>(null)
   const settledDraftRef = useRef<ImageCropDraft | null>(null)
   const previewDraftRef = useRef<ImageCropDraft | null>(null)
@@ -235,6 +233,10 @@ export function useImageCropSession(): ImageCropSessionApi {
     blur: () => blurHandlerRef.current(),
   })
   const [session, setSession] = useState<ImageCropSession | null>(null)
+
+  displayRenderScaleRef.current = isFiniteNumber(displayRenderScale) && displayRenderScale > 0
+    ? displayRenderScale
+    : null
 
   const renderPreview = useCallback((draft: ImageCropDraft | null) => {
     if (!draft || !mountedRef.current) return
@@ -301,22 +303,19 @@ export function useImageCropSession(): ImageCropSessionApi {
         x: gesture.latestClient.x - gesture.startClient.x,
         y: gesture.latestClient.y - gesture.startClient.y,
       },
-      renderScale: current.renderScale,
+      renderScale: gesture.renderScale,
       startWorldMatrix: current.startWorldMatrix,
       minimumFrameSize: current.minimumFrameSize,
       symmetric: gesture.symmetric,
     })
   }, [])
 
-  const flushGesture = useCallback(() => {
+  const resolveGestureDraft = useCallback(() => {
     const gesture = gestureRef.current
     if (!gesture) return null
     cancelScheduledFrame()
-    const next = calculateGestureDraft(gesture)
-    previewDraftRef.current = next
-    renderPreview(next)
-    return next
-  }, [calculateGestureDraft, cancelScheduledFrame, renderPreview])
+    return calculateGestureDraft(gesture)
+  }, [calculateGestureDraft, cancelScheduledFrame])
 
   const scheduleGestureFrame = useCallback(() => {
     const gesture = gestureRef.current
@@ -335,14 +334,14 @@ export function useImageCropSession(): ImageCropSessionApi {
     const gesture = gestureRef.current
     if (!gesture) return
     if (commit) {
-      const next = flushGesture() ?? gesture.startDraft
+      const next = resolveGestureDraft() ?? gesture.startDraft
       setSettledDraft(next)
     } else {
       cancelScheduledFrame()
       setSettledDraft(gesture.startDraft)
     }
     cleanupGesture()
-  }, [cancelScheduledFrame, cleanupGesture, flushGesture, setSettledDraft])
+  }, [cancelScheduledFrame, cleanupGesture, resolveGestureDraft, setSettledDraft])
 
   const beginGesture = useCallback((
     kind: CropGesture['kind'],
@@ -350,8 +349,10 @@ export function useImageCropSession(): ImageCropSessionApi {
     event: ReactPointerEvent<HTMLElement>,
   ) => {
     const current = sessionStateRef.current
+    const renderScale = displayRenderScaleRef.current
     if (
       !current
+      || renderScale === null
       || gestureRef.current
       || !event.isPrimary
       || event.button !== 0
@@ -375,6 +376,7 @@ export function useImageCropSession(): ImageCropSessionApi {
       startClient: { x: event.clientX, y: event.clientY },
       latestClient: { x: event.clientX, y: event.clientY },
       startDraft,
+      renderScale,
       target,
       frameId: null,
     }
@@ -453,7 +455,11 @@ export function useImageCropSession(): ImageCropSessionApi {
   }, [nudgePan])
 
   const start = useCallback((input: StartImageCropInput): boolean => {
-    if (!validStartInput(input) || sessionStateRef.current) return false
+    if (
+      !validStartInput(input)
+      || displayRenderScaleRef.current === null
+      || sessionStateRef.current
+    ) return false
     const minimumFrameSize = minimumFrameSizeFor(input)
     const startDraft = cloneDraft(input.draft)
     const next: ImageCropSession = {
@@ -478,11 +484,12 @@ export function useImageCropSession(): ImageCropSessionApi {
     const current = sessionStateRef.current
     if (!current) return null
     const finalDraft = gestureRef.current
-      ? (flushGesture() ?? previewDraftRef.current ?? current.draft)
+      ? (resolveGestureDraft() ?? previewDraftRef.current ?? current.draft)
       : (previewDraftRef.current ?? current.draft)
     if (gestureRef.current) {
       settledDraftRef.current = cloneDraft(finalDraft)
       previewDraftRef.current = settledDraftRef.current
+      renderPreview(settledDraftRef.current)
     }
     cleanupGesture()
     const result: ImageCropFinishResult = {
@@ -495,7 +502,7 @@ export function useImageCropSession(): ImageCropSessionApi {
     previewDraftRef.current = null
     setSession(null)
     return result
-  }, [cleanupGesture, flushGesture])
+  }, [cleanupGesture, renderPreview, resolveGestureDraft])
 
   const invalidate = useCallback(() => {
     if (!sessionStateRef.current && !gestureRef.current) return

@@ -4200,6 +4200,48 @@ test('PowerPoint crop batches pointer moves and preserves preview through rerend
   await page.getByTestId('freeform-image-crop-done').click()
 })
 
+test('PowerPoint crop uses the latest canvas scale for each new gesture', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-latest-scale.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await page.getByTestId('freeform-crop-image').click()
+
+  const overlay = page.getByTestId('freeform-image-crop-overlay')
+  const dim = overlay.locator('.freeform-image-crop-dim')
+  const startScale = await freeformCanvasScale(page)
+  const hitSizeBeforeResize = await overlay.evaluate((element) => (
+    (element as HTMLElement).style.getPropertyValue('--crop-hit-size')
+  ))
+  await page.setViewportSize({ width: 980, height: 780 })
+  await expect.poll(() => overlay.evaluate((element) => (
+    (element as HTMLElement).style.getPropertyValue('--crop-hit-size')
+  ))).not.toBe(hitSizeBeforeResize)
+  const resizedScale = await freeformCanvasScale(page)
+  expect(resizedScale).not.toBeCloseTo(startScale, 4)
+
+  const beforeGesture = await readCropOverlayDraft(page)
+  const screenDelta = Math.min(18, resizedScale * 24)
+  await dispatchCropPointerGesture(page, dim, 911, { x: screenDelta, y: 0 })
+  const afterGesture = await readCropOverlayDraft(page)
+  expect(afterGesture.image.left - beforeGesture.image.left).toBeCloseTo(
+    screenDelta / resizedScale,
+    3,
+  )
+  expect(afterGesture.image.right - beforeGesture.image.right).toBeCloseTo(
+    screenDelta / resizedScale,
+    3,
+  )
+  await page.getByTestId('freeform-image-crop-done').click()
+})
+
 test('PowerPoint crop settles or invalidates pending frames without late writes', async ({ page }) => {
   await openFreeform(page)
   await page.locator('input.freeform-file').first().setInputFiles({
