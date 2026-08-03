@@ -36,6 +36,7 @@ import {
 import { ImageCropOverlay } from './ImageCropOverlay'
 import {
   useImageCropSession,
+  type ImageCropFinishReason,
   type ImageCropSession,
 } from './useImageCropSession'
 import { FreeformSlidePreview } from './FreeformSlidePreview'
@@ -71,8 +72,11 @@ import {
   clearAllImageReadiness,
   clearImageReadinessForSlide,
   createImageReadinessState,
+  imageCropReadinessInvalidation,
   readReadyImage,
+  readImageReadinessReport,
   updateImageReadiness,
+  imageDecodeIdentityEquals,
   waitForFramedImages,
   type ImageDecodeIdentity,
   type ImageDecodeReport,
@@ -80,7 +84,9 @@ import {
 } from './imageReadiness'
 import {
   createImageCropDraft,
+  imageCropDraftToUpdate,
   imageCropScreenScale,
+  type ImageCropNodeUpdate,
 } from './imageCrop'
 import { ColorPickerButton, PaintField } from './PaintField'
 import {
@@ -185,6 +191,28 @@ const FITS: Array<{ id: 'cover' | 'contain'; label: string }> = [
   { id: 'contain', label: '适应' },
 ]
 
+type ImageCropAspectId = 'original' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
+
+const IMAGE_CROP_ASPECTS: Array<{ id: ImageCropAspectId; label: string }> = [
+  { id: 'original', label: '原图' },
+  { id: '1:1', label: '1:1' },
+  { id: '4:3', label: '4:3' },
+  { id: '3:4', label: '3:4' },
+  { id: '16:9', label: '16:9' },
+  { id: '9:16', label: '9:16' },
+]
+
+const IMAGE_CROP_ASPECT_RATIOS: Record<ImageCropAspectId, number | 'original'> = {
+  original: 'original',
+  '1:1': 1,
+  '4:3': 4 / 3,
+  '3:4': 3 / 4,
+  '16:9': 16 / 9,
+  '9:16': 9 / 16,
+}
+
+type LiveEditCommitResult = 'committed' | 'cancelled' | 'rejected'
+
 interface ImageFramingTarget {
   targetKind: 'image' | 'shape-fill'
   logicalSrc: string
@@ -209,6 +237,18 @@ interface ImageFramingSession {
 }
 
 type ImageCropDisplaySession = ImageCropSession
+
+function imageCropDecodeIdentityForSession(
+  session: ImageCropDisplaySession,
+): ImageDecodeIdentity {
+  return {
+    scopeGeneration: session.scopeGeneration,
+    slideId: session.slideId,
+    scenePathKey: scenePathKey(session.path),
+    logicalSrc: session.logicalSrc,
+    resolvedSrc: session.resolvedSrc,
+  }
+}
 
 function imageFramingTargetForNode(node: FreeformSceneNode | undefined): ImageFramingTarget | null {
   if (node?.type === 'image') {
@@ -300,6 +340,17 @@ function clampImageZoom(zoom: number): number {
   if (!Number.isFinite(zoom)) return MIN_IMAGE_ZOOM
   const percent = Math.round(zoom * 100)
   return Math.min(MAX_IMAGE_ZOOM, Math.max(MIN_IMAGE_ZOOM, percent / 100))
+}
+
+function imageCropUpdateChangesNode(
+  node: FreeformImageElement,
+  update: ImageCropNodeUpdate,
+): boolean {
+  return node.x !== update.x
+    || node.y !== update.y
+    || node.width !== update.width
+    || node.height !== update.height
+    || !imageFramingEquals(node.framing, update.framing)
 }
 
 function scenePathFromKey(key: string): ScenePath | null {
@@ -580,6 +631,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   )
   const [imageReadinessRefresh, setImageReadinessRefresh] = useState(0)
   const imageReadinessRef = useRef<ImageReadinessState>(imageReadiness)
+  const invalidatedCropDecodeIdentityRef = useRef<ImageDecodeIdentity | null>(null)
   const [pendingShapeFillKeys, setPendingShapeFillKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   )
@@ -843,24 +895,64 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     void imageReadinessRefresh
     if (report.identity.scopeGeneration !== documentIdentityGenerationRef.current) return
     const path = scenePathFromKey(report.identity.scenePathKey)
-    if (!path) return
-    const slide = currentDocumentRef.current.slides.find(
-      (candidate) => candidate.id === report.identity.slideId,
+
+    const cropSession = imageCropSessionRef.current
+    if (cropSession) {
+      const sessionIdentity = imageCropDecodeIdentityForSession(cropSession)
+      const authority = currentImageCropAuthorityForSession(cropSession)
+      const invalidation = imageCropReadinessInvalidation({
+        sessionIdentity,
+        currentIdentity: authority?.identity ?? null,
+        readiness: report,
+      })
+      if (invalidation.invalidate) {
+        if (invalidation.reason === 'loading') {
+          invalidatedCropDecodeIdentityRef.current = { ...report.identity }
+        } else if (invalidation.reason === 'error') {
+          invalidatedCropDecodeIdentityRef.current = null
+          setOperationNotice('图片加载失败，请重试')
+        } else {
+          invalidatedCropDecodeIdentityRef.current = null
+        }
+        clearImageCropSession()
+      }
+    }
+    const followsInvalidatedCrop = Boolean(
+      invalidatedCropDecodeIdentityRef.current
+      && imageDecodeIdentityEquals(
+        report.identity,
+        invalidatedCropDecodeIdentityRef.current,
+      ),
     )
-    if (!slide) return
-    const target = imageFramingTargetForNode(findNodeAtPath(slide.nodes, path))
-    if (!target) return
-    const expectedIdentity = imageDecodeIdentityForTarget(
-      documentIdentityGenerationRef.current,
-      slide.id,
-      path,
-      target,
-    )
-    setImageReadiness((current) => {
-      const next = updateImageReadiness(current, report, expectedIdentity)
-      imageReadinessRef.current = next
-      return next
-    })
+    const slide = path
+      ? currentDocumentRef.current.slides.find(
+          (candidate) => candidate.id === report.identity.slideId,
+        )
+      : undefined
+    const target = slide && path
+      ? imageFramingTargetForNode(findNodeAtPath(slide.nodes, path))
+      : null
+    const expectedIdentity = slide && path && target
+      ? imageDecodeIdentityForTarget(
+          documentIdentityGenerationRef.current,
+          slide.id,
+          path,
+          target,
+        )
+      : null
+    if (!expectedIdentity) return
+    const currentReadiness = imageReadinessRef.current
+    const nextReadiness = updateImageReadiness(currentReadiness, report, expectedIdentity)
+    if (!Object.is(nextReadiness, currentReadiness)) {
+      imageReadinessRef.current = nextReadiness
+      setImageReadiness(nextReadiness)
+    }
+    if (report.status === 'error' && followsInvalidatedCrop) {
+      invalidatedCropDecodeIdentityRef.current = null
+      setOperationNotice('图片加载失败，请重试')
+    } else if (report.status === 'ready' && followsInvalidatedCrop) {
+      invalidatedCropDecodeIdentityRef.current = null
+    }
   }, [imageReadinessRefresh])
 
   const loadDrafts = useCallback(async (uid: string) => {
@@ -957,6 +1049,37 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       draftListGenerationRef.current += 1
     }
   }, [clearAllImageReadinessNow, loadDrafts, updateDraftId, user])
+
+  useEffect(() => {
+    const session = imageCropSessionRef.current
+    if (!session) return
+    const sessionIdentity = imageCropDecodeIdentityForSession(session)
+    const authority = currentImageCropAuthorityForSession(session)
+    const readiness = readImageReadinessReport(imageReadinessRef.current, sessionIdentity)
+    const invalidation = imageCropReadinessInvalidation({
+      sessionIdentity,
+      currentIdentity: authority?.identity ?? null,
+      readiness,
+    })
+    if (!invalidation.invalidate) return
+    if (invalidation.reason === 'loading') {
+      invalidatedCropDecodeIdentityRef.current = { ...sessionIdentity }
+    } else if (invalidation.reason === 'error') {
+      invalidatedCropDecodeIdentityRef.current = null
+      setOperationNotice('鍥剧墖鍔犺浇澶辫触锛岃閲嶈瘯')
+    } else {
+      invalidatedCropDecodeIdentityRef.current = null
+    }
+    clearImageCropSession()
+  }, [
+    activeGroupPath,
+    activeSlide.id,
+    activeSlide.nodes,
+    draftId,
+    imageCropSession,
+    imageReadiness,
+    user?.id,
+  ])
 
   useEffect(() => {
     const identity: SceneUiIdentity = {
@@ -1137,10 +1260,47 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }, [updateHistory])
 
+  const applyAndCommitLiveEdit = useCallback((
+    startDocument: FreeformDocument,
+    action: FreeformAction,
+    expectedChanged: boolean,
+  ): LiveEditCommitResult => {
+    if (!expectedChanged) {
+      cancelLiveEdit(startDocument)
+      return 'cancelled'
+    }
+
+    const preflightStart = currentDocumentRef.current
+    const preflightNext = freeformReducer(preflightStart, action)
+    if (Object.is(preflightNext, preflightStart)) return 'rejected'
+
+    const savedStart = successfulSaveRef.current
+    const historyStart = savedStart && (
+      Object.is(savedStart.source, startDocument) || Object.is(savedStart.document, startDocument)
+    )
+      ? savedStart.document
+      : startDocument
+    const commitState: { result: LiveEditCommitResult } = { result: 'rejected' }
+    updateHistory((current) => {
+      const next = freeformReducer(current.current, action)
+      if (Object.is(next, current.current)) return current
+      commitState.result = 'committed'
+      return {
+        past: [...current.past, historyStart],
+        current: next,
+        future: [],
+      }
+    })
+    if (commitState.result === 'committed') setSavedAt(null)
+    return commitState.result
+  }, [cancelLiveEdit, updateHistory])
+
   function currentTargetForFramingSession(
     session: ImageFramingSession,
+    scopeUserId = currentUserIdRef.current,
+    scopeDraftId = currentDraftIdRef.current,
   ): { slide: FreeformSlide; target: ImageFramingTarget } | null {
-    if (!framingSessionBelongsToCurrentScope(session)) return null
+    if (!framingSessionBelongsToScope(session, scopeUserId, scopeDraftId)) return null
     const slide = currentDocumentRef.current.slides.find(
       (candidate) => candidate.id === session.slideId,
     )
@@ -1156,29 +1316,49 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   }
 
   function framingSessionBelongsToCurrentScope(session: ImageFramingSession): boolean {
-    return session.scopeGeneration === documentIdentityGenerationRef.current
-      && session.draftScopeKey === imageFramingScopeKey(
-        documentIdentityGenerationRef.current,
-        currentUserIdRef.current,
-        currentDraftIdRef.current,
-      )
+    return framingSessionBelongsToScope(
+      session,
+      currentUserIdRef.current,
+      currentDraftIdRef.current,
+    )
   }
 
-  function imageCropSessionBelongsToCurrentScope(
-    session: ImageCropDisplaySession,
+  function framingSessionBelongsToScope(
+    session: ImageFramingSession,
+    scopeUserId: string | null,
+    scopeDraftId: string | null,
   ): boolean {
     return session.scopeGeneration === documentIdentityGenerationRef.current
       && session.draftScopeKey === imageFramingScopeKey(
         documentIdentityGenerationRef.current,
-        currentUserIdRef.current,
-        currentDraftIdRef.current,
+        scopeUserId,
+        scopeDraftId,
       )
   }
 
-  function currentTargetForImageCropSession(
+  function imageCropSessionBelongsToScope(
     session: ImageCropDisplaySession,
-  ): { slide: FreeformSlide; node: FreeformImageElement } | null {
-    if (!imageCropSessionBelongsToCurrentScope(session)) return null
+    scopeUserId: string | null,
+    scopeDraftId: string | null,
+  ): boolean {
+    return session.scopeGeneration === documentIdentityGenerationRef.current
+      && session.draftScopeKey === imageFramingScopeKey(
+        documentIdentityGenerationRef.current,
+        scopeUserId,
+        scopeDraftId,
+      )
+  }
+
+  function currentImageCropAuthorityForSession(
+    session: ImageCropDisplaySession,
+    scopeUserId = currentUserIdRef.current,
+    scopeDraftId = currentDraftIdRef.current,
+  ): {
+    slide: FreeformSlide
+    node: FreeformImageElement
+    identity: ImageDecodeIdentity
+  } | null {
+    if (!imageCropSessionBelongsToScope(session, scopeUserId, scopeDraftId)) return null
     const document = currentDocumentRef.current
     if (document.activeSlideId !== session.slideId) return null
     const slide = document.slides.find((candidate) => candidate.id === session.slideId)
@@ -1193,29 +1373,53 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       || state.hidden
       || node?.type !== 'image'
       || node.fit !== 'cover'
-      || node.src !== session.logicalSrc
-      || store.images.resolve(node.src) !== session.resolvedSrc
     ) return null
     const target = imageFramingTargetForNode(node)
     if (!target || target.targetKind !== 'image') return null
-    const identity = imageDecodeIdentityForTarget(
-      session.scopeGeneration,
-      slide.id,
-      session.path,
-      target,
-    )
-    const naturalSize = readReadyImage(imageReadinessRef.current, identity)
+    return {
+      slide,
+      node,
+      identity: imageDecodeIdentityForTarget(
+        session.scopeGeneration,
+        slide.id,
+        session.path,
+        target,
+      ),
+    }
+  }
+
+  function currentTargetForImageCropSession(
+    session: ImageCropDisplaySession,
+    scopeUserId = currentUserIdRef.current,
+    scopeDraftId = currentDraftIdRef.current,
+  ): { slide: FreeformSlide; node: FreeformImageElement } | null {
+    const current = currentImageCropAuthorityForSession(session, scopeUserId, scopeDraftId)
+    if (!current) return null
+    if (!imageDecodeIdentityEquals(
+      current.identity,
+      imageCropDecodeIdentityForSession(session),
+    )) return null
+    const naturalSize = readReadyImage(imageReadinessRef.current, current.identity)
     if (
       !naturalSize
       || naturalSize.width !== session.naturalSize.width
       || naturalSize.height !== session.naturalSize.height
     ) return null
-    return { slide, node }
+    return { slide: current.slide, node: current.node }
   }
 
   function clearImageCropSession() {
     imageCropSessionApi.invalidate()
     imageCropSessionRef.current = null
+  }
+
+  function invalidateImageCropAfterDecodeError() {
+    const session = imageCropSessionRef.current
+    if (!session) return
+    const current = currentTargetForImageCropSession(session)
+    clearImageCropSession()
+    invalidatedCropDecodeIdentityRef.current = null
+    if (current) setOperationNotice('图片加载失败，请重试')
   }
 
   function startImageCrop(path: ScenePath): boolean {
@@ -1269,16 +1473,66 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       draft,
     })
     if (!started) return false
+    invalidatedCropDecodeIdentityRef.current = null
     blurActiveTypingTarget()
     setSelection([path[path.length - 1]])
     setOperationNotice(null)
     return true
   }
 
-  function finishImageCrop() {
-    if (!imageCropSessionRef.current) return
-    imageCropSessionApi.finish('done')
+  function applyImageCropAspect(aspect: ImageCropAspectId) {
+    const changed = imageCropSessionApi.applyAspectRatio(IMAGE_CROP_ASPECT_RATIOS[aspect])
+    setOperationNotice(changed ? null : '当前裁剪范围无法应用该比例')
+  }
+
+  function finishImageCrop(
+    reason: ImageCropFinishReason = 'done',
+    scopeUserId = currentUserIdRef.current,
+    scopeDraftId = currentDraftIdRef.current,
+  ): LiveEditCommitResult | null {
+    const finished = imageCropSessionApi.finish(reason)
+    if (!finished) {
+      imageCropSessionRef.current = null
+      invalidatedCropDecodeIdentityRef.current = null
+      return null
+    }
+
+    const { session, draft } = finished
+    const current = currentTargetForImageCropSession(session, scopeUserId, scopeDraftId)
+    if (!current) {
+      imageCropSessionRef.current = null
+      invalidatedCropDecodeIdentityRef.current = null
+      return null
+    }
+    const update = imageCropDraftToUpdate({
+      startNode: session.startNode,
+      naturalSize: session.naturalSize,
+      draft,
+    })
+    if (!update) {
+      setOperationNotice('图片裁剪未能应用，请重试')
+      imageCropSessionRef.current = null
+      invalidatedCropDecodeIdentityRef.current = null
+      return 'rejected'
+    }
+
+    const result = applyAndCommitLiveEdit(
+      session.startDocument,
+      {
+        type: 'node/update-image-crop',
+        slideId: session.slideId,
+        path: [...session.path],
+        patch: {
+          ...update,
+          framing: { ...update.framing },
+        },
+      },
+      imageCropUpdateChangesNode(session.startNode, update),
+    )
+    setOperationNotice(result === 'rejected' ? '图片裁剪未能应用，请重试' : null)
     imageCropSessionRef.current = null
+    invalidatedCropDecodeIdentityRef.current = null
+    return result
   }
 
   function replaceSessionFraming(
@@ -1386,19 +1640,22 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     scopeUserId = currentUserIdRef.current,
     scopeDraftId = currentDraftIdRef.current,
   ) {
-    if (imageCropSessionRef.current) clearImageCropSession()
+    const cropSession = imageCropSessionRef.current
+    if (cropSession) {
+      if (currentTargetForImageCropSession(cropSession, scopeUserId, scopeDraftId)) {
+        finishImageCrop('transition', scopeUserId, scopeDraftId)
+      } else {
+        clearImageCropSession()
+      }
+    }
     const session = framingSessionRef.current
     if (session) {
-      const belongsToTransitionSource = session.scopeGeneration
-        === documentIdentityGenerationRef.current
-        && session.draftScopeKey === imageFramingScopeKey(
-          documentIdentityGenerationRef.current,
-          scopeUserId,
-          scopeDraftId,
-        )
-      if (belongsToTransitionSource) cancelLiveEdit(session.startDocument)
+      if (currentTargetForFramingSession(session, scopeUserId, scopeDraftId)) {
+        cancelLiveEdit(session.startDocument)
+      }
       clearImageFramingSession()
     }
+    invalidatedCropDecodeIdentityRef.current = null
     clearAllImageReadinessNow()
   }
 
@@ -2505,6 +2762,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     } : null
   }
 
+  function onArtboardPointerDownCapture(event: React.PointerEvent<HTMLDivElement>) {
+    if (!imageCropSessionRef.current) return
+    const target = event.target
+    if (
+      target instanceof Element
+      && target.closest('[data-testid="freeform-image-crop-overlay"]')
+    ) return
+    finishImageCrop('outside')
+  }
+
   function onArtboardPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.target !== event.currentTarget) return
     if (blockDocumentMutationDuringInteraction()) {
@@ -3261,13 +3528,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 role="toolbar"
                 aria-label="图片裁剪"
               >
-                <span aria-hidden="true" />
+                <div
+                  className="freeform-toolbar"
+                  data-image-crop-control=""
+                  style={{ position: 'relative', zIndex: 70 }}
+                >
+                  <FreeformInsertMenu
+                    isActive={isActive}
+                    testId="freeform-image-crop-aspect"
+                    label="比例"
+                    options={IMAGE_CROP_ASPECTS}
+                    onSelect={applyImageCropAspect}
+                  />
+                </div>
                 <strong>裁剪</strong>
                 <button
                   className="toolbar-primary"
                   type="button"
                   data-testid="freeform-image-crop-done"
-                  onClick={finishImageCrop}
+                  onClick={() => { finishImageCrop() }}
                 >
                   完成
                 </button>
@@ -3348,6 +3627,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                   className="freeform-artboard"
                   data-testid="freeform-canvas"
                   data-active-group-path={activeGroupPath.join('/')}
+                  onPointerDownCapture={onArtboardPointerDownCapture}
                   style={{
                     width: activeSlide.width,
                     height: activeSlide.height,
@@ -3423,6 +3703,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       resolvedSrc={imageCropSession.resolvedSrc}
                       alt={imageCropSession.startNode.alt}
                       onImagePointerDown={imageCropSessionApi.panPointerDown}
+                      onImageError={invalidateImageCropAfterDecodeError}
                       onHandlePointerDown={(event, handle) => (
                         imageCropSessionApi.handlePointerDown(handle, event)
                       )}

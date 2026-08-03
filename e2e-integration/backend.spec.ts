@@ -160,20 +160,63 @@ async function expectRemoteFreeformImagesDecoded(page: import('@playwright/test'
   })).toBe(true)
 }
 
-async function setRangeValue(
+async function readCropOverlayDraft(page: import('@playwright/test').Page) {
+  return page.getByTestId('freeform-image-crop-overlay').evaluate((overlay) => {
+    const readBounds = (prefix: 'Frame' | 'Image') => {
+      const read = (edge: 'Left' | 'Top' | 'Right' | 'Bottom') => {
+        const value = (overlay as HTMLElement).dataset[`crop${prefix}${edge}`]
+        if (value === undefined) throw new Error(`crop ${prefix} ${edge} missing`)
+        return Number(value)
+      }
+      return {
+        left: read('Left'),
+        top: read('Top'),
+        right: read('Right'),
+        bottom: read('Bottom'),
+      }
+    }
+    return { frame: readBounds('Frame'), image: readBounds('Image') }
+  })
+}
+
+async function dispatchCropPointerGesture(
+  page: import('@playwright/test').Page,
   locator: import('@playwright/test').Locator,
-  value: number,
+  pointerId: number,
+  delta: { x: number; y: number },
 ) {
-  await locator.evaluate((node, nextValue) => {
-    const input = node as HTMLInputElement
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      'value',
-    )?.set
-    nativeSetter?.call(input, String(nextValue))
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    input.dispatchEvent(new Event('change', { bubbles: true }))
-  }, value)
+  const box = await locator.boundingBox()
+  expect(box).toBeTruthy()
+  const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  const end = { x: start.x + delta.x, y: start.y + delta.y }
+  await locator.dispatchEvent('pointerdown', {
+    pointerId,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: start.x,
+    clientY: start.y,
+  })
+  await page.evaluate(({ id, point }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      pointerId: id,
+      pointerType: 'mouse',
+      isPrimary: true,
+      buttons: 1,
+      clientX: point.x,
+      clientY: point.y,
+    }))
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: id,
+      pointerType: 'mouse',
+      isPrimary: true,
+      clientX: point.x,
+      clientY: point.y,
+    }))
+  }, { id: pointerId, point: end })
 }
 
 async function uploadManagedImage(
@@ -536,18 +579,32 @@ test.describe('remote backend integration', () => {
     await expect(page.getByTestId('freeform-canvas'))
       .toHaveAttribute('data-active-group-path', 'remote-hidden-group')
     await page.getByRole('tab', { name: '属性', exact: true }).click()
-    await page.getByTestId('freeform-adjust-framing').click()
-    const surface = page.getByTestId('freeform-framing-surface')
-    await setRangeValue(page.getByTestId('freeform-framing-zoom'), 190)
-    await surface.focus()
-    await page.keyboard.press('ArrowLeft')
-    await page.keyboard.press('Shift+ArrowUp')
-    const expectedFrame = {
-      focusX: Number(await surface.getAttribute('data-framing-focus-x')),
-      focusY: Number(await surface.getAttribute('data-framing-focus-y')),
-      zoom: Number(await surface.getAttribute('data-framing-zoom')),
-    }
-    await page.getByTestId('freeform-framing-done').click()
+    await page.getByTestId('freeform-crop-image').click()
+    const overlay = page.getByTestId('freeform-image-crop-overlay')
+    await dispatchCropPointerGesture(
+      page,
+      overlay.locator('.freeform-image-crop-dim'),
+      501,
+      { x: 0, y: 8 },
+    )
+    await dispatchCropPointerGesture(
+      page,
+      overlay.locator('[data-crop-handle="e"]'),
+      502,
+      { x: -24, y: 0 },
+    )
+    const expectedDraft = await readCropOverlayDraft(page)
+    await page.getByTestId('freeform-image-crop-done').click()
+    const expectedGeometry = await page.locator('[data-scene-node-id="remote-image"]')
+      .evaluate((node) => {
+        const element = node as HTMLElement
+        return {
+          x: Number.parseFloat(element.style.left),
+          y: Number.parseFloat(element.style.top),
+          width: Number.parseFloat(element.style.width),
+          height: Number.parseFloat(element.style.height),
+        }
+      })
     await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
 
@@ -566,6 +623,10 @@ test.describe('remote backend integration', () => {
             children?: Array<{
               id: string
               type: string
+              x?: number
+              y?: number
+              width?: number
+              height?: number
               framing?: { focusX: number; focusY: number; zoom: number }
             }>
           }>
@@ -576,7 +637,13 @@ test.describe('remote backend integration', () => {
     expect(saved?.document.documentVersion).toBe(4)
     const group = saved?.document.slides[0].nodes.find((node) => node.id === 'remote-hidden-group')
     const savedImage = group?.children?.find((node) => node.id === 'remote-image')
-    expect(savedImage?.framing).toEqual(expectedFrame)
+    expect(savedImage).toBeDefined()
+    for (const key of ['x', 'y', 'width', 'height'] as const) {
+      expect(savedImage?.[key]).toBeCloseTo(expectedGeometry[key], 3)
+    }
+    expect(savedImage?.framing).not.toEqual({ focusX: 0.5, focusY: 0.5, zoom: 1 })
+    const expectedFrame = savedImage?.framing
+    expect(expectedFrame).toBeDefined()
 
     await page.reload()
     await expect(page.getByTestId('account-logout')).toBeVisible()
@@ -592,13 +659,23 @@ test.describe('remote backend integration', () => {
       '[data-scene-node-id="remote-image"] [data-framed-image="true"]',
     ))
       .toHaveAttribute('data-image-load-state', 'ready')
-    await page.getByTestId('freeform-adjust-framing').click()
-    expect({
-      focusX: Number(await surface.getAttribute('data-framing-focus-x')),
-      focusY: Number(await surface.getAttribute('data-framing-focus-y')),
-      zoom: Number(await surface.getAttribute('data-framing-zoom')),
-    }).toEqual(expectedFrame)
-    await page.getByTestId('freeform-framing-cancel').click()
+    const restoredGeometry = await page.locator('[data-scene-node-id="remote-image"]')
+      .evaluate((node) => {
+        const element = node as HTMLElement
+        return {
+          x: Number.parseFloat(element.style.left),
+          y: Number.parseFloat(element.style.top),
+          width: Number.parseFloat(element.style.width),
+          height: Number.parseFloat(element.style.height),
+        }
+      })
+    for (const key of ['x', 'y', 'width', 'height'] as const) {
+      expect(restoredGeometry[key]).toBeCloseTo(expectedGeometry[key], 3)
+    }
+    await page.getByTestId('freeform-crop-image').click()
+    expect(await readCropOverlayDraft(page)).toEqual(expectedDraft)
+    await page.getByTestId('freeform-image-crop-done').click()
+    expect(savedImage?.framing).toEqual(expectedFrame)
   })
 
   test('keeps a newer draft at root scope when an older nested save resolves late', async ({ page }) => {

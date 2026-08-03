@@ -3878,6 +3878,271 @@ async function releaseLateCropFrame(
   }))
 }
 
+test('crop aspect ratios expose only the six presets and stay one-shot', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-aspect-ratios.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await page.getByTestId('freeform-crop-image').click()
+
+  const aspectTrigger = page.getByTestId('freeform-image-crop-aspect')
+  await expect(aspectTrigger).toHaveText('比例')
+  await aspectTrigger.click()
+  const menu = page.getByRole('menu', { name: '比例', exact: true })
+  await expect(menu.getByRole('menuitem')).toHaveText([
+    '原图',
+    '1:1',
+    '4:3',
+    '3:4',
+    '16:9',
+    '9:16',
+  ])
+  await menu.getByRole('menuitem', { name: '1:1', exact: true }).click()
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
+
+  const square = await readCropOverlayDraft(page)
+  expect(square.frame.right - square.frame.left).toBeCloseTo(
+    square.frame.bottom - square.frame.top,
+    4,
+  )
+  await dispatchCropPointerGesture(
+    page,
+    page.locator('[data-crop-handle="e"]'),
+    901,
+    { x: -24, y: 0 },
+  )
+  const freeform = await readCropOverlayDraft(page)
+  expect(freeform.frame.right - freeform.frame.left).not.toBeCloseTo(
+    freeform.frame.bottom - freeform.frame.top,
+    4,
+  )
+  await page.getByTestId('freeform-image-crop-done').click()
+})
+
+test('crop finish semantics commit from every exit and undo atomically', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-finish-semantics.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+
+  await page.getByTestId('freeform-crop-image').click()
+  const originalDraft = await readCropOverlayDraft(page)
+  await page.getByTestId('freeform-image-crop-done').click()
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore))
+
+  const exits = ['done', 'Escape', 'Enter', 'outside'] as const
+  for (let index = 0; index < exits.length; index += 1) {
+    await imageElement.click()
+    await page.getByTestId('freeform-crop-image').click()
+    await dispatchCropPointerGesture(
+      page,
+      page.locator('[data-crop-handle="e"]'),
+      910 + index,
+      { x: -20 - index * 2, y: 0 },
+    )
+    const changedDraft = await readCropOverlayDraft(page)
+    expect(changedDraft.frame.right).not.toBeCloseTo(originalDraft.frame.right, 4)
+
+    const exit = exits[index]
+    if (exit === 'done') {
+      await page.getByTestId('freeform-image-crop-done').click()
+    } else if (exit === 'outside') {
+      const canvasBox = await page.getByTestId('freeform-canvas').boundingBox()
+      expect(canvasBox).toBeTruthy()
+      await page.mouse.click(canvasBox!.x + 5, canvasBox!.y + 5)
+    } else {
+      await page.keyboard.press(exit)
+    }
+
+    await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
+    await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+    await page.getByRole('button', { name: '撤销', exact: true }).click()
+    await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore))
+
+    await imageElement.click()
+    await page.getByTestId('freeform-crop-image').click()
+    expect(await readCropOverlayDraft(page)).toEqual(originalDraft)
+    await page.getByTestId('freeform-image-crop-done').click()
+    await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore))
+  }
+})
+
+test('crop blocks document commands while editing', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-command-blocking.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await page.keyboard.press('ControlOrMeta+C')
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  const nodeCountBefore = await page.getByTestId('freeform-element').count()
+
+  await page.getByTestId('freeform-crop-image').click()
+  await dispatchCropPointerGesture(
+    page,
+    page.locator('[data-crop-handle="e"]'),
+    931,
+    { x: -20, y: 0 },
+  )
+  const cropBeforeCommands = cropGeometryOf(await readCropOverlayDraft(page))
+  await expect(page.getByTestId('freeform-toolbar')).toHaveAttribute('inert', '')
+  await expect(page.locator('.freeform-right-panel')).toHaveAttribute('inert', '')
+
+  for (const shortcut of [
+    'ControlOrMeta+Z',
+    'ControlOrMeta+Shift+Z',
+    'ControlOrMeta+V',
+    'ControlOrMeta+G',
+    'ControlOrMeta+Shift+G',
+    'Delete',
+  ]) await page.keyboard.press(shortcut)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'blocked-replacement.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  await page.getByTestId('paint-image-fit-contain').evaluate((button) => (
+    button as HTMLButtonElement
+  ).click())
+  for (const name of ['保存草稿', '打包导出', '导出当前页']) {
+    await page.getByRole('button', { name, exact: true }).evaluate((button) => (
+      button as HTMLButtonElement
+    ).click())
+  }
+
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
+  expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(cropBeforeCommands)
+  expect(await page.getByTestId('freeform-element').count()).toBe(nodeCountBefore)
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await page.keyboard.press('Escape')
+})
+
+test('crop invalidates on a real decode error without history', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-decode-error.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  await page.getByTestId('freeform-crop-image').click()
+  await page.locator('.freeform-image-crop-dim').dispatchEvent('error')
+
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
+  await expect(workspace).not.toHaveClass(/is-image-cropping/)
+  await expect(page.getByRole('alert')).toContainText('图片加载失败，请重试')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByTestId('freeform-toolbar')).not.toHaveAttribute('inert', '')
+})
+
+test('crop invalidates silently when its resolved image identity changes', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-source-identity.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  await page.getByTestId('freeform-crop-image').click()
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
+
+  const replacement = `${WIDE_TEST_SVG_DATA_URL}#resolved-identity-change`
+  await page.evaluate(async (nextResolvedSrc) => {
+    const module = await import('/src/storage/index.ts')
+    const imageStore = module.store.images
+    const originalResolve = imageStore.resolve
+    imageStore.resolve = (href: string) => (
+      href.startsWith('img:') ? nextResolvedSrc : originalResolve(href)
+    )
+    const testWindow = window as typeof window & {
+      __restoreCropImageResolve?: () => void
+    }
+    testWindow.__restoreCropImageResolve = () => {
+      imageStore.resolve = originalResolve
+    }
+  }, replacement)
+
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await expect.poll(() => imageElement.locator('img[data-framed-image-content="true"]')
+      .getAttribute('src')).toBe(replacement)
+    await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
+    await expect(workspace).not.toHaveClass(/is-image-cropping/)
+    await expect(page.getByTestId('freeform-toolbar')).not.toHaveAttribute('inert', '')
+    await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+    await expect(page.getByRole('alert')).toHaveCount(0)
+  } finally {
+    await page.evaluate(() => {
+      const testWindow = window as typeof window & {
+        __restoreCropImageResolve?: () => void
+      }
+      testWindow.__restoreCropImageResolve?.()
+      delete testWindow.__restoreCropImageResolve
+    })
+  }
+})
+
+test('crop clears and reports a real scene image decode error without history', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-scene-decode-error.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  const sceneImage = imageElement.locator('img[data-framed-image-content="true"]')
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  await page.getByTestId('freeform-crop-image').click()
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
+  await sceneImage.dispatchEvent('error')
+
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
+  await expect(workspace).not.toHaveClass(/is-image-cropping/)
+  await expect(page.getByRole('alert')).toContainText('图片加载失败，请重试')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+  await expect(page.getByTestId('freeform-toolbar')).not.toHaveAttribute('inert', '')
+})
+
 test('PowerPoint crop pans the picture and crops from every handle', async ({ page }) => {
   await openFreeform(page)
   await page.locator('input.freeform-file').first().setInputFiles({
@@ -4242,7 +4507,7 @@ test('PowerPoint crop uses the latest canvas scale for each new gesture', async 
   await page.getByTestId('freeform-image-crop-done').click()
 })
 
-test('PowerPoint crop settles or invalidates pending frames without late writes', async ({ page }) => {
+test('crop transition settles pending frames without late writes', async ({ page }) => {
   await openFreeform(page)
   await page.locator('input.freeform-file').first().setInputFiles({
     name: 'crop-pending-cleanup.svg',
@@ -4255,7 +4520,6 @@ test('PowerPoint crop settles or invalidates pending frames without late writes'
   await expect(imageElement.locator('[data-framed-image="true"]'))
     .toHaveAttribute('data-image-load-state', 'ready')
   const cropButton = page.getByTestId('freeform-crop-image')
-  const doneButton = page.getByTestId('freeform-image-crop-done')
   await cropButton.click()
 
   let overlay = page.getByTestId('freeform-image-crop-overlay')
@@ -4264,7 +4528,7 @@ test('PowerPoint crop settles or invalidates pending frames without late writes'
   await installCropDraftObserver(page)
   const finishStart = await beginPendingCropPointerMove(page, dim, 921, { x: 40, y: 0 })
   expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(beforeFinish)
-  await doneButton.click()
+  await page.keyboard.press('Escape')
   await expect(overlay).toHaveCount(0)
   await expect(page.locator('html')).toHaveAttribute('data-crop-frame-canceled', 'true')
   const finishedDraft = await readObservedCropDraft(page)
@@ -4276,23 +4540,30 @@ test('PowerPoint crop settles or invalidates pending frames without late writes'
   await cropButton.click()
   overlay = page.getByTestId('freeform-image-crop-overlay')
   dim = overlay.locator('.freeform-image-crop-dim')
-  const beforeInvalidate = cropGeometryOf(await readCropOverlayDraft(page))
+  const beforeTransition = cropGeometryOf(await readCropOverlayDraft(page))
   await installCropDraftObserver(page)
-  const invalidateStart = await beginPendingCropPointerMove(page, dim, 922, { x: -40, y: 0 })
-  expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(beforeInvalidate)
+  const transitionStart = await beginPendingCropPointerMove(page, dim, 922, { x: -40, y: 0 })
+  expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(beforeTransition)
   await page.getByTestId('workspace-tab-markdown').click()
   await expect(overlay).toHaveCount(0)
   await expect(page.locator('html')).toHaveAttribute('data-crop-frame-canceled', 'true')
-  expect(await readObservedCropDraft(page)).toEqual(beforeInvalidate)
-  await releaseLateCropFrame(page, 922, { x: invalidateStart.x - 80, y: invalidateStart.y })
-  expect(await readObservedCropDraft(page)).toEqual(beforeInvalidate)
+  const transitionedDraft = await readObservedCropDraft(page)
+  expect(transitionedDraft.frame).toEqual(beforeTransition.frame)
+  expect(transitionedDraft.image.left).not.toBeCloseTo(beforeTransition.image.left, 4)
+  await releaseLateCropFrame(page, 922, { x: transitionStart.x - 80, y: transitionStart.y })
+  expect(await readObservedCropDraft(page)).toEqual(transitionedDraft)
 
   await page.getByTestId('workspace-tab-freeform').click()
   await imageElement.click()
   await cropButton.click()
   await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
-  expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(beforeInvalidate)
-  await doneButton.click()
+  const restoredDraft = cropGeometryOf(await readCropOverlayDraft(page))
+  for (const kind of ['frame', 'image'] as const) {
+    for (const edge of ['left', 'top', 'right', 'bottom'] as const) {
+      expect(restoredDraft[kind][edge]).toBeCloseTo(transitionedDraft[kind][edge], 3)
+    }
+  }
+  await page.getByTestId('freeform-image-crop-done').click()
 })
 
 test('PowerPoint crop keeps local controls exact through nested screen transforms', async ({ page }) => {
@@ -4424,14 +4695,10 @@ test('PowerPoint crop keeps local controls exact through nested screen transform
 
 test('image framing commits one history entry and cancel restores the saved frame', async ({ page }) => {
   await openFreeform(page)
-  await page.locator('input.freeform-file').first().setInputFiles({
-    name: 'framing-image.png',
-    mimeType: 'image/png',
-    buffer: TEST_PNG,
-  })
+  await insertImageElementAndShapeFill(page)
 
   const imageElement = page.getByTestId('freeform-element').filter({
-    has: page.locator('.freeform-image'),
+    has: page.getByTestId('freeform-shape-image-fill'),
   })
   await expect(imageElement).toHaveCount(1)
   await expect(imageElement.locator('[data-framed-image="true"]'))
@@ -4597,13 +4864,9 @@ test('persists non-default image frames through node copy, page copy, save, and 
 test('image framing keyboard, buttons, drag cancel, and narrow controls stay deterministic', async ({ page }) => {
   await page.setViewportSize({ width: 440, height: 860 })
   await openFreeform(page)
-  await page.locator('input.freeform-file').first().setInputFiles({
-    name: 'framing-interactions.png',
-    mimeType: 'image/png',
-    buffer: TEST_PNG,
-  })
+  await insertImageElementAndShapeFill(page)
   const imageElement = page.getByTestId('freeform-element').filter({
-    has: page.locator('.freeform-image'),
+    has: page.getByTestId('freeform-shape-image-fill'),
   })
   await expect(imageElement.locator('[data-framed-image="true"]'))
     .toHaveAttribute('data-image-load-state', 'ready')
@@ -4688,13 +4951,9 @@ test('image framing stays covered and unobstructed across viewport widths and th
   await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.locator('input.freeform-file').first().setInputFiles({
-    name: 'framing-responsive.png',
-    mimeType: 'image/png',
-    buffer: TEST_PNG,
-  })
+  await insertImageElementAndShapeFill(page)
   const imageElement = page.getByTestId('freeform-element').filter({
-    has: page.locator('.freeform-image'),
+    has: page.getByTestId('freeform-shape-image-fill'),
   })
   await expect(imageElement.locator('[data-framed-image="true"]'))
     .toHaveAttribute('data-image-load-state', 'ready')
@@ -4823,18 +5082,23 @@ test('shape image framing supports every shape and is disabled for contain', asy
   }
 })
 
-test('framing transition restores the image before page and workspace switches', async ({ page }) => {
+test('crop transition commits images while shape framing cancels across page and workspace switches', async ({ page }) => {
   await openFreeform(page)
-  await page.locator('input.freeform-file').first().setInputFiles({
-    name: 'transition-image.png',
-    mimeType: 'image/png',
-    buffer: TEST_PNG,
-  })
+  await insertImageElementAndShapeFill(page)
+  await expectFreeformImagesDecoded(page)
   const imageElement = page.getByTestId('freeform-element').filter({
     has: page.locator('.freeform-image'),
   })
-  await expect(imageElement.locator('[data-framed-image="true"]'))
-    .toHaveAttribute('data-image-load-state', 'ready')
+  const shapeElement = page.getByTestId('freeform-element').filter({
+    has: page.getByTestId('freeform-shape-image-fill'),
+  })
+  const selectTransitionLayer = async (name: '图片' | '形状') => {
+    await page.getByRole('tab', { name: '图层', exact: true }).click()
+    await page.getByRole('tree', { name: '图层树' })
+      .getByRole('treeitem', { name, exact: true })
+      .click()
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
+  }
 
   await page.getByRole('button', { name: '新增页面' }).click()
   const thumbnails = page.locator('.freeform-thumb')
@@ -4842,19 +5106,54 @@ test('framing transition restores the image before page and workspace switches',
   await expect(imageElement).toBeVisible()
   await expect(imageElement.locator('[data-framed-image="true"]'))
     .toHaveAttribute('data-image-load-state', 'ready')
-  await imageElement.click()
-  await page.getByTestId('freeform-adjust-framing').click()
-  await setRangeValue(page.getByTestId('freeform-framing-zoom'), 200)
+  await selectTransitionLayer('图片')
+  await page.getByTestId('freeform-crop-image').click()
+  const cropBeforePage = cropGeometryOf(await readCropOverlayDraft(page))
+  await dispatchCropPointerGesture(
+    page,
+    page.locator('[data-crop-handle="e"]'),
+    941,
+    { x: -24, y: 0 },
+  )
+  const cropAfterPage = cropGeometryOf(await readCropOverlayDraft(page))
+  expect(cropAfterPage.frame.right).not.toBeCloseTo(cropBeforePage.frame.right, 4)
   await expect(page.getByTestId('freeform-toolbar')).toHaveAttribute('aria-disabled', 'true')
   await expect(page.locator('.freeform-right-panel')).toHaveAttribute('aria-disabled', 'true')
 
   await thumbnails.nth(1).click()
-  await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
   await expect(thumbnails.nth(1)).toHaveAttribute('aria-current', 'page')
   await thumbnails.first().click()
   await expect(imageElement.locator('[data-framed-image="true"]'))
     .toHaveAttribute('data-image-load-state', 'ready')
-  await imageElement.click()
+  await selectTransitionLayer('图片')
+  await page.getByTestId('freeform-crop-image').click()
+  const restoredAfterPage = cropGeometryOf(await readCropOverlayDraft(page))
+  expect(restoredAfterPage.frame.right).toBeCloseTo(cropAfterPage.frame.right, 3)
+  await dispatchCropPointerGesture(
+    page,
+    page.locator('[data-crop-handle="s"]'),
+    942,
+    { x: 0, y: -18 },
+  )
+  const cropAfterWorkspace = cropGeometryOf(await readCropOverlayDraft(page))
+
+  await page.getByTestId('workspace-tab-markdown').click()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await selectTransitionLayer('图片')
+  await page.getByTestId('freeform-crop-image').click()
+  const restoredAfterWorkspace = cropGeometryOf(await readCropOverlayDraft(page))
+  expect(restoredAfterWorkspace.frame.bottom).toBeCloseTo(cropAfterWorkspace.frame.bottom, 3)
+  await page.getByTestId('freeform-image-crop-done').click()
+
+  await selectTransitionLayer('形状')
+  await page.getByTestId('freeform-adjust-framing').click()
+  await setRangeValue(page.getByTestId('freeform-framing-zoom'), 200)
+  await thumbnails.nth(1).click()
+  await thumbnails.first().click()
+  await expect(shapeElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await selectTransitionLayer('形状')
   await page.getByTestId('freeform-adjust-framing').click()
   await expect(page.getByTestId('freeform-framing-surface'))
     .toHaveAttribute('data-framing-zoom', '1')
@@ -4862,12 +5161,138 @@ test('framing transition restores the image before page and workspace switches',
   await setRangeValue(page.getByTestId('freeform-framing-zoom'), 180)
   await page.getByTestId('workspace-tab-markdown').click()
   await page.getByTestId('workspace-tab-freeform').click()
-  await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
-  await imageElement.click()
-  await expect(page.getByTestId('freeform-adjust-framing')).toBeEnabled()
+  await selectTransitionLayer('形状')
   await page.getByTestId('freeform-adjust-framing').click()
   await expect(page.getByTestId('freeform-framing-surface'))
     .toHaveAttribute('data-framing-zoom', '1')
+  await page.getByTestId('freeform-framing-cancel').click()
+})
+
+test('crop transition commits images while shape framing cancels across draft switches', async ({ page }) => {
+  await openFreeform(page)
+  await insertImageElementAndShapeFill(page)
+  await expectFreeformImagesDecoded(page)
+  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+  await registerUser(page, `crop-draft-transition-${Date.now()}`)
+  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('\u5df2\u4fdd\u5b58')
+
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    if (!key) throw new Error('draft storage key missing')
+    const drafts = JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{
+      id: string
+      title: string
+      updatedAt: number
+    }>
+    const source = structuredClone(drafts[0])
+    if (!source) throw new Error('source draft missing')
+    source.id = 'crop-draft-transition-target'
+    source.title = 'Crop draft transition target'
+    source.updatedAt += 1
+    localStorage.setItem(key, JSON.stringify([...drafts, source]))
+  })
+  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).click()
+  await expect(page.locator('.draft-item', { hasText: 'Crop draft transition target' })).toBeVisible()
+
+  const selectLayer = async (name: '\u56fe\u7247' | '\u5f62\u72b6') => {
+    await page.getByRole('tab', { name: '\u56fe\u5c42', exact: true }).click()
+    await page.getByRole('tree', { name: '\u56fe\u5c42\u6811' })
+      .getByRole('treeitem', { name, exact: true })
+      .click()
+    await page.getByRole('tab', { name: '\u5c5e\u6027', exact: true }).click()
+  }
+
+  await page.locator('.drawer').getByText('Page 1', { exact: true }).click()
+  await expect(page.locator('.drawer')).toHaveCount(0)
+  await selectLayer('\u56fe\u7247')
+  await page.getByTestId('freeform-crop-image').click()
+  const cropBefore = cropGeometryOf(await readCropOverlayDraft(page))
+  await dispatchCropPointerGesture(page, page.locator('[data-crop-handle="e"]'), 961, { x: -24, y: 0 })
+  const cropChanged = cropGeometryOf(await readCropOverlayDraft(page))
+  expect(cropChanged.frame.right).not.toBeCloseTo(cropBefore.frame.right, 4)
+
+  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).evaluate(
+    (button) => (button as HTMLButtonElement).click(),
+  )
+  await page.locator('.drawer').getByText('Crop draft transition target', { exact: true }).click()
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
+  await selectLayer('\u56fe\u7247')
+  await page.getByTestId('freeform-crop-image').click()
+  await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page)))
+    .toEqual(cropBefore)
+  await page.getByTestId('freeform-image-crop-done').click()
+
+  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).evaluate(
+    (button) => (button as HTMLButtonElement).click(),
+  )
+  await page.locator('.drawer').getByText('Page 1', { exact: true }).click()
+  await selectLayer('\u56fe\u7247')
+  await page.getByTestId('freeform-crop-image').click()
+  await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page)))
+    .toEqual(cropBefore)
+  await page.getByTestId('freeform-image-crop-done').click()
+
+  await selectLayer('\u5f62\u72b6')
+  await page.getByTestId('freeform-adjust-framing').click()
+  await setRangeValue(page.getByTestId('freeform-framing-zoom'), 180)
+  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).evaluate(
+    (button) => (button as HTMLButtonElement).click(),
+  )
+  await page.locator('.drawer').getByText('Crop draft transition target', { exact: true }).click()
+  await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
+  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).evaluate(
+    (button) => (button as HTMLButtonElement).click(),
+  )
+  await page.locator('.drawer').getByText('Page 1', { exact: true }).click()
+  await selectLayer('\u5f62\u72b6')
+  await page.getByTestId('freeform-adjust-framing').click()
+  await expect(page.getByTestId('freeform-framing-surface')).toHaveAttribute('data-framing-zoom', '1')
+  await page.getByTestId('freeform-framing-cancel').click()
+})
+
+test('crop transition commits images while shape framing cancels across account switches', async ({ page }) => {
+  await openFreeform(page)
+  await insertImageElementAndShapeFill(page)
+  await expectFreeformImagesDecoded(page)
+  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+  await registerUser(page, `crop-account-transition-${Date.now()}`)
+  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+
+  const workspace = page.locator('.freeform-workspace')
+  const selectLayer = async (name: '\u56fe\u7247' | '\u5f62\u72b6') => {
+    await page.getByRole('tab', { name: '\u56fe\u5c42', exact: true }).click()
+    await page.getByRole('tree', { name: '\u56fe\u5c42\u6811' })
+      .getByRole('treeitem', { name, exact: true })
+      .click()
+    await page.getByRole('tab', { name: '\u5c5e\u6027', exact: true }).click()
+  }
+  await selectLayer('\u56fe\u7247')
+  await page.getByTestId('freeform-crop-image').click()
+  const cropBefore = cropGeometryOf(await readCropOverlayDraft(page))
+  await dispatchCropPointerGesture(page, page.locator('[data-crop-handle="e"]'), 971, { x: -28, y: 0 })
+  const cropChanged = cropGeometryOf(await readCropOverlayDraft(page))
+  expect(cropChanged.frame.right).not.toBeCloseTo(cropBefore.frame.right, 4)
+  const historyBeforeLogout = Number(await workspace.getAttribute('data-history-depth'))
+
+  await page.getByTestId('account-logout').click()
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBeforeLogout + 1))
+  await selectLayer('\u56fe\u7247')
+  await page.getByTestId('freeform-crop-image').click()
+  await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page))).toEqual(cropChanged)
+  await page.getByTestId('freeform-image-crop-done').click()
+
+  await selectLayer('\u5f62\u72b6')
+  await page.getByTestId('freeform-adjust-framing').click()
+  await setRangeValue(page.getByTestId('freeform-framing-zoom'), 180)
+  await page.getByTestId('account-login').click()
+  await registerUser(page, `crop-account-transition-b-${Date.now()}`)
+  await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
+  await selectLayer('\u5f62\u72b6')
+  await page.getByTestId('freeform-adjust-framing').click()
+  await expect(page.getByTestId('freeform-framing-surface')).toHaveAttribute('data-framing-zoom', '1')
   await page.getByTestId('freeform-framing-cancel').click()
 })
 

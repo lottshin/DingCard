@@ -19,6 +19,16 @@ export type ImageDecodeReport =
 
 export type ImageReadinessState = ReadonlyMap<string, ImageDecodeReport>
 
+export interface ImageCropReadinessInvalidationInput {
+  sessionIdentity: ImageDecodeIdentity
+  currentIdentity: ImageDecodeIdentity | null
+  readiness: ImageDecodeReport | null
+}
+
+export type ImageCropReadinessInvalidation =
+  | { invalidate: false }
+  | { invalidate: true; reason: 'identity' | 'loading' | 'error' }
+
 export type FramedImageWaitResult =
   | { ok: true }
   | { ok: false; reason: 'image-load' | 'timeout' }
@@ -212,6 +222,28 @@ export function imageDecodeIdentityEquals(
     && left.resolvedSrc === right.resolvedSrc
 }
 
+/**
+ * Decides whether an active crop session still has an authoritative image.
+ * Reports for another identity are late/stale and must not invalidate a
+ * session; the current tree identity is the authority for path/source scope.
+ */
+export function imageCropReadinessInvalidation({
+  sessionIdentity,
+  currentIdentity,
+  readiness,
+}: ImageCropReadinessInvalidationInput): ImageCropReadinessInvalidation {
+  if (!currentIdentity || !imageDecodeIdentityEquals(sessionIdentity, currentIdentity)) {
+    return { invalidate: true, reason: 'identity' }
+  }
+  if (!readiness || !imageDecodeIdentityEquals(readiness.identity, sessionIdentity)) {
+    return { invalidate: false }
+  }
+  if (readiness.status === 'loading' || readiness.status === 'error') {
+    return { invalidate: true, reason: readiness.status }
+  }
+  return { invalidate: false }
+}
+
 export function updateImageReadiness(
   state: ImageReadinessState,
   report: ImageDecodeReport,
@@ -238,13 +270,22 @@ export function readReadyImage(
   state: ImageReadinessState,
   expectedIdentity: ImageDecodeIdentity,
 ): ImageFrameSize | null {
-  const current = state.get(imageDecodeSlotKey(expectedIdentity))
+  const current = readImageReadinessReport(state, expectedIdentity)
   if (
     !current
-    || !imageDecodeIdentityEquals(current.identity, expectedIdentity)
     || !validReadyReport(current)
   ) return null
   return { width: current.naturalWidth, height: current.naturalHeight }
+}
+
+export function readImageReadinessReport(
+  state: ImageReadinessState,
+  expectedIdentity: ImageDecodeIdentity,
+): ImageDecodeReport | null {
+  const current = state.get(imageDecodeSlotKey(expectedIdentity))
+  return current && imageDecodeIdentityEquals(current.identity, expectedIdentity)
+    ? current
+    : null
 }
 
 export function clearImageReadinessForSlide(

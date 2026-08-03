@@ -54,6 +54,7 @@ export interface ImageCropOverlayProps {
     handle: ImageCropHandle,
   ) => void
   onImagePointerDown?: (event: ReactPointerEvent<HTMLImageElement>) => void
+  onImageError?: () => void
   onKeyDown?: (event: ReactKeyboardEvent<HTMLDivElement>) => void
 }
 
@@ -172,6 +173,7 @@ export const ImageCropOverlay = forwardRef<ImageCropOverlayHandle, ImageCropOver
     onHandlePointerDown,
     onHandleKeyDown,
     onImagePointerDown,
+    onImageError,
     onKeyDown,
   }, ref) {
     const rootRef = useRef<HTMLDivElement>(null)
@@ -238,6 +240,7 @@ export const ImageCropOverlay = forwardRef<ImageCropOverlayHandle, ImageCropOver
           draggable={false}
           style={style.imageStyle}
           onPointerDown={onImagePointerDown}
+          onError={onImageError}
         />
         <div ref={windowRef} className="freeform-image-crop-window" style={style.frameStyle} aria-hidden="true">
           <img
@@ -247,6 +250,7 @@ export const ImageCropOverlay = forwardRef<ImageCropOverlayHandle, ImageCropOver
             alt=""
             draggable={false}
             style={style.brightImageStyle}
+            onError={onImageError}
           />
         </div>
         <div ref={frameRef} className="freeform-image-crop-frame" style={style.frameStyle}>

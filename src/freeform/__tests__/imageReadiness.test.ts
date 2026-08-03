@@ -4,6 +4,7 @@ import {
   clearAllImageReadiness,
   clearImageReadinessForSlide,
   createImageReadinessState,
+  imageCropReadinessInvalidation,
   imageDecodeIdentityEquals,
   readReadyImage,
   updateImageReadiness,
@@ -143,6 +144,57 @@ describe('image readiness identity', () => {
       logicalSrc: standalone.logicalSrc,
     }), shapeFill)).toBe(state)
     expect(readReadyImage(state, shapeFill)).toBeNull()
+  })
+
+  describe('crop session invalidation', () => {
+    it.each([
+      ['loading', report('loading')],
+      ['error', report('error')],
+    ] as const)('invalidates when the current image is %s', (_status, readiness) => {
+      expect(imageCropReadinessInvalidation({
+        sessionIdentity: identity(),
+        currentIdentity: identity(),
+        readiness,
+      })).toEqual({ invalidate: true, reason: readiness.status })
+    })
+
+    it('keeps a crop session for a ready current image', () => {
+      expect(imageCropReadinessInvalidation({
+        sessionIdentity: identity(),
+        currentIdentity: identity(),
+        readiness: report('ready'),
+      })).toEqual({ invalidate: false })
+    })
+
+    it.each([
+      ['scope', identity({ scopeGeneration: 4 })],
+      ['slide', identity({ slideId: 'slide-2' })],
+      ['path', identity({ scenePathKey: '["replacement"]' })],
+      ['source', identity({ logicalSrc: 'img:replacement' })],
+      ['resolved source', identity({ resolvedSrc: 'data:image/png;base64,replacement' })],
+    ] as const)('invalidates on a current-tree %s mismatch', (_label, currentIdentity) => {
+      expect(imageCropReadinessInvalidation({
+        sessionIdentity: identity(),
+        currentIdentity,
+        readiness: null,
+      })).toEqual({ invalidate: true, reason: 'identity' })
+    })
+
+    it('invalidates when the current target disappears', () => {
+      expect(imageCropReadinessInvalidation({
+        sessionIdentity: identity(),
+        currentIdentity: null,
+        readiness: null,
+      })).toEqual({ invalidate: true, reason: 'identity' })
+    })
+
+    it('ignores a late report for another identity while the current image remains ready', () => {
+      expect(imageCropReadinessInvalidation({
+        sessionIdentity: identity(),
+        currentIdentity: identity(),
+        readiness: report('error', { logicalSrc: 'img:old' }),
+      })).toEqual({ invalidate: false })
+    })
   })
 })
 
