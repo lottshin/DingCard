@@ -4693,6 +4693,36 @@ test('PowerPoint crop keeps local controls exact through nested screen transform
   await page.getByTestId('freeform-image-crop-done').click()
 })
 
+test('nested crop decode errors still report after entering the active group', async ({ page }) => {
+  await openNestedV3Draft(
+    page,
+    `crop-nested-decode-${Date.now()}`,
+    false,
+    imageCropTransformDraft,
+  )
+  const canvas = page.getByTestId('freeform-canvas')
+  const imageElement = page.locator('[data-scene-node-id="crop-image"]')
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  await imageElement.dblclick()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'crop-outer')
+  await imageElement.dblclick()
+  await expect(canvas).toHaveAttribute('data-active-group-path', 'crop-outer/crop-inner')
+  await imageElement.click()
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = await workspace.getAttribute('data-history-depth')
+  await expect(page.getByTestId('freeform-crop-image')).toBeEnabled()
+  await page.getByTestId('freeform-crop-image').click()
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
+
+  await imageElement.locator('img[data-framed-image-content="true"]').dispatchEvent('error')
+
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
+  await expect(workspace).not.toHaveClass(/is-image-cropping/)
+  await expect(page.getByRole('alert')).toContainText('图片加载失败，请重试')
+  await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
+})
+
 test('image framing commits one history entry and cancel restores the saved frame', async ({ page }) => {
   await openFreeform(page)
   await insertImageElementAndShapeFill(page)

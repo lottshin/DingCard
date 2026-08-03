@@ -953,7 +953,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     } else if (report.status === 'ready' && followsInvalidatedCrop) {
       invalidatedCropDecodeIdentityRef.current = null
     }
-  }, [imageReadinessRefresh])
+  }, [activeGroupPath, imageReadinessRefresh])
 
   const loadDrafts = useCallback(async (uid: string) => {
     const generation = ++draftListGenerationRef.current
@@ -1066,7 +1066,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       invalidatedCropDecodeIdentityRef.current = { ...sessionIdentity }
     } else if (invalidation.reason === 'error') {
       invalidatedCropDecodeIdentityRef.current = null
-      setOperationNotice('鍥剧墖鍔犺浇澶辫触锛岃閲嶈瘯')
+      setOperationNotice('图片加载失败，请重试')
     } else {
       invalidatedCropDecodeIdentityRef.current = null
     }

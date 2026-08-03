@@ -642,8 +642,8 @@ test.describe('remote backend integration', () => {
       expect(savedImage?.[key]).toBeCloseTo(expectedGeometry[key], 3)
     }
     expect(savedImage?.framing).not.toEqual({ focusX: 0.5, focusY: 0.5, zoom: 1 })
-    const expectedFrame = savedImage?.framing
-    expect(expectedFrame).toBeDefined()
+    if (!savedImage?.framing) throw new Error('saved image framing missing')
+    const expectedFrame = { ...savedImage.framing }
 
     await page.reload()
     await expect(page.getByTestId('account-logout')).toBeVisible()
@@ -672,10 +672,42 @@ test.describe('remote backend integration', () => {
     for (const key of ['x', 'y', 'width', 'height'] as const) {
       expect(restoredGeometry[key]).toBeCloseTo(expectedGeometry[key], 3)
     }
+    const reloadedDraftsResponse = await page.request.get(`${API_BASE}/api/drafts`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(reloadedDraftsResponse.ok()).toBe(true)
+    const reloadedDrafts = await reloadedDraftsResponse.json() as Array<{
+      id: string
+      document: {
+        documentVersion: number
+        slides: Array<{
+          nodes: Array<{
+            id: string
+            children?: Array<{
+              id: string
+              x?: number
+              y?: number
+              width?: number
+              height?: number
+              framing?: { focusX: number; focusY: number; zoom: number }
+            }>
+          }>
+        }>
+      }
+    }>
+    const reloaded = reloadedDrafts.find((draft) => draft.id === created.id)
+    expect(reloaded?.document.documentVersion).toBe(4)
+    const reloadedGroup = reloaded?.document.slides[0].nodes
+      .find((node) => node.id === 'remote-hidden-group')
+    const reloadedImage = reloadedGroup?.children?.find((node) => node.id === 'remote-image')
+    expect(reloadedImage).toBeDefined()
+    for (const key of ['x', 'y', 'width', 'height'] as const) {
+      expect(reloadedImage?.[key]).toBeCloseTo(expectedGeometry[key], 3)
+    }
+    expect(reloadedImage?.framing).toEqual(expectedFrame)
     await page.getByTestId('freeform-crop-image').click()
     expect(await readCropOverlayDraft(page)).toEqual(expectedDraft)
     await page.getByTestId('freeform-image-crop-done').click()
-    expect(savedImage?.framing).toEqual(expectedFrame)
   })
 
   test('keeps a newer draft at root scope when an older nested save resolves late', async ({ page }) => {
