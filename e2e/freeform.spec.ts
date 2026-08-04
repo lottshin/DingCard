@@ -4777,7 +4777,7 @@ test('image framing commits one history entry and cancel restores the saved fram
   await expect(surface).toHaveCount(0)
 })
 
-test('persists non-default image frames through node copy, page copy, save, and reload', async ({ page }) => {
+test('persists shape framing and image crops through node copy, page copy, save, and reload', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
     localStorage.clear()
@@ -4814,13 +4814,24 @@ test('persists non-default image frames through node copy, page copy, save, and 
     .getByRole('treeitem', { name: '图片' })
     .click()
   await page.getByRole('tab', { name: '属性', exact: true }).click()
-  await page.getByTestId('freeform-adjust-framing').click()
-  await setRangeValue(page.getByTestId('freeform-framing-zoom'), 210)
-  await surface.focus()
-  await page.keyboard.press('ArrowLeft')
-  await page.keyboard.press('Shift+ArrowUp')
-  const imageFrame = await readFrame()
-  await page.getByTestId('freeform-framing-done').click()
+  await page.getByTestId('freeform-crop-image').click()
+  const cropOverlay = page.getByTestId('freeform-image-crop-overlay')
+  const cropBefore = await readCropOverlayDraft(page)
+  await dispatchCropPointerGesture(
+    page,
+    cropOverlay.locator('.freeform-image-crop-dim'),
+    2001,
+    { x: 0, y: 24 },
+  )
+  await dispatchCropPointerGesture(
+    page,
+    cropOverlay.locator('[data-crop-handle="e"]'),
+    2002,
+    { x: -24, y: 0 },
+  )
+  const imageCrop = cropGeometryOf(await readCropOverlayDraft(page))
+  expect(imageCrop).not.toEqual(cropGeometryOf(cropBefore))
+  await page.getByTestId('freeform-image-crop-done').click()
 
   await page.keyboard.press('ControlOrMeta+C')
   await page.keyboard.press('ControlOrMeta+V')
@@ -4846,6 +4857,8 @@ test('persists non-default image frames through node copy, page copy, save, and 
     slides: Array<{
       nodes: Array<{
         type: string
+        width?: number
+        height?: number
         framing?: { focusX: number; focusY: number; zoom: number }
         fill?: {
           type: string
@@ -4857,13 +4870,25 @@ test('persists non-default image frames through node copy, page copy, save, and 
 
   expect(storedDocument.documentVersion).toBe(4)
   expect(storedDocument.slides).toHaveLength(2)
+  const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
+  expect(firstImage).toBeDefined()
+  const persistedImageCrop = {
+    width: firstImage?.width,
+    height: firstImage?.height,
+    framing: firstImage?.framing,
+  }
+  expect(persistedImageCrop.framing).not.toEqual({ focusX: 0.5, focusY: 0.5, zoom: 1 })
   for (const slide of storedDocument.slides) {
     const images = slide.nodes.filter((node) => node.type === 'image')
     const imageShapes = slide.nodes.filter((node) => (
       node.type === 'shape' && node.fill?.type === 'image'
     ))
     expect(images).toHaveLength(2)
-    expect(images.map((node) => node.framing)).toEqual([imageFrame, imageFrame])
+    expect(images.map((node) => ({
+      width: node.width,
+      height: node.height,
+      framing: node.framing,
+    }))).toEqual([persistedImageCrop, persistedImageCrop])
     expect(imageShapes).toHaveLength(1)
     expect(imageShapes[0].fill?.framing).toEqual(shapeFrame)
   }
@@ -4879,9 +4904,14 @@ test('persists non-default image frames through node copy, page copy, save, and 
   const restoredTree = page.getByRole('tree', { name: '图层树' })
   await restoredTree.getByRole('treeitem', { name: '图片' }).first().click()
   await page.getByRole('tab', { name: '属性', exact: true }).click()
-  await page.getByTestId('freeform-adjust-framing').click()
-  expect(await readFrame()).toEqual(imageFrame)
-  await page.getByTestId('freeform-framing-cancel').click()
+  await page.getByTestId('freeform-crop-image').click()
+  const restoredImageCrop = cropGeometryOf(await readCropOverlayDraft(page))
+  for (const bounds of ['frame', 'image'] as const) {
+    for (const edge of ['left', 'top', 'right', 'bottom'] as const) {
+      expect(restoredImageCrop[bounds][edge]).toBeCloseTo(imageCrop[bounds][edge], 10)
+    }
+  }
+  await page.getByTestId('freeform-image-crop-done').click()
 
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   await restoredTree.getByRole('treeitem', { name: '形状' }).click()
