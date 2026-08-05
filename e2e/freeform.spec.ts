@@ -3878,6 +3878,36 @@ async function releaseLateCropFrame(
   }))
 }
 
+test('crop focuses the image surface and pans by keyboard immediately', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-keyboard-focus.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+
+  await page.getByTestId('freeform-crop-image').click()
+  const overlay = page.getByTestId('freeform-image-crop-overlay')
+  await expect(overlay).toBeFocused()
+
+  const before = await readCropOverlayDraft(page)
+  await page.keyboard.press('ArrowRight')
+  const afterOne = await readCropOverlayDraft(page)
+  expect(afterOne.image.left).toBeCloseTo(before.image.left + 1, 10)
+  expect(afterOne.frame).toEqual(before.frame)
+
+  await page.keyboard.press('Shift+ArrowLeft')
+  const afterTen = await readCropOverlayDraft(page)
+  expect(afterTen.image.left).toBeCloseTo(afterOne.image.left - 10, 10)
+  expect(afterTen.frame).toEqual(before.frame)
+  await page.getByTestId('freeform-image-crop-done').click()
+})
+
 test('crop aspect ratios expose only the six presets and stay one-shot', async ({ page }) => {
   await openFreeform(page)
   await page.locator('input.freeform-file').first().setInputFiles({
@@ -3923,6 +3953,49 @@ test('crop aspect ratios expose only the six presets and stay one-shot', async (
     freeform.frame.bottom - freeform.frame.top,
     4,
   )
+  await page.getByTestId('freeform-image-crop-done').click()
+})
+
+test('crop aspect menu Escape commits once and exits the crop', async ({ page }) => {
+  await openFreeform(page)
+  await page.locator('input.freeform-file').first().setInputFiles({
+    name: 'crop-aspect-escape.svg',
+    mimeType: 'image/svg+xml',
+    buffer: WIDE_TEST_SVG,
+  })
+  const imageElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-image'),
+  })
+  await expect(imageElement.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  const workspace = page.locator('.freeform-workspace')
+  const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+
+  await page.getByTestId('freeform-crop-image').click()
+  const originalDraft = await readCropOverlayDraft(page)
+  await dispatchCropPointerGesture(
+    page,
+    page.locator('[data-crop-handle="e"]'),
+    902,
+    { x: -24, y: 0 },
+  )
+  const changedDraft = await readCropOverlayDraft(page)
+  expect(changedDraft.frame.right).not.toBeCloseTo(originalDraft.frame.right, 4)
+
+  await page.getByTestId('freeform-image-crop-aspect').click()
+  const menu = page.getByRole('menu', { name: '比例', exact: true })
+  await expect(menu).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  await expect(menu).toHaveCount(0)
+  await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore))
+  await imageElement.click()
+  await page.getByTestId('freeform-crop-image').click()
+  expect(await readCropOverlayDraft(page)).toEqual(originalDraft)
   await page.getByTestId('freeform-image-crop-done').click()
 })
 

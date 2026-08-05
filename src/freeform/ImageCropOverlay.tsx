@@ -218,6 +218,10 @@ export const ImageCropOverlay = forwardRef<ImageCropOverlayHandle, ImageCropOver
       renderDraft(draft)
     })
 
+    useLayoutEffect(() => {
+      rootRef.current?.focus()
+    }, [])
+
     if (!style || typeof resolvedSrc !== 'string' || resolvedSrc.length === 0) return null
 
     return (
@@ -239,7 +243,10 @@ export const ImageCropOverlay = forwardRef<ImageCropOverlayHandle, ImageCropOver
           alt={alt}
           draggable={false}
           style={style.imageStyle}
-          onPointerDown={onImagePointerDown}
+          onPointerDown={(event) => {
+            rootRef.current?.focus()
+            onImagePointerDown?.(event)
+          }}
           onError={onImageError}
         />
         <div ref={windowRef} className="freeform-image-crop-window" style={style.frameStyle} aria-hidden="true">

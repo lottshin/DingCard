@@ -12,6 +12,7 @@ export interface FreeformInsertMenuProps<T extends string> {
   label: string
   options: Array<FreeformInsertMenuOption<T>>
   onSelect: (id: T) => void
+  onEscape?: () => void
 }
 
 export function FreeformInsertMenu<T extends string>({
@@ -20,6 +21,7 @@ export function FreeformInsertMenu<T extends string>({
   label,
   options,
   onSelect,
+  onEscape,
 }: FreeformInsertMenuProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -151,7 +153,8 @@ export function FreeformInsertMenu<T extends string>({
             if (event.key === 'Escape') {
               event.preventDefault()
               event.stopPropagation()
-              closeMenu(true)
+              closeMenu(onEscape === undefined)
+              onEscape?.()
             }
           }}
         >

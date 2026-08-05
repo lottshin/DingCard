@@ -3539,6 +3539,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                     label="比例"
                     options={IMAGE_CROP_ASPECTS}
                     onSelect={applyImageCropAspect}
+                    onEscape={() => { finishImageCrop() }}
                   />
                 </div>
                 <strong>裁剪</strong>
