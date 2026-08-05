@@ -1,47 +1,45 @@
-# 0.11.0 本地发布验证
+# 0.15.0 发布验证
 
-- 验证日期：2026-07-22
-- Commit under test：`7e1520d`
-- 环境：Microsoft Windows NT 10.0.22631.0、PowerShell 5.1.22621.6133、Node.js v20.18.0、npm 10.8.2、Python 3.13.3
-- 容器工具：Docker 29.1.2、Docker Compose v2.40.3-desktop.1、Git Bash
+- 验证日期：2026-08-05
+- 版本标签：`v0.15.0`
+- Commit under test：`a98fe3878a9fc6a94d8aa21fcb3e18406beca84a`
+- GitHub CI：[run 30978061561](https://github.com/lottshin/DingCard/actions/runs/30978061561)
+- 镜像发布：[run 30980123506](https://github.com/lottshin/DingCard/actions/runs/30980123506)
 
-状态含义：`PASS` 表示命令在本次验证中以预期结果完成；`FAIL` 表示已经执行但未满足契约；`NOT EXECUTED` 表示尚未执行或当前环境不具备前置条件。
+`PASS` 表示对应命令或 GitHub Actions job 已按预期完成。本报告只记录实际执行结果。
 
 | Check | Status | Evidence |
 |---|---|---|
-| Release contract | PASS | `node --test scripts/release-readiness.test.mjs`：11/11。 |
-| Frontend unit | PASS | `npm run test:unit`：24 个测试文件、397/397。 |
+| Release contract | PASS | `node --test scripts/release-readiness.test.mjs`：11/11；GitHub CI 同步执行。 |
+| Frontend unit | PASS | `npm run test:unit`：32 个测试文件，639/639。 |
 | Backend tests | PASS | `npm run test:server`：72/72。 |
-| Backend HTTP smoke | PASS | `node server/smoke-test.mjs`：认证、所有权、413/415/429、租约/GC 和并发配额全部通过；429 响应确认命中认证限流上限 12。 |
-| Production build | PASS | `npm run build`：TypeScript 与 Vite 构建成功；保留已知的大块警告。 |
-| CI YAML | PASS | PyYAML 6.0.3 成功解析 `.github/workflows/*.yml`，包含 `ci.yml` 与 `publish-image.yml`。 |
-| Full E2E | PASS | `npm run test:e2e`：184/184，耗时 6.5 分钟。 |
-| Compose config | PASS | `docker compose config --quiet` 退出 0，`docker compose config --services` 仅输出 `app`。沙箱提示无权读取用户级 Docker config，不影响项目配置解析。 |
-| Container smoke | PASS | 旧 `server/web` 栈写入的迁移账号、草稿和图片均由新 `app` 继续读取；`app` 容器由 Fastify 提供首页、`/api/health`、注册、上传与 `/assets/` 构建资源。 |
-| Compose cleanup | PASS | `dingcard-migration-1784725060412` 的容器、网络、卷以及 smoke 镜像标签经独立查询均不存在。 |
-| Image manifest | NOT EXECUTED | `v0.11.0` 标签尚未发布，GHCR 中没有可检查的版本 manifest。 |
-| Anonymous pull | NOT EXECUTED | `v0.11.0` 标签尚未发布，无法从 GHCR 匿名拉取该版本。 |
-| amd64 image smoke | NOT EXECUTED | `v0.11.0` 标签尚未发布，发布工作流的 amd64 镜像 smoke 尚未运行。 |
-| arm64 image smoke | NOT EXECUTED | `v0.11.0` 标签尚未发布，发布工作流的 arm64 镜像 smoke 尚未运行。 |
+| Backend HTTP smoke | PASS | `node server/smoke-test.mjs` 覆盖认证、所有权、413/415/429、租约回收和并发配额。 |
+| Production build | PASS | `npm run build` 完成 TypeScript 与 Vite 构建；保留已知的单 chunk 体积警告。 |
+| CI YAML | PASS | GitHub CI 解析 `ci.yml` 与 `publish-image.yml`，static、browser、container 三个 job 全部通过。 |
+| Full E2E | PASS | `npm run test:e2e`：242/242。 |
+| Compose config | PASS | container job 运行 `deploy/compose-smoke.sh`；展开后的服务只有 `app`。 |
+| Container smoke | PASS | 迁移账号、草稿和图片由新 `app` 继续读取；Fastify 提供首页、`/api/health`、注册、上传和 `/assets/`。 |
+| Compose cleanup | PASS | smoke 结束后，临时容器、网络、卷和镜像标签均不存在。 |
+| Image manifest | PASS | `ghcr.io/lottshin/dingcard:0.15.0` digest 为 `sha256:0e16fa6a08cc19b63bde83a49232a4556bebf0758246bd4f4ba6b7b3699a7a93`，包含 `linux/amd64` 与 `linux/arm64`。 |
+| Anonymous pull | PASS | publish job 登出 GHCR 后，通过公开 token 请求取得 `0.15.0` manifest。 |
+| amd64 image smoke | PASS | run 30980123506 匿名拉取 `linux/amd64`，首页、健康接口和静态资源检查通过。 |
+| arm64 image smoke | PASS | run 30980123506 通过 QEMU 匿名拉取 `linux/arm64`，首页、健康接口和静态资源检查通过。 |
 
 ## 构建产物
 
 - `dist/index.html`：2.35 kB，gzip 1.12 kB。
-- `dist/assets/index-CvLZbRsD.css`：62.94 kB，gzip 10.56 kB。
-- `dist/assets/index-r1MgV6ea.js`：1,111.54 kB，gzip 369.09 kB。
-- Vite 仍提示单 chunk 超过 500 kB。该警告已知且本轮明确不做拆包优化，不影响构建退出状态。
+- `dist/assets/index-CVfg75Wi.css`：102.39 kB，gzip 16.38 kB。
+- `dist/assets/index-Dl1aACLe.js`：1,195.47 kB，gzip 396.90 kB。
+- Vite 仍提示单 chunk 超过 500 kB。本次发布保留现有包体积，构建退出码为 0。
 
-## Docker 验证
+## 镜像
 
-- 迁移 smoke：PASS；旧 `server/web` 栈创建账号、草稿和图片后执行不带 `-v` 的 `down --remove-orphans`，两个命名卷保留，新 `app` 可继续读取全部数据。
-- Docker CLI、Compose 插件与 Docker daemon 29.1.2 均可用。
-- Compose 配置验证使用非生产测试密钥，不读取或写入项目 `.env`；展开后的服务仅为 `app`。
-- Git Bash 对 `deploy/compose-smoke.sh` 的静态语法检查通过。
-- 迁移 smoke 使用唯一项目 `dingcard-migration-1784725060412` 和随机回环端口；首页与 `/api/health` 首轮即 200，迁移登录、草稿读取、旧图片访问、注册、上传、Fastify 图片直出和动态提取的 hash 资源均通过。既有 `dinka-smoke-web-1` 与 `dinka-smoke-server-1` 仍在运行。
-- 冒烟脚本使用唯一 `DINGCARD_VERSION` 构建标签，不会覆盖本地同名正式版本镜像。
-- EXIT trap 完成 `down -v --remove-orphans` 和 smoke 镜像删除；随后按 Compose project label 独立查询，容器、网络、卷和唯一镜像标签均为空。
+```bash
+docker pull ghcr.io/lottshin/dingcard:0.15.0
+```
 
-## E2E 验证
+镜像同时发布了 `0.15`、`latest` 和提交 SHA 标签，并带有 SBOM、provenance 与 OCI 元数据。Compose 默认固定 `0.15.0`，生产部署不依赖浮动的 `latest`。
 
-- 标准命令使用 1 个 worker 跑完 184 个用例，没有跳过或重试后失败的用例。
-- 完整 E2E 已覆盖本次 Fastify 静态资源和单容器运行时改动；184 个用例全部通过，未跳过也没有重试后失败的用例。
+## 数据边界
+
+Compose 迁移 smoke：PASS。从旧镜像升级时会继续使用 `db` 和 `uploads` 命名卷。浏览器 LocalStore 与服务端 RemoteStore 仍是两套独立数据，不会因为切换部署方式自动迁移草稿、账号或图片。

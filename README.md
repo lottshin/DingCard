@@ -6,7 +6,7 @@
     <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.15.0-e2570f" alt="叮卡版本 0.15.0"></a>
     <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
     <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
-    <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.11.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.11.0"></a>
+    <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.15.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.15.0"></a>
     <a href="docs/deployment.md"><img src="https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker&amp;logoColor=white" alt="Docker 部署"></a>
   </p>
   <p>
@@ -84,10 +84,10 @@
 预构建镜像支持 `linux/amd64` 和 `linux/arm64`：
 
 ```bash
-docker pull ghcr.io/lottshin/dingcard:0.11.0
+docker pull ghcr.io/lottshin/dingcard:0.15.0
 ```
 
-需要真实账号、跨设备草稿和服务端图片时，可以用 Compose 部署完整应用。`.env.example` 中的 `DINGCARD_VERSION=0.11.0` 会固定使用上面的镜像。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
+需要真实账号、跨设备草稿和服务端图片时，可以用 Compose 部署完整应用。`.env.example` 中的 `DINGCARD_VERSION=0.15.0` 会固定使用上面的镜像。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
 
 ```bash
 git clone https://github.com/lottshin/DingCard.git
@@ -234,5 +234,5 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 - [自由画布数据模型与交互说明](docs/freeform-editor.md)
 - [Docker 部署与维护](docs/deployment.md)
 - [后端实现与接入方案](docs/backend-plan.md)
-- [0.11.0 本地发布验证](docs/release-verification.md)
+- [0.15.0 发布验证](docs/release-verification.md)
 - [更新日志](CHANGELOG.md)

@@ -58,7 +58,7 @@ test('release entry documentation matches current versions and commands', () => 
   const readme = read('README.md')
   const changelog = read('CHANGELOG.md')
   const backendPlan = read('docs/backend-plan.md')
-  const releaseNotes = markdownSection(changelog, '[0.15.0] - 2026-08-03')
+  const releaseNotes = markdownSection(changelog, '[0.15.0] - 2026-08-05')
   const license = read('LICENSE')
   assert.equal(frontend.version, '0.15.0')
   assert.equal(frontendLock.version, '0.15.0')
@@ -236,7 +236,7 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
     'git clone https://github.com/lottshin/DingCard.git',
     'cp .env.example .env',
     'openssl rand -hex 32',
-    'DINGCARD_VERSION=0.11.0',
+    'DINGCARD_VERSION=0.15.0',
     'docker compose pull',
     'docker compose up -d --no-build',
     'curl -f http://127.0.0.1:8080/api/health',
@@ -250,7 +250,7 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
   const deployment = read('docs/deployment.md')
   for (const entry of [
     'JWT_SECRET',
-    'DINGCARD_VERSION=0.11.0',
+    'DINGCARD_VERSION=0.15.0',
     'WEB_PORT=127.0.0.1:8080',
     'docker compose config --quiet',
     'docker compose pull',
@@ -331,7 +331,7 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
   assert.match(httpsSection, /两条检查都输出匹配结果后再执行/)
 
   const envExample = read('.env.example')
-  assert.match(envExample, /^DINGCARD_VERSION=0\.11\.0$/m)
+  assert.match(envExample, /^DINGCARD_VERSION=0\.15\.0$/m)
   assert.match(envExample, /127\.0\.0\.1:8080/)
   assert.match(envExample, /app:3000/)
   assert.match(envExample, /Fastify[^\n]*统一限制[^\n]*\r?\nMAX_UPLOAD_BYTES=/)
@@ -396,7 +396,7 @@ test('verification report and compose smoke expose explicit execution contracts'
       `verification report must contain a status row for ${label}`,
     )
   }
-  assert.match(report, /^# 0\.11\.0 本地发布验证$/m)
+  assert.match(report, /^# 0\.15\.0 发布验证$/m)
   assert.match(report, /\| Backend tests \| PASS \|[^\n]*72\/72/)
   assert.match(report, /\| Release contract \| PASS \|[^\n]*11\/11/)
   assert.match(report, /\| Compose config \| PASS \|[^\n]*`app`/)
@@ -408,15 +408,15 @@ test('verification report and compose smoke expose explicit execution contracts'
   assert.doesNotMatch(report, /\| Compose config \| PASS \|[^\n]*(?:`server`|`web`)/)
   assert.doesNotMatch(report, /\| Container smoke \| PASS \|[^\n]*Nginx/)
   assert.match(report, /\| Container smoke \| PASS \|[^\n]*迁移[^\n]*账号[^\n]*草稿[^\n]*图片/)
-  assert.match(report, /Docker daemon 29\.1\.2[^\n]*可用/)
+  assert.match(report, /GitHub CI：[^\n]*30978061561/)
   assert.match(report, /迁移 smoke[^\n]*PASS/)
   assert.match(report, /CI YAML \| PASS \|[^\n]*(?:ci\.yml[^\n]*publish-image\.yml|publish-image\.yml[^\n]*ci\.yml)/)
   for (const label of ['Image manifest', 'Anonymous pull', 'amd64 image smoke', 'arm64 image smoke']) {
-    assert.match(
-      report,
-      new RegExp(`\\| ${escapeRegExp(label)} \\| NOT EXECUTED \\|[^\\n]*(?:尚未发布|未发布)`),
-    )
+    assert.match(report, new RegExp(`\\| ${escapeRegExp(label)} \\| PASS \\|`))
   }
+  assert.match(report, /sha256:0e16fa6a08cc19b63bde83a49232a4556bebf0758246bd4f4ba6b7b3699a7a93/)
+  assert.match(report, /linux\/amd64[\s\S]*linux\/arm64/)
+  assert.match(report, /30980123506/)
 
   const smoke = read('deploy/compose-smoke.sh')
   assert.match(smoke, /COMPOSE_SMOKE_PROJECT/)
@@ -436,7 +436,7 @@ test('compose packages the release as one pinned app service', () => {
   const compose = read('docker-compose.yml')
 
   assert.deepEqual(composeServiceNames(compose), ['app'])
-  assert.match(compose, /image:\s*ghcr\.io\/lottshin\/dingcard:\$\{DINGCARD_VERSION:-0\.11\.0\}/)
+  assert.match(compose, /image:\s*ghcr\.io\/lottshin\/dingcard:\$\{DINGCARD_VERSION:-0\.15\.0\}/)
   assert.match(compose, /build:\s*\n\s+context:\s*\.\s*\n\s+args:\s*\n\s+VITE_API_BASE:\s*\/\s*$/m)
   assert.match(compose, /JWT_SECRET:\s*\$\{JWT_SECRET:\?[^}]+\}/)
   assert.match(compose, /NODE_ENV:\s*production/)

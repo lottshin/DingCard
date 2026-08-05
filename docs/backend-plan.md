@@ -1,6 +1,6 @@
 # 叮卡 · 后端接入方案
 
-> 当前源码版本：前端 `0.15.0`，后端 `0.3.0`；当前已发布的 GHCR 镜像仍为 `0.11.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
+> 当前源码版本：前端 `0.15.0`，后端 `0.3.0`；当前已发布的 GHCR 镜像为 `0.15.0`。后端自动化测试可从仓库根目录运行 `npm run test:server`（等价于 `npm --prefix server test`，覆盖数据库迁移、图片引用扫描、租约回收与用户级资源锁）；端到端冒烟运行 `node server/smoke-test.mjs`。
 
 把当前"纯浏览器存储"改造成真实后端,实现跨设备同步与真实账号。
 
@@ -230,7 +230,7 @@ Markdown 粘贴图片、自由编辑普通图片和形状图片填充都统一�
 
 | 键 | 说明 | 默认 |
 |---|---|---|
-| `DINGCARD_VERSION` | GHCR 发布镜像版本 | 0.11.0 |
+| `DINGCARD_VERSION` | GHCR 发布镜像版本 | 0.15.0 |
 | `JWT_SECRET` | **必填**,JWT 签名密钥,强随机 | 无(缺失则拒绝启动) |
 | `WEB_PORT` | 宿主机到 `app:3000` 的端口映射 | 8080 |
 | `JWT_EXPIRY` | 登录有效期 | 7d |
