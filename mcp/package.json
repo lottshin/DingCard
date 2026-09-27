@@ -1,0 +1,27 @@
+{
+  "name": "dingcard-mcp",
+  "version": "0.16.0",
+  "private": true,
+  "type": "module",
+  "description": "叮卡 MCP 服务器 — AI 客户端自动化操作自由画布文档与无头渲染",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --external:@modelcontextprotocol/sdk --external:playwright-core --external:zod",
+    "start": "node dist/index.mjs",
+    "test": "vitest run --config vitest.config.ts",
+    "test:render": "vitest run --config vitest.render.config.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "playwright-core": "^1.61.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.5.3",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
