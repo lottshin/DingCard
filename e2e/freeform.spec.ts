@@ -5177,6 +5177,19 @@ test('image framing stays covered and unobstructed across viewport widths and th
     { width: 1024, height: 768 },
     { width: 440, height: 860 },
   ]
+  // The fit-scale recompute chain (stage resize → ResizeObserver → React
+  // commit of the new artboard scale) can lag well behind the viewport
+  // change on slow runners, and the surface is sized by the committed scale.
+  // Wait for the surface itself to stop moving before snapshotting it.
+  const waitForFramingSurfaceToSettle = async () => {
+    await expect.poll(async () => page.evaluate(async () => {
+      const surface = document.querySelector('[data-testid="freeform-framing-surface"]')
+      if (!surface) return false
+      const first = surface.getBoundingClientRect().width
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      return first > 0 && surface.getBoundingClientRect().width === first
+    }), { timeout: 5_000 }).toBe(true)
+  }
   for (const theme of ['light', 'dark'] as const) {
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     for (const viewport of viewports) {
@@ -5184,6 +5197,7 @@ test('image framing stays covered and unobstructed across viewport widths and th
       await expect(imageElement).toHaveAttribute('data-selected', 'true')
       await page.getByTestId('freeform-adjust-framing').click()
       await setRangeValue(page.getByTestId('freeform-framing-zoom'), 250)
+      await waitForFramingSurfaceToSettle()
 
       const layout = await page.evaluate(() => {
         const surface = document.querySelector<HTMLElement>('[data-testid="freeform-framing-surface"]')!
