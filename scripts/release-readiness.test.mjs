@@ -140,6 +140,7 @@ test('MCP automation package stays documented, versioned, and tested', () => {
     'apply_actions',
     'render_document',
     'render_markdown',
+    'dingcard://schema/freeform',
     'DINGCARD_DIST_DIR',
     '127.0.0.1',
   ]) {

@@ -104,6 +104,50 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
+  test('exposes schema, templates, and examples as MCP resources', async () => {
+    const client = await connect()
+    const listing = await client.listResources()
+    const uris = listing.resources.map((resource) => resource.uri).sort()
+    expect(uris).toEqual([
+      'dingcard://examples/freeform',
+      'dingcard://examples/markdown',
+      'dingcard://schema/actions',
+      'dingcard://schema/freeform',
+      'dingcard://templates',
+    ])
+    for (const resource of listing.resources) {
+      expect(resource.description?.length ?? 0).toBeGreaterThan(4)
+    }
+
+    const readText = async (uri: string): Promise<string> => {
+      const result = await client.readResource({ uri })
+      expect(result.contents).toHaveLength(1)
+      const content = result.contents[0]
+      if (!('text' in content) || typeof content.text !== 'string') {
+        throw new Error(`resource ${uri} did not return text`)
+      }
+      return content.text
+    }
+
+    const templates = JSON.parse(await readText('dingcard://templates')) as {
+      templates: Array<{ id: string }>
+    }
+    expect(templates.templates.map((template) => template.id)).toContain('editorial-freeform')
+
+    expect(await readText('dingcard://schema/freeform')).toContain('documentVersion')
+
+    const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
+      documentVersion: number
+    }
+    expect(document.documentVersion).toBe(4)
+
+    const envelope = JSON.parse(await readText('dingcard://examples/markdown')) as {
+      source: string
+    }
+    expect(envelope.source).toContain('#')
+    await client.close()
+  })
+
   test('invalid template ids return isError results with available ids', async () => {
     const client = await connect()
     const response = await client.callTool({

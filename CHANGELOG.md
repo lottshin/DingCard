@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- MCP 服务器新增只读资源：`dingcard://schema/freeform`、`dingcard://schema/actions`、`dingcard://templates`、`dingcard://examples/freeform`、`dingcard://examples/markdown`，客户端可通过 `resources/list` / `resources/read` 获取文档模型说明与完整示例。
+
 ## [0.16.0] - 2026-09-26
 
 ### Added

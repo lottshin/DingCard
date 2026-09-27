@@ -128,6 +128,62 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
       jsonResult(await renderMarkdownDocument(document, { outputDir, baseName })),
   )
 
+  // ---- Resources: let clients discover the document schema, action union,
+  // template list, and full example documents without guessing from tool
+  // descriptions. Static URIs, read-only, same data the tools return. ----
+  const textResource = (text: string) => async (uri: URL) => ({
+    contents: [{ uri: uri.href, mimeType: 'text/markdown', text }],
+  })
+
+  server.registerResource(
+    'freeform-schema',
+    'dingcard://schema/freeform',
+    { description: '自由画布 v4 文档模型与校验规则说明' },
+    textResource(DOCUMENT_SCHEMA_HINT),
+  )
+  server.registerResource(
+    'actions-schema',
+    'dingcard://schema/actions',
+    { description: 'FreeformAction 动作联合类型说明（apply_actions 的入参结构）' },
+    textResource(ACTIONS_SCHEMA_HINT),
+  )
+  server.registerResource(
+    'templates',
+    'dingcard://templates',
+    { description: '内置模板清单（与 list_templates 相同的数据）', mimeType: 'application/json' },
+    async (uri: URL) => ({
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify({ templates: listTemplates() }, null, 2),
+      }],
+    }),
+  )
+  server.registerResource(
+    'freeform-example',
+    'dingcard://examples/freeform',
+    { description: '完整自由画布 v4 文档示例（编辑部模板实例）', mimeType: 'application/json' },
+    async (uri: URL) => ({
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify(instantiateTemplate('editorial-freeform').document, null, 2),
+      }],
+    }),
+  )
+  server.registerResource(
+    'markdown-example',
+    'dingcard://examples/markdown',
+    { description: '完整 Markdown 文档信封示例（编辑档案模板实例）', mimeType: 'application/json' },
+    async (uri: URL) => ({
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify(instantiateTemplate('editorial-archive-markdown').document, null, 2),
+      }],
+    }),
+  )
+
   return server
 }
 

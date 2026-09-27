@@ -23,6 +23,18 @@ list_templates → create_document_from_template → inspect_document
 
 工具描述内嵌了 v4 文档模型、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。
 
+## MCP 资源
+
+除工具外，服务器还以只读资源（`resources/list` / `resources/read`）暴露说明与示例，客户端可以按需取用而不必从工具描述里拼凑：
+
+| URI | 内容 |
+| --- | --- |
+| `dingcard://schema/freeform` | 自由画布 v4 文档模型与校验规则说明。 |
+| `dingcard://schema/actions` | `FreeformAction` 动作联合类型说明（`apply_actions` 的入参结构）。 |
+| `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
+| `dingcard://examples/freeform` | 完整自由画布 v4 文档示例（编辑部模板实例）。 |
+| `dingcard://examples/markdown` | 完整 Markdown 文档信封示例（编辑档案模板实例）。 |
+
 ## 回到编辑器精修
 
 AI 生成的文档 JSON 可以直接回到叮卡里精修：打开「我的草稿」面板，点击「导入 JSON 文档」或把 `.json` 文件拖进面板。自由画布文档（v1–v4，旧版自动迁移）会存为草稿并直接在自由画布打开；Markdown 文档同样支持，与当前工作台模式不符时会保存并提示到对应工作台打开。非法文件会给出可读的错误提示。由此形成完整闭环：
