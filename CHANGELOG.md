@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-26
+
+### Added
+
+- 新增 stdio MCP 服务器 `dingcard-mcp`（仓库内 `mcp/` 独立包）：AI 客户端和其他程序可以列出内置模板、实例化完整文档、严格校验 v4 文档、检查页面与节点树，并用与编辑器 UI 完全相同的动作归约器编辑文档。
+- 新增无头渲染：`render_document` 把自由画布文档渲染为 PNG 文件，复用编辑器导出管线（网页字体按字符子集嵌入、图片就绪等待、逐页 `pixelRatio: 1` 导出），输出到指定目录；`render_markdown` 把 Markdown 文档信封渲染为一整套卡片 PNG，复用 Markdown 工作台导出管线（`img:` 引用注册、DOM 实测分页、平台预设与资料头部、`pixelRatio: 3` 导出），页数由分页决定。
+- 新增 `render.html` 第二构建入口与 `src/render/` 渲染页；`vite build` 同时产出应用与渲染页。MCP 渲染优先使用系统 Chrome（与 E2E 一致，零浏览器下载），并通过只监听 127.0.0.1 随机端口的静态服务器提供构建产物。
+- 新增「我的草稿」面板的 JSON 文档导入：点击或拖入 `.json` 文件即可把 MCP 等自动化工具生成的自由画布（v1–v4 自动迁移）或 Markdown 文档存为草稿并直接打开，与当前工作台模式不符时保存并提示去向；非法文件给出可读错误。
+- 新增根脚本 `npm run mcp`、`npm run test:mcp`、`npm run test:mcp:render`；`npm test` 链加入 MCP 单元测试。MCP 包含模板/文档/动作/静态服务器/协议层单元测试与真实浏览器渲染管线测试。
+
+### Changed
+
+- 前端版本升至 `0.16.0`；服务端仍为 `0.3.0`。`0.16.0` 尚未发布远端镜像；README、Compose 和部署文档继续固定已发布的 GHCR `0.15.0` 镜像。
+- LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
+
 ## [0.15.0] - 2026-08-05
 
 ### Added

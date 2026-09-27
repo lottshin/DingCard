@@ -3,7 +3,7 @@
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
   <p>
-    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.15.0-e2570f" alt="叮卡版本 0.15.0"></a>
+    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.16.0-e2570f" alt="叮卡版本 0.16.0"></a>
     <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
     <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
     <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.15.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.15.0"></a>
@@ -76,6 +76,19 @@ Markdown 目前有“编辑档案”“公共剧场”“议题封面”三套�
 
 ![叮卡模板中心，可选择 Markdown 长文和自由画布作品](docs/assets/template-center.png)
 
+## MCP 自动化
+
+`mcp/` 内置一个 stdio MCP 服务器 `dingcard-mcp`，让 AI 客户端和其他程序不必走浏览器 UI，直接完成"选模板 → 构造/编辑文档 → 校验 → 无头渲染 PNG"的闭环。文档校验与编辑使用和编辑器完全相同的校验器与动作归约器，渲染复用编辑器导出管线（网页字体按字符子集嵌入、图片就绪等待、逐页导出）。
+
+```bash
+npm --prefix mcp ci
+npm run mcp   # 以 stdio 启动 dingcard-mcp
+```
+
+可用工具包括 `list_templates`、`create_document_from_template`、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为 PNG）和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
+
+AI 生成的文档也可以一键回到编辑器精修：在「我的草稿」面板点击「导入 JSON 文档」或直接把 `.json` 文件拖进面板，文档会存为草稿并直接打开（自由画布 v1–v4 自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
+
 ## 使用与部署
 
 ### 在线使用
@@ -126,7 +139,7 @@ npm run build
 npm run preview
 ```
 
-运行 Playwright E2E 时还需要 Chrome；全栈联调和 Docker 部署才需要 Docker Compose。
+运行 Playwright E2E 和 MCP 无头渲染时还需要 Chrome；全栈联调和 Docker 部署才需要 Docker Compose。
 
 ## 数据模式
 
@@ -203,11 +216,14 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 | `npm run dev` | 启动 Vite 开发服务器。 |
 | `npm run build` | 运行 TypeScript 检查并生成生产构建。 |
 | `npm run preview` | 本地预览生产构建。 |
-| `npm test` | 依次运行前端单元、后端和完整 E2E。 |
+| `npm test` | 依次运行前端单元、后端、MCP 和完整 E2E。 |
 | `npm run test:unit` | 运行前端 Vitest。 |
 | `npm run test:unit:watch` | 以监听模式运行前端单元测试。 |
 | `npm run test:server` | 运行后端 Node 测试。 |
 | `node server/smoke-test.mjs` | 启动临时真实后端并验证 HTTP 契约。 |
+| `npm run test:mcp` | 运行 MCP 包单元测试（模板、文档校验、动作归约、静态服务器、协议层）。 |
+| `npm run test:mcp:render` | 运行 MCP 真实浏览器渲染管线测试（模板文档 → PNG）。 |
+| `npm run mcp` | 以 stdio 启动 dingcard-mcp 服务器，供 MCP 客户端接入。 |
 | `npm run test:e2e` | 运行 LocalStore E2E 与编辑器验收。 |
 | `npm run test:e2e:headed` | 在可见浏览器中运行 E2E。 |
 | `npm run test:acceptance` | 仅运行编辑器关键验收旅程。 |
@@ -235,7 +251,8 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ## 文档
 
 - [自由画布数据模型与交互说明](docs/freeform-editor.md)
+- [MCP 自动化接口](docs/mcp.md)
 - [Docker 部署与维护](docs/deployment.md)
 - [后端实现与接入方案](docs/backend-plan.md)
-- [0.15.0 发布验证](docs/release-verification.md)
+- [0.16.0 发布验证](docs/release-verification.md)
 - [更新日志](CHANGELOG.md)
