@@ -58,7 +58,7 @@ path 是从页面根到目标节点的节点 id 数组（[] 表示页面根）�
 export function createDingcardServer(): McpServer {
   const server = new McpServer({
     name: 'dingcard-mcp',
-    version: '0.17.0',
+    version: '0.18.0',
   })
 
   server.tool(

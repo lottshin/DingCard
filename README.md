@@ -3,10 +3,10 @@
   <p><strong>小红书长文排版 + 轻设计出图</strong></p>
   <p>把一篇长文整理成适合滑动阅读的图文卡片，也能在自由画布里完成封面和重点页。</p>
   <p>
-    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.17.0-e2570f" alt="叮卡版本 0.17.0"></a>
+    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.18.0-e2570f" alt="叮卡版本 0.18.0"></a>
     <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
     <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
-    <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.16.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.16.0"></a>
+    <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.17.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.17.0"></a>
     <a href="docs/deployment.md"><img src="https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker&amp;logoColor=white" alt="Docker 部署"></a>
   </p>
   <p>
@@ -72,7 +72,7 @@
 
 ## 模板中心
 
-Markdown 目前有“编辑档案”“公共剧场”“议题封面”三套四页模板，自由画布有四套三页作品。选中后会带着完整内容进入编辑器，可以继续改字、换图和调整样式。
+Markdown 目前有“编辑档案”“公共剧场”“议题封面”三套四页模板，自由画布有八套三页作品。选中后会带着完整内容进入编辑器，可以继续改字、换图和调整样式。
 
 自己排好的版式也能复用：点工具栏「存为模板」把当前作品存为个人模板（本浏览器当前账号，图片一并嵌入），模板中心会出现「我的模板」分组，随时新建同款或删除。
 
@@ -102,10 +102,10 @@ AI 生成的文档也可以一键回到编辑器精修：在「我的草稿」�
 预构建镜像支持 `linux/amd64` 和 `linux/arm64`：
 
 ```bash
-docker pull ghcr.io/lottshin/dingcard:0.16.0
+docker pull ghcr.io/lottshin/dingcard:0.17.0
 ```
 
-需要真实账号、跨设备草稿和服务端图片时，可以用 Compose 部署完整应用。`.env.example` 中的 `DINGCARD_VERSION=0.16.0` 会固定使用上面的镜像。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
+需要真实账号、跨设备草稿和服务端图片时，可以用 Compose 部署完整应用。`.env.example` 中的 `DINGCARD_VERSION=0.17.0` 会固定使用上面的镜像。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
 
 ```bash
 git clone https://github.com/lottshin/DingCard.git
