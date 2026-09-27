@@ -256,5 +256,5 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 - [MCP 自动化接口](docs/mcp.md)
 - [Docker 部署与维护](docs/deployment.md)
 - [后端实现与接入方案](docs/backend-plan.md)
-- [0.18.0 发布验证](docs/release-verification.md)
+- [0.19.0 发布验证](docs/release-verification.md)
 - [更新日志](CHANGELOG.md)
