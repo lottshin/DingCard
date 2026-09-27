@@ -5855,3 +5855,53 @@ html.theme-anim * {
     min-height: 310px;
   }
 }
+
+/* ---------- User templates ---------- */
+
+.template-list-group {
+  grid-column: 1 / -1;
+  margin: 2px 0 8px;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.template-list .template-list-group:not(:first-child) {
+  margin-top: 16px;
+}
+
+.template-detail-copy .template-use,
+.template-detail-copy .template-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.template-delete {
+  margin-top: 10px;
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+}
+
+.template-delete:hover,
+.template-delete:focus-visible {
+  background: var(--danger-weak);
+}
+
+.save-template-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.save-template-hint {
+  margin: -8px 0 18px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-3);
+}

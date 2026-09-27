@@ -89,6 +89,7 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 ## 当前限制
 
 - `render_document` 仅支持自由画布 v4 文档；`render_markdown` 仅支持 Markdown 文档信封。
+- `list_templates` 与 `create_document_from_template` 只覆盖代码内置模板；编辑器「存为模板」保存的个人模板存在浏览器本地（按账号隔离），不进入 MCP。需要渲染自己的文档时，把文档直接传给 `render_document` / `render_markdown`。
 - 文档中的图片 `src`（自由画布）必须是浏览器可加载的 URL 或 data URL；Markdown 文档的图片通过信封的 `images` 映射（`img:<id>` → data URL）提供，本地文件请先转为 data URL。
 - 一次调用串行渲染全部所选页面，没有并发渲染池。
 - Markdown 平台头部中的时间戳（微博/推特）按渲染时刻生成，与编辑器导出行为一致。

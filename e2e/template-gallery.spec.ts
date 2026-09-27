@@ -268,3 +268,118 @@ test('gallery stays inside desktop and narrow viewports', async ({ page }) => {
     expect(geometry.bodyOverflow).toBeLessThanOrEqual(1)
   }
 })
+
+async function registerUser(page: import('@playwright/test').Page, username: string) {
+  await page.getByRole('button', { name: '注册' }).click()
+  await page.getByLabel('用户名').fill(username)
+  await page.getByLabel('密码').fill('1234')
+  await page.getByRole('button', { name: '创建账号' }).click()
+}
+
+test('Freeform work saves a user template, reuses it, and deletes it', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('workspace-tab-freeform').click()
+
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await page.getByTestId('insert-text').click()
+  await expect(
+    page.getByTestId('freeform-element').filter({ hasText: '双击编辑文本' }),
+  ).toBeVisible()
+
+  const saveTemplateButton = page.getByTestId('freeform-save-template-button')
+  await saveTemplateButton.click()
+  await registerUser(page, `tpl-f-${Date.now()}`)
+  await saveTemplateButton.click()
+
+  const saveDialog = page.getByRole('dialog', { name: '存为模板' })
+  await expect(saveDialog).toBeVisible()
+  await saveDialog.getByTestId('save-template-name-input').fill('我的画布模板')
+  await saveDialog.getByTestId('save-template-confirm').click()
+  await expect(saveDialog).toBeHidden()
+  await expect(page.getByRole('alert')).toContainText('已存为模板「我的画布模板」')
+
+  // Replace the content so only the template can restore it.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await page.getByTestId('insert-shape').click()
+  await page.getByRole('menuitem', { name: '矩形' }).click()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+
+  await page.getByTestId('freeform-template-button').click()
+  const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
+  await expect(gallery.locator('.template-tile')).toHaveCount(5)
+  await expect(gallery.getByText('我的模板')).toBeVisible()
+  await expect(gallery.locator('.template-tile').first()).toContainText('我的画布模板')
+  await gallery.getByRole('button', { name: '预览我的画布模板' }).click()
+  await expect(gallery.locator('.template-detail-preview')).toContainText('双击编辑文本')
+  await expect(gallery.getByRole('button', { name: '删除此模板' })).toBeVisible()
+  await gallery.getByRole('button', { name: '使用这套模板', exact: true }).click()
+  await page.getByRole('button', { name: '新建模板作品' }).click()
+  await expect(gallery).toBeHidden()
+  await expect(
+    page.getByTestId('freeform-element').filter({ hasText: '双击编辑文本' }),
+  ).toBeVisible()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+  await expect(page.locator('.freeform-workspace')).toHaveAttribute('data-history-depth', '0')
+
+  // Deleting the template removes the whole user group again.
+  await page.getByTestId('freeform-template-button').click()
+  await expect(gallery.locator('.template-tile')).toHaveCount(5)
+  await gallery.getByRole('button', { name: '预览我的画布模板' }).click()
+  await gallery.getByRole('button', { name: '删除此模板' }).click()
+  await expect(gallery.locator('.template-tile')).toHaveCount(4)
+  await expect(gallery.getByText('我的模板')).toBeHidden()
+  await gallery.getByRole('button', { name: '关闭模板中心' }).click()
+  await expect(gallery).toBeHidden()
+})
+
+test('Markdown work saves a user template with the live source and reuses it', async ({ page }) => {
+  await page.goto('/')
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.type('# 独一无二标题\n\n这份内容要存成模板。')
+
+  const saveTemplateButton = page.getByTestId('markdown-save-template-button')
+  await saveTemplateButton.click()
+  await registerUser(page, `tpl-m-${Date.now()}`)
+  await saveTemplateButton.click()
+
+  const saveDialog = page.getByRole('dialog', { name: '存为模板' })
+  await expect(saveDialog).toBeVisible()
+  await expect(saveDialog.getByTestId('save-template-name-input')).toHaveValue('独一无二标题')
+  await saveDialog.getByTestId('save-template-name-input').fill('我的图文模板')
+  await saveDialog.getByTestId('save-template-confirm').click()
+  await expect(saveDialog).toBeHidden()
+  await expect(page.getByRole('alert')).toContainText('已存为模板')
+
+  // Replace the source so only the template can restore it.
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.type('# 完全不同')
+  await expect(editor).toContainText('完全不同')
+
+  await page.getByTestId('markdown-template-button').click()
+  const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
+  await expect(gallery.locator('.template-tile')).toHaveCount(4)
+  await expect(gallery.getByText('我的模板')).toBeVisible()
+  await expect(gallery.locator('.template-tile').first()).toContainText('我的图文模板')
+  await gallery.getByRole('button', { name: '预览我的图文模板' }).click()
+  await expect(gallery.locator('.template-markdown-preview.detail')).toContainText('独一无二标题')
+  await gallery.getByRole('button', { name: '使用这套模板', exact: true }).click()
+  await page.getByRole('button', { name: '新建模板作品' }).click()
+  await expect(gallery).toBeHidden()
+  await expect(editor).toContainText('独一无二标题')
+  await expect(editor).not.toContainText('完全不同')
+  await expect(page.locator('.pane-sub')).toContainText('1 页')
+
+  // Deleting the template removes the whole user group again.
+  await page.getByTestId('markdown-template-button').click()
+  await expect(gallery.locator('.template-tile')).toHaveCount(4)
+  await gallery.getByRole('button', { name: '预览我的图文模板' }).click()
+  await gallery.getByRole('button', { name: '删除此模板' }).click()
+  await expect(gallery.locator('.template-tile')).toHaveCount(3)
+  await expect(gallery.getByText('我的模板')).toBeHidden()
+  await gallery.getByRole('button', { name: '关闭模板中心' }).click()
+  await expect(gallery).toBeHidden()
+})

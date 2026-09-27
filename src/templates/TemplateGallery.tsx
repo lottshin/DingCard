@@ -12,6 +12,10 @@ interface TemplateGalleryProps {
   open: boolean
   workspace: TemplateWorkspace
   hasCurrentContent: boolean
+  /** User-saved templates, shown in a dedicated group above the built-ins. */
+  userTemplates?: readonly TemplateDefinition[]
+  /** Delete a user template by its storage-layer id; absent for built-ins. */
+  onDeleteUserTemplate?: (id: string) => void
   onClose: () => void
   onApply: (template: TemplateDefinition) => void
 }
@@ -103,16 +107,21 @@ function focusableElements(dialog: HTMLElement): HTMLElement[] {
   ))
 }
 
-export function TemplateGallery({ open, workspace, hasCurrentContent, onClose, onApply }: TemplateGalleryProps) {
+export function TemplateGallery({ open, workspace, hasCurrentContent, userTemplates, onDeleteUserTemplate, onClose, onApply }: TemplateGalleryProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const pendingReturnFocusRef = useRef<HTMLElement | null>(null)
   const pendingRef = useRef<TemplateDefinition | null>(null)
   const onCloseRef = useRef(onClose)
-  const templates = templatesForWorkspace(workspace)
+  const builtinTemplates = templatesForWorkspace(workspace)
+  const savedTemplates = userTemplates ?? []
+  const templates = savedTemplates.length > 0
+    ? [...savedTemplates, ...builtinTemplates]
+    : builtinTemplates
   const [selectedId, setSelectedId] = useState(templates[0]?.id ?? '')
   const [pending, setPending] = useState<TemplateDefinition | null>(null)
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0]
+  const selectedUserTemplateId = selected.userTemplateId
   pendingRef.current = pending
   onCloseRef.current = onClose
 
@@ -191,6 +200,32 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, onClose, o
     if (event.key === 'Enter' && event.target === event.currentTarget) requestApply(selected)
   }
 
+  function renderTile(template: TemplateDefinition) {
+    return (
+      <article key={template.id} className={template.id === selected.id ? 'template-tile selected' : 'template-tile'}>
+        <button
+          className='template-tile-preview'
+          type='button'
+          aria-label={`预览${template.title}`}
+          aria-pressed={template.id === selected.id}
+          onClick={() => setSelectedId(template.id)}
+        >
+          <TemplatePreview template={template} />
+        </button>
+        <div className='template-tile-copy'>
+          <div>
+            <h3>{template.title}</h3>
+            <p>{template.description}</p>
+          </div>
+          <span className='template-page-count'>{template.pageCount} 页</span>
+        </div>
+        <div className='template-tags'>
+          {template.tags.map((tag) => <span key={tag}>{tag}</span>)}
+        </div>
+      </article>
+    )
+  }
+
   return (
     <div className='template-backdrop' onMouseDown={(event) => {
       if (event.target !== event.currentTarget) return
@@ -218,29 +253,10 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, onClose, o
 
         <div className='template-dialog-body'>
           <section className='template-list' aria-label='模板列表'>
-            {templates.map((template) => (
-              <article key={template.id} className={template.id === selected.id ? 'template-tile selected' : 'template-tile'}>
-                <button
-                  className='template-tile-preview'
-                  type='button'
-                  aria-label={`预览${template.title}`}
-                  aria-pressed={template.id === selected.id}
-                  onClick={() => setSelectedId(template.id)}
-                >
-                  <TemplatePreview template={template} />
-                </button>
-                <div className='template-tile-copy'>
-                  <div>
-                    <h3>{template.title}</h3>
-                    <p>{template.description}</p>
-                  </div>
-                  <span className='template-page-count'>{template.pageCount} 页</span>
-                </div>
-                <div className='template-tags'>
-                  {template.tags.map((tag) => <span key={tag}>{tag}</span>)}
-                </div>
-              </article>
-            ))}
+            {savedTemplates.length > 0 && <h4 className='template-list-group'>我的模板</h4>}
+            {savedTemplates.map(renderTile)}
+            {savedTemplates.length > 0 && <h4 className='template-list-group'>模板库</h4>}
+            {builtinTemplates.map(renderTile)}
           </section>
 
           <aside className='template-detail' aria-label='模板详情'>
@@ -255,6 +271,15 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, onClose, o
                   : `${selected.pageCount} 页作品已经排好，文字、颜色、尺寸和图层都可以改。`}
               </p>
               <button className='template-use' type='button' onClick={() => requestApply(selected)}>使用这套模板</button>
+              {selectedUserTemplateId && onDeleteUserTemplate && (
+                <button
+                  className='template-delete'
+                  type='button'
+                  onClick={() => onDeleteUserTemplate(selectedUserTemplateId)}
+                >
+                  删除此模板
+                </button>
+              )}
             </div>
           </aside>
         </div>

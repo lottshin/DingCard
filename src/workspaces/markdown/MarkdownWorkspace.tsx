@@ -27,7 +27,16 @@ import { ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../types'
 import { useImageLease } from '../useImageLease'
 import { TemplateGallery } from '../../templates/TemplateGallery'
+import { SaveTemplateDialog } from '../../templates/SaveTemplateDialog'
 import type { TemplateDefinition } from '../../templates/types'
+import {
+  deleteUserTemplate,
+  inlineImageRefs,
+  listUserTemplates,
+  saveUserTemplate,
+  userTemplateToDefinition,
+  type UserTemplate,
+} from '../../templates/userTemplates'
 
 const SAMPLE = `# 图文切片快速上手
 
@@ -84,6 +93,8 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [showProfile, setShowProfile] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [userTemplates, setUserTemplates] = useState<readonly UserTemplate[]>([])
   const [exporting, setExporting] = useState(false)
   const [active, setActive] = useState(0)
   const [ctx, setCtx] = useState<Ctx | null>(null)
@@ -213,9 +224,11 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
     if (user) {
       void loadDrafts(user.id)
+      setUserTemplates(listUserTemplates(user.id))
     } else {
       draftListGeneration.current += 1
       setDrafts([])
+      setUserTemplates([])
     }
 
     return () => {
@@ -566,6 +579,70 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }
 
+  const userTemplateDefinitions = useMemo(
+    () => userTemplates.map(userTemplateToDefinition),
+    [userTemplates],
+  )
+
+  const saveTemplateDefaultName = source
+    .split('\n')
+    .map((line) => line.replace(/^#+\s*/, '').trim())
+    .find((line) => line.length > 0) ?? ''
+
+  function handleOpenSaveTemplate() {
+    if (!user) {
+      requestAuth()
+      return
+    }
+    setShowSaveTemplate(true)
+  }
+
+  function saveAsTemplate(name: string) {
+    if (!user) return
+    const uid = user.id
+    try {
+      const resolvedSource = inlineImageRefs(source, store.images.collect(source))
+      const saved = saveUserTemplate(uid, {
+        name,
+        pageCount: pages.length,
+        draft: {
+          mode: 'markdown-card',
+          document: {
+            source: resolvedSource,
+            platformId,
+            themeId,
+            fontFamily,
+            profile,
+            radius,
+          },
+        },
+      })
+      if (activeUserIdRef.current === uid) {
+        setUserTemplates(listUserTemplates(uid))
+      }
+      setShowSaveTemplate(false)
+      setOperationNotice({
+        title: '已存为模板',
+        detail: `「${saved.name}」已出现在模板中心，可随时新建同款`,
+      })
+    } catch (error) {
+      showOperationError('模板保存失败', error, '暂时无法保存模板，请稍后重试')
+    }
+  }
+
+  function removeUserTemplate(id: string) {
+    if (!user) return
+    const uid = user.id
+    try {
+      deleteUserTemplate(uid, id)
+      if (activeUserIdRef.current === uid) {
+        setUserTemplates(listUserTemplates(uid))
+      }
+    } catch (error) {
+      showOperationError('模板删除失败', error, '暂时无法删除模板，请稍后重试')
+    }
+  }
+
   function applyMarkdownTemplate(template: TemplateDefinition) {
     if (template.workspace !== 'markdown') return
     const document = template.createMarkdown?.()
@@ -639,6 +716,13 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         <ToolbarGroup side="right">
           <button className="bar-btn" onClick={handleSaveDraft} disabled={saving}>
             {saving ? '保存中…' : '保存草稿'}
+          </button>
+          <button
+            className="bar-btn"
+            data-testid="markdown-save-template-button"
+            onClick={handleOpenSaveTemplate}
+          >
+            存为模板
           </button>
           <button
             className="bar-btn"
@@ -835,8 +919,17 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         open={showTemplates}
         workspace='markdown'
         hasCurrentContent={draftId !== null || draftRevisionRef.current > 0}
+        userTemplates={userTemplateDefinitions}
+        onDeleteUserTemplate={removeUserTemplate}
         onClose={() => setShowTemplates(false)}
         onApply={applyMarkdownTemplate}
+      />
+
+      <SaveTemplateDialog
+        open={showSaveTemplate}
+        defaultName={saveTemplateDefaultName}
+        onClose={() => setShowSaveTemplate(false)}
+        onConfirm={saveAsTemplate}
       />
     </div>
   )

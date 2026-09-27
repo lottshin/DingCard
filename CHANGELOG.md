@@ -6,6 +6,7 @@
 
 ### Added
 
+- 新增「存为模板」：自由画布与 Markdown 工作台都可把当前作品一键保存为个人模板（本浏览器当前账号）。保存时图片引用全部内联进文档，模板在模板中心顶部「我的模板」分组出现，可预览、一键新建同款或删除；自由画布保存整份多页文档，Markdown 保存源文与平台、主题、字体、资料设置。
 - MCP 服务器新增只读资源：`dingcard://schema/freeform`、`dingcard://schema/actions`、`dingcard://templates`、`dingcard://examples/freeform`、`dingcard://examples/markdown`，客户端可通过 `resources/list` / `resources/read` 获取文档模型说明与完整示例。
 
 ## [0.16.0] - 2026-09-26

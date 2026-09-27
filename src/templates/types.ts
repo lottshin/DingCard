@@ -21,7 +21,7 @@ export interface MarkdownTemplateDocument {
 
 export interface TemplateDefinition {
   id: string
-  series: TemplateSeriesId
+  series: TemplateSeriesId | 'user'
   workspace: TemplateWorkspace
   title: string
   description: string
@@ -29,4 +29,6 @@ export interface TemplateDefinition {
   tags: readonly string[]
   createMarkdown?: () => MarkdownTemplateDocument
   createFreeform?: () => FreeformDocument
+  /** Present only on user-saved templates: the storage-layer template id. */
+  userTemplateId?: string
 }

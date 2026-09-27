@@ -14,7 +14,15 @@ import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/Wo
 import type { WorkspaceShellProps } from '../workspaces/types'
 import { useImageLease } from '../workspaces/useImageLease'
 import { TemplateGallery } from '../templates/TemplateGallery'
+import { SaveTemplateDialog } from '../templates/SaveTemplateDialog'
 import type { TemplateDefinition } from '../templates/types'
+import {
+  deleteUserTemplate,
+  listUserTemplates,
+  saveUserTemplate,
+  userTemplateToDefinition,
+  type UserTemplate,
+} from '../templates/userTemplates'
 import { MAX_EFFECTIVE_SCALE, MIN_EFFECTIVE_SCALE } from './constants'
 import {
   createFreeformDocument,
@@ -24,6 +32,7 @@ import {
   createTextElement,
   freeformReducer,
 } from './document'
+import { materializeLocalFreeformImages } from './imageAssets'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorNumberInput } from './InspectorNumberInput'
 import { FreeformLayersPanel } from './FreeformLayersPanel'
@@ -617,6 +626,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [userTemplates, setUserTemplates] = useState<readonly UserTemplate[]>([])
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -1040,9 +1051,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
     if (user) {
       void loadDrafts(user.id)
+      setUserTemplates(listUserTemplates(user.id))
     } else {
       draftListGenerationRef.current += 1
       setDrafts([])
+      setUserTemplates([])
     }
 
     return () => {
@@ -3319,6 +3332,50 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }
 
+  const userTemplateDefinitions = useMemo(
+    () => userTemplates.map(userTemplateToDefinition),
+    [userTemplates],
+  )
+
+  function handleOpenSaveTemplate() {
+    if (!user) {
+      requestAuth()
+      return
+    }
+    setShowSaveTemplate(true)
+  }
+
+  function saveAsTemplate(name: string) {
+    if (!user) return
+    try {
+      const materialized = materializeLocalFreeformImages(doc, store.images)
+      const saved = saveUserTemplate(user.id, {
+        name,
+        pageCount: doc.slides.length,
+        draft: { mode: 'freeform-slide', document: materialized },
+      })
+      if (currentUserIdRef.current === user.id) {
+        setUserTemplates(listUserTemplates(user.id))
+      }
+      setShowSaveTemplate(false)
+      setOperationNotice(`已存为模板「${saved.name}」，在模板中心随时可用`)
+    } catch (error) {
+      showOperationError(error, '模板保存失败，请稍后重试')
+    }
+  }
+
+  function removeUserTemplate(id: string) {
+    if (!user) return
+    try {
+      deleteUserTemplate(user.id, id)
+      if (currentUserIdRef.current === user.id) {
+        setUserTemplates(listUserTemplates(user.id))
+      }
+    } catch (error) {
+      showOperationError(error, '模板删除失败，请稍后重试')
+    }
+  }
+
   function applyFreeformTemplate(template: TemplateDefinition) {
     if (template.workspace !== 'freeform') return
     cancelFramingBeforeTransition()
@@ -3464,6 +3521,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         <ToolbarGroup side="right">
           <button className="bar-btn" type="button" onClick={handleSaveDraft} disabled={saving}>
             {saving ? '保存中…' : '保存草稿'}
+          </button>
+          <button
+            className="bar-btn"
+            type="button"
+            data-testid="freeform-save-template-button"
+            onClick={handleOpenSaveTemplate}
+          >
+            存为模板
           </button>
           <button
             className="bar-btn"
@@ -4369,8 +4434,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         open={showTemplates}
         workspace='freeform'
         hasCurrentContent={draftId !== null || history.past.length > 0 || doc.slides.length > 1 || doc.slides.some((slide) => slide.nodes.length > 0)}
+        userTemplates={userTemplateDefinitions}
+        onDeleteUserTemplate={removeUserTemplate}
         onClose={() => setShowTemplates(false)}
         onApply={applyFreeformTemplate}
+      />
+
+      <SaveTemplateDialog
+        open={showSaveTemplate}
+        defaultName={doc.slides[0]?.name?.trim() || ''}
+        onClose={() => setShowSaveTemplate(false)}
+        onConfirm={saveAsTemplate}
       />
 
       {showMixedSizeWarning && (
