@@ -38,11 +38,17 @@ import {
 import { effectiveSceneState } from './sceneSelection'
 import { normalizeRichTextSpans, remapRichTextSpans } from './richText'
 import {
+  cloneSceneFilter,
   cloneShadowPaint,
+  isValidBlendMode,
   isValidCornerRadius,
+  isValidDash,
+  isValidLineCap,
   isValidLineHeight,
   isValidLetterSpacing,
   isValidOpacity,
+  isValidShape,
+  sceneFilterEquals,
   shadowPaintEquals,
 } from './appearance'
 import type {
@@ -63,6 +69,7 @@ import type {
   FreeformTextElement,
   ImageFraming,
   RichTextSpan,
+  SceneFilter,
   ScenePath,
   ShadowPaint,
   ShapeFill,
@@ -111,7 +118,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 6,
+    documentVersion: 7,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -338,6 +345,10 @@ const STYLE_KEYS = new Set([
   'cornerRadius',
   'opacity',
   'shadow',
+  'filter',
+  'blendMode',
+  'dash',
+  'cap',
   'fit',
   'framing',
   'shape',
@@ -350,9 +361,12 @@ const GEOMETRY_KEYS = new Set(['x', 'y', 'width', 'height', 'rotation', 'scale']
 const IMAGE_CROP_ACTION_KEYS = new Set(['type', 'slideId', 'path', 'patch'])
 const IMAGE_CROP_PATCH_KEYS = new Set(['x', 'y', 'width', 'height', 'framing'])
 
-const TEXT_APPEARANCE_KEYS = new Set(['lineHeight', 'letterSpacing', 'italic', 'opacity', 'shadow'])
-const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow'])
-const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow'])
+const TEXT_APPEARANCE_KEYS = new Set([
+  'lineHeight', 'letterSpacing', 'italic', 'opacity', 'shadow', 'filter', 'blendMode',
+])
+const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'filter', 'blendMode'])
+const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
+const LINE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap'])
 
 /** Validate every v6 appearance key present on a style patch; false rejects. */
 function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>): boolean {
@@ -371,6 +385,14 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (typeof value !== 'boolean') return false
     } else if (key === 'cornerRadius') {
       if (value !== null && !isValidCornerRadius(value)) return false
+    } else if (key === 'filter') {
+      if (value !== null && !cloneSceneFilter(value)) return false
+    } else if (key === 'blendMode') {
+      if (value !== null && !isValidBlendMode(value)) return false
+    } else if (key === 'dash') {
+      if (value !== null && !isValidDash(value)) return false
+    } else if (key === 'cap') {
+      if (!isValidLineCap(value)) return false
     }
   }
   return true
@@ -394,7 +416,14 @@ function withAppearancePatch<T extends object>(
       next = rest
       continue
     }
-    next = { ...next, [key]: key === 'shadow' ? cloneShadowPaint(value) : value }
+    next = {
+      ...next,
+      [key]: key === 'shadow'
+        ? cloneShadowPaint(value)
+        : key === 'filter'
+          ? cloneSceneFilter(value)
+          : value,
+    }
   }
   return next as T
 }
@@ -415,6 +444,15 @@ function appearanceKeysSame(
         !shadowPaintEquals(
           nodeRecord.shadow as ShadowPaint | undefined,
           nextRecord.shadow as ShadowPaint | undefined,
+        )
+      ) {
+        return false
+      }
+    } else if (key === 'filter') {
+      if (
+        !sceneFilterEquals(
+          nodeRecord.filter as SceneFilter | undefined,
+          nextRecord.filter as SceneFilter | undefined,
         )
       ) {
         return false
@@ -509,6 +547,8 @@ function applyStylePatch(
       'italic',
       'opacity',
       'shadow',
+      'filter',
+      'blendMode',
     ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {
@@ -551,7 +591,12 @@ function applyStylePatch(
   }
   if (node.type === 'image') {
     if (
-      keys.some((key) => key !== 'fit' && key !== 'framing' && key !== 'opacity' && key !== 'shadow')
+      keys.some((key) => key !== 'fit'
+        && key !== 'framing'
+        && key !== 'opacity'
+        && key !== 'shadow'
+        && key !== 'filter'
+        && key !== 'blendMode')
     ) {
       return { ok: false, node }
     }
@@ -589,8 +634,11 @@ function applyStylePatch(
       'cornerRadius',
       'opacity',
       'shadow',
+      'filter',
+      'blendMode',
     ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
+    if ('shape' in patch && !isValidShape(patch.shape)) return { ok: false, node }
     if ('fill' in patch && !isValidSceneShapeFill(patch.fill)) {
       return { ok: false, node }
     }
@@ -636,20 +684,25 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'line') {
-    const allowed = new Set(['lineKind', 'stroke', 'strokeWidth', 'opacity', 'shadow'])
+    const allowed = new Set([
+      'lineKind', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap',
+    ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
-    if (!validAppearancePatch(patch, BASE_APPEARANCE_KEYS)) return { ok: false, node }
+    if ('lineKind' in patch && patch.lineKind !== 'line' && patch.lineKind !== 'arrow') {
+      return { ok: false, node }
+    }
+    if (!validAppearancePatch(patch, LINE_APPEARANCE_KEYS)) return { ok: false, node }
     const next = withAppearancePatch({
       ...node,
       ...('lineKind' in patch ? { lineKind: patch.lineKind as typeof node.lineKind } : {}),
       ...('stroke' in patch ? { stroke: patch.stroke as string } : {}),
       ...('strokeWidth' in patch ? { strokeWidth: patch.strokeWidth as number } : {}),
-    }, patch, BASE_APPEARANCE_KEYS)
+    }, patch, LINE_APPEARANCE_KEYS)
     const same = keys.every(
       (key) =>
-        BASE_APPEARANCE_KEYS.has(key)
+        LINE_APPEARANCE_KEYS.has(key)
           || (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
-    ) && appearanceKeysSame(node, next, patch, BASE_APPEARANCE_KEYS)
+    ) && appearanceKeysSame(node, next, patch, LINE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
   return { ok: false, node }

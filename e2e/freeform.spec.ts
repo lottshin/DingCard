@@ -1423,6 +1423,38 @@ test('inspector appearance controls style leaves end to end', async ({ page }) =
   const triangleView = page.getByTestId('freeform-element').locator('.freeform-shape.shape-triangle')
   await expect(triangleView).toHaveCSS('filter', /drop-shadow/)
 
+  const triangleElement = page.getByTestId('freeform-element').filter({
+    has: page.locator('.shape-triangle'),
+  })
+  await page.getByTestId('freeform-blend-select').click()
+  await page.getByRole('option', { name: '滤色' }).click()
+  await expect(triangleElement).toHaveCSS('mix-blend-mode', 'screen')
+  await appearance.getByTestId('filter-add').click()
+  await expect(triangleElement).toHaveCSS('filter', /brightness\(1\.1\)/)
+  const filterBlurInput = appearance.getByLabel('滤镜模糊', { exact: true })
+  await filterBlurInput.fill('8')
+  await filterBlurInput.press('Enter')
+  await expect(triangleElement).toHaveCSS('filter', /blur\(8px\)/)
+  await appearance.getByTestId('filter-clear').click()
+  await expect(triangleElement).toHaveCSS('filter', 'none')
+
+  await insertLine(page, '直线')
+  const stroke = page.getByTestId('inspector-stroke')
+  const dashInput = stroke.getByLabel('虚线', { exact: true })
+  await dashInput.fill('18')
+  await dashInput.press('Enter')
+  const lineStroke = page.getByTestId('freeform-line').locator('line')
+  await expect(lineStroke).toHaveCSS('stroke-dasharray', '18px, 18px')
+  await stroke.getByTestId('line-cap-butt').click()
+  await expect(lineStroke).toHaveCSS('stroke-linecap', 'butt')
+  await stroke.getByTestId('line-dash-clear').click()
+  await expect(lineStroke).toHaveCSS('stroke-dasharray', 'none')
+
+  await insertShape(page, '五角星')
+  const starView = page.getByTestId('freeform-element').locator('.freeform-shape.shape-star')
+  await expect(starView).toBeVisible()
+  await expect(starView).toHaveCSS('clip-path', /polygon/)
+
   await page.getByTestId('freeform-canvas').click({ position: { x: 10, y: 10 } })
   await expect(page.getByTestId('inspector-appearance')).toHaveCount(0)
 })
@@ -2504,14 +2536,20 @@ test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
   const rectangle = shapeMenu.getByRole('menuitem', { name: '矩形' })
   const ellipse = shapeMenu.getByRole('menuitem', { name: '圆形' })
   const triangle = shapeMenu.getByRole('menuitem', { name: '三角形' })
+  const star = shapeMenu.getByRole('menuitem', { name: '五角星' })
+  const hexagon = shapeMenu.getByRole('menuitem', { name: '六边形' })
 
   await expect(rectangle).toBeFocused()
   await page.keyboard.press('ArrowUp')
-  await expect(triangle).toBeFocused()
+  await expect(hexagon).toBeFocused()
   await page.keyboard.press('ArrowDown')
   await expect(rectangle).toBeFocused()
   await page.keyboard.press('ArrowDown')
   await expect(ellipse).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(triangle).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(star).toBeFocused()
   await page.keyboard.press('Space')
 
   await expect(shapeMenu).toBeHidden()
@@ -5071,7 +5109,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(6)
+  expect(storedDocument.documentVersion).toBe(7)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
@@ -7677,10 +7715,12 @@ test('locked layer metadata remains manageable through inherited state and reloa
     .getByTestId('freeform-lock-banner')
     .getByRole('button', { name: '解锁 Locked inner' })
   await inheritedUnlock.focus()
+  await expect(inheritedUnlock).toBeFocused()
   await page.keyboard.press('ArrowRight')
   await expect(page.getByRole('alert')).toContainText('图层已锁定，先解锁后再编辑')
   await page.getByRole('alert').getByRole('button', { name: '关闭提示' }).click()
   await inheritedUnlock.focus()
+  await expect(inheritedUnlock).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(page.locator('[data-scene-node-id="locked-text"] [role="textbox"]'))
     .toHaveAttribute('contenteditable', 'true')
@@ -7709,7 +7749,11 @@ test('locked layer metadata remains manageable through inherited state and reloa
   await expect(lockedText).toHaveAttribute('data-effective-locked', 'true')
   await expect(lockedText).toHaveAttribute('aria-selected', 'true')
 
-  await lockedText.focus()
+  // Move focus with the panel's own keyboard navigation: the raw .focus()
+  // call races the panel's roving focus and intermittently never lands, which
+  // made F2 rename the previously focused row instead of this one.
+  await page.keyboard.press('ArrowDown')
+  await expect(lockedText).toBeFocused()
   await page.keyboard.press('F2')
   const renameInput = page.getByRole('textbox', { name: '重命名图层' })
   await renameInput.fill('Protected caption')

@@ -6,7 +6,7 @@ import {
   MAX_SCENE_NODES_PER_SLIDE,
 } from '../constants'
 import { reduceFreeformDocument } from '../document'
-import { normalizeFreeformDocumentV6 } from '../sceneDocument'
+import { normalizeFreeformDocumentV7 } from '../sceneDocument'
 import {
   buildScenePathIndex,
   canApplySceneAction,
@@ -194,7 +194,7 @@ function documentWith(
   slides: FreeformSlide[] = [slide('slide-1', nodes)],
 ): FreeformDocument {
   return {
-    documentVersion: 6,
+    documentVersion: 7,
     slides,
     activeSlideId: slides[0].id,
   }
@@ -458,6 +458,29 @@ describe('immutable scene path helpers', () => {
       ok: false,
       reason: 'unknown-path',
     })
+  })
+
+  it('accepts v7 fields on inserted leaves and rejects invalid stored values', () => {
+    const nodes = [groupNode('known', [textLeaf('existing')])]
+    const filter = { brightness: 1.1, blur: 6 }
+
+    const accepted = insertSceneChildren(nodes, ['known'], [
+      { ...textLeaf('styled'), filter, blendMode: 'multiply' } as FreeformSceneLeaf,
+      { ...shapeLeaf('star'), shape: 'star' } as FreeformSceneLeaf,
+      { ...lineLeaf('dashed'), dash: 18, cap: 'butt' } as FreeformSceneLeaf,
+    ])
+    expect(accepted.ok).toBe(true)
+
+    const rejected: FreeformSceneLeaf[] = [
+      { ...textLeaf('bad-filter'), filter: { brightness: 4 } } as FreeformSceneLeaf,
+      { ...textLeaf('bad-filter-empty'), filter: {} } as FreeformSceneLeaf,
+      { ...textLeaf('bad-blend'), blendMode: 'dissolve' } as unknown as FreeformSceneLeaf,
+      { ...shapeLeaf('bad-dash'), dash: 0 } as unknown as FreeformSceneLeaf,
+      { ...lineLeaf('bad-cap'), cap: 'flat' } as unknown as FreeformSceneLeaf,
+    ]
+    for (const node of rejected) {
+      expect(insertSceneChildren(nodes, ['known'], [node]).ok).toBe(false)
+    }
   })
 
   it('accepts v6 appearance fields on inserted leaves and rejects invalid stored values', () => {
@@ -1573,26 +1596,26 @@ describe('v3 reducer permission and atomicity boundary', () => {
       slideId: 'slide-1',
       updates: [{ path: ['text'], patch: { textFill } }],
     })
-    expect(normalizeFreeformDocumentV6(textResult)).toEqual(textResult)
+    expect(normalizeFreeformDocumentV7(textResult)).toEqual(textResult)
     const shapeResult = reduceFreeformDocument(textResult, {
       type: 'node/update-style',
       slideId: 'slide-1',
       updates: [{ path: ['shape'], patch: { fill: shapeFill } }],
     })
-    expect(normalizeFreeformDocumentV6(shapeResult)).toEqual(shapeResult)
+    expect(normalizeFreeformDocumentV7(shapeResult)).toEqual(shapeResult)
     const backgroundResult = reduceFreeformDocument(shapeResult, {
       type: 'slide/update',
       slideId: 'slide-1',
       patch: { background },
     })
-    expect(normalizeFreeformDocumentV6(backgroundResult)).toEqual(backgroundResult)
+    expect(normalizeFreeformDocumentV7(backgroundResult)).toEqual(backgroundResult)
     const insertResult = reduceFreeformDocument(backgroundResult, {
       type: 'node/insert-children',
       slideId: 'slide-1',
       parentPath: [],
       nodes: [inserted],
     })
-    expect(normalizeFreeformDocumentV6(insertResult)).toEqual(insertResult)
+    expect(normalizeFreeformDocumentV7(insertResult)).toEqual(insertResult)
 
     expect(
       (insertResult.slides[0].nodes[0] as Extract<FreeformSceneLeaf, { type: 'text' }>).textFill,

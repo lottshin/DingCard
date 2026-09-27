@@ -5,6 +5,7 @@ import { FramedImage } from './FramedImage'
 import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
 import { splitTextRuns } from './richText'
 import { shapeFillToStyle, textFillToStyle } from './paint'
+import { sceneFilterCss } from './appearance'
 import { scenePathKey } from './sceneTree'
 import type { ImageDecodeIdentity, ImageDecodeReport } from './imageReadiness'
 import type {
@@ -211,7 +212,8 @@ function SceneLeafContent({
           y2={leaf.height / 2}
           stroke={leaf.stroke}
           strokeWidth={leaf.strokeWidth}
-          strokeLinecap="round"
+          strokeLinecap={leaf.cap ?? 'round'}
+          strokeDasharray={leaf.dash !== undefined ? `${leaf.dash} ${leaf.dash}` : undefined}
           markerEnd={leaf.lineKind === 'arrow' ? `url(#${markerId})` : undefined}
         />
       </svg>
@@ -232,7 +234,7 @@ function SceneLeafContent({
           ? { borderRadius: `${leaf.cornerRadius}px` }
           : {}),
         ...(leaf.shadow
-          ? leaf.shape === 'triangle'
+          ? (leaf.shape === 'triangle' || leaf.shape === 'star' || leaf.shape === 'hexagon')
             ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` }
             : { boxShadow: shadowCss(leaf.shadow) }
           : {}),
@@ -328,6 +330,8 @@ function SceneNodeBranch({
         height: node.height,
         transform: `rotate(${node.rotation}deg) scale(${node.scale})`,
         opacity: node.opacity,
+        filter: node.filter ? sceneFilterCss(node.filter) : undefined,
+        mixBlendMode: node.blendMode ?? undefined,
       }}
     >
       <SceneLeafContent

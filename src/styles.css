@@ -1246,6 +1246,7 @@ html.theme-anim * {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  isolation: isolate;
 }
 
 .freeform-element,
@@ -1747,6 +1748,17 @@ html.theme-anim * {
 
 .shape-triangle {
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.shape-star {
+  clip-path: polygon(
+    50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%,
+    50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%
+  );
+}
+
+.shape-hexagon {
+  clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
 }
 
 .freeform-inspector {

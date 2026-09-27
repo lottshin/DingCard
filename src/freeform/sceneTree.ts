@@ -7,11 +7,16 @@ import {
 import { isHexColor } from './paint'
 import { normalizeRichTextSpans } from './richText'
 import {
+  cloneSceneFilter,
   cloneShadowPaint,
+  isValidBlendMode,
   isValidCornerRadius,
+  isValidDash,
+  isValidLineCap,
   isValidLineHeight,
   isValidLetterSpacing,
   isValidOpacity,
+  isValidShape,
 } from './appearance'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -900,6 +905,9 @@ function hasValidOptionalFields(
 const OPACITY_FIELD_CHECK: NodeFieldCheck = (record) => isValidOpacity(record.opacity)
 const SHADOW_FIELD_CHECK: NodeFieldCheck = (record) => cloneShadowPaint(record.shadow) !== null
 
+const FILTER_FIELD_CHECK: NodeFieldCheck = (record) => cloneSceneFilter(record.filter) !== null
+const BLEND_FIELD_CHECK: NodeFieldCheck = (record) => isValidBlendMode(record.blendMode)
+
 const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   spans: (record) => {
     const normalized = normalizeRichTextSpans(record.spans, String(record.text).length)
@@ -910,17 +918,32 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   italic: (record) => record.italic === true,
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
 }
 
 const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
 }
 
 const BASE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
+}
+
+const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
+  dash: (record) => isValidDash(record.dash),
+  cap: (record) => isValidLineCap(record.cap),
 }
 
 export function isValidSceneColorPaint(value: unknown): boolean {
@@ -980,7 +1003,7 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
   if (node.type === 'shape') {
     return (
       hasValidOptionalFields(record, SHAPE_NODE_KEYS, SHAPE_OPTIONAL_FIELD_CHECKS) &&
-      (node.shape === 'rect' || node.shape === 'ellipse' || node.shape === 'triangle') &&
+      isValidShape(node.shape) &&
       isValidSceneShapeFill(node.fill) &&
       typeof node.stroke === 'string' &&
       Number.isFinite(node.strokeWidth)
@@ -988,7 +1011,7 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
   }
   if (node.type === 'line') {
     return (
-      hasValidOptionalFields(record, LINE_NODE_KEYS, BASE_OPTIONAL_FIELD_CHECKS) &&
+      hasValidOptionalFields(record, LINE_NODE_KEYS, LINE_OPTIONAL_FIELD_CHECKS) &&
       (node.lineKind === 'line' || node.lineKind === 'arrow') &&
       typeof node.stroke === 'string' &&
       Number.isFinite(node.strokeWidth)

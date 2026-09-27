@@ -34,6 +34,7 @@ import {
 } from './document'
 import { materializeLocalFreeformImages } from './imageAssets'
 import { insertRichTextSpan } from './richText'
+import { BLEND_MODES } from './appearance'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorNumberInput } from './InspectorNumberInput'
 import { FreeformLayersPanel } from './FreeformLayersPanel'
@@ -167,7 +168,9 @@ import type {
   FreeformNodeStylePatch,
   FreeformShapeElement,
   FreeformSlide,
+  BlendMode,
   FreeformTextElement,
+  SceneFilter,
   ScenePath,
   ShadowPaint,
   ShapeFill,
@@ -192,10 +195,39 @@ const RICH_SPAN_COLORS = ['#d92d20', '#f97316', '#f79009', '#129211', '#1570ef',
 /** Drop shadow applied when the inspector enables shadows on a leaf. */
 const DEFAULT_SHADOW: ShadowPaint = { color: '#101828', blur: 24, offsetX: 0, offsetY: 8 }
 
+const BLEND_MODE_LABELS: Record<string, string> = {
+  normal: '正常',
+  multiply: '正片叠底',
+  screen: '滤色',
+  overlay: '叠加',
+  darken: '变暗',
+  lighten: '变亮',
+  'color-dodge': '颜色减淡',
+  'color-burn': '颜色加深',
+  'hard-light': '强光',
+  'soft-light': '柔光',
+  difference: '差值',
+  exclusion: '排除',
+  hue: '色相',
+  saturation: '饱和度',
+  color: '颜色',
+  luminosity: '明度',
+}
+
+const BLEND_MODE_OPTIONS = BLEND_MODES.map((mode) => ({ id: mode, label: BLEND_MODE_LABELS[mode] ?? mode }))
+
+const LINE_CAPS: Array<{ id: 'round' | 'butt' | 'square'; label: string }> = [
+  { id: 'round', label: '圆头' },
+  { id: 'butt', label: '平头' },
+  { id: 'square', label: '方头' },
+]
+
 const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
   { id: 'rect', label: '矩形' },
   { id: 'ellipse', label: '圆形' },
   { id: 'triangle', label: '三角形' },
+  { id: 'star', label: '五角星' },
+  { id: 'hexagon', label: '六边形' },
 ]
 
 const LINES: Array<{ id: FreeformLineElement['lineKind']; label: string }> = [
@@ -601,6 +633,67 @@ function isTextElement(element: FreeformElement | undefined): element is Freefor
 
 function isLineElement(element: FreeformElement | undefined): element is FreeformLineElement {
   return element?.type === 'line'
+}
+
+/** Filter stack editor shared by every leaf type; `null` clears the stored filter. */
+function FilterField({
+  filter,
+  resetKey,
+  onChange,
+}: {
+  filter: SceneFilter | undefined
+  resetKey: unknown
+  onChange: (filter: SceneFilter | null) => void
+}) {
+  if (!filter) {
+    return (
+      <div className="inspector-actions">
+        <button
+          className="ghost"
+          type="button"
+          data-testid="filter-add"
+          onClick={() => onChange({ brightness: 1.1, contrast: 1.1 })}
+        >
+          添加滤镜
+        </button>
+      </div>
+    )
+  }
+  const fields: Array<{ key: keyof SceneFilter; label: string; min: number; max: number; fallback: number }> = [
+    { key: 'brightness', label: '亮度', min: 0, max: 3, fallback: 1 },
+    { key: 'contrast', label: '对比度', min: 0, max: 3, fallback: 1 },
+    { key: 'saturation', label: '饱和度', min: 0, max: 3, fallback: 1 },
+    { key: 'blur', label: '模糊', min: 0, max: 100, fallback: 0 },
+  ]
+  return (
+    <>
+      <div className="field-grid">
+        {fields.map(({ key, label, min, max, fallback }) => (
+          <label key={key}>
+            {label}
+            <InspectorNumberInput
+              ariaLabel={`滤镜${label}`}
+              min={min}
+              max={max}
+              resetKey={resetKey}
+              value={filter[key] ?? fallback}
+              onCommit={(value) => onChange({ ...filter, [key]: value })}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="inspector-actions">
+        <button
+          className="ghost"
+          type="button"
+          data-testid="filter-clear"
+          onClick={() => onChange(null)}
+        >
+          清除滤镜
+        </button>
+      </div>
+    </>
+  )
 }
 
 /** Drop-shadow editor shared by every leaf type; `null` clears the stored shadow. */
@@ -4578,6 +4671,48 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                           />
                         </label>
                       </div>
+                      {isLineElement(selectedElement) && (
+                        <>
+                          <div className="field-grid with-gap">
+                            <label>
+                              虚线
+                              <InspectorNumberInput
+                                ariaLabel="虚线"
+                                min={1}
+                                max={500}
+                                resetKey={inspectorNumberResetKey}
+                                value={selectedElement.dash ?? 0}
+                                onCommit={(value) => updateSelectedStyle({ dash: value })}
+                              />
+                            </label>
+                            <div className="inspector-actions">
+                              <button
+                                className="ghost"
+                                type="button"
+                                data-testid="line-dash-clear"
+                                disabled={selectedElement.dash === undefined}
+                                onClick={() => updateSelectedStyle({ dash: null })}
+                              >
+                                实线
+                              </button>
+                            </div>
+                          </div>
+                          <div className="field-label with-gap">线帽</div>
+                          <div className="seg stretch">
+                            {LINE_CAPS.map((cap) => (
+                              <button
+                                key={cap.id}
+                                type="button"
+                                className={(selectedElement.cap ?? 'round') === cap.id ? 'seg-btn on' : 'seg-btn'}
+                                data-testid={`line-cap-${cap.id}`}
+                                onClick={() => updateSelectedStyle({ cap: cap.id })}
+                              >
+                                {cap.label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </InspectorSection>
                   )}
 
@@ -4615,6 +4750,22 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       shadow={selectedElement.shadow}
                       resetKey={inspectorNumberResetKey}
                       onChange={(shadow) => updateSelectedStyle({ shadow })}
+                    />
+                    <div className="field-label with-gap">混合模式</div>
+                    <Select
+                      value={selectedElement.blendMode ?? 'normal'}
+                      onChange={(blendMode) => updateSelectedStyle({
+                        blendMode: blendMode === 'normal' ? null : blendMode as BlendMode,
+                      })}
+                      title="混合模式"
+                      testId="freeform-blend-select"
+                      options={BLEND_MODE_OPTIONS}
+                    />
+                    <div className="field-label with-gap">滤镜</div>
+                    <FilterField
+                      filter={selectedElement.filter}
+                      resetKey={inspectorNumberResetKey}
+                      onChange={(filter) => updateSelectedStyle({ filter })}
                     />
                   </InspectorSection>
                   )}

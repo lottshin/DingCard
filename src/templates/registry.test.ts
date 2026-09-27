@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeFreeformDocumentV6 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV7 } from '../freeform/sceneDocument'
 import type { FreeformSceneLeaf, FreeformSceneNode } from '../freeform/types'
 import { FONTS, PLATFORMS, THEMES } from '../theme'
 import { TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
@@ -33,15 +33,15 @@ function geometrySignature(nodes: FreeformSceneNode[]): string {
 }
 
 describe('template registry', () => {
-  it('exposes three markdown and four freeform series with unique IDs', () => {
-    expect(TEMPLATE_REGISTRY).toHaveLength(7)
-    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(7)
+  it('exposes three markdown and eight freeform series with unique IDs', () => {
+    expect(TEMPLATE_REGISTRY).toHaveLength(11)
+    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(11)
     expect(templatesForWorkspace('markdown').map((template) => template.series)).toEqual([
       'editorial-archive',
       'public-theatre',
       'issue-cover',
     ])
-    expect(templatesForWorkspace('freeform')).toHaveLength(4)
+    expect(templatesForWorkspace('freeform')).toHaveLength(8)
   })
 
   it('creates editable markdown documents with independent profile data', () => {
@@ -65,7 +65,7 @@ describe('template registry', () => {
       const first = template.createFreeform?.()
       const second = template.createFreeform?.()
       expect(first?.slides).toHaveLength(template.pageCount)
-      expect(first && normalizeFreeformDocumentV6(first)).not.toBeNull()
+      expect(first && normalizeFreeformDocumentV7(first)).not.toBeNull()
       expect(first?.slides.every((slide) => slide.width === 1080 && slide.height === 1440)).toBe(true)
       const validFontIds = new Set(FONTS.map((font) => font.id))
       const templateFonts = first?.slides.flatMap((slide) => textFontFamilies(slide.nodes)) ?? []
@@ -94,7 +94,7 @@ describe('template registry', () => {
         expect(leaves.some((node) => node.type === 'line'), `${template.id}/${slide.name}`).toBe(true)
       }
     }
-    expect(new Set(seriesGeometry).size).toBe(4)
+    expect(new Set(seriesGeometry).size).toBe(8)
   })
 
   it('overscans full-bleed rectangles past artboard corners', () => {
@@ -156,7 +156,7 @@ describe('template registry', () => {
     expect(seamRisks).toEqual([])
   })
 
-  it('showcases v6 appearance fields across every freeform template', () => {
+  it('showcases v6 and v7 appearance fields across every freeform template', () => {
     const capabilities = new Set<string>()
     for (const template of templatesForWorkspace('freeform')) {
       const document = template.createFreeform?.()
@@ -165,12 +165,18 @@ describe('template registry', () => {
       for (const leaf of document!.slides.flatMap((slide) => sceneLeaves(slide.nodes))) {
         if (leaf.opacity !== undefined) used.add('opacity')
         if (leaf.shadow !== undefined) used.add('shadow')
+        if (leaf.filter !== undefined) used.add('filter')
+        if (leaf.blendMode !== undefined) used.add('blendMode')
         if (leaf.type === 'text') {
           if (leaf.lineHeight !== undefined) used.add('lineHeight')
           if (leaf.letterSpacing !== undefined) used.add('letterSpacing')
           if (leaf.italic !== undefined) used.add('italic')
         }
-        if (leaf.type === 'shape' && leaf.cornerRadius !== undefined) used.add('cornerRadius')
+        if (leaf.type === 'shape') {
+          if (leaf.cornerRadius !== undefined) used.add('cornerRadius')
+          if (leaf.shape === 'star' || leaf.shape === 'hexagon') used.add('newShapes')
+        }
+        if (leaf.type === 'line' && leaf.dash !== undefined) used.add('dash')
       }
       expect(
         used.size,
@@ -179,10 +185,14 @@ describe('template registry', () => {
       for (const capability of used) capabilities.add(capability)
     }
     expect([...capabilities].sort()).toEqual([
+      'blendMode',
       'cornerRadius',
+      'dash',
+      'filter',
       'italic',
       'letterSpacing',
       'lineHeight',
+      'newShapes',
       'opacity',
       'shadow',
     ])

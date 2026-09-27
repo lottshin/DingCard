@@ -66,10 +66,10 @@ describe('freeform document', () => {
     expect(doc.activeSlideId).toBe(doc.slides[0].id)
   })
 
-  it('creates v6 documents and strict leaves with independent image framing', () => {
+  it('creates v7 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(6)
+    expect(doc.documentVersion).toBe(7)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -807,6 +807,78 @@ describe('v6 appearance patches', () => {
       [['text-1'], { cornerRadius: 8 }],
       [['shape-1'], { cornerRadius: -1 }],
       [['shape-1'], { lineHeight: 1.5 }],
+    ]
+    for (const [path, patch] of invalid) {
+      expect(stylePatch(document, path, patch)).toBe(document)
+    }
+  })
+})
+
+describe('v7 appearance patches', () => {
+  const filter = { brightness: 1.1, saturation: 1.4, blur: 6 }
+  const slideIdOf = (document: FreeformDocument) => document.slides[0].id
+  const stylePatch = (
+    document: FreeformDocument,
+    path: string[],
+    patch: Record<string, unknown>,
+  ) => reduceFreeformDocument(document, {
+    type: 'node/update-style',
+    slideId: slideIdOf(document),
+    updates: [{ path, patch }],
+  })
+
+  it('applies filter and blend mode patches and keeps no-ops stable', () => {
+    const document = documentWith([{ ...createTextElement(createSlide()), id: 'text-1' }])
+
+    const styled = stylePatch(document, ['text-1'], { filter, blendMode: 'multiply' })
+    const node = styled.slides[0].nodes[0] as FreeformTextElement
+    expect(node.filter).toEqual(filter)
+    expect(node.filter).not.toBe(filter)
+    expect(node.blendMode).toBe('multiply')
+
+    const noop = stylePatch(styled, ['text-1'], { filter, blendMode: 'multiply' })
+    expect(noop).toBe(styled)
+
+    const cleared = stylePatch(styled, ['text-1'], { filter: null, blendMode: null })
+    const clearedNode = cleared.slides[0].nodes[0] as FreeformTextElement
+    expect('filter' in clearedNode).toBe(false)
+    expect('blendMode' in clearedNode).toBe(false)
+    expect(stylePatch(cleared, ['text-1'], { filter: null, blendMode: null })).toBe(cleared)
+  })
+
+  it('applies line dash and cap patches and clears dash with null', () => {
+    const document = documentWith([{ ...createLineElement(createSlide(), 'line'), id: 'line-1' }])
+
+    const styled = stylePatch(document, ['line-1'], { dash: 18, cap: 'butt' })
+    const node = styled.slides[0].nodes[0]
+    if (node.type !== 'line') throw new Error('expected a line node')
+    expect(node.dash).toBe(18)
+    expect(node.cap).toBe('butt')
+
+    const noop = stylePatch(styled, ['line-1'], { dash: 18, cap: 'butt' })
+    expect(noop).toBe(styled)
+
+    const cleared = stylePatch(styled, ['line-1'], { dash: null })
+    const clearedNode = cleared.slides[0].nodes[0]
+    if (clearedNode.type !== 'line') throw new Error('expected a line node')
+    expect('dash' in clearedNode).toBe(false)
+    expect(clearedNode.cap).toBe('butt')
+  })
+
+  it('switches shapes to star and hexagon and rejects invalid v7 patch values', () => {
+    const document = documentWith([{ ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' }])
+
+    const starred = stylePatch(document, ['shape-1'], { shape: 'star' })
+    expect((starred.slides[0].nodes[0] as FreeformShapeElement).shape).toBe('star')
+    const hexed = stylePatch(document, ['shape-1'], { shape: 'hexagon' })
+    expect((hexed.slides[0].nodes[0] as FreeformShapeElement).shape).toBe('hexagon')
+
+    const invalid: Array<[string[], Record<string, unknown>]> = [
+      [['shape-1'], { shape: 'circle' }],
+      [['shape-1'], { filter: { brightness: 4 } }],
+      [['shape-1'], { filter: {} }],
+      [['shape-1'], { blendMode: 'dissolve' }],
+      [['shape-1'], { dash: 12 }],
     ]
     for (const [path, patch] of invalid) {
       expect(stylePatch(document, path, patch)).toBe(document)

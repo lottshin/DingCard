@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { normalizeFreeformDocumentV6 } from '../../../src/freeform/sceneDocument'
+import { normalizeFreeformDocumentV7 } from '../../../src/freeform/sceneDocument'
 import {
   freeformTemplateIds,
   instantiateTemplate,
@@ -18,6 +18,10 @@ describe('listTemplates', () => {
       'checklist-freeform',
       'signal-freeform',
       'night-flight-freeform',
+      'neon-freeform',
+      'brutalist-freeform',
+      'soft-freeform',
+      'blueprint-freeform',
     ]))
     for (const template of templates) {
       expect(template.title.length).toBeGreaterThan(0)
@@ -27,18 +31,18 @@ describe('listTemplates', () => {
     }
   })
 
-  test('freeform template ids cover the four freeform series', () => {
-    expect(freeformTemplateIds()).toHaveLength(4)
+  test('freeform template ids cover the eight freeform series', () => {
+    expect(freeformTemplateIds()).toHaveLength(8)
   })
 })
 
 describe('instantiateTemplate', () => {
-  test('freeform templates produce v6-valid documents', () => {
+  test('freeform templates produce v7-valid documents', () => {
     for (const id of freeformTemplateIds()) {
       const instantiation = instantiateTemplate(id)
       expect(instantiation.workspace).toBe('freeform')
       if (instantiation.workspace !== 'freeform') continue
-      expect(normalizeFreeformDocumentV6(instantiation.document)).not.toBeNull()
+      expect(normalizeFreeformDocumentV7(instantiation.document)).not.toBeNull()
       expect(instantiation.document.slides.length).toBeGreaterThan(0)
     }
   })

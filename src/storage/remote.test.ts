@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SaveDraftInput } from '../drafts'
-import { normalizeFreeformDocumentV6 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV7 } from '../freeform/sceneDocument'
 import type { FreeformDocument } from '../freeform/types'
 
 const API_BASE = 'https://api.example'
@@ -45,7 +45,7 @@ function deferred<T>() {
 
 function freeformDocument() {
   return {
-    documentVersion: 6 as const,
+    documentVersion: 7 as const,
     activeSlideId: 'page-1',
     slides: [
       {
@@ -102,7 +102,7 @@ function freeformDocument() {
 
 function nestedFreeformDocument(): FreeformDocument {
   return {
-    documentVersion: 6,
+    documentVersion: 7,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -632,7 +632,7 @@ describe('RemoteStore draft normalization and image retention', () => {
       ['legacy-markdown', 'markdown-card', 2],
       ['freeform-v1', 'freeform-slide', 2],
     ])
-    expect(drafts[1].mode === 'freeform-slide' && drafts[1].document.documentVersion).toBe(6)
+    expect(drafts[1].mode === 'freeform-slide' && drafts[1].document.documentVersion).toBe(7)
     if (drafts[1].mode !== 'freeform-slide') throw new Error('Expected freeform draft')
     expect(drafts[1].document.slides[0].nodes).toEqual([])
   })
@@ -748,7 +748,7 @@ describe('RemoteStore draft normalization and image retention', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('migrates a v2 save before serialization and returns strict v6', async () => {
+  it('migrates a v2 save before serialization and returns strict v7', async () => {
     const legacy = {
       documentVersion: 2,
       activeSlideId: 'page-1',
@@ -782,11 +782,11 @@ describe('RemoteStore draft normalization and image retention', () => {
       document: legacy,
     } as unknown as SaveDraftInput)
 
-    expect(submitted?.document).toMatchObject({ documentVersion: 6 })
+    expect(submitted?.document).toMatchObject({ documentVersion: 7 })
     expect(JSON.stringify(submitted?.document)).not.toContain('"elements"')
     expect(saved.mode).toBe('freeform-slide')
     if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(normalizeFreeformDocumentV6(saved.document)).toEqual(saved.document)
+    expect(normalizeFreeformDocumentV7(saved.document)).toEqual(saved.document)
   })
 
   it('uploads and retains nested hidden v4 image sources atomically', async () => {
@@ -842,7 +842,7 @@ describe('RemoteStore draft normalization and image retention', () => {
     expect(JSON.stringify(submitted)).toContain('"hidden":true')
     expect(saved.mode).toBe('freeform-slide')
     if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(normalizeFreeformDocumentV6(saved.document)).toEqual(saved.document)
+    expect(normalizeFreeformDocumentV7(saved.document)).toEqual(saved.document)
     const savedOuter = saved.document.slides[0].nodes[0]
     if (savedOuter.type !== 'group') throw new Error('Expected nested group')
     const savedImage = savedOuter.children[0]

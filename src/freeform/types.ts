@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 6
+  documentVersion: 7
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -42,6 +42,35 @@ export interface ShadowPaint {
   offsetY: number
 }
 
+/**
+ * CSS-like filter stack; every value is optional inside the object but at
+ * least one must be present. 1 means "unchanged" for the multipliers.
+ */
+export interface SceneFilter {
+  brightness?: number
+  contrast?: number
+  saturation?: number
+  blur?: number
+}
+
+export type BlendMode =
+  | 'normal'
+  | 'multiply'
+  | 'screen'
+  | 'overlay'
+  | 'darken'
+  | 'lighten'
+  | 'color-dodge'
+  | 'color-burn'
+  | 'hard-light'
+  | 'soft-light'
+  | 'difference'
+  | 'exclusion'
+  | 'hue'
+  | 'saturation'
+  | 'color'
+  | 'luminosity'
+
 export interface FreeformElementBase extends SceneNodeState {
   type: 'text' | 'image' | 'shape' | 'line'
   x: number
@@ -55,6 +84,10 @@ export interface FreeformElementBase extends SceneNodeState {
   opacity?: number
   /** Drop shadow; absent means none. */
   shadow?: ShadowPaint
+  /** Filter stack; absent means unfiltered. */
+  filter?: SceneFilter
+  /** Blend mode against the artwork below; absent means normal. */
+  blendMode?: BlendMode
 }
 
 /**
@@ -97,7 +130,7 @@ export interface FreeformImageElement extends FreeformElementBase {
 
 export interface FreeformShapeElement extends FreeformElementBase {
   type: 'shape'
-  shape: 'rect' | 'ellipse' | 'triangle'
+  shape: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
   fill: ShapeFill
   stroke: string
   strokeWidth: number
@@ -110,6 +143,10 @@ export interface FreeformLineElement extends FreeformElementBase {
   lineKind: 'line' | 'arrow'
   stroke: string
   strokeWidth: number
+  /** Unified dash length in px (dash = gap); absent means solid. */
+  dash?: number
+  /** Stroke cap; absent means round. */
+  cap?: 'round' | 'butt' | 'square'
 }
 
 export type FreeformElement =
@@ -166,13 +203,20 @@ export interface FreeformNodeStylePatch {
   opacity?: number
   /** Replace the element's drop shadow; `null` clears it. */
   shadow?: ShadowPaint | null
+  /** Replace the element's filter stack; `null` clears it. */
+  filter?: SceneFilter | null
+  /** Blend mode against the artwork below; `null` restores normal. */
+  blendMode?: BlendMode | null
   fit?: 'cover' | 'contain'
   framing?: ImageFraming
-  shape?: 'rect' | 'ellipse' | 'triangle'
+  shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
   fill?: ShapeFill
   stroke?: string
   strokeWidth?: number
   lineKind?: 'line' | 'arrow'
+  /** Unified dash length in px; `null` restores a solid stroke. */
+  dash?: number | null
+  cap?: 'round' | 'butt' | 'square'
 }
 
 export interface FreeformNodeGeometryPatch {

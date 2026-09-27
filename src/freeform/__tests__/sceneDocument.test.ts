@@ -10,12 +10,13 @@ import {
 import {
   mapFreeformDocumentLeaves,
   mapFreeformDocumentLeavesAsync,
-  migrateFreeformDocumentV3ToV6,
-  migrateLegacyFreeformDocumentToV6,
+  migrateFreeformDocumentV3ToV7,
+  migrateLegacyFreeformDocumentToV7,
   normalizeFreeformDocument,
   normalizeFreeformDocumentV4,
   normalizeFreeformDocumentV5,
   normalizeFreeformDocumentV6,
+  normalizeFreeformDocumentV7,
 } from '../sceneDocument'
 import {
   countSceneNodes,
@@ -227,7 +228,7 @@ function nestedGroups(depth: number): unknown {
 
 describe('freeform scene types and limits', () => {
   it('uses the current recursive scene types', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<6>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<7>()
     expectTypeOf<FreeformSlide>().toHaveProperty('nodes')
     expectTypeOf<FreeformSceneLeaf>().toHaveProperty('scale')
     expectTypeOf<FreeformGroupNode>().toHaveProperty('children')
@@ -246,7 +247,7 @@ describe('freeform scene types and limits', () => {
 
 describe('strict v4/v5 freeform document contract', () => {
   it('uses versionless v4 runtime types with required image framing', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<6>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<7>()
     expectTypeOf<Extract<FreeformSceneLeaf, { type: 'image' }>>()
       .toHaveProperty('framing')
       .toEqualTypeOf<ImageFraming>()
@@ -269,14 +270,14 @@ describe('strict v4/v5 freeform document contract', () => {
     ])
     const snapshot = structuredClone(raw)
 
-    const migrated = migrateFreeformDocumentV3ToV6(raw)
+    const migrated = migrateFreeformDocumentV3ToV7(raw)
     const rootImage = migrated?.slides[0].nodes[0]
     const hiddenGroup = migrated?.slides[0].nodes[1]
     const hiddenImage = hiddenGroup?.type === 'group' ? hiddenGroup.children[0] : undefined
     const deepGroup = hiddenGroup?.type === 'group' ? hiddenGroup.children[1] : undefined
     const deepFill = deepGroup?.type === 'group' ? deepGroup.children[0] : undefined
 
-    expect(migrated?.documentVersion).toBe(6)
+    expect(migrated?.documentVersion).toBe(7)
     expect(rootImage).toMatchObject({ type: 'image', framing: framing() })
     expect(hiddenImage).toMatchObject({ type: 'image', framing: framing() })
     expect(deepFill).toMatchObject({
@@ -317,7 +318,7 @@ describe('strict v4/v5 freeform document contract', () => {
 
     const normalized = normalizeFreeformDocumentV4(raw)
 
-    expect(normalized).toEqual({ ...raw, documentVersion: 6 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 7 })
     expect(normalized).not.toBe(raw)
     const sourceImage = (raw.slides[0] as { nodes: Array<{ framing: ImageFraming }> }).nodes[0]
     const outputImage = normalized?.slides[0].nodes[0]
@@ -368,11 +369,11 @@ describe('strict v4/v5 freeform document contract', () => {
     const v3 = v3Document([v3Slide('slide-1', [imageLeaf('photo')])])
     const v4 = v4Document([v3Slide('slide-1', [v4ImageLeaf('photo')])])
 
-    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(6)
-    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(6)
-    expect(normalizeFreeformDocument(v3)?.documentVersion).toBe(6)
-    expect(normalizeFreeformDocument(v4)).toEqual({ ...v4, documentVersion: 6 })
-    expect(normalizeFreeformDocument({ ...v4, documentVersion: 7 })).toBeNull()
+    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(7)
+    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(7)
+    expect(normalizeFreeformDocument(v3)?.documentVersion).toBe(7)
+    expect(normalizeFreeformDocument(v4)).toEqual({ ...v4, documentVersion: 7 })
+    expect(normalizeFreeformDocument({ ...v4, documentVersion: 8 })).toBeNull()
     expect(normalizeFreeformDocument(null)).toBeNull()
   })
 
@@ -400,8 +401,8 @@ describe('strict v4/v5 freeform document contract', () => {
     }
     expect(mappedImage.framing).not.toBe(sourceImage.framing)
     expect(mappedAsyncImage.framing).not.toBe(sourceImage.framing)
-    expect(normalizeFreeformDocumentV6(mapped)).toEqual(mapped)
-    expect(normalizeFreeformDocumentV6(mappedAsync)).toEqual(mappedAsync)
+    expect(normalizeFreeformDocumentV7(mapped)).toEqual(mapped)
+    expect(normalizeFreeformDocumentV7(mappedAsync)).toEqual(mappedAsync)
   })
 })
 
@@ -451,11 +452,11 @@ describe('legacy freeform document migration', () => {
     ])
     const snapshot = structuredClone(raw)
 
-    const migrated = migrateLegacyFreeformDocumentToV6(raw)
+    const migrated = migrateLegacyFreeformDocumentToV7(raw)
 
     expect(raw).toEqual(snapshot)
     expect(migrated).not.toBeNull()
-    expect(migrated?.documentVersion).toBe(6)
+    expect(migrated?.documentVersion).toBe(7)
     expect(migrated?.slides[0].nodes.map((node) => node.id)).toEqual([
       'text-1',
       'image-1',
@@ -473,7 +474,7 @@ describe('legacy freeform document migration', () => {
   })
 
   it('keeps duplicate node IDs that occur on different pages', () => {
-    const migrated = migrateLegacyFreeformDocumentToV6(
+    const migrated = migrateLegacyFreeformDocumentToV7(
       legacyDocument([
         legacySlide('slide-1', [legacyText('copied-id')]),
         legacySlide('slide-2', [legacyText('copied-id')]),
@@ -494,8 +495,8 @@ describe('legacy freeform document migration', () => {
       ]),
     ])
 
-    const first = migrateLegacyFreeformDocumentToV6(raw)
-    const second = migrateLegacyFreeformDocumentToV6(structuredClone(raw))
+    const first = migrateLegacyFreeformDocumentToV7(raw)
+    const second = migrateLegacyFreeformDocumentToV7(structuredClone(raw))
 
     expect(first?.slides[0].nodes.map((node) => node.id)).toEqual([
       'legacy-node-0-0-1',
@@ -519,7 +520,7 @@ describe('legacy freeform document migration', () => {
       'duplicate',
     )
 
-    const migrated = migrateLegacyFreeformDocumentToV6(raw)
+    const migrated = migrateLegacyFreeformDocumentToV7(raw)
 
     expect(migrated?.slides.map((slide) => slide.id)).toEqual([
       'legacy-slide-0-1',
@@ -532,7 +533,7 @@ describe('legacy freeform document migration', () => {
   })
 
   it('resolves an old active ID against the first surviving duplicate page', () => {
-    const migrated = migrateLegacyFreeformDocumentToV6(
+    const migrated = migrateLegacyFreeformDocumentToV7(
       legacyDocument(
         [
           legacySlide('duplicate', [], { width: 127 }),
@@ -549,7 +550,7 @@ describe('legacy freeform document migration', () => {
   })
 
   it('maps a blank old active ID to that page deterministic migrated ID', () => {
-    const migrated = migrateLegacyFreeformDocumentToV6(
+    const migrated = migrateLegacyFreeformDocumentToV7(
       legacyDocument(
         [
           legacySlide('', [legacyText('blank-page')]),
@@ -581,7 +582,7 @@ describe('legacy freeform document migration', () => {
       1,
     )
 
-    const migrated = migrateLegacyFreeformDocumentToV6(raw)
+    const migrated = migrateLegacyFreeformDocumentToV7(raw)
 
     expect(migrated?.slides).toHaveLength(1)
     expect(migrated?.activeSlideId).toBe('good')
@@ -591,7 +592,7 @@ describe('legacy freeform document migration', () => {
   })
 
   it('keeps a valid legacy page as a blank scene when all its elements are damaged', () => {
-    const migrated = migrateLegacyFreeformDocumentToV6(
+    const migrated = migrateLegacyFreeformDocumentToV7(
       legacyDocument([
         legacySlide('slide-1', [
           legacyText('zero-width', { width: 0 }),
@@ -605,7 +606,7 @@ describe('legacy freeform document migration', () => {
   })
 
   it('skips a legacy group-shaped element without promoting its children', () => {
-    const migrated = migrateLegacyFreeformDocumentToV6(
+    const migrated = migrateLegacyFreeformDocumentToV7(
       legacyDocument([
         legacySlide('slide-1', [
           {
@@ -627,7 +628,7 @@ describe('legacy freeform document migration', () => {
   })
 
   it('keeps legacy style fallback behavior but emits a strict-valid v3 result', () => {
-    const migrated = migrateLegacyFreeformDocumentToV6(
+    const migrated = migrateLegacyFreeformDocumentToV7(
       legacyDocument([
         legacySlide('slide-1', [
           legacyText('text', {
@@ -654,12 +655,12 @@ describe('legacy freeform document migration', () => {
     expect(migrated?.slides[0].nodes[1]).toMatchObject({
       fill: { type: 'solid', color: '#fed7aa' },
     })
-    expect(normalizeFreeformDocumentV6(migrated)).toEqual(migrated)
+    expect(normalizeFreeformDocumentV7(migrated)).toEqual(migrated)
   })
 
   it('fails when every legacy page is invalid', () => {
     expect(
-      migrateLegacyFreeformDocumentToV6(
+      migrateLegacyFreeformDocumentToV7(
         legacyDocument([
           legacySlide('too-small', [], { height: 100 }),
           { id: 'broken', name: 'Broken', width: 1080, height: 1440, elements: null },
@@ -677,22 +678,22 @@ describe('legacy freeform document migration', () => {
       () => ({ broken: true }),
     )
 
-    expect(migrateLegacyFreeformDocumentToV6(legacyDocument(tooManyPages))).toBeNull()
+    expect(migrateLegacyFreeformDocumentToV7(legacyDocument(tooManyPages))).toBeNull()
     expect(
-      migrateLegacyFreeformDocumentToV6(
+      migrateLegacyFreeformDocumentToV7(
         legacyDocument([legacySlide('slide-1', tooManyElements)]),
       ),
     ).toBeNull()
   })
 
   it('round-trips migrated IDs, order, and node count through the strict reader', () => {
-    const migrated = migrateLegacyFreeformDocumentToV6(
+    const migrated = migrateLegacyFreeformDocumentToV7(
       legacyDocument([
         legacySlide('slide-1', [legacyText(''), legacyText('same'), legacyText('same')]),
         legacySlide('slide-2', [legacyText('same')]),
       ]),
     )
-    const reread = normalizeFreeformDocumentV6(JSON.parse(JSON.stringify(migrated)))
+    const reread = normalizeFreeformDocumentV7(JSON.parse(JSON.stringify(migrated)))
 
     expect(reread).toEqual(migrated)
     expect(reread?.slides.map((slide) => slide.nodes.map((node) => node.id))).toEqual(
@@ -719,9 +720,9 @@ describe('strict v3 freeform normalization', () => {
     ])
     const snapshot = structuredClone(raw)
 
-    const normalized = migrateFreeformDocumentV3ToV6(raw)
+    const normalized = migrateFreeformDocumentV3ToV7(raw)
 
-    expect(normalized).toEqual({ ...raw, documentVersion: 6 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 7 })
     expect(normalized).not.toBe(raw)
     expect(normalized?.slides[1]).not.toBe(raw.slides[1])
     expect(raw).toEqual(snapshot)
@@ -732,10 +733,10 @@ describe('strict v3 freeform normalization', () => {
     const v2 = legacyDocument([legacySlide('slide-1')])
     const v3 = v3Document()
 
-    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(6)
-    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(6)
-    expect(normalizeFreeformDocument(v3)).toEqual({ ...v3, documentVersion: 6 })
-    expect(normalizeFreeformDocument({ ...v3, documentVersion: 7 })).toBeNull()
+    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(7)
+    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(7)
+    expect(normalizeFreeformDocument(v3)).toEqual({ ...v3, documentVersion: 7 })
+    expect(normalizeFreeformDocument({ ...v3, documentVersion: 8 })).toBeNull()
     expect(normalizeFreeformDocument(null)).toBeNull()
   })
 
@@ -747,12 +748,12 @@ describe('strict v3 freeform normalization', () => {
       ]),
     ])
 
-    const normalized = migrateFreeformDocumentV3ToV6(raw)
+    const normalized = migrateFreeformDocumentV3ToV7(raw)
 
     expect(normalized).not.toBeNull()
     expect(normalized?.slides[0].nodes[0].name).toBe('')
     expect(normalized?.slides[0].nodes[1].name).toBe('   ')
-    expect(normalized).toEqual({ ...raw, documentVersion: 6 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 7 })
   })
 
   it.each([
@@ -792,7 +793,7 @@ describe('strict v3 freeform normalization', () => {
   ])('atomically rejects %s', (_label, raw) => {
     const snapshot = structuredClone(raw)
 
-    expect(migrateFreeformDocumentV3ToV6(raw)).toBeNull()
+    expect(migrateFreeformDocumentV3ToV7(raw)).toBeNull()
     expect(raw).toEqual(snapshot)
   })
 
@@ -811,7 +812,7 @@ describe('strict v3 freeform normalization', () => {
     ['group negative scale', groupNode('group', undefined, { scale: -1 })],
     ['group infinite scale', groupNode('group', undefined, { scale: Number.POSITIVE_INFINITY })],
   ])('rejects invalid geometry: %s', (_label, node) => {
-    expect(migrateFreeformDocumentV3ToV6(v3Document([v3Slide('slide-1', [node])]))).toBeNull()
+    expect(migrateFreeformDocumentV3ToV7(v3Document([v3Slide('slide-1', [node])]))).toBeNull()
   })
 
   it('accepts inclusive world-scale limits and rejects underflow, overflow, and multiplication overflow', () => {
@@ -831,10 +832,10 @@ describe('strict v3 freeform normalization', () => {
       scale: MAX_EFFECTIVE_SCALE,
     })
 
-    expect(migrateFreeformDocumentV3ToV6(v3Document([v3Slide('slide-1', [minimum, maximum])]))).not.toBeNull()
-    expect(migrateFreeformDocumentV3ToV6(v3Document([v3Slide('slide-1', [tooSmall])]))).toBeNull()
-    expect(migrateFreeformDocumentV3ToV6(v3Document([v3Slide('slide-1', [tooLarge])]))).toBeNull()
-    expect(migrateFreeformDocumentV3ToV6(v3Document([v3Slide('slide-1', [overflow])]))).toBeNull()
+    expect(migrateFreeformDocumentV3ToV7(v3Document([v3Slide('slide-1', [minimum, maximum])]))).not.toBeNull()
+    expect(migrateFreeformDocumentV3ToV7(v3Document([v3Slide('slide-1', [tooSmall])]))).toBeNull()
+    expect(migrateFreeformDocumentV3ToV7(v3Document([v3Slide('slide-1', [tooLarge])]))).toBeNull()
+    expect(migrateFreeformDocumentV3ToV7(v3Document([v3Slide('slide-1', [overflow])]))).toBeNull()
   })
 
   it('allows local scales outside the shared range when every cumulative world scale is in range', () => {
@@ -845,7 +846,7 @@ describe('strict v3 freeform normalization', () => {
       scale: MAX_EFFECTIVE_SCALE,
     })
 
-    const normalized = migrateFreeformDocumentV3ToV6(
+    const normalized = migrateFreeformDocumentV3ToV7(
       v3Document([v3Slide('slide-1', [growChild, shrinkChild])]),
     )
 
@@ -874,7 +875,7 @@ describe('strict v3 freeform normalization', () => {
     ['line stroke', lineLeaf('leaf', { stroke: null })],
     ['line stroke width', lineLeaf('leaf', { strokeWidth: Number.POSITIVE_INFINITY })],
   ])('strictly rejects malformed node metadata/style: %s', (_label, node) => {
-    expect(migrateFreeformDocumentV3ToV6(v3Document([v3Slide('slide-1', [node])]))).toBeNull()
+    expect(migrateFreeformDocumentV3ToV7(v3Document([v3Slide('slide-1', [node])]))).toBeNull()
   })
 })
 
@@ -945,7 +946,7 @@ describe('basic scene tree queries', () => {
 
 describe('immutable v4 document leaf mapping', () => {
   it('maps nested leaves across slides while owning slides, backgrounds, groups, and leaves', () => {
-    const source = migrateFreeformDocumentV3ToV6(v3Document([
+    const source = migrateFreeformDocumentV3ToV7(v3Document([
       v3Slide('slide-1', [
         groupNode('outer', [
           imageLeaf('photo', { src: 'img:photo', hidden: true }),
@@ -980,12 +981,12 @@ describe('immutable v4 document leaf mapping', () => {
     expect(
       ((output.slides[0].nodes[0] as FreeformGroupNode).children[0] as FreeformSceneLeaf),
     ).toMatchObject({ src: 'data:image/png;base64,photo' })
-    expect(normalizeFreeformDocumentV6(output)).toEqual(output)
+    expect(normalizeFreeformDocumentV7(output)).toEqual(output)
     expect(source).toEqual(snapshot)
   })
 
   it('rejects async mapping atomically and leaves the source document unchanged', async () => {
-    const source = migrateFreeformDocumentV3ToV6(v3Document([v3Slide('slide-1', [
+    const source = migrateFreeformDocumentV3ToV7(v3Document([v3Slide('slide-1', [
       groupNode('outer', [imageLeaf('photo'), shapeLeaf('failing')]),
     ])]))
     if (!source) throw new Error('Expected valid migrated source')
@@ -1040,11 +1041,11 @@ describe('strict v5 freeform document contract', () => {
     expect('spans' in node).toBe(false)
   })
 
-  it('normalizes any historical version to v6 while still accepting v5 documents', () => {
+  it('normalizes any historical version to v7 while still accepting v6 documents', () => {
     const v4 = v4Document([v3Slide('slide-1', [textLeaf('text-1')])])
-    expect(normalizeFreeformDocument(v4)?.documentVersion).toBe(6)
-    const v5 = { ...v4, documentVersion: 5 }
-    expect(normalizeFreeformDocument(v5)?.documentVersion).toBe(6)
+    expect(normalizeFreeformDocument(v4)?.documentVersion).toBe(7)
+    const v6 = { ...v4, documentVersion: 6 }
+    expect(normalizeFreeformDocument(v6)?.documentVersion).toBe(7)
   })
 
   it.each([
@@ -1201,6 +1202,137 @@ describe('strict v6 freeform document contract', () => {
     }
     const normalized = normalizeFreeformDocumentV6(raw)
     expect(normalized).not.toBeNull()
-    expect(normalizeFreeformDocumentV6(normalized)).toEqual(normalized)
+    expect(normalizeFreeformDocumentV7(normalized)).toEqual(normalized)
+  })
+})
+
+describe('strict v7 freeform document contract', () => {
+  const filter = { brightness: 1.1, contrast: 1.2, saturation: 1.4, blur: 6 }
+  const shadow = { color: '#101828', blur: 24, offsetX: 0, offsetY: 8 }
+
+  it('accepts optional v7 fields on leaves and clones them', () => {
+    const raw = {
+      ...v4Document([
+        v3Slide('slide-1', [
+          textLeaf('text-1', { filter, blendMode: 'multiply' }),
+          shapeLeaf('star-1', { shape: 'star', filter: { blur: 4 }, blendMode: 'screen' }),
+          shapeLeaf('hex-1', { shape: 'hexagon' }),
+          v4ImageLeaf('image-1', { blendMode: 'overlay' }),
+          lineLeaf('line-1', { dash: 18, cap: 'butt', filter: { brightness: 0.5 } }),
+        ]),
+      ]),
+      documentVersion: 7,
+    }
+
+    const normalized = normalizeFreeformDocumentV7(raw)
+
+    expect(normalized).not.toBeNull()
+    const [text, star, hexagon, image, line] = normalized?.slides[0].nodes ?? []
+    if (!text || text.type !== 'text') throw new Error('expected a text node')
+    if (!star || star.type !== 'shape') throw new Error('expected a star shape')
+    if (!hexagon || hexagon.type !== 'shape') throw new Error('expected a hexagon shape')
+    if (!image || image.type !== 'image') throw new Error('expected an image node')
+    if (!line || line.type !== 'line') throw new Error('expected a line node')
+    expect(text.filter).toEqual(filter)
+    expect(text.filter).not.toBe(filter)
+    expect(text.blendMode).toBe('multiply')
+    expect(star.shape).toBe('star')
+    expect(star.filter).toEqual({ blur: 4 })
+    expect(star.blendMode).toBe('screen')
+    expect(hexagon.shape).toBe('hexagon')
+    expect(image.blendMode).toBe('overlay')
+    expect(line.dash).toBe(18)
+    expect(line.cap).toBe('butt')
+    expect(line.filter).toEqual({ brightness: 0.5 })
+  })
+
+  it('accepts v7 leaves without the optional keys and omits them', () => {
+    const raw = {
+      ...v4Document([v3Slide('slide-1', [textLeaf('text-1'), shapeLeaf('shape-1'), lineLeaf('line-1')])]),
+      documentVersion: 7,
+    }
+
+    const normalized = normalizeFreeformDocumentV7(raw)
+
+    for (const node of normalized?.slides[0].nodes ?? []) {
+      expect('filter' in node).toBe(false)
+      expect('blendMode' in node).toBe(false)
+      if (node.type === 'line') {
+        expect('dash' in node).toBe(false)
+        expect('cap' in node).toBe(false)
+      }
+    }
+  })
+
+  it('accepts inclusive v7 bounds and rejects invalid values atomically', () => {
+    const inclusive = {
+      ...v4Document([v3Slide('slide-1', [
+        textLeaf('text-1', { filter: { brightness: 3, contrast: 0, saturation: 3, blur: 100 } }),
+        lineLeaf('line-1', { dash: 500, cap: 'square' }),
+      ])]),
+      documentVersion: 7,
+    }
+    expect(normalizeFreeformDocumentV7(inclusive)).not.toBeNull()
+
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['empty filter object', textLeaf('text-1', { filter: {} })],
+      ['filter extra key', textLeaf('text-1', { filter: { brightness: 1, hue: 90 } })],
+      ['filter brightness above range', textLeaf('text-1', { filter: { brightness: 3.01 } })],
+      ['filter blur above range', textLeaf('text-1', { filter: { blur: 101 } })],
+      ['filter negative contrast', textLeaf('text-1', { filter: { contrast: -0.1 } })],
+      ['unknown blend mode', textLeaf('text-1', { blendMode: 'dissolve' })],
+      ['dash below range', lineLeaf('line-1', { dash: 0 })],
+      ['dash above range', lineLeaf('line-1', { dash: 501 })],
+      ['unknown cap', lineLeaf('line-1', { cap: 'flat' })],
+      ['dash on text', textLeaf('text-1', { dash: 8 })],
+    ]
+    for (const [_label, node] of cases) {
+      const raw = {
+        ...v4Document([v3Slide('slide-1', [node])]),
+        documentVersion: 7,
+      }
+      expect(normalizeFreeformDocumentV7(raw)).toBeNull()
+      expect(normalizeFreeformDocument(raw)).toBeNull()
+    }
+  })
+
+  it('rejects v7 fields and shapes on v6 documents (they are v7 features)', () => {
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['filter', textLeaf('text-1', { filter: { blur: 4 } })],
+      ['blend mode', textLeaf('text-1', { blendMode: 'screen' })],
+      ['dash', lineLeaf('line-1', { dash: 12 })],
+      ['cap', lineLeaf('line-1', { cap: 'butt' })],
+      ['star shape', shapeLeaf('star-1', { shape: 'star' })],
+      ['hexagon shape', shapeLeaf('hex-1', { shape: 'hexagon' })],
+    ]
+    for (const [_label, node] of cases) {
+      const raw = {
+        ...v4Document([v3Slide('slide-1', [node])]),
+        documentVersion: 6,
+      }
+      expect(normalizeFreeformDocumentV6(raw)).toBeNull()
+      expect(normalizeFreeformDocument(raw)).toBeNull()
+    }
+  })
+
+  it('round-trips v7 documents through the normalizer unchanged', () => {
+    const raw = {
+      ...v4Document([v3Slide('slide-1', [
+        textLeaf('text-1', {
+          spans: [{ start: 0, end: 2, bold: true }],
+          lineHeight: 1.3,
+          opacity: 0.9,
+          shadow,
+          filter: { saturation: 1.2 },
+          blendMode: 'soft-light',
+        }),
+        shapeLeaf('shape-1', { shape: 'star', cornerRadius: 32 }),
+        lineLeaf('line-1', { dash: 16, cap: 'round' }),
+      ])]),
+      documentVersion: 7,
+    }
+    const normalized = normalizeFreeformDocumentV7(raw)
+    expect(normalized).not.toBeNull()
+    expect(normalizeFreeformDocumentV7(normalized)).toEqual(normalized)
   })
 })

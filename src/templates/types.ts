@@ -6,7 +6,15 @@ export type MarkdownTemplateSeriesId =
   | 'public-theatre'
   | 'issue-cover'
 
-export type FreeformTemplateSeriesId = 'editorial' | 'checklist' | 'signal' | 'night-flight'
+export type FreeformTemplateSeriesId =
+  | 'editorial'
+  | 'checklist'
+  | 'signal'
+  | 'night-flight'
+  | 'neon'
+  | 'brutalist'
+  | 'soft'
+  | 'blueprint'
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId
 export type TemplateWorkspace = 'markdown' | 'freeform'
 

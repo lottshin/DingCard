@@ -4,7 +4,7 @@
 // MCP surface has exactly the same validation and reducer semantics as the
 // in-app editor:
 //
-//   - normalizeFreeformDocument: strict v6 validation (+ v1–v5 migration)
+//   - normalizeFreeformDocument: strict v7 validation (+ v1–v6 migration)
 //   - reduceFreeformDocument:    the exact action reducer the UI dispatches to
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
@@ -21,7 +21,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v6 校验：需要 documentVersion=1–6 之一（旧版自动迁移为 v6）、非空 slides、'
+  '文档未通过自由画布 v7 校验：需要 documentVersion=1–7 之一（旧版自动迁移为 v7）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -44,7 +44,7 @@ export interface NodeSummary {
   text?: string
   fontSize?: number
   fontFamily?: string
-  shape?: 'rect' | 'ellipse' | 'triangle'
+  shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
   children?: NodeSummary[]
 }
 
@@ -156,7 +156,7 @@ export function applyActions(value: unknown, actions: unknown): ApplyActionsResu
   }
   const finalCheck = normalizeFreeformDocument(document)
   if (!finalCheck) {
-    return { ok: false, error: '应用动作后文档未通过 v6 校验（不应发生，请反馈）' }
+    return { ok: false, error: '应用动作后文档未通过 v7 校验（不应发生，请反馈）' }
   }
   return { ok: true, document: finalCheck, changes }
 }
