@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 7,
+    documentVersion: 8,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,8 +74,42 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(7)
+    expect(result.document.documentVersion).toBe(8)
     expect(result.document.slides[0].id).toBe('slide-1')
+  })
+
+  test('accepts v8 text outlines and multi-stop gradients, rejects them on v7 inputs', () => {
+    const stroked = seedDocument() as unknown as Record<string, unknown>
+    const slide = (stroked.slides as Array<Record<string, unknown>>)[0]
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    nodes[0].stroke = '#f97316'
+    nodes[0].strokeWidth = 3
+    nodes[0].textFill = {
+      type: 'linear-gradient',
+      stops: [
+        { offset: 0, color: '#111111' },
+        { offset: 1, color: '#ffffff' },
+      ],
+      angle: 90,
+    }
+    const accepted = validateDocument(stroked)
+    expect(accepted.ok).toBe(true)
+
+    const legacy = structuredClone(stroked)
+    legacy.documentVersion = 7
+    expect(validateDocument(legacy).ok).toBe(false)
+
+    const badStops = structuredClone(stroked)
+    const badNodes = ((badStops as Record<string, unknown>).slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>
+    badNodes[0].textFill = {
+      type: 'linear-gradient',
+      stops: [
+        { offset: 0.8, color: '#111111' },
+        { offset: 0.2, color: '#ffffff' },
+      ],
+      angle: 90,
+    }
+    expect(validateDocument(badStops).ok).toBe(false)
   })
 
   test('rejects documents with an extra key on a node', () => {

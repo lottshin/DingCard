@@ -66,10 +66,10 @@ describe('freeform document', () => {
     expect(doc.activeSlideId).toBe(doc.slides[0].id)
   })
 
-  it('creates v7 documents and strict leaves with independent image framing', () => {
+  it('creates v8 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(7)
+    expect(doc.documentVersion).toBe(8)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -879,6 +879,100 @@ describe('v7 appearance patches', () => {
       [['shape-1'], { filter: {} }],
       [['shape-1'], { blendMode: 'dissolve' }],
       [['shape-1'], { dash: 12 }],
+    ]
+    for (const [path, patch] of invalid) {
+      expect(stylePatch(document, path, patch)).toBe(document)
+    }
+  })
+})
+
+describe('v8 appearance patches', () => {
+  const slideIdOf = (document: FreeformDocument) => document.slides[0].id
+  const stylePatch = (
+    document: FreeformDocument,
+    path: string[],
+    patch: Record<string, unknown>,
+  ) => reduceFreeformDocument(document, {
+    type: 'node/update-style',
+    slideId: slideIdOf(document),
+    updates: [{ path, patch }],
+  })
+
+  it('applies text outline patches and clears them with null', () => {
+    const document = documentWith([{ ...createTextElement(createSlide()), id: 'text-1' }])
+
+    const styled = stylePatch(document, ['text-1'], { stroke: '#f97316', strokeWidth: 3 })
+    const node = styled.slides[0].nodes[0] as FreeformTextElement
+    expect(node.stroke).toBe('#f97316')
+    expect(node.strokeWidth).toBe(3)
+
+    const noop = stylePatch(styled, ['text-1'], { stroke: '#f97316', strokeWidth: 3 })
+    expect(noop).toBe(styled)
+
+    const cleared = stylePatch(styled, ['text-1'], { stroke: null, strokeWidth: null })
+    const clearedNode = cleared.slides[0].nodes[0] as FreeformTextElement
+    expect('stroke' in clearedNode).toBe(false)
+    expect('strokeWidth' in clearedNode).toBe(false)
+    expect(stylePatch(cleared, ['text-1'], { stroke: null, strokeWidth: null })).toBe(cleared)
+  })
+
+  it('applies multi-stop gradient paints to text and shape fills', () => {
+    const stops = [
+      { offset: 0, color: '#111111' },
+      { offset: 0.5, color: '#f97316' },
+      { offset: 1, color: '#ffffff' },
+    ]
+    const document = documentWith([
+      { ...createTextElement(createSlide()), id: 'text-1' },
+      { ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' },
+    ])
+
+    const styled = stylePatch(document, ['text-1'], {
+      textFill: { type: 'linear-gradient', stops, angle: 90 },
+    })
+    const node = styled.slides[0].nodes[0] as FreeformTextElement
+    expect(node.textFill).toEqual({ type: 'linear-gradient', stops, angle: 90 })
+
+    const noop = stylePatch(styled, ['text-1'], {
+      textFill: { type: 'linear-gradient', stops, angle: 90 },
+    })
+    expect(noop).toBe(styled)
+
+    const shapeStyled = stylePatch(document, ['shape-1'], {
+      fill: { type: 'linear-gradient', stops, angle: 45 },
+    })
+    expect((shapeStyled.slides[0].nodes[1] as FreeformShapeElement).fill).toEqual({
+      type: 'linear-gradient',
+      stops,
+      angle: 45,
+    })
+  })
+
+  it('rejects invalid v8 patch values', () => {
+    const document = documentWith([
+      { ...createTextElement(createSlide()), id: 'text-1' },
+      { ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' },
+    ])
+    const invalid: Array<[string[], Record<string, unknown>]> = [
+      [['text-1'], { stroke: 'orange' }],
+      [['text-1'], { strokeWidth: 0 }],
+      [['text-1'], { strokeWidth: 101 }],
+      [['text-1'], { textFill: { type: 'linear-gradient', stops: [{ offset: 0, color: '#111111' }], angle: 45 } }],
+      [['text-1'], {
+        textFill: {
+          type: 'linear-gradient',
+          stops: [{ offset: 0.7, color: '#111111' }, { offset: 0.3, color: '#222222' }],
+          angle: 45,
+        },
+      }],
+      [['shape-1'], {
+        fill: {
+          type: 'linear-gradient',
+          stops: [{ offset: 0, color: '#111111' }, { offset: 0, color: '#222222' }],
+          angle: 45,
+        },
+      }],
+      [['shape-1'], { stroke: null }],
     ]
     for (const [path, patch] of invalid) {
       expect(stylePatch(document, path, patch)).toBe(document)

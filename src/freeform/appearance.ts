@@ -4,13 +4,15 @@
 // v6 adds optional appearance fields to scene leaves: `opacity` and `shadow`
 // on every leaf, `lineHeight` / `letterSpacing` / `italic` on text, and
 // `cornerRadius` on shapes. v7 adds a `filter` stack and `blendMode` on every
-// leaf, `dash` / `cap` on lines, and the star/hexagon shapes. All fields are
-// strictly bounded; absent means the respective default (opaque, no shadow,
-// browser line-height, no tracking, upright text, the stylesheet's 16px rect
-// radius, unfiltered, normal blending, solid round-cap strokes).
+// leaf, `dash` / `cap` on lines, and the star/hexagon shapes. v8 adds
+// multi-stop gradient paints (`stops`) and the text outline (`stroke` /
+// `strokeWidth` on text). All fields are strictly bounded; absent means the
+// respective default (opaque, no shadow, browser line-height, no tracking,
+// upright text, the stylesheet's 16px rect radius, unfiltered, normal
+// blending, solid round-cap strokes, no text outline).
 
 import { isHexColor } from './paint'
-import type { BlendMode, SceneFilter, ShadowPaint } from './types'
+import type { BlendMode, GradientStop, SceneFilter, ShadowPaint } from './types'
 
 const SHADOW_KEYS = new Set(['color', 'blur', 'offsetX', 'offsetY'])
 const FILTER_KEYS = new Set(['brightness', 'contrast', 'saturation', 'blur'])
@@ -145,4 +147,52 @@ export function isValidShape(value: unknown): value is 'rect' | 'ellipse' | 'tri
 /** Shapes introduced in v7; older input versions must reject them. */
 export function isV7Shape(value: unknown): boolean {
   return value === 'star' || value === 'hexagon'
+}
+
+const GRADIENT_STOP_KEYS = new Set(['offset', 'color'])
+export const GRADIENT_STOPS_MIN = 2
+export const GRADIENT_STOPS_MAX = 8
+
+/**
+ * Clone a multi-stop gradient stop list: 2–8 stops, each exactly
+ * `{offset, color}` with a hex color and an ascending offset in [0, 1].
+ */
+export function cloneGradientStops(value: unknown): GradientStop[] | null {
+  if (!Array.isArray(value) || value.length < GRADIENT_STOPS_MIN || value.length > GRADIENT_STOPS_MAX) {
+    return null
+  }
+  const stops: GradientStop[] = []
+  let previous = -1
+  for (const entry of value) {
+    if (!isRecord(entry)) return null
+    const keys = Object.keys(entry)
+    if (keys.length !== GRADIENT_STOP_KEYS.size || !keys.every((key) => GRADIENT_STOP_KEYS.has(key))) {
+      return null
+    }
+    if (!isHexColor(entry.color)) return null
+    const offset = entry.offset
+    if (
+      typeof offset !== 'number' || !Number.isFinite(offset)
+      || offset < 0 || offset > 1 || offset <= previous
+    ) {
+      return null
+    }
+    previous = offset
+    stops.push({ offset, color: entry.color })
+  }
+  return stops
+}
+
+export function gradientStopsEquals(
+  a: GradientStop[] | undefined,
+  b: GradientStop[] | undefined,
+): boolean {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  return a.every((stop, index) => stop.offset === b[index].offset && stop.color === b[index].color)
+}
+
+/** Text outline width in px; 0 would be invisible, so it stays strictly positive. */
+export function isValidTextStrokeWidth(value: unknown): value is number {
+  return isFiniteIn(value, 0.5, 100)
 }

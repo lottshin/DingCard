@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { ColorPaint, ShapeFill, SlideBackground } from './types'
+import type { ColorPaint, GradientStop, ShapeFill, SlideBackground } from './types'
 
 export const DEFAULT_TEXT_PAINT: ColorPaint = { type: 'solid', color: '#18181b' }
 export const DEFAULT_PAGE_PAINT: ColorPaint = { type: 'solid', color: '#ffffff' }
@@ -44,10 +44,23 @@ export function normalizeColorPaint(value: unknown, fallback: ColorPaint): Color
   return fallback
 }
 
+/** The v8 multi-stop gradient variant of `linear-gradient`. */
+export function isStopsGradient(
+  paint: ColorPaint,
+): paint is { type: 'linear-gradient'; stops: GradientStop[]; angle: number } {
+  return paint.type === 'linear-gradient' && 'stops' in paint
+}
+
 export function paintToCssBackground(paint: ColorPaint): string {
-  return paint.type === 'solid'
-    ? paint.color
-    : `linear-gradient(${normalizeAngle(paint.angle)}deg, ${paint.from}, ${paint.to})`
+  if (paint.type === 'solid') return paint.color
+  const angle = normalizeAngle(paint.angle)
+  if (isStopsGradient(paint)) {
+    const stops = paint.stops
+      .map((stop) => `${stop.color} ${Math.round(stop.offset * 1000) / 10}%`)
+      .join(', ')
+    return `linear-gradient(${angle}deg, ${stops})`
+  }
+  return `linear-gradient(${angle}deg, ${paint.from}, ${paint.to})`
 }
 
 export function slideBackgroundToCss(background: SlideBackground): string {
@@ -61,7 +74,8 @@ export function shapeFillToStyle(fill: ShapeFill): CSSProperties {
 }
 
 export function paintFallbackColor(fill: ColorPaint): string {
-  return fill.type === 'solid' ? fill.color : fill.from
+  if (fill.type === 'solid') return fill.color
+  return isStopsGradient(fill) ? fill.stops[0].color : fill.from
 }
 
 export function textFillToStyle(fill: ColorPaint): CSSProperties {
@@ -89,5 +103,6 @@ export function toGradientPaint(fill: ColorPaint): ColorPaint {
 }
 
 export function toSolidPaint(fill: ColorPaint): ColorPaint {
-  return fill.type === 'solid' ? fill : { type: 'solid', color: fill.from }
+  if (fill.type === 'solid') return fill
+  return { type: 'solid', color: paintFallbackColor(fill) }
 }

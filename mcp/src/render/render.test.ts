@@ -116,6 +116,61 @@ describe('renderDocument', () => {
     })
     expect(empty.ok).toBe(false)
   }, 30_000)
+
+  test(
+    'renders v8 text outlines and multi-stop gradients as visible pixel changes',
+    async () => {
+      const instantiation = instantiateTemplate('editorial-freeform')
+      if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
+      const base = instantiation.document
+      const slide = base.slides[0]
+      const textLeaf = base.slides[0].nodes.find(
+        (node): node is FreeformTextElement => node.type === 'text' && node.text.length >= 4,
+      )
+      if (!textLeaf) throw new Error('expected a text node with at least four characters')
+      const styled = reduceFreeformDocument(base, {
+        type: 'node/update-style',
+        slideId: slide.id,
+        updates: [
+          {
+            path: [textLeaf.id],
+            patch: {
+              stroke: '#f97316',
+              strokeWidth: 6,
+              textFill: {
+                type: 'linear-gradient',
+                stops: [
+                  { offset: 0, color: '#111111' },
+                  { offset: 0.5, color: '#f97316' },
+                  { offset: 1, color: '#d92d20' },
+                ],
+                angle: 90,
+              },
+            },
+          },
+        ],
+      })
+      expect(styled).not.toBe(base)
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-render-'))
+      const plain = await renderDocument(base, {
+        outputDir,
+        baseName: 'plain',
+        slideIds: [slide.id],
+      })
+      const v8 = await renderDocument(styled, {
+        outputDir,
+        baseName: 'v8',
+        slideIds: [slide.id],
+      })
+      expect(plain.ok).toBe(true)
+      expect(v8.ok).toBe(true)
+      if (!plain.ok || !v8.ok) throw new Error('expected both renders to succeed')
+      expect(v8.files).toHaveLength(1)
+      expect(readFileSync(v8.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
+    },
+    420_000,
+  )
 })
 
 describe('renderMarkdownDocument', () => {

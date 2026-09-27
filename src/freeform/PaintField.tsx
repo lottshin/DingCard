@@ -2,17 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import {
   DEFAULT_PAGE_PAINT,
   isHexColor,
+  isStopsGradient,
   paintFallbackColor,
   paintToCssBackground,
   toGradientPaint,
   toSolidPaint,
 } from './paint'
-import type { ColorPaint, ShapeFill, SlideBackground } from './types'
+import { GRADIENT_STOPS_MAX, GRADIENT_STOPS_MIN } from './appearance'
+import type { ColorPaint, GradientStop, ShapeFill, SlideBackground } from './types'
 
 export type PaintMode = 'solid' | 'linear-gradient' | 'transparent' | 'image'
 
 type PaintValue = SlideBackground | ShapeFill | ColorPaint
-type LinearGradientPaint = Extract<ColorPaint, { type: 'linear-gradient' }>
+type LegacyGradientPaint = { type: 'linear-gradient'; from: string; to: string; angle: number }
+type StopsGradientPaint = { type: 'linear-gradient'; stops: GradientStop[]; angle: number }
+type LinearGradientPaint = LegacyGradientPaint | StopsGradientPaint
 type Rgb = { r: number; g: number; b: number }
 
 const PRESET_COLORS = [
@@ -82,6 +86,16 @@ function rgbToHex({ r, g, b }: Rgb): string {
   return `#${[r, g, b]
     .map((channel) => clampChannel(channel).toString(16).padStart(2, '0'))
     .join('')}`
+}
+
+function mixHex(a: string, b: string): string {
+  const left = hexToRgb(a)
+  const right = hexToRgb(b)
+  return rgbToHex({
+    r: Math.round((left.r + right.r) / 2),
+    g: Math.round((left.g + right.g) / 2),
+    b: Math.round((left.b + right.b) / 2),
+  })
 }
 
 function channelGradient(channel: keyof Rgb, rgb: Rgb): string {
@@ -230,8 +244,82 @@ export function PaintField({
     if (isHexColor(color)) onChange({ type: 'solid', color })
   }
 
-  function updateGradient(patch: Partial<Omit<LinearGradientPaint, 'type'>>) {
+  function updateGradient(patch: Partial<Omit<LegacyGradientPaint, 'type'>>) {
+    if (isStopsGradient(gradient)) return
     onChange({ ...gradient, ...patch, type: 'linear-gradient' })
+  }
+
+  function updateAngle(angle: number) {
+    onChange(isStopsGradient(gradient)
+      ? { type: 'linear-gradient', stops: gradient.stops, angle }
+      : { ...gradient, angle, type: 'linear-gradient' })
+  }
+
+  /** Enter the v8 stops form: keep the two colors and add a midpoint stop. */
+  function addStop() {
+    if (isStopsGradient(gradient)) {
+      if (gradient.stops.length >= GRADIENT_STOPS_MAX) return
+      const stops = gradient.stops
+      let gapIndex = 0
+      let gapWidth = -1
+      for (let index = 0; index < stops.length - 1; index += 1) {
+        const width = stops[index + 1].offset - stops[index].offset
+        if (width > gapWidth) {
+          gapWidth = width
+          gapIndex = index
+        }
+      }
+      const before = stops[gapIndex]
+      const after = stops[gapIndex + 1]
+      const next = [...stops]
+      next.splice(gapIndex + 1, 0, {
+        offset: (before.offset + after.offset) / 2,
+        color: mixHex(before.color, after.color),
+      })
+      onChange({ type: 'linear-gradient', stops: next, angle: gradient.angle })
+      return
+    }
+    onChange({
+      type: 'linear-gradient',
+      angle: gradient.angle,
+      stops: [
+        { offset: 0, color: gradient.from },
+        { offset: 0.5, color: mixHex(gradient.from, gradient.to) },
+        { offset: 1, color: gradient.to },
+      ],
+    })
+  }
+
+  function updateStopColor(index: number, color: string) {
+    if (!isStopsGradient(gradient)) return
+    onChange({
+      type: 'linear-gradient',
+      angle: gradient.angle,
+      stops: gradient.stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, color } : { ...stop }),
+    })
+  }
+
+  /** Offsets are edited in whole percent, clamped strictly between neighbors. */
+  function updateStopOffset(index: number, percent: number) {
+    if (!isStopsGradient(gradient) || !Number.isFinite(percent)) return
+    const stops = gradient.stops
+    const minPercent = index === 0 ? 0 : Math.floor(stops[index - 1].offset * 100) + 1
+    const maxPercent = index === stops.length - 1 ? 100 : Math.ceil(stops[index + 1].offset * 100) - 1
+    const clamped = Math.max(minPercent, Math.min(maxPercent, Math.round(percent)))
+    onChange({
+      type: 'linear-gradient',
+      angle: gradient.angle,
+      stops: stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, offset: clamped / 100 } : { ...stop }),
+    })
+  }
+
+  function removeStop(index: number) {
+    if (!isStopsGradient(gradient) || gradient.stops.length <= GRADIENT_STOPS_MIN) return
+    onChange({
+      type: 'linear-gradient',
+      angle: gradient.angle,
+      stops: gradient.stops.filter((_, stopIndex) => stopIndex !== index),
+    })
   }
 
   return (
@@ -266,32 +354,79 @@ export function PaintField({
 
       {activeMode === 'linear-gradient' && (
         <div className="paint-gradient">
-          <div className="paint-row">
-            <ColorPickerButton
-              label={`${label} 渐变起始色`}
-              color={gradient.from}
-              onChange={(color) => updateGradient({ from: color })}
-            />
-            <input
-              className="paint-hex"
-              value={gradient.from}
-              onChange={(event) => isHexColor(event.currentTarget.value) && updateGradient({ from: event.currentTarget.value })}
-              aria-label={`${label} 渐变起始 hex`}
-            />
-          </div>
-          <div className="paint-row">
-            <ColorPickerButton
-              label={`${label} 渐变结束色`}
-              color={gradient.to}
-              onChange={(color) => updateGradient({ to: color })}
-            />
-            <input
-              className="paint-hex"
-              value={gradient.to}
-              onChange={(event) => isHexColor(event.currentTarget.value) && updateGradient({ to: event.currentTarget.value })}
-              aria-label={`${label} 渐变结束 hex`}
-            />
-          </div>
+          {isStopsGradient(gradient) ? (
+            <div className="paint-stops" data-testid="paint-stops-list">
+              {gradient.stops.map((stop, index) => (
+                <div className="paint-row" key={index}>
+                  <ColorPickerButton
+                    label={`${label} 色标 ${index + 1} 颜色`}
+                    color={stop.color}
+                    onChange={(color) => updateStopColor(index, color)}
+                  />
+                  <input
+                    className="paint-hex"
+                    value={stop.color}
+                    onChange={(event) =>
+                      isHexColor(event.currentTarget.value) && updateStopColor(index, event.currentTarget.value)}
+                    aria-label={`${label} 色标 ${index + 1} hex`}
+                  />
+                  <input
+                    className="paint-angle"
+                    data-testid={`paint-stop-${index}-offset`}
+                    type="number"
+                    min={index === 0 ? 0 : Math.floor(gradient.stops[index - 1].offset * 100) + 1}
+                    max={
+                      index === gradient.stops.length - 1
+                        ? 100
+                        : Math.ceil(gradient.stops[index + 1].offset * 100) - 1
+                    }
+                    value={Math.round(stop.offset * 100)}
+                    onChange={(event) => updateStopOffset(index, Number(event.currentTarget.value))}
+                    aria-label={`${label} 色标 ${index + 1} 位置百分比`}
+                  />
+                  <button
+                    type="button"
+                    className="ghost"
+                    data-testid={`paint-stop-${index}-remove`}
+                    disabled={gradient.stops.length <= GRADIENT_STOPS_MIN}
+                    onClick={() => removeStop(index)}
+                    aria-label={`${label} 删除色标 ${index + 1}`}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="paint-row">
+                <ColorPickerButton
+                  label={`${label} 渐变起始色`}
+                  color={gradient.from}
+                  onChange={(color) => updateGradient({ from: color })}
+                />
+                <input
+                  className="paint-hex"
+                  value={gradient.from}
+                  onChange={(event) => isHexColor(event.currentTarget.value) && updateGradient({ from: event.currentTarget.value })}
+                  aria-label={`${label} 渐变起始 hex`}
+                />
+              </div>
+              <div className="paint-row">
+                <ColorPickerButton
+                  label={`${label} 渐变结束色`}
+                  color={gradient.to}
+                  onChange={(color) => updateGradient({ to: color })}
+                />
+                <input
+                  className="paint-hex"
+                  value={gradient.to}
+                  onChange={(event) => isHexColor(event.currentTarget.value) && updateGradient({ to: event.currentTarget.value })}
+                  aria-label={`${label} 渐变结束 hex`}
+                />
+              </div>
+            </>
+          )}
           <div className="paint-row">
             <input
               className="paint-range"
@@ -300,7 +435,7 @@ export function PaintField({
               min="0"
               max="359"
               value={gradient.angle}
-              onChange={(event) => updateGradient({ angle: Number(event.currentTarget.value) })}
+              onChange={(event) => updateAngle(Number(event.currentTarget.value))}
               aria-label={`${label} 渐变角度`}
             />
             <input
@@ -309,9 +444,21 @@ export function PaintField({
               min="0"
               max="359"
               value={gradient.angle}
-              onChange={(event) => updateGradient({ angle: Number(event.currentTarget.value) })}
+              onChange={(event) => updateAngle(Number(event.currentTarget.value))}
               aria-label={`${label} 渐变角度数值`}
             />
+          </div>
+          <div className="paint-row">
+            <button
+              type="button"
+              className="ghost"
+              data-testid="paint-stops-add"
+              disabled={isStopsGradient(gradient) && gradient.stops.length >= GRADIENT_STOPS_MAX}
+              onClick={addStop}
+              aria-label={`${label} 添加色标`}
+            >
+              添加色标
+            </button>
           </div>
           <div
             className="paint-preview"

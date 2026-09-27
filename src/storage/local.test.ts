@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SaveDraftInput } from '../drafts'
-import { normalizeFreeformDocumentV7 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV8 } from '../freeform/sceneDocument'
 import type {
   FreeformDocument,
   FreeformGroupNode,
@@ -75,7 +75,7 @@ function group(
 
 function freeformDocument(imageSrc: string, shapeSrc = imageSrc): FreeformDocument {
   return {
-    documentVersion: 7,
+    documentVersion: 8,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -326,7 +326,7 @@ describe('LocalStore freeform image persistence', () => {
 
     expect(saved.mode).toBe('freeform-slide')
     if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(normalizeFreeformDocumentV7(saved.document)).toEqual(saved.document)
+    expect(normalizeFreeformDocumentV8(saved.document)).toEqual(saved.document)
     const outer = saved.document.slides[0].nodes[0]
     expect(outer.type).toBe('group')
     if (outer.type !== 'group') throw new Error('Expected outer group')
@@ -378,10 +378,10 @@ describe('LocalStore freeform image persistence', () => {
     if (saved.mode !== 'freeform-slide' || listed[0]?.mode !== 'freeform-slide') {
       throw new Error('Expected freeform drafts')
     }
-    expect(saved.document.documentVersion).toBe(7)
+    expect(saved.document.documentVersion).toBe(8)
     expect(saved.document.slides[0].nodes).toHaveLength(1)
     expect(saved.document.slides[0]).not.toHaveProperty('elements')
     expect(listed[0].document).toEqual(saved.document)
-    expect(normalizeFreeformDocumentV7(listed[0].document)).toEqual(listed[0].document)
+    expect(normalizeFreeformDocumentV8(listed[0].document)).toEqual(listed[0].document)
   })
 })

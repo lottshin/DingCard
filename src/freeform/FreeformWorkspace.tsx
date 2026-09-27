@@ -104,6 +104,7 @@ import {
   DEFAULT_PAGE_PAINT,
   DEFAULT_SHAPE_PAINT,
   DEFAULT_TEXT_PAINT,
+  isHexColor,
   slideBackgroundToCss,
 } from './paint'
 import {
@@ -4449,6 +4450,49 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                           onClick={() => updateSelectedStyle({ italic: !selectedElement.italic })}
                         >
                           斜体
+                        </button>
+                      </div>
+                      <div className="field-label with-gap">描边</div>
+                      <div className="paint-row" data-testid="text-stroke-field">
+                        <ColorPickerButton
+                          label="描边颜色"
+                          color={selectedElement.stroke ?? '#18181b'}
+                          onChange={(color) => updateSelectedStyle({
+                            stroke: color,
+                            strokeWidth: selectedElement.strokeWidth ?? 2,
+                          })}
+                        />
+                        <input
+                          className="paint-hex"
+                          value={selectedElement.stroke ?? ''}
+                          placeholder="无"
+                          onChange={(event) => {
+                            if (!isHexColor(event.currentTarget.value)) return
+                            updateSelectedStyle({
+                              stroke: event.currentTarget.value,
+                              strokeWidth: selectedElement.strokeWidth ?? 2,
+                            })
+                          }}
+                          aria-label="描边 hex"
+                        />
+                        <InspectorNumberInput
+                          ariaLabel="描边宽度"
+                          min={0.5}
+                          max={100}
+                          resetKey={inspectorNumberResetKey}
+                          value={selectedElement.strokeWidth ?? 2}
+                          onCommit={(value) => updateSelectedStyle({
+                            strokeWidth: value,
+                            ...(selectedElement.stroke ? {} : { stroke: '#18181b' }),
+                          })}
+                        />
+                        <button
+                          type="button"
+                          className="ghost"
+                          data-testid="text-stroke-clear"
+                          onClick={() => updateSelectedStyle({ stroke: null, strokeWidth: null })}
+                        >
+                          清除
                         </button>
                       </div>
                     </InspectorSection>

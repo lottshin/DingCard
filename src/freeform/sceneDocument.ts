@@ -43,6 +43,7 @@ import type {
 } from './types'
 import { normalizeRichTextSpans } from './richText'
 import {
+  cloneGradientStops,
   cloneSceneFilter,
   cloneShadowPaint,
   isV7Shape,
@@ -54,6 +55,7 @@ import {
   isValidLineHeight,
   isValidOpacity,
   isValidShape,
+  isValidTextStrokeWidth,
 } from './appearance'
 
 type UnknownRecord = Record<string, unknown>
@@ -69,12 +71,13 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
 const SOLID_PAINT_KEYS = new Set(['type', 'color'])
 const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
+const GRADIENT_STOPS_PAINT_KEYS = new Set(['type', 'stops', 'angle'])
 const TRANSPARENT_PAINT_KEYS = new Set(['type'])
 const IMAGE_FILL_V3_KEYS = new Set(['type', 'src', 'fit'])
 const IMAGE_FILL_V4_KEYS = new Set(['type', 'src', 'fit', 'framing'])
@@ -120,7 +123,10 @@ function isFit(value: unknown): value is 'cover' | 'contain' {
   return value === 'cover' || value === 'contain'
 }
 
-function cloneStrictColorPaint(value: unknown): ColorPaint | null {
+function cloneStrictColorPaint(
+  value: unknown,
+  inputVersion: StrictDocumentVersion,
+): ColorPaint | null {
   if (!isRecord(value)) return null
   if (
     value.type === 'solid'
@@ -143,10 +149,28 @@ function cloneStrictColorPaint(value: unknown): ColorPaint | null {
       angle: value.angle,
     }
   }
+  // The multi-stop variant is v8-only; older input versions must reject it.
+  if (
+    inputVersion >= 8 &&
+    value.type === 'linear-gradient' &&
+    hasExactKeys(value, GRADIENT_STOPS_PAINT_KEYS)
+  ) {
+    const stops = cloneGradientStops(value.stops)
+    if (stops && isFiniteNumber(value.angle)) {
+      return {
+        type: 'linear-gradient',
+        stops,
+        angle: value.angle,
+      }
+    }
+  }
   return null
 }
 
-function cloneStrictSlideBackground(value: unknown): SlideBackground | null {
+function cloneStrictSlideBackground(
+  value: unknown,
+  inputVersion: StrictDocumentVersion,
+): SlideBackground | null {
   if (
     isRecord(value)
     && value.type === 'transparent'
@@ -154,7 +178,7 @@ function cloneStrictSlideBackground(value: unknown): SlideBackground | null {
   ) {
     return { type: 'transparent' }
   }
-  return cloneStrictColorPaint(value)
+  return cloneStrictColorPaint(value, inputVersion)
 }
 
 function cloneStrictShapeFill(
@@ -180,7 +204,7 @@ function cloneStrictShapeFill(
         : createDefaultImageFraming(),
     }
   }
-  return cloneStrictColorPaint(value)
+  return cloneStrictColorPaint(value, inputVersion)
 }
 
 function normalizeNodeState(
@@ -212,6 +236,13 @@ const TEXT_OPTIONAL_V7_KEYS = new Set([
 ])
 const SHAPE_OPTIONAL_V7_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_OPTIONAL_V7_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap'])
+const BASE_OPTIONAL_V8_KEYS = BASE_OPTIONAL_V7_KEYS
+const TEXT_OPTIONAL_V8_KEYS = new Set([
+  'spans', 'lineHeight', 'letterSpacing', 'italic', 'opacity', 'shadow', 'filter', 'blendMode',
+  'stroke', 'strokeWidth',
+])
+const SHAPE_OPTIONAL_V8_KEYS = SHAPE_OPTIONAL_V7_KEYS
+const LINE_OPTIONAL_V8_KEYS = LINE_OPTIONAL_V7_KEYS
 
 /** Exact required keys plus an optional-key whitelist (null = exact only). */
 function hasKeysWithOptionals(
@@ -239,10 +270,17 @@ function optionalKeysFor(
     if (type === 'image' || type === 'line') return BASE_OPTIONAL_V6_KEYS
     return null
   }
-  if (type === 'text') return TEXT_OPTIONAL_V7_KEYS
-  if (type === 'shape') return SHAPE_OPTIONAL_V7_KEYS
-  if (type === 'line') return LINE_OPTIONAL_V7_KEYS
-  if (type === 'image') return BASE_OPTIONAL_V7_KEYS
+  if (inputVersion === 7) {
+    if (type === 'text') return TEXT_OPTIONAL_V7_KEYS
+    if (type === 'shape') return SHAPE_OPTIONAL_V7_KEYS
+    if (type === 'line') return LINE_OPTIONAL_V7_KEYS
+    if (type === 'image') return BASE_OPTIONAL_V7_KEYS
+    return null
+  }
+  if (type === 'text') return TEXT_OPTIONAL_V8_KEYS
+  if (type === 'shape') return SHAPE_OPTIONAL_V8_KEYS
+  if (type === 'line') return LINE_OPTIONAL_V8_KEYS
+  if (type === 'image') return BASE_OPTIONAL_V8_KEYS
   return null
 }
 
@@ -383,7 +421,7 @@ function normalizeStrictSceneNode(
   }
 
   if (value.type === 'text') {
-    const textFill = cloneStrictColorPaint(value.textFill)
+    const textFill = cloneStrictColorPaint(value.textFill, inputVersion)
     if (
       typeof value.text !== 'string' ||
       !isFiniteNumber(value.fontSize) ||
@@ -407,6 +445,10 @@ function normalizeStrictSceneNode(
       if ('letterSpacing' in value && !isValidLetterSpacing(value.letterSpacing)) return null
       if ('italic' in value && value.italic !== true) return null
     }
+    if (inputVersion >= 8) {
+      if ('stroke' in value && !isHexColor(value.stroke)) return null
+      if ('strokeWidth' in value && !isValidTextStrokeWidth(value.strokeWidth)) return null
+    }
     const appearance = cloneStrictAppearance(value, inputVersion)
     if (!appearance) return null
     return {
@@ -422,6 +464,8 @@ function normalizeStrictSceneNode(
       ...('lineHeight' in value ? { lineHeight: value.lineHeight as number } : {}),
       ...('letterSpacing' in value ? { letterSpacing: value.letterSpacing as number } : {}),
       ...('italic' in value ? { italic: true as const } : {}),
+      ...('stroke' in value ? { stroke: value.stroke as string } : {}),
+      ...('strokeWidth' in value ? { strokeWidth: value.strokeWidth as number } : {}),
       ...appearance,
     }
   }
@@ -524,7 +568,7 @@ function normalizeStrictSlide(
     return null
   }
 
-  const background = cloneStrictSlideBackground(value.background)
+  const background = cloneStrictSlideBackground(value.background, inputVersion)
   if (!background) return null
 
   const state: SceneValidationState = { ids: new Set(), count: 0 }
@@ -572,14 +616,14 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 7,
+    documentVersion: 8,
     slides,
     activeSlideId: value.activeSlideId,
   }
 }
 
 /** Strictly validates a historical v3 document and migrates it to current data. */
-export function migrateFreeformDocumentV3ToV7(value: unknown): FreeformDocument | null {
+export function migrateFreeformDocumentV3ToV8(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 3)
 }
 
@@ -598,9 +642,14 @@ export function normalizeFreeformDocumentV6(value: unknown): FreeformDocument | 
   return normalizeStrictDocument(value, 6)
 }
 
-/** Strictly validates and clones an already-v7 document. */
+/** Strictly validates an already-v7 document (v7 leaves can never carry v8 fields). */
 export function normalizeFreeformDocumentV7(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 7)
+}
+
+/** Strictly validates and clones an already-v8 document. */
+export function normalizeFreeformDocumentV8(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 8)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -813,9 +862,9 @@ function migrateLegacySlide(value: unknown, sourceIndex: number): MigratedSlideC
 
 /**
  * Tolerantly migrates a v1/v2 flat document, then passes the complete result
- * through the strict v5 validator before returning it.
+ * through the strict v8 validator before returning it.
  */
-export function migrateLegacyFreeformDocumentToV7(value: unknown): FreeformDocument | null {
+export function migrateLegacyFreeformDocumentToV8(value: unknown): FreeformDocument | null {
   if (
     !isRecord(value) ||
     (value.documentVersion !== 1 && value.documentVersion !== 2) ||
@@ -859,23 +908,24 @@ export function migrateLegacyFreeformDocumentToV7(value: unknown): FreeformDocum
   }))
   const activeIndex = candidates.findIndex(({ sourceId }) => sourceId === value.activeSlideId)
   const candidate: FreeformDocument = {
-    documentVersion: 7,
+    documentVersion: 8,
     slides,
     activeSlideId: slides[activeIndex >= 0 ? activeIndex : 0].id,
   }
-  return normalizeFreeformDocumentV7(candidate)
+  return normalizeFreeformDocumentV8(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v7 object. */
+/** Normalize any supported freeform document version to a fresh v8 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 8) return normalizeFreeformDocumentV8(value)
   if (value.documentVersion === 7) return normalizeFreeformDocumentV7(value)
   if (value.documentVersion === 6) return normalizeFreeformDocumentV6(value)
   if (value.documentVersion === 5) return normalizeFreeformDocumentV5(value)
   if (value.documentVersion === 4) return normalizeFreeformDocumentV4(value)
-  if (value.documentVersion === 3) return migrateFreeformDocumentV3ToV7(value)
+  if (value.documentVersion === 3) return migrateFreeformDocumentV3ToV8(value)
   if (value.documentVersion === 1 || value.documentVersion === 2) {
-    return migrateLegacyFreeformDocumentToV7(value)
+    return migrateLegacyFreeformDocumentToV8(value)
   }
   return null
 }
@@ -883,6 +933,13 @@ export function normalizeFreeformDocument(value: unknown): FreeformDocument | nu
 function copySlideBackgroundValue(background: SlideBackground): SlideBackground {
   if (background.type === 'transparent') return { type: 'transparent' }
   if (background.type === 'solid') return { type: 'solid', color: background.color }
+  if ('stops' in background) {
+    return {
+      type: 'linear-gradient',
+      stops: background.stops.map((stop) => ({ ...stop })),
+      angle: background.angle,
+    }
+  }
   return {
     type: 'linear-gradient',
     from: background.from,
@@ -897,7 +954,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 7,
+    documentVersion: 8,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -928,7 +985,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 7,
+    documentVersion: 8,
     activeSlideId: document.activeSlideId,
     slides,
   }

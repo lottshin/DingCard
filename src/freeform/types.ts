@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 7
+  documentVersion: 8
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -19,9 +19,16 @@ export interface FreeformSlide {
   nodes: FreeformSceneNode[]
 }
 
+/** One color stop on a multi-stop gradient; offsets ascend in [0, 1]. */
+export interface GradientStop {
+  offset: number
+  color: string
+}
+
 export type ColorPaint =
   | { type: 'solid'; color: string }
   | { type: 'linear-gradient'; from: string; to: string; angle: number }
+  | { type: 'linear-gradient'; stops: GradientStop[]; angle: number }
 
 export type SlideBackground =
   | ColorPaint
@@ -118,6 +125,10 @@ export interface FreeformTextElement extends FreeformElementBase {
   letterSpacing?: number
   /** Italic text; absent means upright. */
   italic?: true
+  /** Text outline color (v8); absent means no outline. */
+  stroke?: string
+  /** Text outline width in px (v8). */
+  strokeWidth?: number
 }
 
 export interface FreeformImageElement extends FreeformElementBase {
@@ -211,8 +222,10 @@ export interface FreeformNodeStylePatch {
   framing?: ImageFraming
   shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
   fill?: ShapeFill
-  stroke?: string
-  strokeWidth?: number
+  /** Shape/line stroke color, or the text outline color; text `null` clears it. */
+  stroke?: string | null
+  /** Shape/line stroke width, or the text outline width; text `null` clears it. */
+  strokeWidth?: number | null
   lineKind?: 'line' | 'arrow'
   /** Unified dash length in px; `null` restores a solid stroke. */
   dash?: number | null

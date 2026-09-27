@@ -1,4 +1,4 @@
-import { normalizeFreeformDocumentV7 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV8 } from '../freeform/sceneDocument'
 import type {
   BlendMode,
   ColorPaint,
@@ -20,6 +20,12 @@ import type {
 } from './types'
 
 const solid = (color: string): ColorPaint => ({ type: 'solid', color })
+
+const stopsPaint = (stops: Array<[number, string]>, angle: number): ColorPaint => ({
+  type: 'linear-gradient',
+  stops: stops.map(([offset, color]) => ({ offset, color })),
+  angle,
+})
 const TEMPLATE_EDGE_BLEED = 16
 
 function copyProfile(profile: Profile): Profile {
@@ -39,6 +45,7 @@ function textNode(
   options: Partial<Pick<FreeformTextElement,
     'fontSize' | 'fontFamily' | 'textFill' | 'align' | 'fontWeight' | 'rotation' | 'name'
     | 'lineHeight' | 'letterSpacing' | 'italic' | 'opacity' | 'shadow' | 'filter' | 'blendMode'
+    | 'stroke' | 'strokeWidth'
   >> = {},
 ): FreeformTextElement {
   return {
@@ -66,6 +73,8 @@ function textNode(
     ...(options.shadow ? { shadow: { ...options.shadow } } : {}),
     ...(options.filter ? { filter: { ...options.filter } } : {}),
     ...(options.blendMode ? { blendMode: options.blendMode } : {}),
+    ...(options.stroke !== undefined ? { stroke: options.stroke } : {}),
+    ...(options.strokeWidth !== undefined ? { strokeWidth: options.strokeWidth } : {}),
   }
 }
 
@@ -167,11 +176,11 @@ function slide(name: string, background: ColorPaint, nodes: FreeformSceneNode[])
 
 function documentFromSlides(slides: FreeformSlide[]): FreeformDocument {
   const document: FreeformDocument = {
-    documentVersion: 7,
+    documentVersion: 8,
     activeSlideId: slides[0].id,
     slides,
   }
-  const normalized = normalizeFreeformDocumentV7(document)
+  const normalized = normalizeFreeformDocumentV8(document)
   if (!normalized) throw new Error('内置模板生成了无效的自由画布文档')
   return normalized
 }
@@ -550,7 +559,8 @@ function createNeonDocument(): FreeformDocument {
       textNode('NEON NOTES', 72, 62, 520, 46, { name: '刊头', fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid(cyan), fontWeight: 'bold', letterSpacing: 6 }),
       textNode('城市观察 / 01', 700, 62, 308, 46, { name: '期号', fontSize: 20, fontFamily: 'system-ui, sans-serif', textFill: solid(fuchsia), align: 'right', letterSpacing: 2 }),
       textNode('夜里的城市\n亮着另一种白天', 64, 250, 780, 280, {
-        name: '主标题', fontSize: 86, fontFamily: 'Songti SC, serif', textFill: solid('#f5f7ff'),
+        name: '主标题', fontSize: 86, fontFamily: 'Songti SC, serif',
+        textFill: stopsPaint([[0, cyan], [0.55, fuchsia], [1, '#f5f7ff']], 100),
         fontWeight: 'bold', lineHeight: 1.25, letterSpacing: 2,
         shadow: { color: cyan, blur: 36, offsetX: 0, offsetY: 0 },
       }),
@@ -640,6 +650,7 @@ function createBrutalistDocument(): FreeformDocument {
       textNode('NO.01 / 2026', 700, 60, 308, 50, { name: '期号', fontSize: 22, fontFamily: 'system-ui, sans-serif', align: 'right', fontWeight: 'bold' }),
       textNode('排版没有\n温柔可言', 136, 258, 760, 240, {
         name: '主标题', fontSize: 96, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.05, letterSpacing: 4,
+        stroke: yellow, strokeWidth: 4,
       }),
       textNode('信息要么站出来，要么让开。', 96, 570, 660, 60, { name: '导语', fontSize: 34, textFill: solid(ink), fontWeight: 'bold' }),
       textNode('黑、黄、粗线、硬阴影。\n每一笔都摆在明面上。', 96, 720, 700, 140, {
@@ -693,7 +704,7 @@ function createSoftDocument(): FreeformDocument {
   const rose = '#f2c9c4'
   const sky = '#c9ddf2'
   return documentFromSlides([
-    slide('封面', solid('#fbf8f4'), [
+    slide('封面', stopsPaint([[0, '#fdf6f2'], [0.55, '#f7ece7'], [1, '#e9f0f8']], 160), [
       shapeNode('ellipse', 700, 180, 320, 320, solid(rose), { name: '柔光圆一', opacity: 0.45, filter: { blur: 2 } }),
       shapeNode('ellipse', 100, 420, 260, 260, solid(sky), { name: '柔光圆二', opacity: 0.4, filter: { blur: 2 } }),
       shapeNode('rect', 92, 800, 420, 300, solid('#fdf1ec'), { name: '便签底板', cornerRadius: 48, opacity: 0.9 }),

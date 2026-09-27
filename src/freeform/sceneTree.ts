@@ -7,6 +7,7 @@ import {
 import { isHexColor } from './paint'
 import { normalizeRichTextSpans } from './richText'
 import {
+  cloneGradientStops,
   cloneSceneFilter,
   cloneShadowPaint,
   isValidBlendMode,
@@ -17,6 +18,7 @@ import {
   isValidLetterSpacing,
   isValidOpacity,
   isValidShape,
+  isValidTextStrokeWidth,
 } from './appearance'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -38,6 +40,7 @@ import type {
   FreeformGroupNode,
   FreeformSceneLeaf,
   FreeformSceneNode,
+  FreeformTextElement,
   SceneIdFactory,
   ScenePath,
   ShapeFill,
@@ -487,14 +490,35 @@ export function reorderNodesAboveAtPath(
   })
 }
 
-function clonePaint<T extends object>(paint: T): T {
+function clonePaint(paint: ColorPaint): ColorPaint {
+  if ('stops' in paint) {
+    return {
+      type: 'linear-gradient',
+      stops: paint.stops.map((stop) => ({ ...stop })),
+      angle: paint.angle,
+    }
+  }
   return { ...paint }
 }
 
+/** Own the nested optional appearance fields so clones share no references. */
+function ownLeafAppearance<T extends FreeformSceneLeaf>(leaf: T): T {
+  return {
+    ...leaf,
+    ...(leaf.shadow ? { shadow: { ...leaf.shadow } } : {}),
+    ...(leaf.filter ? { filter: { ...leaf.filter } } : {}),
+  }
+}
+
+function ownTextLeaf(leaf: FreeformTextElement): FreeformTextElement {
+  return {
+    ...ownLeafAppearance(leaf),
+    ...(leaf.spans ? { spans: leaf.spans.map((span) => ({ ...span })) } : {}),
+  }
+}
+
 function copyColorPaint(paint: ColorPaint): ColorPaint {
-  return paint.type === 'solid'
-    ? { type: 'solid', color: paint.color }
-    : { type: 'linear-gradient', from: paint.from, to: paint.to, angle: paint.angle }
+  return clonePaint(paint)
 }
 
 function copyShapeFill(fill: ShapeFill): ShapeFill {
@@ -523,17 +547,22 @@ function cloneSceneNode(
     }
   }
   if (node.type === 'text') {
-    return { ...node, id, textFill: clonePaint(node.textFill) }
+    return ownTextLeaf({ ...node, id, textFill: clonePaint(node.textFill) })
   }
   if (node.type === 'shape') {
-    return { ...node, id, fill: copyShapeFill(node.fill) }
+    return ownLeafAppearance({ ...node, id, fill: copyShapeFill(node.fill) })
   }
   if (node.type === 'image') {
-    return { ...node, id, framing: cloneImageFraming(node.framing) }
+    return ownLeafAppearance({ ...node, id, framing: cloneImageFraming(node.framing) })
   }
-  return { ...node, id }
+  return ownLeafAppearance({ ...node, id })
 }
 
+/**
+ * Value-copy a node so the result shares no nested references with the
+ * source. Unlike `cloneSceneNode` this keeps node ids; every optional
+ * appearance field (v5 spans through v8 text outlines) is preserved.
+ */
 function copySceneNodeValue(node: FreeformSceneNode, depth: number): FreeformSceneNode {
   requireTraversalDepth(depth)
   if (node.type === 'group') {
@@ -551,80 +580,15 @@ function copySceneNodeValue(node: FreeformSceneNode, depth: number): FreeformSce
     }
   }
   if (node.type === 'text') {
-    return {
-      id: node.id,
-      name: node.name,
-      locked: node.locked,
-      hidden: node.hidden,
-      type: 'text',
-      x: node.x,
-      y: node.y,
-      width: node.width,
-      height: node.height,
-      rotation: node.rotation,
-      scale: node.scale,
-      text: node.text,
-      fontSize: node.fontSize,
-      fontFamily: node.fontFamily,
-      textFill: copyColorPaint(node.textFill),
-      align: node.align,
-      fontWeight: node.fontWeight,
-    }
+    return ownTextLeaf({ ...node, textFill: clonePaint(node.textFill) })
   }
   if (node.type === 'image') {
-    return {
-      id: node.id,
-      name: node.name,
-      locked: node.locked,
-      hidden: node.hidden,
-      type: 'image',
-      x: node.x,
-      y: node.y,
-      width: node.width,
-      height: node.height,
-      rotation: node.rotation,
-      scale: node.scale,
-      src: node.src,
-      alt: node.alt,
-      fit: node.fit,
-      framing: cloneImageFraming(node.framing),
-    }
+    return ownLeafAppearance({ ...node, framing: cloneImageFraming(node.framing) })
   }
   if (node.type === 'shape') {
-    return {
-      id: node.id,
-      name: node.name,
-      locked: node.locked,
-      hidden: node.hidden,
-      type: 'shape',
-      x: node.x,
-      y: node.y,
-      width: node.width,
-      height: node.height,
-      rotation: node.rotation,
-      scale: node.scale,
-      shape: node.shape,
-      fill: copyShapeFill(node.fill),
-      stroke: node.stroke,
-      strokeWidth: node.strokeWidth,
-    }
+    return ownLeafAppearance({ ...node, fill: copyShapeFill(node.fill) })
   }
-  return {
-    id: node.id,
-    name: node.name,
-    locked: node.locked,
-    hidden: node.hidden,
-    type: 'line',
-    x: node.x,
-    y: node.y,
-    width: node.width,
-    height: node.height,
-    rotation: node.rotation,
-    scale: node.scale,
-    lineKind: node.lineKind,
-    stroke: node.stroke,
-    strokeWidth: node.strokeWidth,
-  }
+  return ownLeafAppearance({ ...node })
 }
 
 function copySceneNodeValues(nodes: readonly FreeformSceneNode[]): FreeformSceneNode[] {
@@ -861,6 +825,7 @@ interface SceneValidationState {
 
 const SOLID_PAINT_KEYS = new Set(['type', 'color'])
 const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
+const GRADIENT_STOPS_PAINT_KEYS = new Set(['type', 'stops', 'angle'])
 const IMAGE_FILL_KEYS = new Set(['type', 'src', 'fit', 'framing'])
 const GROUP_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'rotation', 'scale', 'children',
@@ -920,6 +885,8 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,
   blendMode: BLEND_FIELD_CHECK,
+  stroke: (record) => isHexColor(record.stroke),
+  strokeWidth: (record) => isValidTextStrokeWidth(record.strokeWidth),
 }
 
 const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
@@ -951,6 +918,13 @@ export function isValidSceneColorPaint(value: unknown): boolean {
   const paint = value as Record<string, unknown>
   if (paint.type === 'solid') {
     return hasExactKeys(paint, SOLID_PAINT_KEYS) && isHexColor(paint.color)
+  }
+  if (paint.type === 'linear-gradient' && hasExactKeys(paint, GRADIENT_STOPS_PAINT_KEYS)) {
+    return (
+      cloneGradientStops(paint.stops) !== null &&
+      typeof paint.angle === 'number' &&
+      Number.isFinite(paint.angle)
+    )
   }
   return (
     paint.type === 'linear-gradient' &&

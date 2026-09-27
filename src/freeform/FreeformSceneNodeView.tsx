@@ -114,6 +114,12 @@ function SceneLeafContent({
       ...(leaf.lineHeight !== undefined ? { lineHeight: leaf.lineHeight } : {}),
       ...(leaf.letterSpacing !== undefined ? { letterSpacing: `${leaf.letterSpacing}px` } : {}),
       ...(leaf.italic ? { fontStyle: 'italic' as const } : {}),
+      ...(leaf.stroke !== undefined
+        ? {
+          WebkitTextStroke: `${leaf.strokeWidth ?? 1}px ${leaf.stroke}`,
+          paintOrder: 'stroke fill' as const,
+        }
+        : {}),
       ...(leaf.shadow ? { textShadow: shadowCss(leaf.shadow) } : {}),
     }
     if (presentationOnly) {

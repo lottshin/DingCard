@@ -28,11 +28,13 @@ function errorResult(error: unknown) {
 const SHADOW_HINT = "shadow?({ color, blur(0–400), offsetX(-1000–1000), offsetY(-1000–1000) } 投影)"
 const FILTER_HINT = "filter?({ brightness?(0–3), contrast?(0–3), saturation?(0–3), blur?(0–100 px) } 滤镜，至少一键)"
 const BLEND_HINT = "blendMode?('normal'|'multiply'|'screen'|'overlay'|'darken'|'lighten'|'color-dodge'|'color-burn'|'hard-light'|'soft-light'|'difference'|'exclusion'|'hue'|'saturation'|'color'|'luminosity' 混合模式)"
-const DOCUMENT_SCHEMA_HINT = `document：自由画布 v7 文档（JSON；v1–v6 输入会自动迁移为 v7）。
-顶层 { documentVersion: 7, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes }。
-background 为 { type: 'solid', color } | { type: 'linear-gradient', from, to, angle } | { type: 'transparent' }。
-节点四选一，键必须精确匹配（不允许多余/缺失键；v6/v7 外观键均可选、缺省即默认样式），公共键：id, name, locked, hidden, type, x, y, rotation, scale(>0)：
-- text：+ width, height, text, spans?(可选富文本片段数组 [{ start, end, bold?, color? }]：text 内字符区间 [start, end)，0≤start<end≤text 长度，按 start 排序且不重叠，至少含 bold/color 之一), fontSize, fontFamily, textFill(ColorPaint), align('left'|'center'|'right'), fontWeight('normal'|'bold'), lineHeight?(0.5–4 无单位行高倍数), letterSpacing?(-50–200 px 字距), italic?(true 斜体), opacity?(0–1 不透明度), ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
+const TEXT_STROKE_HINT = "stroke?(#RRGGBB 文字描边色，仅 v8；配 strokeWidth 使用), strokeWidth?(0.5–100 px 文字描边宽度，仅 v8)"
+const DOCUMENT_SCHEMA_HINT = `document：自由画布 v8 文档（JSON；v1–v7 输入会自动迁移为 v8）。
+顶层 { documentVersion: 8, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes }。
+background 为 { type: 'solid', color } | { type: 'linear-gradient', from, to, angle } | { type: 'linear-gradient', stops: [{ offset(0–1 递增), color }×2–8], angle } (仅 v8) | { type: 'transparent' }。
+ColorPaint 渐变支持两段式 { from, to, angle } 与多段式 { stops, angle }（stops 仅 v8）。
+节点四选一，键必须精确匹配（不允许多余/缺失键；v6/v7/v8 外观键均可选、缺省即默认样式），公共键：id, name, locked, hidden, type, x, y, rotation, scale(>0)：
+- text：+ width, height, text, spans?(可选富文本片段数组 [{ start, end, bold?, color? }]：text 内字符区间 [start, end)，0≤start<end≤text 长度，按 start 排序且不重叠，至少含 bold/color 之一), fontSize, fontFamily, textFill(ColorPaint), align('left'|'center'|'right'), fontWeight('normal'|'bold'), lineHeight?(0.5–4 无单位行高倍数), letterSpacing?(-50–200 px 字距), italic?(true 斜体), ${TEXT_STROKE_HINT}, opacity?(0–1 不透明度), ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - image：+ width, height, src(URL 或 data URL), alt, fit('cover'|'contain'), framing({ focusX, focusY, zoom(1–4) }), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - shape：+ width, height, shape('rect'|'ellipse'|'triangle'|'star'|'hexagon'；star/hexagon 仅 v7), fill(ColorPaint 或 { type: 'image', src, fit, framing }), stroke, strokeWidth, cornerRadius?(0–2000 px 圆角，作用于矩形), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - line：+ width, height, lineKind('line'|'arrow'), stroke, strokeWidth, dash?(1–500 px 虚线长度，缺省实线), cap?('round'|'butt'|'square' 线帽，缺省圆头), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
@@ -46,7 +48,7 @@ const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI �
 - { type: 'slide/update', slideId, patch: { name?, background? } } / { type: 'slide/resize', slideId, width, height }
 - { type: 'node/insert-children', slideId, parentPath: string[], nodes: FreeformSceneNode[], index? } 插入节点
 - { type: 'node/update-content', slideId, updates: [{ path, patch: { text?, src?, alt? } }] }（改 text 时已有 spans 会按编辑位置自动保留/收缩）
-- { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?, fontFamily?, textFill?, align?, fontWeight?, spans?(整体替换文本片段，传 [] 清空), lineHeight?(传 null 恢复默认行高), letterSpacing?(传 null 恢复默认字距), italic?(true 开启斜体，false 取消), cornerRadius?(矩形圆角，传 null 恢复默认), opacity?(0–1 不透明度), shadow?(整体替换投影 { color, blur, offsetX, offsetY }，传 null 清除), filter?(整体替换滤镜 { brightness, contrast, saturation, blur } 至少一键，传 null 清除), blendMode?(混合模式，传 null 恢复正常), fit?, framing?, shape?, fill?, stroke?, strokeWidth?, lineKind?, dash?(虚线长度，传 null 恢复实线), cap?('round'|'butt'|'square' 线帽) } }] }
+- { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?, fontFamily?, textFill?, align?, fontWeight?, spans?(整体替换文本片段，传 [] 清空), lineHeight?(传 null 恢复默认行高), letterSpacing?(传 null 恢复默认字距), italic?(true 开启斜体，false 取消), cornerRadius?(矩形圆角，传 null 恢复默认), opacity?(0–1 不透明度), shadow?(整体替换投影 { color, blur, offsetX, offsetY }，传 null 清除), filter?(整体替换滤镜 { brightness, contrast, saturation, blur } 至少一键，传 null 清除), blendMode?(混合模式，传 null 恢复正常), fit?, framing?, shape?, fill?, stroke?, strokeWidth?, lineKind?, dash?(虚线长度，传 null 恢复实线), cap?('round'|'butt'|'square' 线帽), stroke?(文字描边色，仅 v8，传 null 清除), strokeWidth?(文字描边宽度，仅 v8，传 null 清除) } }] }
 - { type: 'node/update-geometry', slideId, updates: [{ path, patch: { x?, y?, width?, height?, rotation?, scale? } }] }
 - { type: 'node/rename' | 'node/set-locked' | 'node/set-hidden', slideId, path, ... }
 - { type: 'node/delete', slideId, parentPath, nodeIds } / { type: 'node/clone', slideId, parentPath, nodeIds }
@@ -58,7 +60,7 @@ path 是从页面根到目标节点的节点 id 数组（[] 表示页面根）�
 export function createDingcardServer(): McpServer {
   const server = new McpServer({
     name: 'dingcard-mcp',
-    version: '0.18.0',
+    version: '0.19.0',
   })
 
   server.tool(
@@ -70,7 +72,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_template',
-    '按模板 id 实例化一份完整的可编辑文档数据：自由画布模板返回 v7 文档（可直接传给 apply_actions / render_document），Markdown 模板返回 { source, platformId, themeId, fontFamily, radius, profile, images? } 信封（可用 render_markdown 无头渲染）。',
+    '按模板 id 实例化一份完整的可编辑文档数据：自由画布模板返回 v8 文档（可直接传给 apply_actions / render_document），Markdown 模板返回 { source, platformId, themeId, fontFamily, radius, profile, images? } 信封（可用 render_markdown 无头渲染）。',
     { templateId: z.string().describe('list_templates 返回的模板 id，如 "editorial-freeform"') },
     async ({ templateId }) => {
       try {
@@ -83,7 +85,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'validate_document',
-    `校验 JSON 是否为合法的自由画布 v7 文档（v1–v6 输入自动迁移）；合法时返回规范化后的文档，非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
+    `校验 JSON 是否为合法的自由画布 v8 文档（v1–v7 输入自动迁移）；合法时返回规范化后的文档，非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
     { document: z.unknown().describe('待校验的 v5（或 v1–v4 旧版）文档 JSON') },
     async ({ document }) => jsonResult(validateDocument(document)),
   )
@@ -107,7 +109,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v7 文档（v1–v6 输入自动迁移）无头渲染为 PNG 文件（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
+    `把自由画布 v8 文档（v1–v7 输入自动迁移）无头渲染为 PNG 文件（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
       document: z.unknown().describe('v4 文档 JSON'),
       outputDir: z.string().describe('PNG 输出目录（不存在会创建）'),
@@ -141,7 +143,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-schema',
     'dingcard://schema/freeform',
-    { description: '自由画布 v7 文档模型与校验规则说明' },
+    { description: '自由画布 v8 文档模型与校验规则说明' },
     textResource(DOCUMENT_SCHEMA_HINT),
   )
   server.registerResource(
@@ -165,7 +167,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-example',
     'dingcard://examples/freeform',
-    { description: '完整自由画布 v7 文档示例（编辑部模板实例）', mimeType: 'application/json' },
+    { description: '完整自由画布 v8 文档示例（编辑部模板实例）', mimeType: 'application/json' },
     async (uri: URL) => ({
       contents: [{
         uri: uri.href,

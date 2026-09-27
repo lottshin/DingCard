@@ -8,6 +8,7 @@ import {
   DEFAULT_PAGE_PAINT,
   DEFAULT_SHAPE_PAINT,
   DEFAULT_TEXT_PAINT,
+  isHexColor,
 } from './paint'
 import {
   cloneImageFraming,
@@ -40,6 +41,7 @@ import { normalizeRichTextSpans, remapRichTextSpans } from './richText'
 import {
   cloneSceneFilter,
   cloneShadowPaint,
+  gradientStopsEquals,
   isValidBlendMode,
   isValidCornerRadius,
   isValidDash,
@@ -48,6 +50,7 @@ import {
   isValidLetterSpacing,
   isValidOpacity,
   isValidShape,
+  isValidTextStrokeWidth,
   sceneFilterEquals,
   shadowPaintEquals,
 } from './appearance'
@@ -118,7 +121,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 7,
+    documentVersion: 8,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -245,6 +248,14 @@ function validContainerPath(value: unknown): value is ScenePath {
 function paintEquals(left: unknown, right: unknown): boolean {
   if (left === right) return true
   if (!isRecord(left) || !isRecord(right)) return false
+  // Multi-stop gradients carry an array; compare the stops by value.
+  if (Array.isArray(left.stops) || Array.isArray(right.stops)) {
+    return (
+      left.type === right.type &&
+      left.angle === right.angle &&
+      gradientStopsEquals(left.stops as never, right.stops as never)
+    )
+  }
   const leftKeys = Object.keys(left)
   const rightKeys = Object.keys(right)
   return (
@@ -254,9 +265,15 @@ function paintEquals(left: unknown, right: unknown): boolean {
 }
 
 function cloneColorPaint(paint: ColorPaint): ColorPaint {
-  return paint.type === 'solid'
-    ? { type: 'solid', color: paint.color }
-    : { type: 'linear-gradient', from: paint.from, to: paint.to, angle: paint.angle }
+  if (paint.type === 'solid') return { type: 'solid', color: paint.color }
+  if ('stops' in paint) {
+    return {
+      type: 'linear-gradient',
+      stops: paint.stops.map((stop) => ({ ...stop })),
+      angle: paint.angle,
+    }
+  }
+  return { type: 'linear-gradient', from: paint.from, to: paint.to, angle: paint.angle }
 }
 
 function cloneShapeFill(fill: ShapeFill): ShapeFill {
@@ -363,6 +380,7 @@ const IMAGE_CROP_PATCH_KEYS = new Set(['x', 'y', 'width', 'height', 'framing'])
 
 const TEXT_APPEARANCE_KEYS = new Set([
   'lineHeight', 'letterSpacing', 'italic', 'opacity', 'shadow', 'filter', 'blendMode',
+  'stroke', 'strokeWidth',
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
@@ -393,6 +411,10 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidDash(value)) return false
     } else if (key === 'cap') {
       if (!isValidLineCap(value)) return false
+    } else if (key === 'stroke') {
+      if (value !== null && !isHexColor(value)) return false
+    } else if (key === 'strokeWidth') {
+      if (value !== null && !isValidTextStrokeWidth(value)) return false
     }
   }
   return true
@@ -549,6 +571,8 @@ function applyStylePatch(
       'shadow',
       'filter',
       'blendMode',
+      'stroke',
+      'strokeWidth',
     ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {
@@ -642,6 +666,14 @@ function applyStylePatch(
     if ('fill' in patch && !isValidSceneShapeFill(patch.fill)) {
       return { ok: false, node }
     }
+    // Shape strokes stay plain color strings; `null` clears only text outlines.
+    if ('stroke' in patch && typeof patch.stroke !== 'string') return { ok: false, node }
+    if (
+      'strokeWidth' in patch
+      && (typeof patch.strokeWidth !== 'number' || !Number.isFinite(patch.strokeWidth))
+    ) {
+      return { ok: false, node }
+    }
     if (!validAppearancePatch(patch, SHAPE_APPEARANCE_KEYS)) return { ok: false, node }
     let fill = node.fill
     if ('fill' in patch) {
@@ -689,6 +721,14 @@ function applyStylePatch(
     ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('lineKind' in patch && patch.lineKind !== 'line' && patch.lineKind !== 'arrow') {
+      return { ok: false, node }
+    }
+    // Line strokes stay plain color strings; `null` clears only text outlines.
+    if ('stroke' in patch && typeof patch.stroke !== 'string') return { ok: false, node }
+    if (
+      'strokeWidth' in patch
+      && (typeof patch.strokeWidth !== 'number' || !Number.isFinite(patch.strokeWidth))
+    ) {
       return { ok: false, node }
     }
     if (!validAppearancePatch(patch, LINE_APPEARANCE_KEYS)) return { ok: false, node }

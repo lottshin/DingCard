@@ -14,14 +14,14 @@ list_templates → create_document_from_template → inspect_document
 | 工具 | 作用 |
 | --- | --- |
 | `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台）。 |
-| `create_document_from_template` | 按模板 id 实例化完整文档：自由画布返回 v7 文档，Markdown 返回源文信封。 |
-| `validate_document` | 严格校验 v7 文档（v1–v6 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时返回规范化结果。 |
+| `create_document_from_template` | 按模板 id 实例化完整文档：自由画布返回 v8 文档，Markdown 返回源文信封。 |
+| `validate_document` | 严格校验 v8 文档（v1–v7 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时返回规范化结果。 |
 | `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要），为编辑提供目标。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效。 |
-| `render_document` | 无头渲染自由画布 v7 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录。 |
+| `render_document` | 无头渲染自由画布 v8 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。 |
 
-工具描述内嵌了 v7 文档模型、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。
+工具描述内嵌了 v8 文档模型（含 v8 多段渐变与文字描边）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。
 
 ## MCP 资源
 
@@ -29,15 +29,15 @@ list_templates → create_document_from_template → inspect_document
 
 | URI | 内容 |
 | --- | --- |
-| `dingcard://schema/freeform` | 自由画布 v7 文档模型与校验规则说明。 |
+| `dingcard://schema/freeform` | 自由画布 v8 文档模型与校验规则说明。 |
 | `dingcard://schema/actions` | `FreeformAction` 动作联合类型说明（`apply_actions` 的入参结构）。 |
 | `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
-| `dingcard://examples/freeform` | 完整自由画布 v7 文档示例（编辑部模板实例）。 |
+| `dingcard://examples/freeform` | 完整自由画布 v8 文档示例（编辑部模板实例）。 |
 | `dingcard://examples/markdown` | 完整 Markdown 文档信封示例（编辑档案模板实例）。 |
 
 ## 回到编辑器精修
 
-AI 生成的文档 JSON 可以直接回到叮卡里精修：打开「我的草稿」面板，点击「导入 JSON 文档」或把 `.json` 文件拖进面板。自由画布文档（v1–v7，旧版自动迁移）会存为草稿并直接在自由画布打开；Markdown 文档同样支持，与当前工作台模式不符时会保存并提示到对应工作台打开。非法文件会给出可读的错误提示。由此形成完整闭环：
+AI 生成的文档 JSON 可以直接回到叮卡里精修：打开「我的草稿」面板，点击「导入 JSON 文档」或把 `.json` 文件拖进面板。自由画布文档（v1–v8，旧版自动迁移）会存为草稿并直接在自由画布打开；Markdown 文档同样支持，与当前工作台模式不符时会保存并提示到对应工作台打开。非法文件会给出可读的错误提示。由此形成完整闭环：
 
 ```text
 AI 生成文档 → 导入叮卡精修 → 编辑器导出 PNG
@@ -88,7 +88,7 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 ## 当前限制
 
-- `render_document` 仅支持自由画布文档（v7；v1–v6 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
+- `render_document` 仅支持自由画布文档（v8；v1–v7 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
 - 自由画布文本节点的可选 `spans` 富文本片段（局部加粗/标色）在渲染与校验中与编辑器一致支持；编辑器内改动文字时片段会按编辑位置自动保留或收缩。
 - `list_templates` 与 `create_document_from_template` 只覆盖代码内置模板；编辑器「存为模板」保存的个人模板存在浏览器本地（按账号隔离），不进入 MCP。需要渲染自己的文档时，把文档直接传给 `render_document` / `render_markdown`。
 - 文档中的图片 `src`（自由画布）必须是浏览器可加载的 URL 或 data URL；Markdown 文档的图片通过信封的 `images` 映射（`img:<id>` → data URL）提供，本地文件请先转为 data URL。

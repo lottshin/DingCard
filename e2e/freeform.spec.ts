@@ -1417,6 +1417,32 @@ test('inspector appearance controls style leaves end to end', async ({ page }) =
   await expect(textbox).toHaveCSS('line-height', '96px')
   await expect(textbox).toHaveCSS('letter-spacing', '4px')
 
+  const strokeHexInput = page.getByLabel('描边 hex', { exact: true })
+  await strokeHexInput.fill('#f97316')
+  const strokeWidthInput = page.getByLabel('描边宽度', { exact: true })
+  await strokeWidthInput.fill('3')
+  await strokeWidthInput.press('Enter')
+  await expect(textbox).toHaveCSS('-webkit-text-stroke-width', '3px')
+  await expect(textbox).toHaveCSS('-webkit-text-stroke-color', 'rgb(249, 115, 22)')
+  await page.getByTestId('text-stroke-clear').click()
+  await expect(textbox).toHaveCSS('-webkit-text-stroke-width', '0px')
+
+  const textFillField = page.getByTestId('text-fill-paint')
+  await textFillField.getByTestId('paint-mode-linear-gradient').click()
+  await textFillField.getByTestId('paint-stops-add').click()
+  await expect(textFillField.getByTestId('paint-stops-list')).toBeVisible()
+  const middleStopOffset = textFillField.getByTestId('paint-stop-1-offset')
+  await expect(middleStopOffset).toHaveValue('50')
+  await middleStopOffset.fill('40')
+  await expect(middleStopOffset).toHaveValue('40')
+  await expect(textbox).toHaveCSS('background-image', /linear-gradient/)
+  await expect(textbox).toHaveCSS('background-image', /40%/)
+  await textFillField.getByTestId('paint-stop-1-remove').click()
+  await expect(textFillField.locator('[data-testid$="-offset"]')).toHaveCount(2)
+  await expect(textFillField.getByTestId('paint-stop-0-offset')).toHaveValue('0')
+  await expect(textFillField.getByTestId('paint-stop-1-offset')).toHaveValue('100')
+  await expect(textbox).toHaveCSS('background-image', /linear-gradient/)
+
   await insertShape(page, '三角形')
   await expect(appearance.getByLabel('圆角', { exact: true })).toHaveCount(0)
   await appearance.getByTestId('shadow-add').click()
@@ -5109,7 +5135,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(7)
+  expect(storedDocument.documentVersion).toBe(8)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
