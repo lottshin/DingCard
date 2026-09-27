@@ -134,6 +134,7 @@ test('MCP automation package stays documented, versioned, and tested', () => {
   for (const entry of [
     'list_templates',
     'create_document_from_template',
+    'create_document_from_outline',
     'validate_document',
     'inspect_document',
     'apply_actions',

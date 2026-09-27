@@ -3,7 +3,7 @@
 叮卡自带一个 MCP（Model Context Protocol）服务器 `dingcard-mcp`，让 AI 客户端（Claude Desktop、Cursor、ZCode 等任何支持 MCP 的工具）和其他程序可以不走浏览器 UI，直接完成“选模板 → 构造/编辑文档 → 校验 → 无头渲染 PNG”的完整闭环：
 
 ```text
-list_templates → create_document_from_template → inspect_document
+list_templates → create_document_from_template / create_document_from_outline → inspect_document
       → apply_actions（与编辑器同一动作归约器）→ render_document → PNG 文件
 ```
 
@@ -15,13 +15,14 @@ list_templates → create_document_from_template → inspect_document
 | --- | --- |
 | `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台）。 |
 | `create_document_from_template` | 按模板 id 实例化完整文档：自由画布返回 v9 文档，Markdown 返回源文信封。 |
+| `create_document_from_outline` | 按 Markdown 大纲批量生成整套卡片文档：`# 总标题` 命名封面，每个 `## 小节` 生成一页（小节标题入标题槽、正文行入正文槽），风格沿用所选自由画布模板，返回封面 + 每小节一页 + 模板结尾页的多页 v9 文档，可直接 `render_document` 一次性渲染整套 PNG。 |
 | `validate_document` | 严格校验 v9 文档（v1–v8 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时返回规范化结果。 |
 | `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要），为编辑提供目标。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效。 |
 | `render_document` | 无头渲染自由画布 v9 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。 |
 
-工具描述内嵌了 v9 文档模型（含多段渐变、文字描边与竖排文字）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。
+工具描述内嵌了 v9 文档模型（含多段渐变、文字描边与竖排文字）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 选风格 → `create_document_from_outline` 用大纲一次生成整套 → 需要精修时 `apply_actions` → `render_document` 一次出全套 PNG。
 
 ## MCP 资源
 

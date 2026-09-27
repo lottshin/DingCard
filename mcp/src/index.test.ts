@@ -26,12 +26,13 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the six tools', async () => {
+  test('exposes the seven tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
     expect(names).toEqual([
       'apply_actions',
+      'create_document_from_outline',
       'create_document_from_template',
       'inspect_document',
       'list_templates',
@@ -98,6 +99,39 @@ describe('dingcard-mcp tool layer', () => {
       (await client.callTool({
         name: 'validate_document',
         arguments: { document: edited.document },
+      })) as { content: Array<{ type: string; text?: string }> },
+    ) as { ok: boolean }
+    expect(validated.ok).toBe(true)
+    await client.close()
+  })
+
+  test('creates a multi-slide card set from a markdown outline', async () => {
+    const client = await connect()
+
+    const created = parseContent(
+      (await client.callTool({
+        name: 'create_document_from_outline',
+        arguments: {
+          outline: '# 大纲标题\n\n## 第一节\n- 要点一\n- 要点二\n\n## 第二节\n正文一行',
+          templateId: 'editorial-freeform',
+        },
+      })) as { content: Array<{ type: string; text?: string }> },
+    ) as {
+      ok: boolean
+      document: { documentVersion: number; slides: Array<{ id: string }> }
+      summary: { slideCount: number; coverTitle: string; sections: Array<{ title: string }> }
+    }
+    expect(created.ok).toBe(true)
+    expect(created.document.documentVersion).toBe(9)
+    expect(created.document.slides).toHaveLength(4)
+    expect(created.summary.slideCount).toBe(4)
+    expect(created.summary.coverTitle).toBe('大纲标题')
+    expect(created.summary.sections.map((section) => section.title)).toEqual(['第一节', '第二节'])
+
+    const validated = parseContent(
+      (await client.callTool({
+        name: 'validate_document',
+        arguments: { document: created.document },
       })) as { content: Array<{ type: string; text?: string }> },
     ) as { ok: boolean }
     expect(validated.ok).toBe(true)

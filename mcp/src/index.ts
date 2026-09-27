@@ -9,6 +9,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
+import { createDocumentFromOutline } from './core/outline'
 import { instantiateTemplate, listTemplates } from './core/templates'
 import { renderDocument, renderMarkdownDocument } from './render/renderer'
 
@@ -40,6 +41,8 @@ ColorPaint 渐变支持两段式 { from, to, angle } 与多段式 { stops, angle
 - line：+ width, height, lineKind('line'|'arrow'), stroke, strokeWidth, dash?(1–500 px 虚线长度，缺省实线), cap?('round'|'butt'|'square' 线帽，缺省圆头), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - group：+ children（非空节点数组；组没有 width/height）
 全文档节点 id 必须唯一。`
+
+const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。第一行 "# 总标题"（可选）命名整套卡片；每个 "## 小节标题" 生成一页卡片，小节下的正文行（"- 项目"、列表或普通句子，列表标记会自动去掉）逐行填入该页正文槽位。templateId：list_templates 返回的自由画布模板 id（如 "editorial-freeform"），整套卡片沿用该模板的版式与风格。返回的文档：封面（填入总标题）+ 每小节一页（标题与正文字段自动填充）+ 模板结尾页；可直接传给 apply_actions 精修或 render_document 一次性渲染整套 PNG。`
 
 const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI 完全同一归约器）。常用动作：
 - { type: 'slide/add-after-active', slideId? } 在当前页后新增空白页
@@ -77,6 +80,22 @@ export function createDingcardServer(): McpServer {
     async ({ templateId }) => {
       try {
         return jsonResult(instantiateTemplate(templateId))
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
+
+  server.tool(
+    'create_document_from_outline',
+    `按 Markdown 大纲批量生成一整套自由画布卡片文档（v9）：每个 "## 小节" 一页、风格沿用所选模板，返回可直接渲染的多页文档与各页摘要。${OUTLINE_SCHEMA_HINT}`,
+    {
+      outline: z.string().describe('Markdown 大纲：# 总标题 + 若干 ## 小节（小节下正文行填入该页正文）'),
+      templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
+    },
+    async ({ outline, templateId }) => {
+      try {
+        return jsonResult(createDocumentFromOutline(outline, templateId))
       } catch (error) {
         return errorResult(error)
       }

@@ -8,6 +8,7 @@ import path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
 import type { FreeformTextElement } from '../../../src/freeform/types'
+import { createDocumentFromOutline } from '../core/outline'
 import { instantiateTemplate } from '../core/templates'
 import { renderDocument, renderMarkdownDocument } from './renderer'
 
@@ -98,6 +99,44 @@ describe('renderDocument', () => {
       expect(ihdr.width).toBe(slide.width)
       expect(ihdr.height).toBe(slide.height)
       expect(readFileSync(styled.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
+    },
+    420_000,
+  )
+
+  test(
+    'renders a card set generated from a markdown outline',
+    async () => {
+      const generated = createDocumentFromOutline(
+        `# 大纲渲染
+
+## 第一节
+- 要点一
+- 要点二
+
+## 第二节
+正文一行
+
+## 第三节
+- 收尾要点`,
+        'editorial-freeform',
+      )
+      if (!generated.ok) throw new Error(generated.error)
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-outline-'))
+      const result = await renderDocument(generated.document, {
+        outputDir,
+        baseName: 'outline',
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error(result.error)
+      // cover + one slide per section + the template ending page
+      expect(result.files).toHaveLength(5)
+      for (const file of result.files) {
+        expect(file.width).toBe(1080)
+        expect(file.height).toBe(1440)
+        expect(file.bytes).toBeGreaterThan(1000)
+      }
     },
     420_000,
   )
