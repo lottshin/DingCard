@@ -453,13 +453,13 @@ test('verification report and compose smoke expose explicit execution contracts'
       `verification report must contain a status row for ${label}`,
     )
   }
-  assert.match(report, /^# 0\.17\.0 发布验证$/m)
-  assert.match(report, /`v0\.17\.0`（指向 `196b39a`）/)
-  assert.match(report, /36301410945/)
-  assert.match(report, /36301410941/)
+  assert.match(report, /^# 0\.18\.0 发布验证$/m)
+  assert.match(report, /`v0\.18\.0`（指向 `77c02cd`）/)
+  assert.match(report, /36320403985/)
+  assert.match(report, /36320403999/)
   assert.match(report, /本报告只记录实际执行结果/)
   assert.match(report, /\| Release contract \| PASS \|[^\n]*12\/12/)
-  assert.match(report, /\| Frontend unit \| PASS \|[^\n]*690\/690/)
+  assert.match(report, /\| Frontend unit \| PASS \|[^\n]*710\/710/)
   assert.match(report, /\| MCP unit \| PASS \|[^\n]*28\/28/)
   assert.match(report, /\| MCP render pipeline \| PASS \|[^\n]*1080×1440/)
   assert.match(report, /渲染出像素级不同/)
@@ -467,12 +467,12 @@ test('verification report and compose smoke expose explicit execution contracts'
   assert.match(report, /\| Backend tests \| PASS \|[^\n]*CI（Ubuntu \+ Node 20）/)
   assert.match(report, /\| Backend HTTP smoke \| PASS \|[^\n]*CI static 作业/)
   assert.match(report, /\| Full E2E \| PASS \|[^\n]*CI browser 作业全部通过/)
-  assert.match(report, /富文本 spans 闭环/)
+  assert.match(report, /v7 视觉外观闭环/)
   assert.match(report, /\| Editor acceptance \| PASS \|[^\n]*2\/2/)
   for (const label of ['Compose config', 'Container smoke', 'Compose cleanup', 'Image manifest', 'Anonymous pull', 'amd64 image smoke', 'arm64 image smoke']) {
     assert.match(report, new RegExp(`\\| ${escapeRegExp(label)} \\| PASS \\|`))
   }
-  assert.match(report, /sha256:fcb6c9717aa8933a2fd7a34248039ada57ac9bf2606d6f03ae17c0065b3ca8a3/)
+  assert.match(report, /sha256:1a2dbf558425e305770807a4ebd16d31131da3587665d14933a8efd41312c17f/)
   assert.match(report, /render\.html[^\n]*MCP 无头渲染入口/)
   assert.match(report, /mcp\/dist\/index\.mjs/)
   assert.match(report, /仅监听 `127\.0\.0\.1` 随机端口/)
