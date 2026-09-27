@@ -58,21 +58,21 @@ test('release entry documentation matches current versions and commands', () => 
   const readme = read('README.md')
   const changelog = read('CHANGELOG.md')
   const backendPlan = read('docs/backend-plan.md')
-  const releaseNotes = markdownSection(changelog, '[0.15.0] - 2026-08-05')
+  const releaseNotes = markdownSection(changelog, '[0.16.0] - 2026-09-26')
   const license = read('LICENSE')
-  assert.equal(frontend.version, '0.15.0')
-  assert.equal(frontendLock.version, '0.15.0')
-  assert.equal(frontendLock.packages[''].version, '0.15.0')
+  assert.equal(frontend.version, '0.16.0')
+  assert.equal(frontendLock.version, '0.16.0')
+  assert.equal(frontendLock.packages[''].version, '0.16.0')
   assert.equal(server.version, '0.3.0')
   assert.equal(serverLock.version, '0.3.0')
   assert.equal(serverLock.packages[''].version, '0.3.0')
   assert.equal(exists('public/favicon.svg'), true, 'README header favicon must exist')
   assert.match(readme, /public\/favicon\.svg/)
-  assert.match(readme, /version-0\.15\.0/)
+  assert.match(readme, /version-0\.16\.0/)
   assert.match(readme, /编辑档案[\s\S]*公共剧场[\s\S]*议题封面/)
   assert.match(readme, /自由画布[\s\S]*四套/)
   assert.match(readme, /独立图片[\s\S]*裁剪[\s\S]*八个黑柄/)
-  assert.match(backendPlan, /当前源码版本：前端 `0\.15\.0`，后端 `0\.3\.0`/)
+  assert.match(backendPlan, /当前源码版本：前端 `0\.16\.0`，后端 `0\.3\.0`/)
   assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/)
   assert.match(readme, /Node\.js 20\+/)
   for (const scriptName of Object.keys(frontend.scripts)) {
@@ -91,11 +91,15 @@ test('release entry documentation matches current versions and commands', () => 
   assert.match(readme, /VITE_API_BASE/)
   assert.match(readme, /LocalStore[\s\S]*RemoteStore[\s\S]*不(?:会|自动)迁移/)
 
-  assert.match(releaseNotes, /服务端[^\n]*0\.3\.0/)
-  assert.match(releaseNotes, /独立图片[^\n]*PowerPoint[^\n]*八个裁剪柄/)
-  assert.match(releaseNotes, /原图[^\n]*1:1[^\n]*4:3[^\n]*3:4[^\n]*16:9[^\n]*9:16/)
-  assert.match(releaseNotes, /一条历史记录[^\n]*图片几何[^\n]*取景/)
-  assert.match(releaseNotes, /矩形[^\n]*圆形[^\n]*三角形[^\n]*调整取景/)
+  assert.match(releaseNotes, /MCP 服务器[^\n]*dingcard-mcp/)
+  assert.match(releaseNotes, /render_document[^\n]*PNG/)
+  assert.match(releaseNotes, /render_markdown[^\n]*Markdown 文档信封/)
+  assert.match(releaseNotes, /DOM 实测分页/)
+  assert.match(releaseNotes, /动作归约器/)
+  assert.match(releaseNotes, /系统 Chrome/)
+  assert.match(releaseNotes, /我的草稿[^\n]*JSON 文档导入/)
+  assert.match(releaseNotes, /0\.16\.0[^\n]*尚未发布远端镜像/)
+  assert.match(releaseNotes, /GHCR[^\n]*0\.15\.0/)
   assert.match(releaseNotes, /LocalStore[^\n]*RemoteStore[^\n]*不自动迁移/)
   assert.match(changelog, /混合尺寸[^\n]*确认/)
   assert.match(license, /MIT License/)
@@ -103,24 +107,72 @@ test('release entry documentation matches current versions and commands', () => 
   assert.match(license, /Permission is hereby granted, free of charge/)
 })
 
-test('CI invokes repository contracts and existing verification commands', () => {
-  assert.equal(exists('.github/workflows/ci.yml'), true, 'CI workflow must exist')
+test('MCP automation package stays documented, versioned, and tested', () => {
+  assert.equal(exists('mcp/package.json'), true, 'mcp package manifest must exist')
+  assert.equal(exists('mcp/package-lock.json'), true, 'mcp lockfile must be committed')
+  assert.equal(exists('mcp/tsconfig.json'), true, 'mcp TypeScript config must exist')
+  assert.equal(exists('docs/mcp.md'), true, 'MCP user documentation must exist')
+
+  const mcp = JSON.parse(read('mcp/package.json'))
+  assert.equal(mcp.name, 'dingcard-mcp')
+  assert.equal(mcp.version, '0.16.0')
+  assert.equal(mcp.private, true, 'mcp package stays private (no npm publish)')
+  for (const scriptName of Object.keys(mcp.scripts)) {
+    assert.equal(typeof mcp.scripts[scriptName], 'string')
+  }
+  assert.match(mcp.scripts.build, /tsc -p tsconfig\.json/)
+  assert.match(mcp.scripts.build, /esbuild/)
+  assert.match(mcp.scripts.start, /node dist\/index\.mjs/)
+  assert.match(mcp.scripts.test, /vitest/)
+  assert.equal(
+    mcp.dependencies['@modelcontextprotocol/sdk'] !== undefined, true, 'SDK must be a runtime dep')
+  assert.equal(
+    mcp.dependencies['playwright-core'] !== undefined, true, 'playwright-core must be a runtime dep')
+  assert.equal(
+    mcp.dependencies.playwright === undefined, true, 'mcp must not depend on full playwright (no browser downloads)')
+
+  const mcpReadme = read('docs/mcp.md')
+  for (const entry of [
+    'list_templates',
+    'create_document_from_template',
+    'validate_document',
+    'inspect_document',
+    'apply_actions',
+    'render_document',
+    'render_markdown',
+    'DINGCARD_DIST_DIR',
+    '127.0.0.1',
+  ]) {
+    assert.match(mcpReadme, new RegExp(escapeRegExp(entry)), `docs/mcp.md must document ${entry}`)
+  }
+  const readme = read('README.md')
+  assert.match(readme, /MCP 自动化/, 'README must introduce the MCP surface')
+  assert.match(readme, /npm --prefix mcp ci/)
+  assert.match(readme, /docs\/mcp\.md/)
+  assert.match(readme, /渲染管线测试/)
+})
+
+test('CI invokes repository contracts and existing verification commands', () => {  assert.equal(exists('.github/workflows/ci.yml'), true, 'CI workflow must exist')
   const workflow = read('.github/workflows/ci.yml')
   for (const command of [
     'npm ci',
     'npm --prefix server ci',
+    'npm --prefix mcp ci',
     'npm run test:unit',
     'npm run test:server',
     'node server/smoke-test.mjs',
     'node --test scripts/release-readiness.test.mjs',
     'bash deploy/compose-smoke.sh',
     'npm run build',
+    'npm --prefix mcp run build',
+    'npm --prefix mcp test',
+    'npm --prefix mcp run test:render',
     'npm run test:e2e',
   ]) {
     assert.match(workflow, new RegExp(escapeRegExp(command)), `CI must run ${command}`)
   }
   assert.match(workflow, /contents:\s*read/)
-  assert.match(workflow, /package-lock\.json[\s\S]*server\/package-lock\.json/)
+  assert.match(workflow, /package-lock\.json[\s\S]*server\/package-lock\.json[\s\S]*mcp\/package-lock\.json/)
   assert.match(workflow, /hashFiles\('test-results\/\*\*\/\*'\)/)
   for (const action of [
     'actions/checkout@v7',
@@ -377,11 +429,16 @@ test('verification report and compose smoke expose explicit execution contracts'
   for (const label of [
     'Release contract',
     'Frontend unit',
+    'MCP unit',
+    'MCP render pipeline',
+    'MCP stdio 端到端',
+    'MCP build',
     'Backend tests',
     'Backend HTTP smoke',
     'Production build',
     'CI YAML',
     'Full E2E',
+    'Editor acceptance',
     'Compose config',
     'Container smoke',
     'Compose cleanup',
@@ -396,27 +453,25 @@ test('verification report and compose smoke expose explicit execution contracts'
       `verification report must contain a status row for ${label}`,
     )
   }
-  assert.match(report, /^# 0\.15\.0 发布验证$/m)
-  assert.match(report, /\| Backend tests \| PASS \|[^\n]*72\/72/)
-  assert.match(report, /\| Release contract \| PASS \|[^\n]*11\/11/)
-  assert.match(report, /\| Compose config \| PASS \|[^\n]*`app`/)
-  assert.match(
-    report,
-    /\| Container smoke \| PASS \|[^\n]*`app`[^\n]*Fastify[^\n]*首页[^\n]*`\/api\/health`[^\n]*注册[^\n]*上传[^\n]*`\/assets\//,
-  )
-  assert.match(report, /\| Compose cleanup \| PASS \|[^\n]*smoke[^\n]*镜像标签[^\n]*不存在/)
-  assert.doesNotMatch(report, /\| Compose config \| PASS \|[^\n]*(?:`server`|`web`)/)
-  assert.doesNotMatch(report, /\| Container smoke \| PASS \|[^\n]*Nginx/)
-  assert.match(report, /\| Container smoke \| PASS \|[^\n]*迁移[^\n]*账号[^\n]*草稿[^\n]*图片/)
-  assert.match(report, /GitHub CI：[^\n]*30978061561/)
-  assert.match(report, /迁移 smoke[^\n]*PASS/)
-  assert.match(report, /CI YAML \| PASS \|[^\n]*(?:ci\.yml[^\n]*publish-image\.yml|publish-image\.yml[^\n]*ci\.yml)/)
-  for (const label of ['Image manifest', 'Anonymous pull', 'amd64 image smoke', 'arm64 image smoke']) {
-    assert.match(report, new RegExp(`\\| ${escapeRegExp(label)} \\| PASS \\|`))
+  assert.match(report, /^# 0\.16\.0 发布验证$/m)
+  assert.match(report, /`v0\.16\.0`（待推送）/)
+  assert.match(report, /本报告只记录实际执行结果/)
+  assert.match(report, /\| Release contract \| PASS \|[^\n]*12\/12/)
+  assert.match(report, /\| Frontend unit \| PASS \|[^\n]*645\/645/)
+  assert.match(report, /\| MCP unit \| PASS \|[^\n]*26\/26/)
+  assert.match(report, /\| MCP render pipeline \| PASS \|[^\n]*1080×1440/)
+  assert.match(report, /JSON 草稿导入解析/)
+  assert.match(report, /JSON 草稿导入 2 例/)
+  assert.match(report, /\| Backend tests \| NOT EXECUTED \|[^\n]*CI 在 Node 20/)
+  assert.match(report, /\| Backend HTTP smoke \| NOT EXECUTED \|[^\n]*CI static 作业/)
+  assert.match(report, /\| Full E2E \| FAIL \|[^\n]*a0c4ec6/)
+  assert.match(report, /\| Editor acceptance \| PASS \|[^\n]*2\/2/)
+  for (const label of ['Compose config', 'Container smoke', 'Compose cleanup', 'Image manifest', 'Anonymous pull', 'amd64 image smoke', 'arm64 image smoke']) {
+    assert.match(report, new RegExp(`\\| ${escapeRegExp(label)} \\| NOT EXECUTED \\|`))
   }
-  assert.match(report, /sha256:0e16fa6a08cc19b63bde83a49232a4556bebf0758246bd4f4ba6b7b3699a7a93/)
-  assert.match(report, /linux\/amd64[\s\S]*linux\/arm64/)
-  assert.match(report, /30980123506/)
+  assert.match(report, /render\.html[^\n]*MCP 无头渲染入口/)
+  assert.match(report, /mcp\/dist\/index\.mjs/)
+  assert.match(report, /仅监听 `127\.0\.0\.1` 随机端口/)
 
   const smoke = read('deploy/compose-smoke.sh')
   assert.match(smoke, /COMPOSE_SMOKE_PROJECT/)
@@ -475,7 +530,7 @@ test('root Dockerfile builds the frontend and server into a non-root Node image'
   assert.match(dockerfile, /RUN npm ci\s*$/m)
   const frontendStage = dockerfile.split(/^FROM node:20-slim AS server-deps$/m)[0]
   assert.doesNotMatch(frontendStage, /^COPY \. \.\s*$/m)
-  assert.match(frontendStage, /COPY tsconfig\.json tsconfig\.node\.json vite\.config\.ts index\.html \.\//)
+  assert.match(frontendStage, /COPY tsconfig\.json tsconfig\.node\.json vite\.config\.ts index\.html render\.html \.\//)
   assert.match(frontendStage, /COPY public \.\/public/)
   assert.match(frontendStage, /COPY src \.\/src/)
   assert.match(dockerfile, /RUN npm ci --omit=dev\s*$/m)

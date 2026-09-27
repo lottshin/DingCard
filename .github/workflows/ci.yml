@@ -24,13 +24,17 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             server/package-lock.json
+            mcp/package-lock.json
       - run: npm ci
       - run: npm --prefix server ci
+      - run: npm --prefix mcp ci
       - run: npm run test:unit
       - run: npm run test:server
       - run: node server/smoke-test.mjs
       - run: node --test scripts/release-readiness.test.mjs
       - run: npm run build
+      - run: npm --prefix mcp run build
+      - run: npm --prefix mcp test
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
@@ -50,10 +54,14 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             server/package-lock.json
+            mcp/package-lock.json
       - run: npm ci
       - run: npm --prefix server ci
+      - run: npm --prefix mcp ci
       - run: npx playwright install --with-deps chrome
       - run: npm run test:e2e
+      - run: npm run build
+      - run: npm --prefix mcp run test:render
       - name: Upload Playwright results
         if: ${{ failure() && hashFiles('test-results/**/*') != '' }}
         uses: actions/upload-artifact@v4
