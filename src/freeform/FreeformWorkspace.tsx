@@ -3,7 +3,7 @@ import type { CSSProperties, SetStateAction } from 'react'
 import { toBlob } from 'html-to-image'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
-import { type Draft } from '../drafts'
+import { type Draft, importDraftFromJson } from '../drafts'
 import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
@@ -3239,6 +3239,40 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
   }
 
+  /** Import a picked/dropped .json file as a draft; freeform drafts open right away. */
+  async function importDraftFile(file: File) {
+    if (!user) {
+      requestAuth()
+      return
+    }
+    if (blockDocumentMutationDuringInteraction()) return
+    let text: string
+    try {
+      text = await file.text()
+    } catch {
+      showOperationError(new Error('文件读取失败'), '文件读取失败，请重试')
+      return
+    }
+    const outcome = importDraftFromJson(text)
+    if (!outcome.ok) {
+      showOperationError(new Error(outcome.error), '文件无法识别为叮卡文档')
+      return
+    }
+    try {
+      const saved = await store.drafts.save(user.id, outcome.data)
+      if (currentUserIdRef.current !== user.id) return
+      void refreshDrafts()
+      if (saved.mode === 'freeform-slide') {
+        openDraft(saved)
+      } else {
+        setOperationNotice('已导入 Markdown 文档，请在 Markdown 工作台的「我的草稿」打开')
+      }
+    } catch (error) {
+      if (currentUserIdRef.current !== user.id) return
+      showOperationError(error, '草稿导入失败，请稍后重试')
+    }
+  }
+
   function openDraft(draft: Draft) {
     if (draft.mode !== 'freeform-slide') return
     cancelFramingBeforeTransition()
@@ -4327,6 +4361,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           onOpen={openDraft}
           onDelete={removeDraft}
           onClose={() => setShowDrafts(false)}
+          onImportFile={importDraftFile}
         />
       )}
 

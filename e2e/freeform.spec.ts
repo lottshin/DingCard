@@ -2124,6 +2124,87 @@ test('account changes reset workspace draft identity', async ({ page }) => {
   expect(new Set(allDraftIds).size).toBe(allDraftIds.length)
 })
 
+test('drafts panel imports a freeform document JSON and opens it', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openFreeform(page)
+  // Opening the drafts drawer without an account first opens the auth modal.
+  await page.getByRole('button', { name: /^草稿/ }).click()
+  await registerUser(page, `import-${Date.now()}`)
+
+  const importedDocument = {
+    documentVersion: 4,
+    activeSlideId: 'import-slide-1',
+    slides: [
+      {
+        id: 'import-slide-1',
+        name: 'AI 生成页',
+        width: 1080,
+        height: 1440,
+        background: { type: 'solid', color: '#ffffff' },
+        nodes: [
+          {
+            id: 'import-text-1',
+            name: '标题',
+            locked: false,
+            hidden: false,
+            type: 'text',
+            x: 80,
+            y: 160,
+            width: 800,
+            height: 200,
+            rotation: 0,
+            scale: 1,
+            text: 'AI 导入的标题',
+            fontSize: 64,
+            fontFamily: 'PingFang SC',
+            textFill: { type: 'solid', color: '#18181b' },
+            align: 'left',
+            fontWeight: 'bold',
+          },
+        ],
+      },
+    ],
+  }
+
+  await page.getByRole('button', { name: /^草稿/ }).click()
+  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
+  await page.getByLabel('导入 JSON 文档').setInputFiles({
+    name: 'ai-card.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(importedDocument)),
+  })
+
+  await expect(page.getByTestId('drafts-drawer')).not.toBeVisible()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+  await expect(page.getByTestId('freeform-textbox')).toContainText('AI 导入的标题')
+
+  await page.getByRole('button', { name: /^草稿/ }).click()
+  await expect(page.getByTestId('drafts-drawer')).toContainText('AI 生成页')
+  await expect(page.getByTestId('drafts-drawer')).toContainText('自由编辑')
+})
+
+test('drafts panel import rejects invalid JSON with an error notice', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openFreeform(page)
+  await page.getByRole('button', { name: /^草稿/ }).click()
+  await registerUser(page, `import-bad-${Date.now()}`)
+
+  await page.getByRole('button', { name: /^草稿/ }).click()
+  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
+  await page.getByLabel('导入 JSON 文档').setInputFiles({
+    name: 'broken.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('不是 JSON'),
+  })
+
+  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
+  await expect(page.getByText('文件不是有效的 JSON')).toBeVisible()
+})
+
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await openFreeform(page)
 

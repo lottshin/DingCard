@@ -98,7 +98,8 @@ function isImageMap(value: unknown): value is Record<string, string> {
   return Object.values(value).every(isString)
 }
 
-function isMarkdownDocument(value: unknown): value is MarkdownCardDocument {
+/** Structural check for a markdown card document (used by reads, imports, and the render page). */
+export function isMarkdownDocument(value: unknown): value is MarkdownCardDocument {
   if (!isRecord(value)) return false
   return (
     isString(value.source) &&
@@ -289,6 +290,51 @@ export function deleteDraft(userId: string, id: string) {
 
 export function draftTitle(draft: Draft): string {
   return draft.title
+}
+
+export type ImportDraftOutcome =
+  | { ok: true; data: SaveDraftInput }
+  | { ok: false; error: string }
+
+/**
+ * Parse an imported JSON file into save-ready draft data.
+ *
+ * Accepts the two document shapes the automation surface produces:
+ * a freeform document (any version — normalized/migrated to v4) or a
+ * markdown document envelope. Everything else is rejected with a
+ * user-readable reason; nothing here touches storage.
+ */
+export function importDraftFromJson(text: string): ImportDraftOutcome {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { ok: false, error: '文件不是有效的 JSON' }
+  }
+  if (!isRecord(parsed)) {
+    return { ok: false, error: 'JSON 顶层必须是文档对象' }
+  }
+
+  if (typeof parsed.documentVersion === 'number') {
+    const document = normalizeFreeformDocument(parsed)
+    if (!document) {
+      return { ok: false, error: '自由画布文档未通过校验：需要 v1–v4 之一的完整文档结构' }
+    }
+    return { ok: true, data: { mode: 'freeform-slide', document } }
+  }
+
+  if (isString(parsed.source)) {
+    const document = normalizeMarkdownDocument(parsed)
+    if (!document) {
+      return {
+        ok: false,
+        error: 'Markdown 文档缺少必填字段：source、platformId、themeId、fontFamily、profile',
+      }
+    }
+    return { ok: true, data: { mode: 'markdown-card', document } }
+  }
+
+  return { ok: false, error: '无法识别的文档：需要自由画布文档或 Markdown 文档' }
 }
 
 export function draftSubtitle(draft: Draft): string {

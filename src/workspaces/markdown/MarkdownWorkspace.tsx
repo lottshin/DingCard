@@ -20,7 +20,7 @@ import { ProfileModal } from '../../ProfileModal'
 import { DraftsPanel } from '../../DraftsPanel'
 import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
-import type { Draft } from '../../drafts'
+import { importDraftFromJson, type Draft } from '../../drafts'
 import { store } from '../../storage'
 import { OperationNotice } from '../OperationNotice'
 import { ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
@@ -508,6 +508,44 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setShowDrafts(false)
   }
 
+  /** Import a picked/dropped .json file as a draft; markdown drafts open right away. */
+  async function importDraftFile(file: File) {
+    if (!user) {
+      requestAuth()
+      return
+    }
+    const uid = user.id
+    let text: string
+    try {
+      text = await file.text()
+    } catch {
+      showOperationError('草稿导入失败', new Error('文件读取失败'), '文件读取失败，请重试')
+      return
+    }
+    const outcome = importDraftFromJson(text)
+    if (!outcome.ok) {
+      showOperationError('草稿导入失败', new Error(outcome.error), '文件无法识别为叮卡文档')
+      return
+    }
+    try {
+      const saved = await store.drafts.save(uid, outcome.data)
+      if (activeUserIdRef.current !== uid) return
+      setDrafts((current) => [saved, ...current.filter((draft) => draft.id !== saved.id)])
+      refreshDrafts()
+      if (saved.mode === 'markdown-card') {
+        openDraft(saved)
+      } else {
+        setOperationNotice({
+          title: '已导入自由画布文档',
+          detail: '请在自由画布工作台的「我的草稿」打开',
+        })
+      }
+    } catch (error) {
+      if (activeUserIdRef.current !== uid) return
+      showOperationError('草稿导入失败', error, '暂时无法导入草稿，请稍后重试')
+    }
+  }
+
   async function removeDraft(id: string) {
     if (!user) return
     const uid = user.id
@@ -789,6 +827,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           onOpen={openDraft}
           onDelete={removeDraft}
           onClose={() => setShowDrafts(false)}
+          onImportFile={importDraftFile}
         />
       )}
 

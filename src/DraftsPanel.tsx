@@ -1,3 +1,4 @@
+import { useRef, useState, type DragEvent } from 'react'
 import { draftSubtitle, draftTitle, type Draft } from './drafts'
 
 interface DraftsPanelProps {
@@ -6,6 +7,8 @@ interface DraftsPanelProps {
   onOpen: (draft: Draft) => void
   onDelete: (id: string) => void
   onClose: () => void
+  /** Receive a picked or dropped .json file; the workspace owns parsing/saving. */
+  onImportFile: (file: File) => void
 }
 
 function timeAgo(ts: number): string {
@@ -20,15 +23,81 @@ function timeAgo(ts: number): string {
 }
 
 /** Slide-in drawer listing the signed-in user's saved drafts. */
-export function DraftsPanel({ drafts, activeId, onOpen, onDelete, onClose }: DraftsPanelProps) {
+export function DraftsPanel({
+  drafts,
+  activeId,
+  onOpen,
+  onDelete,
+  onClose,
+  onImportFile,
+}: DraftsPanelProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
+
+  function importFirstFile(files: FileList | null) {
+    const file = files?.[0]
+    if (file) onImportFile(file)
+  }
+
+  function onDragOver(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    setDragOver(true)
+  }
+
+  function onDragLeave(event: DragEvent<HTMLElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setDragOver(false)
+    }
+  }
+
+  function onDrop(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    event.stopPropagation()
+    setDragOver(false)
+    importFirstFile(event.dataTransfer.files)
+  }
+
   return (
     <div className="drawer-backdrop" onClick={onClose}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+      <aside
+        className={dragOver ? 'drawer drag-over' : 'drawer'}
+        onClick={(e) => e.stopPropagation()}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        data-testid="drafts-drawer"
+      >
         <div className="drawer-head">
           <span>我的草稿</span>
           <button className="modal-x" onClick={onClose} aria-label="关闭">
             ×
           </button>
+        </div>
+
+        <div className="drawer-import" data-testid="draft-import">
+          <button
+            className="drawer-import-btn"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            导入 JSON 文档
+          </button>
+          <span className="drawer-import-hint">
+            支持自由画布与 Markdown 文档（如 MCP 工具生成的结果），可点击选择或直接拖入 .json 文件
+          </span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            aria-label="导入 JSON 文档"
+            onChange={(event) => {
+              importFirstFile(event.target.files)
+              event.target.value = ''
+            }}
+          />
         </div>
 
         {drafts.length === 0 ? (
