@@ -5,6 +5,7 @@ import {
   MIN_EFFECTIVE_SCALE,
 } from './constants'
 import { isHexColor } from './paint'
+import { normalizeRichTextSpans } from './richText'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
   SCENE_EPSILON,
@@ -909,8 +910,19 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
     return hasExactKeys(record, GROUP_NODE_KEYS) && Array.isArray(node.children)
   }
   if (node.type === 'text') {
+    const keys = Object.keys(record)
+    const hasSpans = 'spans' in record
+    const expectedKeyCount = hasSpans ? TEXT_NODE_KEYS.size + 1 : TEXT_NODE_KEYS.size
+    const keysOk = keys.length === expectedKeyCount
+      && keys.every((key) => TEXT_NODE_KEYS.has(key) || key === 'spans')
+    const spansOk = !hasSpans
+      || (() => {
+        const normalized = normalizeRichTextSpans(node.spans, node.text.length)
+        return normalized !== null && normalized.length > 0
+      })()
     return (
-      hasExactKeys(record, TEXT_NODE_KEYS) &&
+      keysOk &&
+      spansOk &&
       typeof node.text === 'string' &&
       Number.isFinite(node.fontSize) &&
       typeof node.fontFamily === 'string' &&

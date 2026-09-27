@@ -36,6 +36,7 @@ import {
   walkScene,
 } from './sceneTree'
 import { effectiveSceneState } from './sceneSelection'
+import { normalizeRichTextSpans, remapRichTextSpans } from './richText'
 import type {
   ColorPaint,
   FreeformAction,
@@ -53,6 +54,7 @@ import type {
   FreeformSlide,
   FreeformTextElement,
   ImageFraming,
+  RichTextSpan,
   ScenePath,
   ShapeFill,
   SlideBackground,
@@ -100,7 +102,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 4,
+    documentVersion: 5,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -320,6 +322,7 @@ const STYLE_KEYS = new Set([
   'textFill',
   'align',
   'fontWeight',
+  'spans',
   'fit',
   'framing',
   'shape',
@@ -345,9 +348,12 @@ function applyContentPatch(
       return { ok: false, node }
     }
     const text = record.text
+    if (text === node.text) return { ok: true, node }
+    const remapped = remapRichTextSpans(node.spans, node.text, text)
+    const { spans: _previousSpans, ...rest } = node
     return {
       ok: true,
-      node: text === node.text ? node : { ...node, text },
+      node: remapped ? { ...rest, text, spans: remapped } : { ...rest, text },
     }
   }
   if (node.type === 'image') {
@@ -376,6 +382,21 @@ function applyContentPatch(
   return { ok: false, node }
 }
 
+function richTextSpansEqual(
+  a: RichTextSpan[] | undefined,
+  b: RichTextSpan[] | undefined,
+): boolean {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  return a.every((span, index) => {
+    const other = b[index]
+    return span.start === other.start
+      && span.end === other.end
+      && span.bold === other.bold
+      && span.color === other.color
+  })
+}
+
 function applyStylePatch(
   node: FreeformSceneNode,
   patch: FreeformNodeStylePatch,
@@ -385,12 +406,18 @@ function applyStylePatch(
   }
   const keys = Object.keys(patch)
   if (node.type === 'text') {
-    const allowed = new Set(['fontSize', 'fontFamily', 'textFill', 'align', 'fontWeight'])
+    const allowed = new Set(['fontSize', 'fontFamily', 'textFill', 'align', 'fontWeight', 'spans'])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {
       return { ok: false, node }
     }
-    const next = {
+    let spansPatch: RichTextSpan[] | undefined
+    if ('spans' in patch) {
+      const normalized = normalizeRichTextSpans(patch.spans, node.text.length)
+      if (!normalized) return { ok: false, node }
+      spansPatch = normalized
+    }
+    const base = {
       ...node,
       ...('fontSize' in patch ? { fontSize: patch.fontSize as number } : {}),
       ...('fontFamily' in patch ? { fontFamily: patch.fontFamily as string } : {}),
@@ -400,10 +427,18 @@ function applyStylePatch(
       ...('align' in patch ? { align: patch.align as typeof node.align } : {}),
       ...('fontWeight' in patch ? { fontWeight: patch.fontWeight as typeof node.fontWeight } : {}),
     }
+    const { spans: _baseSpans, ...baseWithoutSpans } = base
+    const next: FreeformTextElement = spansPatch === undefined
+      ? base
+      : spansPatch.length === 0
+        ? baseWithoutSpans
+        : { ...base, spans: spansPatch }
     const same = keys.every((key) =>
       key === 'textFill'
         ? paintEquals(node.textFill, next.textFill)
-        : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+        : key === 'spans'
+          ? richTextSpansEqual(node.spans, next.spans)
+          : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
     )
     return { ok: true, node: same ? node : next }
   }

@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 4,
+    documentVersion: 5,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(4)
+    expect(result.document.documentVersion).toBe(5)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -149,6 +149,41 @@ describe('applyActions', () => {
     if (title.type !== 'text') throw new Error('expected text node')
     expect(title.text).toBe('新标题')
     expect(title.y).toBe(200)
+  })
+
+  test('applies rich text spans and keeps them through text edits', () => {
+    const spans = [
+      { start: 0, end: 2, bold: true },
+      { start: 2, end: 4, color: '#d92d20' },
+    ]
+    const styled = applyActions(seedDocument(), [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['title-1'], patch: { spans } }],
+      },
+    ])
+    expect(styled.ok).toBe(true)
+    if (!styled.ok) return
+    expect(styled.changes).toEqual([true])
+    expect(validateDocument(styled.document).ok).toBe(true)
+    const styledTitle = styled.document.slides[0].nodes[0]
+    if (styledTitle.type !== 'text') throw new Error('expected text node')
+    expect(styledTitle.spans).toEqual(spans)
+
+    const edited = applyActions(styled.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['title-1'], patch: { text: `${styledTitle.text}！` } }],
+      },
+    ])
+    expect(edited.ok).toBe(true)
+    if (!edited.ok) return
+    const editedTitle = edited.document.slides[0].nodes[0]
+    if (editedTitle.type !== 'text') throw new Error('expected text node')
+    expect(editedTitle.spans).toEqual(spans)
+    expect(validateDocument(edited.document).ok).toBe(true)
   })
 
   test('edits nodes inside groups through their path', () => {

@@ -19,7 +19,9 @@ import type {
   FreeformImageElement,
   FreeformSceneNode,
   FreeformShapeElement,
+  FreeformTextElement,
   ImageFraming,
+  RichTextSpan,
 } from '../types'
 
 function framing(overrides: Partial<ImageFraming> = {}): ImageFraming {
@@ -64,10 +66,10 @@ describe('freeform document', () => {
     expect(doc.activeSlideId).toBe(doc.slides[0].id)
   })
 
-  it('creates v4 documents and strict leaves with independent image framing', () => {
+  it('creates v5 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(4)
+    expect(doc.documentVersion).toBe(5)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -605,5 +607,85 @@ describe('freeform document', () => {
       fit: 'cover',
       framing: framing(),
     })
+  })
+})
+
+describe('rich text spans', () => {
+  function textNodeWith(id: string, text: string, spans?: RichTextSpan[]): FreeformTextElement {
+    const element = createTextElement(createSlide())
+    return { ...element, id, text, ...(spans ? { spans } : {}) }
+  }
+
+  it('applies a wholesale spans patch to text nodes', () => {
+    const document = documentWith([textNodeWith('text-1', '黑体标题正文六字')])
+    const updated = reduceFreeformDocument(document, {
+      type: 'node/update-style',
+      slideId: document.slides[0].id,
+      updates: [{ path: ['text-1'], patch: { spans: [{ start: 0, end: 2, bold: true }] } }],
+    })
+    const node = updated.slides[0].nodes[0] as FreeformTextElement
+    expect(node.spans).toEqual([{ start: 0, end: 2, bold: true }])
+    expect(updated).not.toBe(document)
+  })
+
+  it('ignores invalid spans patches, clears spans with an empty array, and keeps no-ops stable', () => {
+    const document = documentWith([
+      textNodeWith('text-1', '黑体标题正文六字', [{ start: 0, end: 2, bold: true }]),
+    ])
+    const slideId = document.slides[0].id
+
+    const invalid = reduceFreeformDocument(document, {
+      type: 'node/update-style',
+      slideId,
+      updates: [{
+        path: ['text-1'],
+        patch: { spans: [{ start: 0, end: 3, bold: true }, { start: 2, end: 5, bold: true }] },
+      }],
+    })
+    expect(invalid).toBe(document)
+
+    const same = reduceFreeformDocument(document, {
+      type: 'node/update-style',
+      slideId,
+      updates: [{ path: ['text-1'], patch: { spans: [{ start: 0, end: 2, bold: true }] } }],
+    })
+    expect(same).toBe(document)
+
+    const cleared = reduceFreeformDocument(document, {
+      type: 'node/update-style',
+      slideId,
+      updates: [{ path: ['text-1'], patch: { spans: [] } }],
+    })
+    expect((cleared.slides[0].nodes[0] as FreeformTextElement).spans).toBeUndefined()
+  })
+
+  it('remaps spans across plain text edits', () => {
+    const document = documentWith([
+      textNodeWith('text-1', '黑体标题正文六字', [{ start: 2, end: 6, bold: true }]),
+    ])
+    const slideId = document.slides[0].id
+
+    const shrunk = reduceFreeformDocument(document, {
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: ['text-1'], patch: { text: '黑体标正文六字' } }],
+    })
+    expect((shrunk.slides[0].nodes[0] as FreeformTextElement).spans)
+      .toEqual([{ start: 2, end: 5, bold: true }])
+
+    const appended = reduceFreeformDocument(document, {
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: ['text-1'], patch: { text: '黑体标题正文六字尾巴' } }],
+    })
+    expect((appended.slides[0].nodes[0] as FreeformTextElement).spans)
+      .toEqual([{ start: 2, end: 6, bold: true }])
+
+    const replaced = reduceFreeformDocument(document, {
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: ['text-1'], patch: { text: '完全不同的文本' } }],
+    })
+    expect((replaced.slides[0].nodes[0] as FreeformTextElement).spans).toBeUndefined()
   })
 })

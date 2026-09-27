@@ -5,7 +5,7 @@ import {
   materializeLocalFreeformImages,
   uploadInlineFreeformImages,
 } from '../imageAssets'
-import { normalizeFreeformDocumentV4 } from '../sceneDocument'
+import { normalizeFreeformDocumentV5 } from '../sceneDocument'
 import type {
   FreeformDocument,
   FreeformElement,
@@ -74,7 +74,7 @@ function slide(id: string, nodes: FreeformElement[]): FreeformSlide {
 }
 
 function document(...slides: FreeformSlide[]): FreeformDocument {
-  return { documentVersion: 4, activeSlideId: slides[0].id, slides }
+  return { documentVersion: 5, activeSlideId: slides[0].id, slides }
 }
 
 function sceneImage(id: string, src: string): FreeformSceneLeaf {
@@ -112,7 +112,7 @@ function sceneGroup(
 
 function sceneDocument(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 4,
+    documentVersion: 5,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -326,7 +326,7 @@ describe('freeform image assets', () => {
     expect(output).not.toBe(input)
     expect(output.slides[0]).not.toBe(input.slides[0])
     expect(output.slides[0].nodes[0]).not.toBe(input.slides[0].nodes[0])
-    expect(normalizeFreeformDocumentV4(output)).toEqual(output)
+    expect(normalizeFreeformDocumentV5(output)).toEqual(output)
     expect(input).toEqual(snapshot)
   })
 
@@ -361,7 +361,7 @@ describe('freeform image assets', () => {
     expect(upload).toHaveBeenCalledTimes(1)
     expect(upload).toHaveBeenCalledWith(inline)
     expect(collectFreeformImageSources(output)).toEqual(['/uploads/shared.png'])
-    expect(normalizeFreeformDocumentV4(output)).toEqual(output)
+    expect(normalizeFreeformDocumentV5(output)).toEqual(output)
     expect(input).toEqual(snapshot)
   })
 
@@ -412,7 +412,7 @@ describe('freeform image assets', () => {
 
     expect(collectFreeformImageSources(output)).toEqual(sources)
     expect(upload).not.toHaveBeenCalled()
-    expect(normalizeFreeformDocumentV4(output)).toEqual(output)
+    expect(normalizeFreeformDocumentV5(output)).toEqual(output)
     expect(input).toEqual(snapshot)
   })
 

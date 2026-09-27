@@ -4,7 +4,7 @@
 // MCP surface has exactly the same validation and reducer semantics as the
 // in-app editor:
 //
-//   - normalizeFreeformDocument: strict v4 validation (+ v1/v2/v3 migration)
+//   - normalizeFreeformDocument: strict v5 validation (+ v1–v4 migration)
 //   - reduceFreeformDocument:    the exact action reducer the UI dispatches to
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
@@ -21,8 +21,8 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v4 校验：需要 documentVersion=4、非空 slides、合法的 activeSlideId，'
-  + '且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
+  '文档未通过自由画布 v5 校验：需要 documentVersion=1–5 之一（旧版自动迁移为 v5）、非空 slides、'
+  + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
   const document = normalizeFreeformDocument(value)
@@ -156,7 +156,7 @@ export function applyActions(value: unknown, actions: unknown): ApplyActionsResu
   }
   const finalCheck = normalizeFreeformDocument(document)
   if (!finalCheck) {
-    return { ok: false, error: '应用动作后文档未通过 v4 校验（不应发生，请反馈）' }
+    return { ok: false, error: '应用动作后文档未通过 v5 校验（不应发生，请反馈）' }
   }
   return { ok: true, document: finalCheck, changes }
 }

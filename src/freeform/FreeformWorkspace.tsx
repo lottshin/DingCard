@@ -33,6 +33,7 @@ import {
   freeformReducer,
 } from './document'
 import { materializeLocalFreeformImages } from './imageAssets'
+import { insertRichTextSpan } from './richText'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorNumberInput } from './InspectorNumberInput'
 import { FreeformLayersPanel } from './FreeformLayersPanel'
@@ -183,6 +184,9 @@ import {
 
 const FIT_SCALE_EPSILON = 0.0001
 const EXPORT_IMAGE_WAIT_MS = 3_500
+
+/** Preset highlight colors for rich text spans (solid hex, 6 digits). */
+const RICH_SPAN_COLORS = ['#d92d20', '#f97316', '#f79009', '#129211', '#1570ef', '#6941c6'] as const
 
 const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
   { id: 'rect', label: '矩形' },
@@ -628,6 +632,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [showTemplates, setShowTemplates] = useState(false)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [userTemplates, setUserTemplates] = useState<readonly UserTemplate[]>([])
+  const [textSelection, setTextSelection] = useState<{
+    path: ScenePath
+    start: number
+    end: number
+  } | null>(null)
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -1165,6 +1174,30 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   function updateSelectedStyle(patch: FreeformNodeStylePatch): boolean {
     if (!selectedPath) return false
     return updateNodeStyleAtPath(activeSlide.id, selectedPath, patch)
+  }
+
+  const activeTextRange = useMemo(() => {
+    if (!textSelection || !isTextElement(selectedElement)) return null
+    if (textSelection.path[textSelection.path.length - 1] !== selectedElement.id) return null
+    const end = Math.min(textSelection.end, selectedElement.text.length)
+    const start = Math.min(textSelection.start, end)
+    return start < end ? { start, end } : null
+  }, [textSelection, selectedElement])
+
+  function applySelectedTextSpan(style: { bold?: true; color?: string }) {
+    if (!selectedPath || !isTextElement(selectedElement) || !activeTextRange) return
+    const next = insertRichTextSpan(
+      selectedElement.spans,
+      { start: activeTextRange.start, end: activeTextRange.end, ...style },
+      selectedElement.text.length,
+    )
+    if (!next) return
+    updateSelectedStyle({ spans: next })
+  }
+
+  function removeSelectedTextSpan(index: number) {
+    if (!isTextElement(selectedElement) || !selectedElement.spans) return
+    updateSelectedStyle({ spans: selectedElement.spans.filter((_, i) => i !== index) })
   }
 
   function beginShapeFillOperation(slideId: string, path: ScenePath) {
@@ -3770,6 +3803,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                         )
                         if (directPath) setSelection([directPath[directPath.length - 1]])
                       }}
+                      onTextSelectionChange={(path, range) => {
+                        setTextSelection(range ? { path, start: range.start, end: range.end } : null)
+                      }}
                     />
                     {marqueeRect && (
                       <div
@@ -4185,6 +4221,68 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                           </button>
                         ))}
                       </div>
+                    </InspectorSection>
+                  )}
+
+                  {isTextElement(selectedElement) && (
+                    <InspectorSection title="文字片段" testId="inspector-rich-spans">
+                      <div className="rich-span-apply" data-testid="rich-span-apply">
+                        {activeTextRange ? (
+                          <span className="rich-span-hint">
+                            已选 {activeTextRange.end - activeTextRange.start} 字
+                          </span>
+                        ) : (
+                          <span className="rich-span-hint muted">双击文本后选中一段文字</span>
+                        )}
+                        <button
+                          className="ghost"
+                          type="button"
+                          data-testid="rich-span-bold"
+                          disabled={!activeTextRange}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => applySelectedTextSpan({ bold: true })}
+                        >
+                          加粗
+                        </button>
+                        {RICH_SPAN_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            className="rich-span-swatch"
+                            type="button"
+                            aria-label={`标色 ${color}`}
+                            title={color}
+                            style={{ background: color }}
+                            disabled={!activeTextRange}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => applySelectedTextSpan({ color })}
+                          />
+                        ))}
+                      </div>
+                      {selectedElement.spans && selectedElement.spans.length > 0 && (
+                        <ul className="rich-span-list" data-testid="rich-span-list">
+                          {selectedElement.spans.map((span, index) => (
+                            <li key={`${span.start}-${span.end}-${index}`}>
+                              <span className="rich-span-range" title={selectedElement.text.slice(span.start, span.end)}>
+                                {selectedElement.text.slice(span.start, span.end)}
+                              </span>
+                              {span.bold && <span className="rich-span-chip">加粗</span>}
+                              {span.color && (
+                                <span className="rich-span-chip" style={{ color: span.color }}>
+                                  标色
+                                </span>
+                              )}
+                              <button
+                                className="draft-del"
+                                type="button"
+                                aria-label="删除文字片段"
+                                onClick={() => removeSelectedTextSpan(index)}
+                              >
+                                删除
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </InspectorSection>
                   )}
 

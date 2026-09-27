@@ -237,7 +237,7 @@ const startNode: FreeformImageElement = {
   framing: { focusX: 0.5, focusY: 0.5, zoom: 1 },
 }
 const startDocument: FreeformDocument = {
-  documentVersion: 4,
+  documentVersion: 5,
   activeSlideId: 'slide',
   slides: [{
     id: 'slide',

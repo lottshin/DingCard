@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 4
+  documentVersion: 5
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -45,9 +45,23 @@ export interface FreeformElementBase extends SceneNodeState {
   scale: number
 }
 
+/**
+ * Additive styling for a character range [start, end) inside a text
+ * element's plain `text`. Canonical spans are sorted, non-overlapping, and
+ * carry at least one of bold/color.
+ */
+export interface RichTextSpan {
+  start: number
+  end: number
+  bold?: true
+  color?: string
+}
+
 export interface FreeformTextElement extends FreeformElementBase {
   type: 'text'
   text: string
+  /** Optional rich text spans over `text`; absent means plain text. */
+  spans?: RichTextSpan[]
   fontSize: number
   fontFamily: string
   textFill: ColorPaint
@@ -118,6 +132,8 @@ export interface FreeformNodeStylePatch {
   textFill?: ColorPaint
   align?: 'left' | 'center' | 'right'
   fontWeight?: 'normal' | 'bold'
+  /** Replace the text element's spans wholesale; `[]` clears them. */
+  spans?: RichTextSpan[]
   fit?: 'cover' | 'contain'
   framing?: ImageFraming
   shape?: 'rect' | 'ellipse' | 'triangle'

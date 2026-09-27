@@ -25,11 +25,11 @@ function errorResult(error: unknown) {
   return { content: [{ type: 'text' as const, text: message }], isError: true as const }
 }
 
-const DOCUMENT_SCHEMA_HINT = `document：自由画布 v4 文档（JSON）。
-顶层 { documentVersion: 4, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes }。
+const DOCUMENT_SCHEMA_HINT = `document：自由画布 v5 文档（JSON；v1–v4 输入会自动迁移为 v5）。
+顶层 { documentVersion: 5, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes }。
 background 为 { type: 'solid', color } | { type: 'linear-gradient', from, to, angle } | { type: 'transparent' }。
 节点四选一，键必须精确匹配（不允许多余/缺失键），公共键：id, name, locked, hidden, type, x, y, rotation, scale(>0)：
-- text：+ width, height, text, fontSize, fontFamily, textFill(ColorPaint), align('left'|'center'|'right'), fontWeight('normal'|'bold')
+- text：+ width, height, text, spans?(可选富文本片段数组 [{ start, end, bold?, color? }]：text 内字符区间 [start, end)，0≤start<end≤text 长度，按 start 排序且不重叠，至少含 bold/color 之一), fontSize, fontFamily, textFill(ColorPaint), align('left'|'center'|'right'), fontWeight('normal'|'bold')
 - image：+ width, height, src(URL 或 data URL), alt, fit('cover'|'contain'), framing({ focusX, focusY, zoom(1–4) })
 - shape：+ width, height, shape('rect'|'ellipse'|'triangle'), fill(ColorPaint 或 { type: 'image', src, fit, framing }), stroke, strokeWidth
 - line：+ width, height, lineKind('line'|'arrow'), stroke, strokeWidth
@@ -42,8 +42,8 @@ const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI �
 - { type: 'slide/delete', slideId } / { type: 'slide/select', slideId }
 - { type: 'slide/update', slideId, patch: { name?, background? } } / { type: 'slide/resize', slideId, width, height }
 - { type: 'node/insert-children', slideId, parentPath: string[], nodes: FreeformSceneNode[], index? } 插入节点
-- { type: 'node/update-content', slideId, updates: [{ path, patch: { text?, src?, alt? } }] }
-- { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?, fontFamily?, textFill?, align?, fontWeight?, fit?, framing?, shape?, fill?, stroke?, strokeWidth?, lineKind? } }] }
+- { type: 'node/update-content', slideId, updates: [{ path, patch: { text?, src?, alt? } }] }（改 text 时已有 spans 会按编辑位置自动保留/收缩）
+- { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?, fontFamily?, textFill?, align?, fontWeight?, spans?(整体替换文本片段，传 [] 清空), fit?, framing?, shape?, fill?, stroke?, strokeWidth?, lineKind? } }] }
 - { type: 'node/update-geometry', slideId, updates: [{ path, patch: { x?, y?, width?, height?, rotation?, scale? } }] }
 - { type: 'node/rename' | 'node/set-locked' | 'node/set-hidden', slideId, path, ... }
 - { type: 'node/delete', slideId, parentPath, nodeIds } / { type: 'node/clone', slideId, parentPath, nodeIds }
@@ -67,7 +67,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_template',
-    '按模板 id 实例化一份完整的可编辑文档数据：自由画布模板返回 v4 文档（可直接传给 apply_actions / render_document），Markdown 模板返回 { source, platformId, themeId, fontFamily, radius, profile, images? } 信封（可用 render_markdown 无头渲染）。',
+    '按模板 id 实例化一份完整的可编辑文档数据：自由画布模板返回 v5 文档（可直接传给 apply_actions / render_document），Markdown 模板返回 { source, platformId, themeId, fontFamily, radius, profile, images? } 信封（可用 render_markdown 无头渲染）。',
     { templateId: z.string().describe('list_templates 返回的模板 id，如 "editorial-freeform"') },
     async ({ templateId }) => {
       try {
@@ -80,15 +80,15 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'validate_document',
-    `校验 JSON 是否为合法的自由画布 v4 文档；合法时返回规范化后的文档，非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
-    { document: z.unknown().describe('待校验的 v4 文档 JSON') },
+    `校验 JSON 是否为合法的自由画布 v5 文档（v1–v4 输入自动迁移）；合法时返回规范化后的文档，非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
+    { document: z.unknown().describe('待校验的 v5（或 v1–v4 旧版）文档 JSON') },
     async ({ document }) => jsonResult(validateDocument(document)),
   )
 
   server.tool(
     'inspect_document',
     `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要）。改文档前先 inspect，拿到节点 id / 路径再发动作。${DOCUMENT_SCHEMA_HINT}`,
-    { document: z.unknown().describe('v4 文档 JSON') },
+    { document: z.unknown().describe('v5（或 v1–v4 旧版）文档 JSON') },
     async ({ document }) => jsonResult(inspectDocument(document)),
   )
 
@@ -104,7 +104,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v4 文档无头渲染为 PNG 文件（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
+    `把自由画布 v5 文档（v1–v4 输入自动迁移）无头渲染为 PNG 文件（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
       document: z.unknown().describe('v4 文档 JSON'),
       outputDir: z.string().describe('PNG 输出目录（不存在会创建）'),
@@ -138,7 +138,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-schema',
     'dingcard://schema/freeform',
-    { description: '自由画布 v4 文档模型与校验规则说明' },
+    { description: '自由画布 v5 文档模型与校验规则说明' },
     textResource(DOCUMENT_SCHEMA_HINT),
   )
   server.registerResource(
@@ -162,7 +162,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-example',
     'dingcard://examples/freeform',
-    { description: '完整自由画布 v4 文档示例（编辑部模板实例）', mimeType: 'application/json' },
+    { description: '完整自由画布 v5 文档示例（编辑部模板实例）', mimeType: 'application/json' },
     async (uri: URL) => ({
       contents: [{
         uri: uri.href,

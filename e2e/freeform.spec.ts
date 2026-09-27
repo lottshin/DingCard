@@ -1204,7 +1204,7 @@ test('inspector hierarchy shows only context-relevant sections in contract order
 
   await insertText(page)
   await setSelectedElementPosition(page, 420, 180)
-  await expectSections(['geometry', 'typography', 'fill', 'arrange', 'danger'])
+  await expectSections(['geometry', 'typography', 'rich-spans', 'fill', 'arrange', 'danger'])
   const textFill = page.getByTestId('text-fill-paint')
   await expect(textFill.getByTestId('paint-mode-solid')).toBeVisible()
   await expect(textFill.getByTestId('paint-mode-linear-gradient')).toBeVisible()
@@ -5022,7 +5022,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(4)
+  expect(storedDocument.documentVersion).toBe(5)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()

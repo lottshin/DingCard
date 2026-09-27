@@ -634,7 +634,7 @@ test.describe('remote backend integration', () => {
       }
     }>
     const saved = savedDrafts.find((draft) => draft.id === created.id)
-    expect(saved?.document.documentVersion).toBe(4)
+    expect(saved?.document.documentVersion).toBe(5)
     const group = saved?.document.slides[0].nodes.find((node) => node.id === 'remote-hidden-group')
     const savedImage = group?.children?.find((node) => node.id === 'remote-image')
     expect(savedImage).toBeDefined()

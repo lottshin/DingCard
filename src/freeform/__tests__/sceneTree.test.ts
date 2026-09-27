@@ -6,7 +6,7 @@ import {
   MAX_SCENE_NODES_PER_SLIDE,
 } from '../constants'
 import { reduceFreeformDocument } from '../document'
-import { normalizeFreeformDocumentV4 } from '../sceneDocument'
+import { normalizeFreeformDocumentV5 } from '../sceneDocument'
 import {
   buildScenePathIndex,
   canApplySceneAction,
@@ -194,7 +194,7 @@ function documentWith(
   slides: FreeformSlide[] = [slide('slide-1', nodes)],
 ): FreeformDocument {
   return {
-    documentVersion: 4,
+    documentVersion: 5,
     slides,
     activeSlideId: slides[0].id,
   }
@@ -1552,26 +1552,26 @@ describe('v3 reducer permission and atomicity boundary', () => {
       slideId: 'slide-1',
       updates: [{ path: ['text'], patch: { textFill } }],
     })
-    expect(normalizeFreeformDocumentV4(textResult)).toEqual(textResult)
+    expect(normalizeFreeformDocumentV5(textResult)).toEqual(textResult)
     const shapeResult = reduceFreeformDocument(textResult, {
       type: 'node/update-style',
       slideId: 'slide-1',
       updates: [{ path: ['shape'], patch: { fill: shapeFill } }],
     })
-    expect(normalizeFreeformDocumentV4(shapeResult)).toEqual(shapeResult)
+    expect(normalizeFreeformDocumentV5(shapeResult)).toEqual(shapeResult)
     const backgroundResult = reduceFreeformDocument(shapeResult, {
       type: 'slide/update',
       slideId: 'slide-1',
       patch: { background },
     })
-    expect(normalizeFreeformDocumentV4(backgroundResult)).toEqual(backgroundResult)
+    expect(normalizeFreeformDocumentV5(backgroundResult)).toEqual(backgroundResult)
     const insertResult = reduceFreeformDocument(backgroundResult, {
       type: 'node/insert-children',
       slideId: 'slide-1',
       parentPath: [],
       nodes: [inserted],
     })
-    expect(normalizeFreeformDocumentV4(insertResult)).toEqual(insertResult)
+    expect(normalizeFreeformDocumentV5(insertResult)).toEqual(insertResult)
 
     expect(
       (insertResult.slides[0].nodes[0] as Extract<FreeformSceneLeaf, { type: 'text' }>).textFill,

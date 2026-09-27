@@ -5905,3 +5905,73 @@ html.theme-anim * {
   line-height: 1.6;
   color: var(--text-3);
 }
+
+/* ---------- Rich text spans ---------- */
+
+.rich-span-apply {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.rich-span-hint {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.rich-span-hint.muted {
+  color: var(--text-3);
+}
+
+.rich-span-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.rich-span-swatch:hover:not(:disabled),
+.rich-span-swatch:focus-visible {
+  box-shadow: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--accent);
+}
+
+.rich-span-swatch:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rich-span-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rich-span-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rich-span-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.rich-span-chip {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+}

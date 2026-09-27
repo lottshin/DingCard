@@ -2,7 +2,8 @@ import { useId } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { store } from '../storage'
 import { FramedImage } from './FramedImage'
-import { PlainTextEditable } from './PlainTextEditable'
+import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
+import { splitTextRuns } from './richText'
 import { shapeFillToStyle, textFillToStyle } from './paint'
 import { scenePathKey } from './sceneTree'
 import type { ImageDecodeIdentity, ImageDecodeReport } from './imageReadiness'
@@ -40,6 +41,7 @@ export interface FreeformSceneNodeViewProps {
   ) => void
   onTextChange: (path: ScenePath, text: string) => void
   onTextFocus: (path: ScenePath) => void
+  onTextSelectionChange?: (path: ScenePath, range: TextSelectionRange | null) => void
 }
 
 interface SceneNodeBranchProps extends FreeformSceneNodeViewProps {
@@ -63,6 +65,7 @@ function SceneLeafContent({
   hiddenImageContentPathKey,
   onTextChange,
   onTextFocus,
+  onTextSelectionChange,
 }: {
   leaf: FreeformSceneLeaf
   readOnly: boolean
@@ -75,6 +78,7 @@ function SceneLeafContent({
   hiddenImageContentPathKey?: string
   onTextChange: (text: string) => void
   onTextFocus: () => void
+  onTextSelectionChange?: (range: TextSelectionRange | null) => void
 }) {
   function decodeIdentity(
     logicalSrc: string,
@@ -101,16 +105,38 @@ function SceneLeafContent({
       textAlign: leaf.align,
       fontWeight: leaf.fontWeight,
     }
-    if (presentationOnly) return <div className="freeform-preview-textbox" style={style}>{leaf.text}</div>
+    if (presentationOnly) {
+      return (
+        <div className="freeform-preview-textbox" style={style}>
+          {splitTextRuns(leaf.text, leaf.spans).map((run, index) =>
+            run.bold || run.color
+              ? (
+                <span
+                  key={index}
+                  style={{
+                    ...(run.bold ? { fontWeight: 700 } : {}),
+                    ...(run.color ? { color: run.color } : {}),
+                  }}
+                >
+                  {run.text}
+                </span>
+              )
+              : run.text,
+          )}
+        </div>
+      )
+    }
 
     return (
       <PlainTextEditable
         className="freeform-textbox"
         ariaLabel="文本内容"
         value={leaf.text}
+        spans={leaf.spans}
         readOnly={readOnly}
         onFocus={onTextFocus}
         onChange={onTextChange}
+        onSelectionChange={onTextSelectionChange}
         style={style}
       />
     )
@@ -298,6 +324,9 @@ function SceneNodeBranch({
         }}
         onTextFocus={() => {
           if (!readOnly) props.onTextFocus(path)
+        }}
+        onTextSelectionChange={(range) => {
+          if (!readOnly) props.onTextSelectionChange?.(path, range)
         }}
       />
     </div>

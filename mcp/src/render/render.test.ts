@@ -6,6 +6,8 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
+import { reduceFreeformDocument } from '../../../src/freeform/document'
+import type { FreeformTextElement } from '../../../src/freeform/types'
 import { instantiateTemplate } from '../core/templates'
 import { renderDocument, renderMarkdownDocument } from './renderer'
 
@@ -44,6 +46,58 @@ describe('renderDocument', () => {
         expect(ihdr.width).toBe(1080)
         expect(ihdr.height).toBe(1440)
       }
+    },
+    420_000,
+  )
+
+  test(
+    'renders rich text spans as visible pixel changes',
+    async () => {
+      const instantiation = instantiateTemplate('editorial-freeform')
+      if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
+      const base = instantiation.document
+      const slide = base.slides[0]
+      const textLeaf = base.slides[0].nodes.find(
+        (node): node is FreeformTextElement => node.type === 'text' && node.text.length >= 4,
+      )
+      if (!textLeaf) throw new Error('expected a text node with at least four characters')
+      const withSpans = reduceFreeformDocument(base, {
+        type: 'node/update-style',
+        slideId: slide.id,
+        updates: [
+          {
+            path: [textLeaf.id],
+            patch: {
+              spans: [
+                { start: 0, end: 2, bold: true },
+                { start: 2, end: 4, color: '#d92d20' },
+              ],
+            },
+          },
+        ],
+      })
+      expect(withSpans).not.toBe(base)
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-render-'))
+      const plain = await renderDocument(base, {
+        outputDir,
+        baseName: 'plain',
+        slideIds: [slide.id],
+      })
+      const styled = await renderDocument(withSpans, {
+        outputDir,
+        baseName: 'styled',
+        slideIds: [slide.id],
+      })
+      expect(plain.ok).toBe(true)
+      expect(styled.ok).toBe(true)
+      if (!plain.ok || !styled.ok) throw new Error('expected both renders to succeed')
+      expect(styled.files).toHaveLength(1)
+
+      const ihdr = pngIhdr(readFileSync(styled.files[0].path))
+      expect(ihdr.width).toBe(slide.width)
+      expect(ihdr.height).toBe(slide.height)
+      expect(readFileSync(styled.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
     },
     420_000,
   )
