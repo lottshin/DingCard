@@ -66,10 +66,10 @@ describe('freeform document', () => {
     expect(doc.activeSlideId).toBe(doc.slides[0].id)
   })
 
-  it('creates v5 documents and strict leaves with independent image framing', () => {
+  it('creates v6 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(5)
+    expect(doc.documentVersion).toBe(6)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -687,5 +687,129 @@ describe('rich text spans', () => {
       updates: [{ path: ['text-1'], patch: { text: '完全不同的文本' } }],
     })
     expect((replaced.slides[0].nodes[0] as FreeformTextElement).spans).toBeUndefined()
+  })
+})
+
+describe('v6 appearance patches', () => {
+  const shadow = { color: '#101828', blur: 24, offsetX: 0, offsetY: 8 }
+  const slideIdOf = (document: FreeformDocument) => document.slides[0].id
+  const stylePatch = (
+    document: FreeformDocument,
+    path: string[],
+    patch: Record<string, unknown>,
+  ) => reduceFreeformDocument(document, {
+    type: 'node/update-style',
+    slideId: slideIdOf(document),
+    updates: [{ path, patch }],
+  })
+
+  it('applies text appearance patches and keeps no-op patches stable', () => {
+    const document = documentWith([{ ...createTextElement(createSlide()), id: 'text-1' }])
+
+    const styled = stylePatch(document, ['text-1'], {
+      lineHeight: 1.4,
+      letterSpacing: 2,
+      italic: true,
+      opacity: 0.85,
+      shadow,
+    })
+    const node = styled.slides[0].nodes[0] as FreeformTextElement
+    expect(node.lineHeight).toBe(1.4)
+    expect(node.letterSpacing).toBe(2)
+    expect(node.italic).toBe(true)
+    expect(node.opacity).toBe(0.85)
+    expect(node.shadow).toEqual(shadow)
+    expect(node.shadow).not.toBe(shadow)
+
+    const noop = stylePatch(styled, ['text-1'], {
+      lineHeight: 1.4,
+      letterSpacing: 2,
+      italic: true,
+      opacity: 0.85,
+      shadow,
+    })
+    expect(noop).toBe(styled)
+  })
+
+  it('clears appearance keys with null and italic with false', () => {
+    const document = documentWith([{
+      ...createTextElement(createSlide()),
+      id: 'text-1',
+      lineHeight: 1.4,
+      letterSpacing: 2,
+      italic: true,
+      opacity: 0.85,
+      shadow,
+    }])
+
+    const cleared = stylePatch(document, ['text-1'], {
+      lineHeight: null,
+      letterSpacing: null,
+      italic: false,
+      shadow: null,
+    })
+    const node = cleared.slides[0].nodes[0] as FreeformTextElement
+    expect('lineHeight' in node).toBe(false)
+    expect('letterSpacing' in node).toBe(false)
+    expect('italic' in node).toBe(false)
+    expect('shadow' in node).toBe(false)
+    expect(node.opacity).toBe(0.85)
+
+    const clearedAgain = stylePatch(cleared, ['text-1'], {
+      lineHeight: null,
+      letterSpacing: null,
+      italic: false,
+      shadow: null,
+    })
+    expect(clearedAgain).toBe(cleared)
+  })
+
+  it('applies shape corner radius and image/line opacity and shadows', () => {
+    const document = documentWith([
+      { ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' },
+      { ...createImageElement(createSlide(), 'img:photo'), id: 'image-1' },
+      { ...createLineElement(createSlide(), 'arrow'), id: 'line-1' },
+    ])
+
+    const shape = stylePatch(document, ['shape-1'], { cornerRadius: 32, opacity: 0.6, shadow })
+    const shapeNode = shape.slides[0].nodes[0] as FreeformShapeElement
+    expect(shapeNode.cornerRadius).toBe(32)
+    expect(shapeNode.opacity).toBe(0.6)
+    expect(shapeNode.shadow).toEqual(shadow)
+
+    const image = stylePatch(document, ['image-1'], { opacity: 0.9, shadow })
+    const imageNode = image.slides[0].nodes[1] as FreeformImageElement
+    expect(imageNode.opacity).toBe(0.9)
+    expect(imageNode.shadow).toEqual(shadow)
+
+    const line = stylePatch(document, ['line-1'], { opacity: 0.75, shadow })
+    const lineNode = line.slides[0].nodes[2]
+    expect(lineNode.type).toBe('line')
+    if (lineNode.type === 'line') {
+      expect(lineNode.opacity).toBe(0.75)
+      expect(lineNode.shadow).toEqual(shadow)
+    }
+  })
+
+  it('ignores out-of-range and type-mismatched appearance patches', () => {
+    const document = documentWith([
+      { ...createTextElement(createSlide()), id: 'text-1' },
+      { ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' },
+    ])
+
+    const invalid: Array<[string[], Record<string, unknown>]> = [
+      [['text-1'], { opacity: 1.5 }],
+      [['text-1'], { lineHeight: 0.4 }],
+      [['text-1'], { letterSpacing: 201 }],
+      [['text-1'], { italic: 'yes' }],
+      [['text-1'], { shadow: { color: '#101828', blur: 24, offsetX: 0 } }],
+      [['text-1'], { shadow: { ...shadow, blur: 401 } }],
+      [['text-1'], { cornerRadius: 8 }],
+      [['shape-1'], { cornerRadius: -1 }],
+      [['shape-1'], { lineHeight: 1.5 }],
+    ]
+    for (const [path, patch] of invalid) {
+      expect(stylePatch(document, path, patch)).toBe(document)
+    }
   })
 })

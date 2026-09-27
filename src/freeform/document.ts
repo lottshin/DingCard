@@ -37,6 +37,14 @@ import {
 } from './sceneTree'
 import { effectiveSceneState } from './sceneSelection'
 import { normalizeRichTextSpans, remapRichTextSpans } from './richText'
+import {
+  cloneShadowPaint,
+  isValidCornerRadius,
+  isValidLineHeight,
+  isValidLetterSpacing,
+  isValidOpacity,
+  shadowPaintEquals,
+} from './appearance'
 import type {
   ColorPaint,
   FreeformAction,
@@ -56,6 +64,7 @@ import type {
   ImageFraming,
   RichTextSpan,
   ScenePath,
+  ShadowPaint,
   ShapeFill,
   SlideBackground,
 } from './types'
@@ -102,7 +111,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 5,
+    documentVersion: 6,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -323,6 +332,12 @@ const STYLE_KEYS = new Set([
   'align',
   'fontWeight',
   'spans',
+  'lineHeight',
+  'letterSpacing',
+  'italic',
+  'cornerRadius',
+  'opacity',
+  'shadow',
   'fit',
   'framing',
   'shape',
@@ -334,6 +349,82 @@ const STYLE_KEYS = new Set([
 const GEOMETRY_KEYS = new Set(['x', 'y', 'width', 'height', 'rotation', 'scale'])
 const IMAGE_CROP_ACTION_KEYS = new Set(['type', 'slideId', 'path', 'patch'])
 const IMAGE_CROP_PATCH_KEYS = new Set(['x', 'y', 'width', 'height', 'framing'])
+
+const TEXT_APPEARANCE_KEYS = new Set(['lineHeight', 'letterSpacing', 'italic', 'opacity', 'shadow'])
+const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow'])
+const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow'])
+
+/** Validate every v6 appearance key present on a style patch; false rejects. */
+function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>): boolean {
+  for (const key of fields) {
+    if (!(key in patch)) continue
+    const value = patch[key]
+    if (key === 'opacity') {
+      if (!isValidOpacity(value)) return false
+    } else if (key === 'shadow') {
+      if (value !== null && !cloneShadowPaint(value)) return false
+    } else if (key === 'lineHeight') {
+      if (value !== null && !isValidLineHeight(value)) return false
+    } else if (key === 'letterSpacing') {
+      if (value !== null && !isValidLetterSpacing(value)) return false
+    } else if (key === 'italic') {
+      if (typeof value !== 'boolean') return false
+    } else if (key === 'cornerRadius') {
+      if (value !== null && !isValidCornerRadius(value)) return false
+    }
+  }
+  return true
+}
+
+/**
+ * Apply validated v6 appearance patch keys onto a styled node. `null` (and
+ * `italic: false`) removes the stored key, restoring the respective default.
+ */
+function withAppearancePatch<T extends object>(
+  base: T,
+  patch: UnknownRecord,
+  fields: ReadonlySet<string>,
+): T {
+  let next: UnknownRecord = { ...(base as unknown as UnknownRecord) }
+  for (const key of fields) {
+    if (!(key in patch)) continue
+    const value = patch[key]
+    if (value === null || (key === 'italic' && value === false)) {
+      const { [key]: _removed, ...rest } = next
+      next = rest
+      continue
+    }
+    next = { ...next, [key]: key === 'shadow' ? cloneShadowPaint(value) : value }
+  }
+  return next as T
+}
+
+/** No-op check for the appearance keys present on a style patch. */
+function appearanceKeysSame(
+  node: FreeformSceneLeaf,
+  next: FreeformSceneLeaf,
+  patch: UnknownRecord,
+  fields: ReadonlySet<string>,
+): boolean {
+  const nodeRecord = node as unknown as UnknownRecord
+  const nextRecord = next as unknown as UnknownRecord
+  for (const key of fields) {
+    if (!(key in patch)) continue
+    if (key === 'shadow') {
+      if (
+        !shadowPaintEquals(
+          nodeRecord.shadow as ShadowPaint | undefined,
+          nextRecord.shadow as ShadowPaint | undefined,
+        )
+      ) {
+        return false
+      }
+    } else if (nodeRecord[key] !== nextRecord[key]) {
+      return false
+    }
+  }
+  return true
+}
 
 function applyContentPatch(
   node: FreeformSceneNode,
@@ -406,7 +497,19 @@ function applyStylePatch(
   }
   const keys = Object.keys(patch)
   if (node.type === 'text') {
-    const allowed = new Set(['fontSize', 'fontFamily', 'textFill', 'align', 'fontWeight', 'spans'])
+    const allowed = new Set([
+      'fontSize',
+      'fontFamily',
+      'textFill',
+      'align',
+      'fontWeight',
+      'spans',
+      'lineHeight',
+      'letterSpacing',
+      'italic',
+      'opacity',
+      'shadow',
+    ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {
       return { ok: false, node }
@@ -417,6 +520,7 @@ function applyStylePatch(
       if (!normalized) return { ok: false, node }
       spansPatch = normalized
     }
+    if (!validAppearancePatch(patch, TEXT_APPEARANCE_KEYS)) return { ok: false, node }
     const base = {
       ...node,
       ...('fontSize' in patch ? { fontSize: patch.fontSize as number } : {}),
@@ -428,27 +532,33 @@ function applyStylePatch(
       ...('fontWeight' in patch ? { fontWeight: patch.fontWeight as typeof node.fontWeight } : {}),
     }
     const { spans: _baseSpans, ...baseWithoutSpans } = base
-    const next: FreeformTextElement = spansPatch === undefined
+    const spansApplied: FreeformTextElement = spansPatch === undefined
       ? base
       : spansPatch.length === 0
         ? baseWithoutSpans
         : { ...base, spans: spansPatch }
+    const next = withAppearancePatch(spansApplied, patch, TEXT_APPEARANCE_KEYS)
     const same = keys.every((key) =>
-      key === 'textFill'
-        ? paintEquals(node.textFill, next.textFill)
-        : key === 'spans'
-          ? richTextSpansEqual(node.spans, next.spans)
-          : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
-    )
+      TEXT_APPEARANCE_KEYS.has(key)
+        ? true
+        : key === 'textFill'
+          ? paintEquals(node.textFill, next.textFill)
+          : key === 'spans'
+            ? richTextSpansEqual(node.spans, next.spans)
+            : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+    ) && appearanceKeysSame(node, next, patch, TEXT_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'image') {
-    if (keys.some((key) => key !== 'fit' && key !== 'framing')) {
+    if (
+      keys.some((key) => key !== 'fit' && key !== 'framing' && key !== 'opacity' && key !== 'shadow')
+    ) {
       return { ok: false, node }
     }
     if (
       ('fit' in patch && patch.fit !== 'cover' && patch.fit !== 'contain')
       || ('framing' in patch && !isValidImageFraming(patch.framing))
+      || !validAppearancePatch(patch, BASE_APPEARANCE_KEYS)
     ) {
       return { ok: false, node }
     }
@@ -456,24 +566,35 @@ function applyStylePatch(
     const framing = 'framing' in patch
       ? patch.framing as ImageFraming
       : node.framing
-    if (fit === node.fit && imageFramingEquals(framing, node.framing)) {
+    const next = withAppearancePatch({
+      ...node,
+      fit,
+      framing: 'framing' in patch ? cloneImageFraming(framing) : node.framing,
+    }, patch, BASE_APPEARANCE_KEYS)
+    if (
+      fit === node.fit
+      && imageFramingEquals(framing, node.framing)
+      && appearanceKeysSame(node, next, patch, BASE_APPEARANCE_KEYS)
+    ) {
       return { ok: true, node }
     }
-    return {
-      ok: true,
-      node: {
-        ...node,
-        fit,
-        framing: 'framing' in patch ? cloneImageFraming(framing) : node.framing,
-      },
-    }
+    return { ok: true, node: next }
   }
   if (node.type === 'shape') {
-    const allowed = new Set(['shape', 'fill', 'stroke', 'strokeWidth'])
+    const allowed = new Set([
+      'shape',
+      'fill',
+      'stroke',
+      'strokeWidth',
+      'cornerRadius',
+      'opacity',
+      'shadow',
+    ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('fill' in patch && !isValidSceneShapeFill(patch.fill)) {
       return { ok: false, node }
     }
+    if (!validAppearancePatch(patch, SHAPE_APPEARANCE_KEYS)) return { ok: false, node }
     let fill = node.fill
     if ('fill' in patch) {
       const incoming = patch.fill as ShapeFill
@@ -497,33 +618,38 @@ function applyStylePatch(
         fill = cloneShapeFill(incoming)
       }
     }
-    const next = {
+    const base = {
       ...node,
       ...('shape' in patch ? { shape: patch.shape as typeof node.shape } : {}),
       ...('fill' in patch ? { fill } : {}),
       ...('stroke' in patch ? { stroke: patch.stroke as string } : {}),
       ...('strokeWidth' in patch ? { strokeWidth: patch.strokeWidth as number } : {}),
     }
+    const next = withAppearancePatch(base, patch, SHAPE_APPEARANCE_KEYS)
     const same = keys.every((key) =>
-      key === 'fill'
-        ? shapeFillEquals(node.fill, next.fill)
-        : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
-    )
+      SHAPE_APPEARANCE_KEYS.has(key)
+        ? true
+        : key === 'fill'
+          ? shapeFillEquals(node.fill, next.fill)
+          : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+    ) && appearanceKeysSame(node, next, patch, SHAPE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'line') {
-    const allowed = new Set(['lineKind', 'stroke', 'strokeWidth'])
+    const allowed = new Set(['lineKind', 'stroke', 'strokeWidth', 'opacity', 'shadow'])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
-    const next = {
+    if (!validAppearancePatch(patch, BASE_APPEARANCE_KEYS)) return { ok: false, node }
+    const next = withAppearancePatch({
       ...node,
       ...('lineKind' in patch ? { lineKind: patch.lineKind as typeof node.lineKind } : {}),
       ...('stroke' in patch ? { stroke: patch.stroke as string } : {}),
       ...('strokeWidth' in patch ? { strokeWidth: patch.strokeWidth as number } : {}),
-    }
+    }, patch, BASE_APPEARANCE_KEYS)
     const same = keys.every(
       (key) =>
-        (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
-    )
+        BASE_APPEARANCE_KEYS.has(key)
+          || (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+    ) && appearanceKeysSame(node, next, patch, BASE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
   return { ok: false, node }

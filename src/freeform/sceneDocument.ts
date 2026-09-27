@@ -35,10 +35,18 @@ import type {
   FreeformSlide,
   ImageFraming,
   RichTextSpan,
+  ShadowPaint,
   ShapeFill,
   SlideBackground,
 } from './types'
 import { normalizeRichTextSpans } from './richText'
+import {
+  cloneShadowPaint,
+  isValidCornerRadius,
+  isValidLetterSpacing,
+  isValidLineHeight,
+  isValidOpacity,
+} from './appearance'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -53,7 +61,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5
+type StrictDocumentVersion = 3 | 4 | 5 | 6
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -186,12 +194,35 @@ function normalizeNodeState(
   }
 }
 
-/** v5 text nodes may additionally carry the optional `spans` key. */
-function hasV5TextNodeKeys(value: UnknownRecord): boolean {
+const TEXT_OPTIONAL_V5_KEYS = new Set(['spans'])
+const BASE_OPTIONAL_V6_KEYS = new Set(['opacity', 'shadow'])
+const TEXT_OPTIONAL_V6_KEYS = new Set(['spans', 'lineHeight', 'letterSpacing', 'italic', 'opacity', 'shadow'])
+const SHAPE_OPTIONAL_V6_KEYS = new Set(['cornerRadius', 'opacity', 'shadow'])
+
+/** Exact required keys plus an optional-key whitelist (null = exact only). */
+function hasKeysWithOptionals(
+  value: UnknownRecord,
+  required: ReadonlySet<string>,
+  optional: ReadonlySet<string> | null,
+): boolean {
   const keys = Object.keys(value)
-  const expected = 'spans' in value ? TEXT_NODE_KEYS.size + 1 : TEXT_NODE_KEYS.size
-  if (keys.length !== expected) return false
-  return keys.every((key) => TEXT_NODE_KEYS.has(key) || key === 'spans')
+  if (!optional) return hasExactKeys(value, required)
+  const requiredSeen = keys.filter((key) => !optional.has(key))
+  if (requiredSeen.length !== required.size) return false
+  if (!requiredSeen.every((key) => required.has(key))) return false
+  return keys.every((key) => required.has(key) || optional.has(key))
+}
+
+function optionalKeysFor(
+  type: string,
+  inputVersion: StrictDocumentVersion,
+): ReadonlySet<string> | null {
+  if (inputVersion <= 4) return null
+  if (inputVersion === 5) return type === 'text' ? TEXT_OPTIONAL_V5_KEYS : null
+  if (type === 'text') return TEXT_OPTIONAL_V6_KEYS
+  if (type === 'shape') return SHAPE_OPTIONAL_V6_KEYS
+  if (type === 'image' || type === 'line') return BASE_OPTIONAL_V6_KEYS
+  return null
 }
 
 function hasStrictNodeKeys(
@@ -200,14 +231,40 @@ function hasStrictNodeKeys(
 ): boolean {
   if (value.type === 'group') return hasExactKeys(value, GROUP_NODE_KEYS)
   if (value.type === 'text') {
-    return inputVersion === 5 ? hasV5TextNodeKeys(value) : hasExactKeys(value, TEXT_NODE_KEYS)
+    return hasKeysWithOptionals(value, TEXT_NODE_KEYS, optionalKeysFor('text', inputVersion))
   }
   if (value.type === 'image') {
-    return hasExactKeys(value, inputVersion >= 4 ? IMAGE_NODE_V4_KEYS : IMAGE_NODE_V3_KEYS)
+    return hasKeysWithOptionals(
+      value,
+      inputVersion >= 4 ? IMAGE_NODE_V4_KEYS : IMAGE_NODE_V3_KEYS,
+      optionalKeysFor('image', inputVersion),
+    )
   }
-  if (value.type === 'shape') return hasExactKeys(value, SHAPE_NODE_KEYS)
-  if (value.type === 'line') return hasExactKeys(value, LINE_NODE_KEYS)
+  if (value.type === 'shape') {
+    return hasKeysWithOptionals(value, SHAPE_NODE_KEYS, optionalKeysFor('shape', inputVersion))
+  }
+  if (value.type === 'line') {
+    return hasKeysWithOptionals(value, LINE_NODE_KEYS, optionalKeysFor('line', inputVersion))
+  }
   return false
+}
+
+/** Clone the v6-only base appearance fields; null rejects. */
+function cloneStrictAppearance(
+  value: UnknownRecord,
+  inputVersion: StrictDocumentVersion,
+): { opacity?: number; shadow?: ShadowPaint } | null {
+  const out: { opacity?: number; shadow?: ShadowPaint } = {}
+  if ('opacity' in value) {
+    if (!isValidOpacity(value.opacity)) return null
+    out.opacity = value.opacity
+  }
+  if ('shadow' in value) {
+    const shadow = cloneShadowPaint(value.shadow)
+    if (!shadow) return null
+    out.shadow = shadow
+  }
+  return inputVersion === 6 || Object.keys(out).length === 0 ? out : null
 }
 
 function normalizeStrictSceneNode(
@@ -307,14 +364,21 @@ function normalizeStrictSceneNode(
     ) {
       return null
     }
-    // v5-only key (rejected by the key check for older versions); spans
-    // must be canonical and non-empty when present.
+    // Version-gated optional keys (rejected by the key check on older
+    // versions); spans must be canonical and non-empty when present.
     let spans: RichTextSpan[] | undefined
     if ('spans' in value) {
       const normalized = normalizeRichTextSpans(value.spans, value.text.length)
       if (!normalized || normalized.length === 0) return null
       spans = normalized
     }
+    if (inputVersion >= 6) {
+      if ('lineHeight' in value && !isValidLineHeight(value.lineHeight)) return null
+      if ('letterSpacing' in value && !isValidLetterSpacing(value.letterSpacing)) return null
+      if ('italic' in value && value.italic !== true) return null
+    }
+    const appearance = cloneStrictAppearance(value, inputVersion)
+    if (!appearance) return null
     return {
       ...geometry,
       type: 'text',
@@ -325,6 +389,10 @@ function normalizeStrictSceneNode(
       textFill,
       align: value.align,
       fontWeight: value.fontWeight,
+      ...('lineHeight' in value ? { lineHeight: value.lineHeight as number } : {}),
+      ...('letterSpacing' in value ? { letterSpacing: value.letterSpacing as number } : {}),
+      ...('italic' in value ? { italic: true as const } : {}),
+      ...appearance,
     }
   }
 
@@ -337,6 +405,8 @@ function normalizeStrictSceneNode(
     ) {
       return null
     }
+    const imageAppearance = cloneStrictAppearance(value, inputVersion)
+    if (!imageAppearance) return null
     return {
       ...geometry,
       type: 'image',
@@ -346,6 +416,7 @@ function normalizeStrictSceneNode(
       framing: inputVersion >= 4
         ? cloneImageFraming(value.framing as ImageFraming)
         : createDefaultImageFraming(),
+      ...imageAppearance,
     }
   }
 
@@ -359,6 +430,11 @@ function normalizeStrictSceneNode(
     ) {
       return null
     }
+    if (inputVersion >= 6 && 'cornerRadius' in value && !isValidCornerRadius(value.cornerRadius)) {
+      return null
+    }
+    const shapeAppearance = cloneStrictAppearance(value, inputVersion)
+    if (!shapeAppearance) return null
     return {
       ...geometry,
       type: 'shape',
@@ -366,6 +442,8 @@ function normalizeStrictSceneNode(
       fill,
       stroke: value.stroke,
       strokeWidth: value.strokeWidth,
+      ...('cornerRadius' in value ? { cornerRadius: value.cornerRadius as number } : {}),
+      ...shapeAppearance,
     }
   }
 
@@ -377,12 +455,15 @@ function normalizeStrictSceneNode(
     ) {
       return null
     }
+    const lineAppearance = cloneStrictAppearance(value, inputVersion)
+    if (!lineAppearance) return null
     return {
       ...geometry,
       type: 'line',
       lineKind: value.lineKind,
       stroke: value.stroke,
       strokeWidth: value.strokeWidth,
+      ...lineAppearance,
     }
   }
 
@@ -454,14 +535,14 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 5,
+    documentVersion: 6,
     slides,
     activeSlideId: value.activeSlideId,
   }
 }
 
 /** Strictly validates a historical v3 document and migrates it to current data. */
-export function migrateFreeformDocumentV3ToV5(value: unknown): FreeformDocument | null {
+export function migrateFreeformDocumentV3ToV6(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 3)
 }
 
@@ -470,9 +551,14 @@ export function normalizeFreeformDocumentV4(value: unknown): FreeformDocument | 
   return normalizeStrictDocument(value, 4)
 }
 
-/** Strictly validates and clones an already-v5 document. */
+/** Strictly validates an already-v5 document (v5 leaves can never carry appearance fields). */
 export function normalizeFreeformDocumentV5(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 5)
+}
+
+/** Strictly validates and clones an already-v6 document. */
+export function normalizeFreeformDocumentV6(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 6)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -687,7 +773,7 @@ function migrateLegacySlide(value: unknown, sourceIndex: number): MigratedSlideC
  * Tolerantly migrates a v1/v2 flat document, then passes the complete result
  * through the strict v5 validator before returning it.
  */
-export function migrateLegacyFreeformDocumentToV5(value: unknown): FreeformDocument | null {
+export function migrateLegacyFreeformDocumentToV6(value: unknown): FreeformDocument | null {
   if (
     !isRecord(value) ||
     (value.documentVersion !== 1 && value.documentVersion !== 2) ||
@@ -731,21 +817,22 @@ export function migrateLegacyFreeformDocumentToV5(value: unknown): FreeformDocum
   }))
   const activeIndex = candidates.findIndex(({ sourceId }) => sourceId === value.activeSlideId)
   const candidate: FreeformDocument = {
-    documentVersion: 5,
+    documentVersion: 6,
     slides,
     activeSlideId: slides[activeIndex >= 0 ? activeIndex : 0].id,
   }
-  return normalizeFreeformDocumentV5(candidate)
+  return normalizeFreeformDocumentV6(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v5 object. */
+/** Normalize any supported freeform document version to a fresh v6 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 6) return normalizeFreeformDocumentV6(value)
   if (value.documentVersion === 5) return normalizeFreeformDocumentV5(value)
   if (value.documentVersion === 4) return normalizeFreeformDocumentV4(value)
-  if (value.documentVersion === 3) return migrateFreeformDocumentV3ToV5(value)
+  if (value.documentVersion === 3) return migrateFreeformDocumentV3ToV6(value)
   if (value.documentVersion === 1 || value.documentVersion === 2) {
-    return migrateLegacyFreeformDocumentToV5(value)
+    return migrateLegacyFreeformDocumentToV6(value)
   }
   return null
 }
@@ -767,7 +854,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 5,
+    documentVersion: 6,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -798,7 +885,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 5,
+    documentVersion: 6,
     activeSlideId: document.activeSlideId,
     slides,
   }

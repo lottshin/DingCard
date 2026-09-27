@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeFreeformDocumentV5 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV6 } from '../freeform/sceneDocument'
 import type { FreeformSceneLeaf, FreeformSceneNode } from '../freeform/types'
 import { FONTS, PLATFORMS, THEMES } from '../theme'
 import { TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
@@ -65,7 +65,7 @@ describe('template registry', () => {
       const first = template.createFreeform?.()
       const second = template.createFreeform?.()
       expect(first?.slides).toHaveLength(template.pageCount)
-      expect(first && normalizeFreeformDocumentV5(first)).not.toBeNull()
+      expect(first && normalizeFreeformDocumentV6(first)).not.toBeNull()
       expect(first?.slides.every((slide) => slide.width === 1080 && slide.height === 1440)).toBe(true)
       const validFontIds = new Set(FONTS.map((font) => font.id))
       const templateFonts = first?.slides.flatMap((slide) => textFontFamilies(slide.nodes)) ?? []
@@ -154,6 +154,38 @@ describe('template registry', () => {
     }
 
     expect(seamRisks).toEqual([])
+  })
+
+  it('showcases v6 appearance fields across every freeform template', () => {
+    const capabilities = new Set<string>()
+    for (const template of templatesForWorkspace('freeform')) {
+      const document = template.createFreeform?.()
+      expect(document).toBeDefined()
+      const used = new Set<string>()
+      for (const leaf of document!.slides.flatMap((slide) => sceneLeaves(slide.nodes))) {
+        if (leaf.opacity !== undefined) used.add('opacity')
+        if (leaf.shadow !== undefined) used.add('shadow')
+        if (leaf.type === 'text') {
+          if (leaf.lineHeight !== undefined) used.add('lineHeight')
+          if (leaf.letterSpacing !== undefined) used.add('letterSpacing')
+          if (leaf.italic !== undefined) used.add('italic')
+        }
+        if (leaf.type === 'shape' && leaf.cornerRadius !== undefined) used.add('cornerRadius')
+      }
+      expect(
+        used.size,
+        `${template.id} should showcase at least three appearance capabilities`,
+      ).toBeGreaterThanOrEqual(3)
+      for (const capability of used) capabilities.add(capability)
+    }
+    expect([...capabilities].sort()).toEqual([
+      'cornerRadius',
+      'italic',
+      'letterSpacing',
+      'lineHeight',
+      'opacity',
+      'shadow',
+    ])
   })
 
   it('aligns the Signal action arrow with the headline center', () => {

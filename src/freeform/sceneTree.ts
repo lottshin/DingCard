@@ -6,6 +6,13 @@ import {
 } from './constants'
 import { isHexColor } from './paint'
 import { normalizeRichTextSpans } from './richText'
+import {
+  cloneShadowPaint,
+  isValidCornerRadius,
+  isValidLineHeight,
+  isValidLetterSpacing,
+  isValidOpacity,
+} from './appearance'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
   SCENE_EPSILON,
@@ -875,6 +882,47 @@ function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>)
   return actualKeys.length === keys.size && actualKeys.every((key) => keys.has(key))
 }
 
+type NodeFieldCheck = (record: Record<string, unknown>) => boolean
+
+/** Exact required keys plus a whitelist of optional keys, each with its own validator. */
+function hasValidOptionalFields(
+  record: Record<string, unknown>,
+  required: ReadonlySet<string>,
+  checks: Record<string, NodeFieldCheck>,
+): boolean {
+  const keys = Object.keys(record)
+  const present = keys.filter((key) => key in checks)
+  if (keys.length !== required.size + present.length) return false
+  if (!keys.every((key) => required.has(key) || key in checks)) return false
+  return present.every((key) => checks[key](record))
+}
+
+const OPACITY_FIELD_CHECK: NodeFieldCheck = (record) => isValidOpacity(record.opacity)
+const SHADOW_FIELD_CHECK: NodeFieldCheck = (record) => cloneShadowPaint(record.shadow) !== null
+
+const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  spans: (record) => {
+    const normalized = normalizeRichTextSpans(record.spans, String(record.text).length)
+    return normalized !== null && normalized.length > 0
+  },
+  lineHeight: (record) => isValidLineHeight(record.lineHeight),
+  letterSpacing: (record) => isValidLetterSpacing(record.letterSpacing),
+  italic: (record) => record.italic === true,
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+}
+
+const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+}
+
+const BASE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+}
+
 export function isValidSceneColorPaint(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const paint = value as Record<string, unknown>
@@ -910,19 +958,8 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
     return hasExactKeys(record, GROUP_NODE_KEYS) && Array.isArray(node.children)
   }
   if (node.type === 'text') {
-    const keys = Object.keys(record)
-    const hasSpans = 'spans' in record
-    const expectedKeyCount = hasSpans ? TEXT_NODE_KEYS.size + 1 : TEXT_NODE_KEYS.size
-    const keysOk = keys.length === expectedKeyCount
-      && keys.every((key) => TEXT_NODE_KEYS.has(key) || key === 'spans')
-    const spansOk = !hasSpans
-      || (() => {
-        const normalized = normalizeRichTextSpans(node.spans, node.text.length)
-        return normalized !== null && normalized.length > 0
-      })()
     return (
-      keysOk &&
-      spansOk &&
+      hasValidOptionalFields(record, TEXT_NODE_KEYS, TEXT_OPTIONAL_FIELD_CHECKS) &&
       typeof node.text === 'string' &&
       Number.isFinite(node.fontSize) &&
       typeof node.fontFamily === 'string' &&
@@ -933,7 +970,7 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
   }
   if (node.type === 'image') {
     return (
-      hasExactKeys(record, IMAGE_NODE_KEYS) &&
+      hasValidOptionalFields(record, IMAGE_NODE_KEYS, BASE_OPTIONAL_FIELD_CHECKS) &&
       typeof node.src === 'string' &&
       typeof node.alt === 'string' &&
       (node.fit === 'cover' || node.fit === 'contain') &&
@@ -942,7 +979,7 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
   }
   if (node.type === 'shape') {
     return (
-      hasExactKeys(record, SHAPE_NODE_KEYS) &&
+      hasValidOptionalFields(record, SHAPE_NODE_KEYS, SHAPE_OPTIONAL_FIELD_CHECKS) &&
       (node.shape === 'rect' || node.shape === 'ellipse' || node.shape === 'triangle') &&
       isValidSceneShapeFill(node.fill) &&
       typeof node.stroke === 'string' &&
@@ -951,7 +988,7 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
   }
   if (node.type === 'line') {
     return (
-      hasExactKeys(record, LINE_NODE_KEYS) &&
+      hasValidOptionalFields(record, LINE_NODE_KEYS, BASE_OPTIONAL_FIELD_CHECKS) &&
       (node.lineKind === 'line' || node.lineKind === 'arrow') &&
       typeof node.stroke === 'string' &&
       Number.isFinite(node.strokeWidth)

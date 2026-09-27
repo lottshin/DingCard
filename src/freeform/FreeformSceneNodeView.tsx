@@ -11,7 +11,13 @@ import type {
   FreeformSceneLeaf,
   FreeformSceneNode,
   ScenePath,
+  ShadowPaint,
 } from './types'
+
+/** CSS shadow components shared by box-shadow, text-shadow, and drop-shadow. */
+function shadowCss(shadow: ShadowPaint): string {
+  return `${shadow.offsetX}px ${shadow.offsetY}px ${shadow.blur}px ${shadow.color}`
+}
 
 export interface SceneNodePointerState {
   locked: boolean
@@ -104,6 +110,10 @@ function SceneLeafContent({
       ...textFillToStyle(leaf.textFill),
       textAlign: leaf.align,
       fontWeight: leaf.fontWeight,
+      ...(leaf.lineHeight !== undefined ? { lineHeight: leaf.lineHeight } : {}),
+      ...(leaf.letterSpacing !== undefined ? { letterSpacing: `${leaf.letterSpacing}px` } : {}),
+      ...(leaf.italic ? { fontStyle: 'italic' as const } : {}),
+      ...(leaf.shadow ? { textShadow: shadowCss(leaf.shadow) } : {}),
     }
     if (presentationOnly) {
       return (
@@ -150,6 +160,7 @@ function SceneLeafContent({
       <div
         className="freeform-image-content-layer"
         data-image-crop-hidden={imageContentIsHidden ? 'true' : undefined}
+        style={leaf.shadow ? { boxShadow: shadowCss(leaf.shadow) } : undefined}
       >
         <FramedImage
           logicalSrc={leaf.src}
@@ -176,6 +187,7 @@ function SceneLeafContent({
         viewBox={`0 0 ${leaf.width} ${leaf.height}`}
         preserveAspectRatio="none"
         aria-hidden="true"
+        style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
       >
         {leaf.lineKind === 'arrow' && (
           <defs>
@@ -216,6 +228,14 @@ function SceneLeafContent({
         ...(imageFill ? {} : shapeFillToStyle(leaf.fill)),
         borderColor: leaf.stroke,
         borderWidth: leaf.strokeWidth,
+        ...(leaf.shape === 'rect' && leaf.cornerRadius !== undefined
+          ? { borderRadius: `${leaf.cornerRadius}px` }
+          : {}),
+        ...(leaf.shadow
+          ? leaf.shape === 'triangle'
+            ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` }
+            : { boxShadow: shadowCss(leaf.shadow) }
+          : {}),
       }}
     >
       {imageFill && (
@@ -307,6 +327,7 @@ function SceneNodeBranch({
         width: node.width,
         height: node.height,
         transform: `rotate(${node.rotation}deg) scale(${node.scale})`,
+        opacity: node.opacity,
       }}
     >
       <SceneLeafContent

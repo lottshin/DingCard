@@ -89,7 +89,7 @@ npm run mcp   # 以 stdio 启动 dingcard-mcp
 
 可用工具包括 `list_templates`、`create_document_from_template`、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为 PNG）和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
 
-AI 生成的文档也可以一键回到编辑器精修：在「我的草稿」面板点击「导入 JSON 文档」或直接把 `.json` 文件拖进面板，文档会存为草稿并直接打开（自由画布 v1–v5 自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
+AI 生成的文档也可以一键回到编辑器精修：在「我的草稿」面板点击「导入 JSON 文档」或直接把 `.json` 文件拖进面板，文档会存为草稿并直接打开（自由画布 v1–v6 自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
 
 ## 使用与部署
 

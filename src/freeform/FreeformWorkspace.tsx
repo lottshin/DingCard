@@ -169,6 +169,7 @@ import type {
   FreeformSlide,
   FreeformTextElement,
   ScenePath,
+  ShadowPaint,
   ShapeFill,
   SlideBackground,
 } from './types'
@@ -187,6 +188,9 @@ const EXPORT_IMAGE_WAIT_MS = 3_500
 
 /** Preset highlight colors for rich text spans (solid hex, 6 digits). */
 const RICH_SPAN_COLORS = ['#d92d20', '#f97316', '#f79009', '#129211', '#1570ef', '#6941c6'] as const
+
+/** Drop shadow applied when the inspector enables shadows on a leaf. */
+const DEFAULT_SHADOW: ShadowPaint = { color: '#101828', blur: 24, offsetX: 0, offsetY: 8 }
 
 const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
   { id: 'rect', label: '矩形' },
@@ -597,6 +601,94 @@ function isTextElement(element: FreeformElement | undefined): element is Freefor
 
 function isLineElement(element: FreeformElement | undefined): element is FreeformLineElement {
   return element?.type === 'line'
+}
+
+/** Drop-shadow editor shared by every leaf type; `null` clears the stored shadow. */
+function ShadowField({
+  shadow,
+  resetKey,
+  onChange,
+}: {
+  shadow: ShadowPaint | undefined
+  resetKey: unknown
+  onChange: (shadow: ShadowPaint | null) => void
+}) {
+  if (!shadow) {
+    return (
+      <div className="inspector-actions">
+        <button
+          className="ghost"
+          type="button"
+          data-testid="shadow-add"
+          onClick={() => onChange({ ...DEFAULT_SHADOW })}
+        >
+          添加阴影
+        </button>
+      </div>
+    )
+  }
+  return (
+    <>
+      <div className="field-grid with-gap">
+        <div className="stroke-color-field" data-testid="shadow-color">
+          <span className="stroke-color-label">颜色</span>
+          <div className="color-field">
+            <span className="color-field-value">{shadow.color.toUpperCase()}</span>
+            <ColorPickerButton
+              label="阴影颜色"
+              color={shadow.color}
+              onChange={(color) => onChange({ ...shadow, color })}
+            />
+          </div>
+        </div>
+        <label>
+          模糊
+          <InspectorNumberInput
+            ariaLabel="阴影模糊"
+            min={0}
+            max={400}
+            resetKey={resetKey}
+            value={shadow.blur}
+            onCommit={(value) => onChange({ ...shadow, blur: value })}
+          />
+        </label>
+      </div>
+      <div className="field-grid">
+        <label>
+          水平偏移
+          <InspectorNumberInput
+            ariaLabel="阴影水平偏移"
+            min={-1000}
+            max={1000}
+            resetKey={resetKey}
+            value={shadow.offsetX}
+            onCommit={(value) => onChange({ ...shadow, offsetX: value })}
+          />
+        </label>
+        <label>
+          垂直偏移
+          <InspectorNumberInput
+            ariaLabel="阴影垂直偏移"
+            min={-1000}
+            max={1000}
+            resetKey={resetKey}
+            value={shadow.offsetY}
+            onCommit={(value) => onChange({ ...shadow, offsetY: value })}
+          />
+        </label>
+      </div>
+      <div className="inspector-actions">
+        <button
+          className="ghost"
+          type="button"
+          data-testid="shadow-clear"
+          onClick={() => onChange(null)}
+        >
+          清除阴影
+        </button>
+      </div>
+    </>
+  )
 }
 
 export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShellProps) {
@@ -4207,6 +4299,28 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                             onCommit={(value) => commitSceneProperty({ property: 'fontSize', value })}
                           />
                         </label>
+                        <label>
+                          行高
+                          <InspectorNumberInput
+                            ariaLabel="行高"
+                            min={0.5}
+                            max={4}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedElement.lineHeight ?? 1.18}
+                            onCommit={(value) => updateSelectedStyle({ lineHeight: value })}
+                          />
+                        </label>
+                        <label>
+                          字距
+                          <InspectorNumberInput
+                            ariaLabel="字距"
+                            min={-50}
+                            max={200}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedElement.letterSpacing ?? 0}
+                            onCommit={(value) => updateSelectedStyle({ letterSpacing: value })}
+                          />
+                        </label>
                       </div>
                       <div className="field-label with-gap">对齐</div>
                       <div className="seg stretch">
@@ -4220,6 +4334,29 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                             {align === 'left' ? '左' : align === 'center' ? '中' : '右'}
                           </button>
                         ))}
+                      </div>
+                      <div className="field-label with-gap">字型</div>
+                      <div className="seg stretch">
+                        <button
+                          type="button"
+                          className={selectedElement.fontWeight === 'bold' ? 'seg-btn on' : 'seg-btn'}
+                          data-testid="text-weight-toggle"
+                          aria-pressed={selectedElement.fontWeight === 'bold' ? 'true' : 'false'}
+                          onClick={() => updateSelectedStyle({
+                            fontWeight: selectedElement.fontWeight === 'bold' ? 'normal' : 'bold',
+                          })}
+                        >
+                          粗体
+                        </button>
+                        <button
+                          type="button"
+                          className={selectedElement.italic ? 'seg-btn on' : 'seg-btn'}
+                          data-testid="text-italic-toggle"
+                          aria-pressed={selectedElement.italic ? 'true' : 'false'}
+                          onClick={() => updateSelectedStyle({ italic: !selectedElement.italic })}
+                        >
+                          斜体
+                        </button>
                       </div>
                     </InspectorSection>
                   )}
@@ -4442,6 +4579,44 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                         </label>
                       </div>
                     </InspectorSection>
+                  )}
+
+                  {selectedElement && (
+                  <InspectorSection title="外观" testId="inspector-appearance">
+                    <div className="field-grid with-gap">
+                      <label>
+                        不透明度 %
+                        <InspectorNumberInput
+                          ariaLabel="不透明度 %"
+                          min={0}
+                          max={100}
+                          resetKey={inspectorNumberResetKey}
+                          value={Math.round((selectedElement.opacity ?? 1) * 100)}
+                          onCommit={(value) =>
+                            updateSelectedStyle({ opacity: Math.round(value) / 100 })}
+                        />
+                      </label>
+                      {isShapeElement(selectedElement) && selectedElement.shape === 'rect' && (
+                        <label>
+                          圆角
+                          <InspectorNumberInput
+                            ariaLabel="圆角"
+                            min={0}
+                            max={2000}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedElement.cornerRadius ?? 16}
+                            onCommit={(value) => updateSelectedStyle({ cornerRadius: value })}
+                          />
+                        </label>
+                      )}
+                    </div>
+                    <div className="field-label with-gap">阴影</div>
+                    <ShadowField
+                      shadow={selectedElement.shadow}
+                      resetKey={inspectorNumberResetKey}
+                      onChange={(shadow) => updateSelectedStyle({ shadow })}
+                    />
+                  </InspectorSection>
                   )}
                 </>
               )}

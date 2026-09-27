@@ -139,7 +139,7 @@ describe('dingcard-mcp tool layer', () => {
     const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
       documentVersion: number
     }
-    expect(document.documentVersion).toBe(5)
+    expect(document.documentVersion).toBe(6)
 
     const envelope = JSON.parse(await readText('dingcard://examples/markdown')) as {
       source: string

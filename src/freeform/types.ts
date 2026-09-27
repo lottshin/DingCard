@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 5
+  documentVersion: 6
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -34,6 +34,14 @@ export interface SceneNodeState {
   hidden: boolean
 }
 
+/** Drop shadow in px; rendered per leaf kind (box/text shadow or drop-shadow). */
+export interface ShadowPaint {
+  color: string
+  blur: number
+  offsetX: number
+  offsetY: number
+}
+
 export interface FreeformElementBase extends SceneNodeState {
   type: 'text' | 'image' | 'shape' | 'line'
   x: number
@@ -43,6 +51,10 @@ export interface FreeformElementBase extends SceneNodeState {
   rotation: number
   /** Internal uniform scale used to preserve visual lengths across groups. */
   scale: number
+  /** Element opacity in [0, 1]; absent means fully opaque. */
+  opacity?: number
+  /** Drop shadow; absent means none. */
+  shadow?: ShadowPaint
 }
 
 /**
@@ -67,6 +79,12 @@ export interface FreeformTextElement extends FreeformElementBase {
   textFill: ColorPaint
   align: 'left' | 'center' | 'right'
   fontWeight: 'normal' | 'bold'
+  /** Unitless line-height multiplier; absent uses the browser default. */
+  lineHeight?: number
+  /** Letter spacing in px; may be negative for tighter tracking. */
+  letterSpacing?: number
+  /** Italic text; absent means upright. */
+  italic?: true
 }
 
 export interface FreeformImageElement extends FreeformElementBase {
@@ -83,6 +101,8 @@ export interface FreeformShapeElement extends FreeformElementBase {
   fill: ShapeFill
   stroke: string
   strokeWidth: number
+  /** Corner radius in px; rendered for rect shapes (overrides the 16px default). */
+  cornerRadius?: number
 }
 
 export interface FreeformLineElement extends FreeformElementBase {
@@ -134,6 +154,18 @@ export interface FreeformNodeStylePatch {
   fontWeight?: 'normal' | 'bold'
   /** Replace the text element's spans wholesale; `[]` clears them. */
   spans?: RichTextSpan[]
+  /** Unitless line-height multiplier; `null` clears it back to the browser default. */
+  lineHeight?: number | null
+  /** Letter spacing in px (negative tightens); `null` clears it. */
+  letterSpacing?: number | null
+  /** Toggle italics; `false` clears the stored italic flag. */
+  italic?: boolean
+  /** Rectangle corner radius in px; `null` clears it. */
+  cornerRadius?: number | null
+  /** Element opacity in [0, 1]; `1` restores fully opaque. */
+  opacity?: number
+  /** Replace the element's drop shadow; `null` clears it. */
+  shadow?: ShadowPaint | null
   fit?: 'cover' | 'contain'
   framing?: ImageFraming
   shape?: 'rect' | 'ellipse' | 'triangle'

@@ -1196,7 +1196,7 @@ test('inspector hierarchy shows only context-relevant sections in contract order
 
   await insertShape(page)
   await setSelectedElementPosition(page, 100, 100)
-  await expectSections(['geometry', 'fill', 'stroke', 'arrange', 'danger'])
+  await expectSections(['geometry', 'fill', 'stroke', 'appearance', 'arrange', 'danger'])
   const shapeFill = page.getByTestId('inspector-fill').getByTestId('shape-fill-paint')
   await expect(shapeFill.getByTestId('paint-mode-solid')).toBeVisible()
   await expect(shapeFill.getByTestId('paint-mode-linear-gradient')).toBeVisible()
@@ -1204,7 +1204,7 @@ test('inspector hierarchy shows only context-relevant sections in contract order
 
   await insertText(page)
   await setSelectedElementPosition(page, 420, 180)
-  await expectSections(['geometry', 'typography', 'rich-spans', 'fill', 'arrange', 'danger'])
+  await expectSections(['geometry', 'typography', 'rich-spans', 'fill', 'appearance', 'arrange', 'danger'])
   const textFill = page.getByTestId('text-fill-paint')
   await expect(textFill.getByTestId('paint-mode-solid')).toBeVisible()
   await expect(textFill.getByTestId('paint-mode-linear-gradient')).toBeVisible()
@@ -1212,7 +1212,7 @@ test('inspector hierarchy shows only context-relevant sections in contract order
 
   await insertLine(page, '直线')
   await setSelectedElementPosition(page, 760, 300)
-  await expectSections(['geometry', 'stroke', 'arrange', 'danger'])
+  await expectSections(['geometry', 'stroke', 'appearance', 'arrange', 'danger'])
   const lineStroke = page.getByTestId('inspector-stroke')
   await expect(
     lineStroke.getByTestId('line-stroke-color').getByTestId('paint-color-button'),
@@ -1225,7 +1225,7 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await page.getByTestId('insert-image').click()
   const fileChooser = await fileChooserPromise
   await fileChooser.setFiles('public/favicon.svg')
-  await expectSections(['geometry', 'fill', 'arrange', 'danger'])
+  await expectSections(['geometry', 'fill', 'appearance', 'arrange', 'danger'])
   const imageFill = page.getByTestId('inspector-fill')
   await expect(imageFill.getByRole('button', { name: '填满', exact: true })).toBeVisible()
   await expect(imageFill.getByRole('button', { name: '适应', exact: true })).toBeVisible()
@@ -1376,6 +1376,55 @@ test('line stroke color and width controls align in the compact inspector', asyn
   await expect.poll(() => colorValue.evaluate((element) => (
     element.scrollWidth <= element.clientWidth
   ))).toBe(true)
+})
+
+test('inspector appearance controls style leaves end to end', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertShape(page)
+  const appearance = page.getByTestId('inspector-appearance')
+  const radiusInput = appearance.getByLabel('圆角', { exact: true })
+  await radiusInput.fill('32')
+  await radiusInput.press('Enter')
+  const opacityInput = appearance.getByLabel('不透明度 %', { exact: true })
+  await opacityInput.fill('60')
+  await opacityInput.press('Enter')
+  await appearance.getByTestId('shadow-add').click()
+  const blurInput = appearance.getByLabel('阴影模糊', { exact: true })
+  await blurInput.fill('40')
+  await blurInput.press('Enter')
+
+  const shapeElement = page.getByTestId('freeform-element')
+  const shapeView = shapeElement.locator('.freeform-shape')
+  await expect(shapeElement).toHaveCSS('opacity', '0.6')
+  await expect(shapeView).toHaveCSS('border-radius', '32px')
+  await expect(shapeView).toHaveCSS('box-shadow', /0px 8px 40px/)
+
+  await appearance.getByTestId('shadow-clear').click()
+  await expect(shapeView).toHaveCSS('box-shadow', 'none')
+  await expect(appearance.getByTestId('shadow-add')).toBeVisible()
+
+  await insertText(page)
+  const textbox = page.getByTestId('freeform-textbox')
+  await page.getByTestId('text-italic-toggle').click()
+  const lineHeightInput = page.getByLabel('行高', { exact: true })
+  await lineHeightInput.fill('2')
+  await lineHeightInput.press('Enter')
+  const letterSpacingInput = page.getByLabel('字距', { exact: true })
+  await letterSpacingInput.fill('4')
+  await letterSpacingInput.press('Enter')
+  await expect(textbox).toHaveCSS('font-style', 'italic')
+  await expect(textbox).toHaveCSS('line-height', '96px')
+  await expect(textbox).toHaveCSS('letter-spacing', '4px')
+
+  await insertShape(page, '三角形')
+  await expect(appearance.getByLabel('圆角', { exact: true })).toHaveCount(0)
+  await appearance.getByTestId('shadow-add').click()
+  const triangleView = page.getByTestId('freeform-element').locator('.freeform-shape.shape-triangle')
+  await expect(triangleView).toHaveCSS('filter', /drop-shadow/)
+
+  await page.getByTestId('freeform-canvas').click({ position: { x: 10, y: 10 } })
+  await expect(page.getByTestId('inspector-appearance')).toHaveCount(0)
 })
 
 test('shared inspector controls expose a visible accent focus ring', async ({ page }) => {
@@ -5022,7 +5071,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(5)
+  expect(storedDocument.documentVersion).toBe(6)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
@@ -7968,7 +8017,7 @@ test('number inspector keeps negative decimal keyboard input intact', async ({ p
   const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
 
   await x.focus()
-  await x.press('Control+A')
+  await x.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`)
   for (const key of ['-', '1', '2', '.', '5']) await x.press(key)
   await expect(x).toHaveValue('-12.5')
   await x.press('Enter')
