@@ -2,17 +2,19 @@
 
 本文件记录用户可感知的主要变化，不代替提交历史。
 
-## [Unreleased]
+## [0.17.0] - 2026-09-27
 
 ### Added
 
 - 自由画布新增富文本片段：文本节点支持可选 `spans` 数组（字符区间 `[start, end)` 局部加粗/标色）。编辑器里双击文本、选中一段文字后可在右侧「文字片段」加粗或按预设色标色，已存片段以列表展示、可单独删除；画布、页面缩略图、PNG 导出和 MCP 无头渲染一致呈现。改动文字时片段按编辑位置自动保留、收缩或丢弃，改错别字不会破坏样式。
+- 新增「存为模板」：自由画布与 Markdown 工作台都可把当前作品一键保存为个人模板（本浏览器当前账号）。保存时图片引用全部内联进文档，模板在模板中心顶部「我的模板」分组出现，可预览、一键新建同款或删除；自由画布保存整份多页文档，Markdown 保存源文与平台、主题、字体、资料设置。
+- MCP 服务器新增只读资源：`dingcard://schema/freeform`、`dingcard://schema/actions`、`dingcard://templates`、`dingcard://examples/freeform`、`dingcard://examples/markdown`，客户端可通过 `resources/list` / `resources/read` 获取文档模型说明与完整示例。
+
 ### Changed
 
 - 自由画布文档版本升至 `documentVersion: 5`（v1–v4 输入自动迁移为 v5）：`spans` 是 v5 独有的可选键，v4 及以下文本节点带 `spans` 会被严格拒绝；片段必须升序、不重叠、在文本界内且非空，`node/update-style` 的 `spans` 补丁整体替换（`[]` 清空）。MCP 工具与资源说明同步更新为 v5。
-
-- 新增「存为模板」：自由画布与 Markdown 工作台都可把当前作品一键保存为个人模板（本浏览器当前账号）。保存时图片引用全部内联进文档，模板在模板中心顶部「我的模板」分组出现，可预览、一键新建同款或删除；自由画布保存整份多页文档，Markdown 保存源文与平台、主题、字体、资料设置。
-- MCP 服务器新增只读资源：`dingcard://schema/freeform`、`dingcard://schema/actions`、`dingcard://templates`、`dingcard://examples/freeform`、`dingcard://examples/markdown`，客户端可通过 `resources/list` / `resources/read` 获取文档模型说明与完整示例。
+- 前端版本升至 `0.17.0`；服务端仍为 `0.3.0`。`0.17.0` 尚未发布远端镜像；README、Compose 和部署文档固定已发布的 GHCR `0.16.0` 镜像。
+- LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
 
 ## [0.16.0] - 2026-09-26
 
