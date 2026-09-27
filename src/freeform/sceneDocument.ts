@@ -71,7 +71,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -243,6 +243,13 @@ const TEXT_OPTIONAL_V8_KEYS = new Set([
 ])
 const SHAPE_OPTIONAL_V8_KEYS = SHAPE_OPTIONAL_V7_KEYS
 const LINE_OPTIONAL_V8_KEYS = LINE_OPTIONAL_V7_KEYS
+const BASE_OPTIONAL_V9_KEYS = BASE_OPTIONAL_V8_KEYS
+const TEXT_OPTIONAL_V9_KEYS = new Set([
+  'spans', 'lineHeight', 'letterSpacing', 'italic', 'vertical', 'opacity', 'shadow', 'filter',
+  'blendMode', 'stroke', 'strokeWidth',
+])
+const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
+const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 
 /** Exact required keys plus an optional-key whitelist (null = exact only). */
 function hasKeysWithOptionals(
@@ -277,10 +284,17 @@ function optionalKeysFor(
     if (type === 'image') return BASE_OPTIONAL_V7_KEYS
     return null
   }
-  if (type === 'text') return TEXT_OPTIONAL_V8_KEYS
-  if (type === 'shape') return SHAPE_OPTIONAL_V8_KEYS
-  if (type === 'line') return LINE_OPTIONAL_V8_KEYS
-  if (type === 'image') return BASE_OPTIONAL_V8_KEYS
+  if (inputVersion === 8) {
+    if (type === 'text') return TEXT_OPTIONAL_V8_KEYS
+    if (type === 'shape') return SHAPE_OPTIONAL_V8_KEYS
+    if (type === 'line') return LINE_OPTIONAL_V8_KEYS
+    if (type === 'image') return BASE_OPTIONAL_V8_KEYS
+    return null
+  }
+  if (type === 'text') return TEXT_OPTIONAL_V9_KEYS
+  if (type === 'shape') return SHAPE_OPTIONAL_V9_KEYS
+  if (type === 'line') return LINE_OPTIONAL_V9_KEYS
+  if (type === 'image') return BASE_OPTIONAL_V9_KEYS
   return null
 }
 
@@ -449,6 +463,9 @@ function normalizeStrictSceneNode(
       if ('stroke' in value && !isHexColor(value.stroke)) return null
       if ('strokeWidth' in value && !isValidTextStrokeWidth(value.strokeWidth)) return null
     }
+    if (inputVersion >= 9) {
+      if ('vertical' in value && value.vertical !== true) return null
+    }
     const appearance = cloneStrictAppearance(value, inputVersion)
     if (!appearance) return null
     return {
@@ -464,6 +481,7 @@ function normalizeStrictSceneNode(
       ...('lineHeight' in value ? { lineHeight: value.lineHeight as number } : {}),
       ...('letterSpacing' in value ? { letterSpacing: value.letterSpacing as number } : {}),
       ...('italic' in value ? { italic: true as const } : {}),
+      ...('vertical' in value ? { vertical: true as const } : {}),
       ...('stroke' in value ? { stroke: value.stroke as string } : {}),
       ...('strokeWidth' in value ? { strokeWidth: value.strokeWidth as number } : {}),
       ...appearance,
@@ -616,14 +634,14 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 8,
+    documentVersion: 9,
     slides,
     activeSlideId: value.activeSlideId,
   }
 }
 
 /** Strictly validates a historical v3 document and migrates it to current data. */
-export function migrateFreeformDocumentV3ToV8(value: unknown): FreeformDocument | null {
+export function migrateFreeformDocumentV3ToV9(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 3)
 }
 
@@ -647,9 +665,14 @@ export function normalizeFreeformDocumentV7(value: unknown): FreeformDocument | 
   return normalizeStrictDocument(value, 7)
 }
 
-/** Strictly validates and clones an already-v8 document. */
+/** Strictly validates and clones an already-v8 document (v8 text can never be vertical). */
 export function normalizeFreeformDocumentV8(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 8)
+}
+
+/** Strictly validates and clones an already-v9 document. */
+export function normalizeFreeformDocumentV9(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 9)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -862,9 +885,9 @@ function migrateLegacySlide(value: unknown, sourceIndex: number): MigratedSlideC
 
 /**
  * Tolerantly migrates a v1/v2 flat document, then passes the complete result
- * through the strict v8 validator before returning it.
+ * through the strict v9 validator before returning it.
  */
-export function migrateLegacyFreeformDocumentToV8(value: unknown): FreeformDocument | null {
+export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocument | null {
   if (
     !isRecord(value) ||
     (value.documentVersion !== 1 && value.documentVersion !== 2) ||
@@ -908,24 +931,25 @@ export function migrateLegacyFreeformDocumentToV8(value: unknown): FreeformDocum
   }))
   const activeIndex = candidates.findIndex(({ sourceId }) => sourceId === value.activeSlideId)
   const candidate: FreeformDocument = {
-    documentVersion: 8,
+    documentVersion: 9,
     slides,
     activeSlideId: slides[activeIndex >= 0 ? activeIndex : 0].id,
   }
-  return normalizeFreeformDocumentV8(candidate)
+  return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v8 object. */
+/** Normalize any supported freeform document version to a fresh v9 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 9) return normalizeFreeformDocumentV9(value)
   if (value.documentVersion === 8) return normalizeFreeformDocumentV8(value)
   if (value.documentVersion === 7) return normalizeFreeformDocumentV7(value)
   if (value.documentVersion === 6) return normalizeFreeformDocumentV6(value)
   if (value.documentVersion === 5) return normalizeFreeformDocumentV5(value)
   if (value.documentVersion === 4) return normalizeFreeformDocumentV4(value)
-  if (value.documentVersion === 3) return migrateFreeformDocumentV3ToV8(value)
+  if (value.documentVersion === 3) return migrateFreeformDocumentV3ToV9(value)
   if (value.documentVersion === 1 || value.documentVersion === 2) {
-    return migrateLegacyFreeformDocumentToV8(value)
+    return migrateLegacyFreeformDocumentToV9(value)
   }
   return null
 }
@@ -954,7 +978,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 8,
+    documentVersion: 9,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -985,7 +1009,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 8,
+    documentVersion: 9,
     activeSlideId: document.activeSlideId,
     slides,
   }

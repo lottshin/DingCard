@@ -1417,6 +1417,11 @@ test('inspector appearance controls style leaves end to end', async ({ page }) =
   await expect(textbox).toHaveCSS('line-height', '96px')
   await expect(textbox).toHaveCSS('letter-spacing', '4px')
 
+  await page.getByTestId('text-vertical-toggle').click()
+  await expect(textbox).toHaveCSS('writing-mode', 'vertical-rl')
+  await page.getByTestId('text-vertical-toggle').click()
+  await expect(textbox).toHaveCSS('writing-mode', 'horizontal-tb')
+
   const strokeHexInput = page.getByLabel('描边 hex', { exact: true })
   await strokeHexInput.fill('#f97316')
   const strokeWidthInput = page.getByLabel('描边宽度', { exact: true })
@@ -5135,7 +5140,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(8)
+  expect(storedDocument.documentVersion).toBe(9)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()

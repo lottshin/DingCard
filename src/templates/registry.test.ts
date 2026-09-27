@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeFreeformDocumentV8 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV9 } from '../freeform/sceneDocument'
 import type { FreeformSceneLeaf, FreeformSceneNode } from '../freeform/types'
 import { FONTS, PLATFORMS, THEMES } from '../theme'
 import { TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
@@ -65,7 +65,7 @@ describe('template registry', () => {
       const first = template.createFreeform?.()
       const second = template.createFreeform?.()
       expect(first?.slides).toHaveLength(template.pageCount)
-      expect(first && normalizeFreeformDocumentV8(first)).not.toBeNull()
+      expect(first && normalizeFreeformDocumentV9(first)).not.toBeNull()
       expect(first?.slides.every((slide) => slide.width === 1080 && slide.height === 1440)).toBe(true)
       const validFontIds = new Set(FONTS.map((font) => font.id))
       const templateFonts = first?.slides.flatMap((slide) => textFontFamilies(slide.nodes)) ?? []
@@ -156,7 +156,7 @@ describe('template registry', () => {
     expect(seamRisks).toEqual([])
   })
 
-  it('showcases v6 through v8 appearance fields across every freeform template', () => {
+  it('showcases v6 through v9 appearance fields across every freeform template', () => {
     const capabilities = new Set<string>()
     for (const template of templatesForWorkspace('freeform')) {
       const document = template.createFreeform?.()
@@ -176,6 +176,7 @@ describe('template registry', () => {
           if (leaf.lineHeight !== undefined) used.add('lineHeight')
           if (leaf.letterSpacing !== undefined) used.add('letterSpacing')
           if (leaf.italic !== undefined) used.add('italic')
+          if (leaf.vertical !== undefined) used.add('verticalText')
           if (leaf.stroke !== undefined) used.add('textStroke')
           if (leaf.textFill.type === 'linear-gradient' && 'stops' in leaf.textFill) {
             used.add('gradientStops')
@@ -209,6 +210,7 @@ describe('template registry', () => {
       'opacity',
       'shadow',
       'textStroke',
+      'verticalText',
     ])
   })
 

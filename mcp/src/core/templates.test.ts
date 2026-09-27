@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { normalizeFreeformDocumentV8 } from '../../../src/freeform/sceneDocument'
+import { normalizeFreeformDocumentV9 } from '../../../src/freeform/sceneDocument'
 import {
   freeformTemplateIds,
   instantiateTemplate,
@@ -42,7 +42,7 @@ describe('instantiateTemplate', () => {
       const instantiation = instantiateTemplate(id)
       expect(instantiation.workspace).toBe('freeform')
       if (instantiation.workspace !== 'freeform') continue
-      expect(normalizeFreeformDocumentV8(instantiation.document)).not.toBeNull()
+      expect(normalizeFreeformDocumentV9(instantiation.document)).not.toBeNull()
       expect(instantiation.document.slides.length).toBeGreaterThan(0)
     }
   })

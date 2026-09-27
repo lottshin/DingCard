@@ -881,6 +881,7 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   lineHeight: (record) => isValidLineHeight(record.lineHeight),
   letterSpacing: (record) => isValidLetterSpacing(record.letterSpacing),
   italic: (record) => record.italic === true,
+  vertical: (record) => record.vertical === true,
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,

@@ -121,7 +121,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 8,
+    documentVersion: 9,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -359,6 +359,7 @@ const STYLE_KEYS = new Set([
   'lineHeight',
   'letterSpacing',
   'italic',
+  'vertical',
   'cornerRadius',
   'opacity',
   'shadow',
@@ -379,7 +380,7 @@ const IMAGE_CROP_ACTION_KEYS = new Set(['type', 'slideId', 'path', 'patch'])
 const IMAGE_CROP_PATCH_KEYS = new Set(['x', 'y', 'width', 'height', 'framing'])
 
 const TEXT_APPEARANCE_KEYS = new Set([
-  'lineHeight', 'letterSpacing', 'italic', 'opacity', 'shadow', 'filter', 'blendMode',
+  'lineHeight', 'letterSpacing', 'italic', 'vertical', 'opacity', 'shadow', 'filter', 'blendMode',
   'stroke', 'strokeWidth',
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'filter', 'blendMode'])
@@ -400,6 +401,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
     } else if (key === 'letterSpacing') {
       if (value !== null && !isValidLetterSpacing(value)) return false
     } else if (key === 'italic') {
+      if (typeof value !== 'boolean') return false
+    } else if (key === 'vertical') {
       if (typeof value !== 'boolean') return false
     } else if (key === 'cornerRadius') {
       if (value !== null && !isValidCornerRadius(value)) return false
@@ -433,7 +436,7 @@ function withAppearancePatch<T extends object>(
   for (const key of fields) {
     if (!(key in patch)) continue
     const value = patch[key]
-    if (value === null || (key === 'italic' && value === false)) {
+    if (value === null || ((key === 'italic' || key === 'vertical') && value === false)) {
       const { [key]: _removed, ...rest } = next
       next = rest
       continue
@@ -567,6 +570,7 @@ function applyStylePatch(
       'lineHeight',
       'letterSpacing',
       'italic',
+      'vertical',
       'opacity',
       'shadow',
       'filter',

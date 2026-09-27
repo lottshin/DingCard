@@ -2,9 +2,7 @@
 //
 // The actual per-page rendering stays in the caller, because it needs mounted
 // DOM nodes and React state. This module packages either legacy data URLs or
-// named Blob entries.
-
-import JSZip from 'jszip'
+// named Blob entries. JSZip loads on demand so it stays out of the entry chunk.
 
 export type ZipInput =
   | string
@@ -35,6 +33,7 @@ export async function downloadZip(
   zipName = 'cards.zip',
   options: DownloadZipOptions = {},
 ): Promise<void> {
+  const { default: JSZip } = await import('jszip')
   const zip = new JSZip()
   const pad = String(inputs.length).length
 

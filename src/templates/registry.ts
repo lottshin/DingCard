@@ -1,4 +1,4 @@
-import { normalizeFreeformDocumentV8 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV9 } from '../freeform/sceneDocument'
 import type {
   BlendMode,
   ColorPaint,
@@ -44,7 +44,7 @@ function textNode(
   height: number,
   options: Partial<Pick<FreeformTextElement,
     'fontSize' | 'fontFamily' | 'textFill' | 'align' | 'fontWeight' | 'rotation' | 'name'
-    | 'lineHeight' | 'letterSpacing' | 'italic' | 'opacity' | 'shadow' | 'filter' | 'blendMode'
+    | 'lineHeight' | 'letterSpacing' | 'italic' | 'vertical' | 'opacity' | 'shadow' | 'filter' | 'blendMode'
     | 'stroke' | 'strokeWidth'
   >> = {},
 ): FreeformTextElement {
@@ -69,6 +69,7 @@ function textNode(
     ...(options.lineHeight !== undefined ? { lineHeight: options.lineHeight } : {}),
     ...(options.letterSpacing !== undefined ? { letterSpacing: options.letterSpacing } : {}),
     ...(options.italic ? { italic: true } : {}),
+    ...(options.vertical ? { vertical: true } : {}),
     ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
     ...(options.shadow ? { shadow: { ...options.shadow } } : {}),
     ...(options.filter ? { filter: { ...options.filter } } : {}),
@@ -176,11 +177,11 @@ function slide(name: string, background: ColorPaint, nodes: FreeformSceneNode[])
 
 function documentFromSlides(slides: FreeformSlide[]): FreeformDocument {
   const document: FreeformDocument = {
-    documentVersion: 8,
+    documentVersion: 9,
     activeSlideId: slides[0].id,
     slides,
   }
-  const normalized = normalizeFreeformDocumentV8(document)
+  const normalized = normalizeFreeformDocumentV9(document)
   if (!normalized) throw new Error('内置模板生成了无效的自由画布文档')
   return normalized
 }
@@ -715,6 +716,10 @@ function createSoftDocument(): FreeformDocument {
         name: '主标题', fontSize: 84, fontFamily: 'Songti SC, serif', textFill: solid('#4a3f3a'),
         fontWeight: 'bold', lineHeight: 1.3, letterSpacing: 2,
       }),
+      textNode('把日子竖着读', 912, 500, 56, 420, {
+        name: '竖排短句', fontSize: 26, fontFamily: 'Songti SC, serif', textFill: solid('#b08e84'),
+        vertical: true, letterSpacing: 4,
+      }),
       textNode('写给不着急的人和事。', 92, 650, 560, 60, { name: '导语', fontSize: 32, textFill: solid('#8a746c'), lineHeight: 1.6 }),
       textNode('“今天只做了一件小事，\n但它做完了。”', 132, 850, 360, 190, {
         name: '便签文字', fontSize: 30, fontFamily: 'Songti SC, serif', textFill: solid('#7a5c54'),
@@ -775,6 +780,10 @@ function createBlueprintDocument(): FreeformDocument {
       lineNode(72, 1180, 936, line, 2, { name: '网格线三', dash: 12, cap: 'butt', opacity: 0.7 }),
       lineNode(200, 900, 700, line, 2, { name: '尺寸线', dash: 8, cap: 'butt' }),
       textNode('BLUEPRINT 01', 72, 80, 480, 46, { name: '图纸编号', fontSize: 22, fontFamily: 'system-ui, sans-serif', textFill: solid(line), fontWeight: 'bold', letterSpacing: 5 }),
+      textNode('结构蓝图 · 图号 A-01', 942, 480, 60, 660, {
+        name: '竖排图号', fontSize: 24, fontFamily: 'system-ui, sans-serif', textFill: solid(line),
+        vertical: true, letterSpacing: 3,
+      }),
       textNode('先把想法\n画成蓝图', 72, 430, 800, 280, {
         name: '主标题', fontSize: 82, fontFamily: 'Songti SC, serif', textFill: solid(chalk),
         fontWeight: 'bold', lineHeight: 1.25,

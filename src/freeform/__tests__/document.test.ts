@@ -66,10 +66,10 @@ describe('freeform document', () => {
     expect(doc.activeSlideId).toBe(doc.slides[0].id)
   })
 
-  it('creates v8 documents and strict leaves with independent image framing', () => {
+  it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(8)
+    expect(doc.documentVersion).toBe(9)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -946,6 +946,24 @@ describe('v8 appearance patches', () => {
       stops,
       angle: 45,
     })
+  })
+
+  it('applies vertical text patches and clears them with false', () => {
+    const document = documentWith([{ ...createTextElement(createSlide()), id: 'text-1' }])
+
+    const styled = stylePatch(document, ['text-1'], { vertical: true })
+    const node = styled.slides[0].nodes[0] as FreeformTextElement
+    expect(node.vertical).toBe(true)
+
+    const noop = stylePatch(styled, ['text-1'], { vertical: true })
+    expect(noop).toBe(styled)
+
+    const cleared = stylePatch(styled, ['text-1'], { vertical: false })
+    const clearedNode = cleared.slides[0].nodes[0] as FreeformTextElement
+    expect('vertical' in clearedNode).toBe(false)
+    expect(stylePatch(cleared, ['text-1'], { vertical: false })).toBe(cleared)
+
+    expect(stylePatch(document, ['text-1'], { vertical: 'yes' as unknown as boolean })).toBe(document)
   })
 
   it('rejects invalid v8 patch values', () => {

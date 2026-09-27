@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 8
+  documentVersion: 9
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -125,6 +125,8 @@ export interface FreeformTextElement extends FreeformElementBase {
   letterSpacing?: number
   /** Italic text; absent means upright. */
   italic?: true
+  /** Vertical text flow (v9); absent means horizontal. */
+  vertical?: true
   /** Text outline color (v8); absent means no outline. */
   stroke?: string
   /** Text outline width in px (v8). */
@@ -208,6 +210,8 @@ export interface FreeformNodeStylePatch {
   letterSpacing?: number | null
   /** Toggle italics; `false` clears the stored italic flag. */
   italic?: boolean
+  /** Toggle vertical text flow (v9); `false` restores horizontal. */
+  vertical?: boolean
   /** Rectangle corner radius in px; `null` clears it. */
   cornerRadius?: number | null
   /** Element opacity in [0, 1]; `1` restores fully opaque. */

@@ -4451,6 +4451,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                         >
                           斜体
                         </button>
+                        <button
+                          type="button"
+                          className={selectedElement.vertical ? 'seg-btn on' : 'seg-btn'}
+                          data-testid="text-vertical-toggle"
+                          aria-pressed={selectedElement.vertical ? 'true' : 'false'}
+                          onClick={() => updateSelectedStyle({ vertical: !selectedElement.vertical })}
+                        >
+                          竖排
+                        </button>
                       </div>
                       <div className="field-label with-gap">描边</div>
                       <div className="paint-row" data-testid="text-stroke-field">

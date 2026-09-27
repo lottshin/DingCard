@@ -114,6 +114,7 @@ function SceneLeafContent({
       ...(leaf.lineHeight !== undefined ? { lineHeight: leaf.lineHeight } : {}),
       ...(leaf.letterSpacing !== undefined ? { letterSpacing: `${leaf.letterSpacing}px` } : {}),
       ...(leaf.italic ? { fontStyle: 'italic' as const } : {}),
+      ...(leaf.vertical ? { writingMode: 'vertical-rl' as const } : {}),
       ...(leaf.stroke !== undefined
         ? {
           WebkitTextStroke: `${leaf.strokeWidth ?? 1}px ${leaf.stroke}`,

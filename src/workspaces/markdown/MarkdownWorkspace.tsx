@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toPng } from 'html-to-image'
 import { buildFontEmbedCSS } from '../../fontEmbed'
 import { isLatestSaveForDraft } from '../../freeform/history'
@@ -15,7 +15,6 @@ import {
 } from '../../theme'
 import type { CardConfig, Profile } from '../../theme'
 import { Card } from '../../Card'
-import { MarkdownEditor } from '../../MarkdownEditor'
 import { ProfileModal } from '../../ProfileModal'
 import { DraftsPanel } from '../../DraftsPanel'
 import { Select } from '../../Select'
@@ -37,6 +36,12 @@ import {
   userTemplateToDefinition,
   type UserTemplate,
 } from '../../templates/userTemplates'
+
+// CodeMirror weighs in at roughly half the entry chunk; it is only needed
+// once the Markdown editor pane is actually shown, so load it on demand.
+const MarkdownEditor = lazy(() =>
+  import('../../MarkdownEditor').then((module) => ({ default: module.MarkdownEditor })),
+)
 
 const SAMPLE = `# 图文切片快速上手
 
@@ -89,6 +94,9 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [radius, setRadius] = useState(18)
   const [previewScale, setPreviewScale] = useState(1)
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE)
+  // The editor (and its CodeMirror chunk) mounts on first activation; once
+  // mounted it stays mounted so tab switches keep the typed source.
+  const [editorMounted, setEditorMounted] = useState(isActive)
 
   const [showProfile, setShowProfile] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
@@ -242,6 +250,10 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   useEffect(() => {
     if (!isActive) setCtx(null)
+  }, [isActive])
+
+  useEffect(() => {
+    if (isActive) setEditorMounted(true)
   }, [isActive])
 
   // Dismiss the context menu on any outside click / escape / scroll.
@@ -760,13 +772,19 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               {source.length} 字 · {pages.length} 页{savedAt ? ' · 已保存' : ''}
             </span>
           </div>
-          <MarkdownEditor
-            value={source}
-            onChange={handleEditorChange}
-            fontFamily={config.fontFamily}
-            beforeImageUpload={store.remote ? retainNow : undefined}
-            onImageError={handleImageError}
-          />
+          {editorMounted ? (
+            <Suspense fallback={<div className="cm-host" aria-hidden="true" />}>
+              <MarkdownEditor
+                value={source}
+                onChange={handleEditorChange}
+                fontFamily={config.fontFamily}
+                beforeImageUpload={store.remote ? retainNow : undefined}
+                onImageError={handleImageError}
+              />
+            </Suspense>
+          ) : (
+            <div className="cm-host" aria-hidden="true" />
+          )}
         </section>
 
         <section className="pane pane-preview" style={cssVars}>

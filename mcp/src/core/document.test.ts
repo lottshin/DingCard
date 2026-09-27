@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 8,
+    documentVersion: 9,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,16 +74,17 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(8)
+    expect(result.document.documentVersion).toBe(9)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
-  test('accepts v8 text outlines and multi-stop gradients, rejects them on v7 inputs', () => {
+  test('accepts v9 text features, rejects vertical text on v8 inputs', () => {
     const stroked = seedDocument() as unknown as Record<string, unknown>
     const slide = (stroked.slides as Array<Record<string, unknown>>)[0]
     const nodes = slide.nodes as Array<Record<string, unknown>>
     nodes[0].stroke = '#f97316'
     nodes[0].strokeWidth = 3
+    nodes[0].vertical = true
     nodes[0].textFill = {
       type: 'linear-gradient',
       stops: [
@@ -96,7 +97,7 @@ describe('validateDocument', () => {
     expect(accepted.ok).toBe(true)
 
     const legacy = structuredClone(stroked)
-    legacy.documentVersion = 7
+    legacy.documentVersion = 8
     expect(validateDocument(legacy).ok).toBe(false)
 
     const badStops = structuredClone(stroked)
