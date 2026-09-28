@@ -26,11 +26,13 @@ import type {
   AsyncSceneLeafMapper,
   SceneLeafMapper,
 } from './sceneTree'
+import { cloneGuides, normalizeSlideGuides } from './guides'
 import type {
   BlendMode,
   ColorPaint,
   FreeformDocument,
   FreeformGroupNode,
+  FreeformGuide,
   FreeformSceneLeaf,
   FreeformSceneNode,
   FreeformSlide,
@@ -71,10 +73,11 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
+const SLIDE_GUIDE_OPTIONAL_KEYS = new Set(['guides'])
 const SOLID_PAINT_KEYS = new Set(['type', 'color'])
 const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
 const GRADIENT_STOPS_PAINT_KEYS = new Set(['type', 'stops', 'angle'])
@@ -575,7 +578,9 @@ function normalizeStrictSlide(
 ): FreeformSlide | null {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, SLIDE_KEYS) ||
+    !(inputVersion >= 10
+      ? hasKeysWithOptionals(value, SLIDE_KEYS, SLIDE_GUIDE_OPTIONAL_KEYS)
+      : hasExactKeys(value, SLIDE_KEYS)) ||
     !isNonBlankString(value.id) ||
     typeof value.name !== 'string' ||
     !isFiniteNumber(value.width) ||
@@ -584,6 +589,13 @@ function normalizeStrictSlide(
     !Array.isArray(value.nodes)
   ) {
     return null
+  }
+  // Guides are a v10-only optional key on pages.
+  let guides: FreeformGuide[] | null = []
+  if ('guides' in value) {
+    if (inputVersion < 10) return null
+    guides = normalizeSlideGuides(value.guides, value.width, value.height)
+    if (!guides) return null
   }
 
   const background = cloneStrictSlideBackground(value.background, inputVersion)
@@ -604,6 +616,7 @@ function normalizeStrictSlide(
     height: value.height,
     background,
     nodes,
+    ...(guides && guides.length > 0 ? { guides } : {}),
   }
 }
 
@@ -634,7 +647,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 9,
+    documentVersion: 10,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -670,9 +683,14 @@ export function normalizeFreeformDocumentV8(value: unknown): FreeformDocument | 
   return normalizeStrictDocument(value, 8)
 }
 
-/** Strictly validates and clones an already-v9 document. */
+/** Strictly validates and clones an already-v9 document (v9 pages can never carry guides). */
 export function normalizeFreeformDocumentV9(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 9)
+}
+
+/** Strictly validates and clones an already-v10 document. */
+export function normalizeFreeformDocumentV10(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 10)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -930,7 +948,8 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
     ),
   }))
   const activeIndex = candidates.findIndex(({ sourceId }) => sourceId === value.activeSlideId)
-  const candidate: FreeformDocument = {
+  // A v9-shaped input handed to the strict reader, which upgrades it to v10.
+  const candidate = {
     documentVersion: 9,
     slides,
     activeSlideId: slides[activeIndex >= 0 ? activeIndex : 0].id,
@@ -938,9 +957,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v9 object. */
+/** Normalize any supported freeform document version to a fresh v10 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 10) return normalizeFreeformDocumentV10(value)
   if (value.documentVersion === 9) return normalizeFreeformDocumentV9(value)
   if (value.documentVersion === 8) return normalizeFreeformDocumentV8(value)
   if (value.documentVersion === 7) return normalizeFreeformDocumentV7(value)
@@ -978,7 +998,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 9,
+    documentVersion: 10,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -987,6 +1007,7 @@ export function mapFreeformDocumentLeaves(
       height: slide.height,
       background: copySlideBackgroundValue(slide.background),
       nodes: mapSceneLeaves(slide.nodes, mapper),
+      ...(slide.guides ? { guides: cloneGuides(slide.guides) } : {}),
     })),
   }
 }
@@ -1006,10 +1027,11 @@ export async function mapFreeformDocumentLeavesAsync(
     height: slide.height,
     background: copySlideBackgroundValue(slide.background),
     nodes: await mapSceneLeavesAsync(slide.nodes, mapper),
+    ...(slide.guides ? { guides: cloneGuides(slide.guides) } : {}),
   })))
 
   return {
-    documentVersion: 9,
+    documentVersion: 10,
     activeSlideId: document.activeSlideId,
     slides,
   }

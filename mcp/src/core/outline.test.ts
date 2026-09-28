@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { normalizeFreeformDocumentV9 } from '../../../src/freeform/sceneDocument'
+import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { walkScene } from '../../../src/freeform/sceneTree'
 import type { FreeformTextElement } from '../../../src/freeform/types'
 import { freeformTemplateIds } from './templates'
@@ -60,7 +60,7 @@ describe('createDocumentFromOutline', () => {
     // cover + one slide per section + the template ending page
     expect(result.document.slides).toHaveLength(5)
     expect(result.summary).toEqual({
-      documentVersion: 9,
+      documentVersion: 10,
       slideCount: 5,
       coverTitle: '三步搞定周报',
       sections: [
@@ -89,7 +89,7 @@ describe('createDocumentFromOutline', () => {
     expect(secondBody?.text).toBe('先列骨架，再填细节。')
 
     // The generated document survives a strict round trip.
-    expect(normalizeFreeformDocumentV9(result.document)).toEqual(result.document)
+    expect(normalizeFreeformDocument(result.document)).toEqual(result.document)
   })
 
   test('generates a valid styled document from every freeform template', () => {
@@ -98,7 +98,7 @@ describe('createDocumentFromOutline', () => {
       expect(result.ok, templateId).toBe(true)
       if (!result.ok) continue
       expect(result.document.slides, templateId).toHaveLength(5)
-      expect(normalizeFreeformDocumentV9(result.document), templateId).toEqual(result.document)
+      expect(normalizeFreeformDocument(result.document), templateId).toEqual(result.document)
       for (const [index, section] of result.summary.sections.entries()) {
         const slide = result.document.slides.find((candidate) => candidate.id === section.slideId)
         expect(slide, templateId).toBeDefined()

@@ -3,7 +3,7 @@
 // reducer — no new document-model semantics.
 
 import { reduceFreeformDocument } from '../../../src/freeform/document'
-import { normalizeFreeformDocumentV9 } from '../../../src/freeform/sceneDocument'
+import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { walkScene } from '../../../src/freeform/sceneTree'
 import type {
   FreeformDocument,
@@ -26,7 +26,7 @@ export interface OutlineDocumentResult {
   ok: true
   document: FreeformDocument
   summary: {
-    documentVersion: 9
+    documentVersion: 10
     slideCount: number
     coverTitle: string
     sections: Array<{ slideId: string; title: string; pointCount: number }>
@@ -204,15 +204,15 @@ export function createDocumentFromOutline(
     updates: [{ path: [coverSlots.title.id], patch: { text: coverTitle } }],
   })
 
-  const normalized = normalizeFreeformDocumentV9(document)
+  const normalized = normalizeFreeformDocument(document)
   if (!normalized) {
-    return { ok: false, error: '生成的文档未通过 v9 校验。' }
+    return { ok: false, error: '生成的文档未通过 v10 校验。' }
   }
   return {
     ok: true,
     document: normalized,
     summary: {
-      documentVersion: 9,
+      documentVersion: 10,
       slideCount: normalized.slides.length,
       coverTitle,
       sections: summarySections,

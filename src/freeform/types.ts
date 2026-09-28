@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 9
+  documentVersion: 10
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -17,6 +17,17 @@ export interface FreeformSlide {
   height: number
   background: SlideBackground
   nodes: FreeformSceneNode[]
+  /** Editor guides (v10); page-relative lines that never render into exports. */
+  guides?: FreeformGuide[]
+}
+
+/** One ruler-dragged guide line on a page (v10). */
+export interface FreeformGuide {
+  id: string
+  /** 'x' is a vertical line at that x position; 'y' is a horizontal one. */
+  axis: 'x' | 'y'
+  /** Page-relative position in [0, width] / [0, height]. */
+  position: number
 }
 
 /** One color stop on a multi-stop gradient; offsets ascend in [0, 1]. */
@@ -286,6 +297,7 @@ export type FreeformAction =
       patch: Partial<Pick<FreeformSlide, 'name' | 'background'>>
     }
   | { type: 'slide/resize'; slideId: string; width: number; height: number }
+  | { type: 'guides/set'; slideId: string; guides: FreeformGuide[] }
   | { type: 'node/set-locked'; slideId: string; path: ScenePath; locked: boolean }
   | { type: 'node/set-hidden'; slideId: string; path: ScenePath; hidden: boolean }
   | { type: 'node/rename'; slideId: string; path: ScenePath; name: string }

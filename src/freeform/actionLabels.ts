@@ -13,6 +13,7 @@ export function describeFreeformAction(action: FreeformAction): string {
       if (action.patch?.name && !action.patch?.background) return '重命名页面'
       return '更新页面'
     case 'slide/resize': return '调整页面尺寸'
+    case 'guides/set': return '调整参考线'
     case 'node/set-locked': return action.locked ? '锁定对象' : '解锁对象'
     case 'node/set-hidden': return action.hidden ? '隐藏对象' : '显示对象'
     case 'node/rename': return '重命名对象'

@@ -19,6 +19,7 @@ import {
   normalizeFreeformDocumentV7,
   normalizeFreeformDocumentV8,
   normalizeFreeformDocumentV9,
+  normalizeFreeformDocumentV10,
 } from '../sceneDocument'
 import {
   countSceneNodes,
@@ -230,7 +231,7 @@ function nestedGroups(depth: number): unknown {
 
 describe('freeform scene types and limits', () => {
   it('uses the current recursive scene types', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<9>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<10>()
     expectTypeOf<FreeformSlide>().toHaveProperty('nodes')
     expectTypeOf<FreeformSceneLeaf>().toHaveProperty('scale')
     expectTypeOf<FreeformGroupNode>().toHaveProperty('children')
@@ -249,7 +250,7 @@ describe('freeform scene types and limits', () => {
 
 describe('strict v4/v5 freeform document contract', () => {
   it('uses versionless v4 runtime types with required image framing', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<9>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<10>()
     expectTypeOf<Extract<FreeformSceneLeaf, { type: 'image' }>>()
       .toHaveProperty('framing')
       .toEqualTypeOf<ImageFraming>()
@@ -279,7 +280,7 @@ describe('strict v4/v5 freeform document contract', () => {
     const deepGroup = hiddenGroup?.type === 'group' ? hiddenGroup.children[1] : undefined
     const deepFill = deepGroup?.type === 'group' ? deepGroup.children[0] : undefined
 
-    expect(migrated?.documentVersion).toBe(9)
+    expect(migrated?.documentVersion).toBe(10)
     expect(rootImage).toMatchObject({ type: 'image', framing: framing() })
     expect(hiddenImage).toMatchObject({ type: 'image', framing: framing() })
     expect(deepFill).toMatchObject({
@@ -320,7 +321,7 @@ describe('strict v4/v5 freeform document contract', () => {
 
     const normalized = normalizeFreeformDocumentV4(raw)
 
-    expect(normalized).toEqual({ ...raw, documentVersion: 9 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 10 })
     expect(normalized).not.toBe(raw)
     const sourceImage = (raw.slides[0] as { nodes: Array<{ framing: ImageFraming }> }).nodes[0]
     const outputImage = normalized?.slides[0].nodes[0]
@@ -371,11 +372,11 @@ describe('strict v4/v5 freeform document contract', () => {
     const v3 = v3Document([v3Slide('slide-1', [imageLeaf('photo')])])
     const v4 = v4Document([v3Slide('slide-1', [v4ImageLeaf('photo')])])
 
-    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(9)
-    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(9)
-    expect(normalizeFreeformDocument(v3)?.documentVersion).toBe(9)
-    expect(normalizeFreeformDocument(v4)).toEqual({ ...v4, documentVersion: 9 })
-    expect(normalizeFreeformDocument({ ...v4, documentVersion: 10 })).toBeNull()
+    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(10)
+    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(10)
+    expect(normalizeFreeformDocument(v3)?.documentVersion).toBe(10)
+    expect(normalizeFreeformDocument(v4)).toEqual({ ...v4, documentVersion: 10 })
+    expect(normalizeFreeformDocument({ ...v4, documentVersion: 11 })).toBeNull()
     expect(normalizeFreeformDocument(null)).toBeNull()
   })
 
@@ -403,8 +404,8 @@ describe('strict v4/v5 freeform document contract', () => {
     }
     expect(mappedImage.framing).not.toBe(sourceImage.framing)
     expect(mappedAsyncImage.framing).not.toBe(sourceImage.framing)
-    expect(normalizeFreeformDocumentV9(mapped)).toEqual(mapped)
-    expect(normalizeFreeformDocumentV9(mappedAsync)).toEqual(mappedAsync)
+    expect(normalizeFreeformDocument(mapped)).toEqual(mapped)
+    expect(normalizeFreeformDocument(mappedAsync)).toEqual(mappedAsync)
   })
 })
 
@@ -458,7 +459,7 @@ describe('legacy freeform document migration', () => {
 
     expect(raw).toEqual(snapshot)
     expect(migrated).not.toBeNull()
-    expect(migrated?.documentVersion).toBe(9)
+    expect(migrated?.documentVersion).toBe(10)
     expect(migrated?.slides[0].nodes.map((node) => node.id)).toEqual([
       'text-1',
       'image-1',
@@ -657,7 +658,7 @@ describe('legacy freeform document migration', () => {
     expect(migrated?.slides[0].nodes[1]).toMatchObject({
       fill: { type: 'solid', color: '#fed7aa' },
     })
-    expect(normalizeFreeformDocumentV9(migrated)).toEqual(migrated)
+    expect(normalizeFreeformDocument(migrated)).toEqual(migrated)
   })
 
   it('fails when every legacy page is invalid', () => {
@@ -695,7 +696,7 @@ describe('legacy freeform document migration', () => {
         legacySlide('slide-2', [legacyText('same')]),
       ]),
     )
-    const reread = normalizeFreeformDocumentV9(JSON.parse(JSON.stringify(migrated)))
+    const reread = normalizeFreeformDocument(JSON.parse(JSON.stringify(migrated)))
 
     expect(reread).toEqual(migrated)
     expect(reread?.slides.map((slide) => slide.nodes.map((node) => node.id))).toEqual(
@@ -724,7 +725,7 @@ describe('strict v3 freeform normalization', () => {
 
     const normalized = migrateFreeformDocumentV3ToV9(raw)
 
-    expect(normalized).toEqual({ ...raw, documentVersion: 9 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 10 })
     expect(normalized).not.toBe(raw)
     expect(normalized?.slides[1]).not.toBe(raw.slides[1])
     expect(raw).toEqual(snapshot)
@@ -735,10 +736,10 @@ describe('strict v3 freeform normalization', () => {
     const v2 = legacyDocument([legacySlide('slide-1')])
     const v3 = v3Document()
 
-    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(9)
-    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(9)
-    expect(normalizeFreeformDocument(v3)).toEqual({ ...v3, documentVersion: 9 })
-    expect(normalizeFreeformDocument({ ...v3, documentVersion: 10 })).toBeNull()
+    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(10)
+    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(10)
+    expect(normalizeFreeformDocument(v3)).toEqual({ ...v3, documentVersion: 10 })
+    expect(normalizeFreeformDocument({ ...v3, documentVersion: 11 })).toBeNull()
     expect(normalizeFreeformDocument(null)).toBeNull()
   })
 
@@ -755,7 +756,7 @@ describe('strict v3 freeform normalization', () => {
     expect(normalized).not.toBeNull()
     expect(normalized?.slides[0].nodes[0].name).toBe('')
     expect(normalized?.slides[0].nodes[1].name).toBe('   ')
-    expect(normalized).toEqual({ ...raw, documentVersion: 9 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 10 })
   })
 
   it.each([
@@ -983,7 +984,7 @@ describe('immutable v4 document leaf mapping', () => {
     expect(
       ((output.slides[0].nodes[0] as FreeformGroupNode).children[0] as FreeformSceneLeaf),
     ).toMatchObject({ src: 'data:image/png;base64,photo' })
-    expect(normalizeFreeformDocumentV9(output)).toEqual(output)
+    expect(normalizeFreeformDocument(output)).toEqual(output)
     expect(source).toEqual(snapshot)
   })
 
@@ -1045,9 +1046,9 @@ describe('strict v5 freeform document contract', () => {
 
   it('normalizes any historical version to v9 while still accepting v6 through v8 documents', () => {
     const v4 = v4Document([v3Slide('slide-1', [textLeaf('text-1')])])
-    expect(normalizeFreeformDocument(v4)?.documentVersion).toBe(9)
+    expect(normalizeFreeformDocument(v4)?.documentVersion).toBe(10)
     const v6 = { ...v4, documentVersion: 6 }
-    expect(normalizeFreeformDocument(v6)?.documentVersion).toBe(9)
+    expect(normalizeFreeformDocument(v6)?.documentVersion).toBe(10)
   })
 
   it.each([
@@ -1204,7 +1205,7 @@ describe('strict v6 freeform document contract', () => {
     }
     const normalized = normalizeFreeformDocumentV6(raw)
     expect(normalized).not.toBeNull()
-    expect(normalizeFreeformDocumentV9(normalized)).toEqual(normalized)
+    expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
   })
 })
 
@@ -1335,7 +1336,7 @@ describe('strict v7 freeform document contract', () => {
     }
     const normalized = normalizeFreeformDocumentV7(raw)
     expect(normalized).not.toBeNull()
-    expect(normalizeFreeformDocumentV9(normalized)).toEqual(normalized)
+    expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
   })
 })
 
@@ -1371,7 +1372,7 @@ describe('strict v8 freeform document contract', () => {
     expect(text.strokeWidth).toBe(3)
     expect(text.textFill).toEqual({ type: 'linear-gradient', stops, angle: 90 })
     expect(shape.fill).toEqual({ type: 'linear-gradient', stops, angle: 45 })
-    expect(normalizeFreeformDocumentV9(normalized)).toEqual(normalized)
+    expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
   })
 
   it('rejects v8 fields on v7 documents (they are v8 features)', () => {
@@ -1556,7 +1557,7 @@ describe('strict v8 freeform document contract', () => {
 
     const output = mapFreeformDocumentLeaves(source, (leaf) => leaf)
     expect(output.slides[0].nodes).toEqual(source.slides[0].nodes)
-    expect(normalizeFreeformDocumentV9(output)).toEqual(output)
+    expect(normalizeFreeformDocument(output)).toEqual(output)
 
     const asyncOutput = await mapFreeformDocumentLeavesAsync(source, async (leaf) => leaf)
     expect(asyncOutput.slides[0].nodes).toEqual(source.slides[0].nodes)
@@ -1576,7 +1577,7 @@ describe('strict v9 freeform document contract', () => {
     expect(normalized).not.toBeNull()
     const [text] = normalized?.slides[0].nodes ?? []
     expect(text).toMatchObject({ vertical: true, italic: true })
-    expect(normalizeFreeformDocumentV9(normalized)).toEqual(normalized)
+    expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
 
     const legacy = { ...v4Document([v3Slide('slide-1', [textLeaf('text-1', { vertical: true })])]), documentVersion: 8 }
     expect(normalizeFreeformDocumentV8(legacy)).toBeNull()
@@ -1597,6 +1598,71 @@ describe('strict v9 freeform document contract', () => {
       }
       expect(normalizeFreeformDocumentV9(raw)).toBeNull()
       expect(normalizeFreeformDocument(raw)).toBeNull()
+    }
+  })
+})
+
+describe('strict v10 freeform document contract', () => {
+  function guideDocument(guides: unknown, documentVersion = 10) {
+    return {
+      ...v4Document([v3Slide('slide-1', [], { guides })]),
+      documentVersion,
+    }
+  }
+
+  it('accepts guides on v10 documents and rejects them on v9 inputs', () => {
+    const guides = [
+      { id: 'guide-1', axis: 'x', position: 120 },
+      { id: 'guide-2', axis: 'y', position: 300 },
+    ]
+    const normalized = normalizeFreeformDocumentV10(guideDocument(guides))
+    expect(normalized?.slides[0].guides).toEqual(guides)
+    expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
+
+    const legacy = guideDocument(guides, 9)
+    expect(normalizeFreeformDocumentV9(legacy)).toBeNull()
+    expect(normalizeFreeformDocument(legacy)).toBeNull()
+  })
+
+  it('omits the guides key for empty guide lists and accepts guideless pages', () => {
+    const normalized = normalizeFreeformDocumentV10(guideDocument([]))
+    expect(normalized).not.toBeNull()
+    expect('guides' in (normalized?.slides[0] ?? {})).toBe(false)
+
+    const guideless = normalizeFreeformDocumentV10({ ...v4Document(), documentVersion: 10 })
+    if (!guideless) throw new Error('Expected valid guideless document')
+    expect(normalizeFreeformDocument(guideless)).toEqual(guideless)
+  })
+
+  it('preserves guides through leaf mappers and clones them per document', async () => {
+    const guides = [{ id: 'guide-1', axis: 'x', position: 100 }]
+    const normalized = normalizeFreeformDocumentV10(guideDocument(guides))
+    if (!normalized) throw new Error('Expected valid guide document')
+
+    const mapped = mapFreeformDocumentLeaves(normalized, (leaf) => leaf)
+    expect(mapped.slides[0].guides).toEqual(guides)
+    expect(mapped.slides[0].guides?.[0]).not.toBe(normalized?.slides[0].guides?.[0])
+    expect(normalizeFreeformDocument(mapped)).toEqual(mapped)
+
+    const asyncMapped = await mapFreeformDocumentLeavesAsync(normalized, async (leaf) => leaf)
+    expect(asyncMapped.slides[0].guides).toEqual(guides)
+  })
+
+  it('rejects invalid guide payloads on v10 documents', () => {
+    const invalid: Array<[string, unknown]> = [
+      ['x beyond page width', [{ id: 'g', axis: 'x', position: 1080.5 }]],
+      ['y beyond page height', [{ id: 'g', axis: 'y', position: 1441 }]],
+      ['negative position', [{ id: 'g', axis: 'x', position: -1 }]],
+      ['duplicate ids', [{ id: 'g', axis: 'x', position: 1 }, { id: 'g', axis: 'y', position: 2 }]],
+      ['blank id', [{ id: ' ', axis: 'x', position: 1 }]],
+      ['unknown axis', [{ id: 'g', axis: 'z', position: 1 }]],
+      ['extra key', [{ id: 'g', axis: 'x', position: 1, locked: false }]],
+      ['non-array guides', 'nope'],
+      ['too many guides', Array.from({ length: 65 }, (_, i) => ({ id: `g${i}`, axis: 'x', position: i }))],
+    ]
+    for (const [label, guides] of invalid) {
+      expect(normalizeFreeformDocumentV10(guideDocument(guides)), label).toBeNull()
+      expect(normalizeFreeformDocument(guideDocument(guides)), label).toBeNull()
     }
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeFreeformDocumentV9 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocument } from '../freeform/sceneDocument'
 import type { FreeformSceneLeaf, FreeformSceneNode } from '../freeform/types'
 import { FONTS, PLATFORMS, THEMES } from '../theme'
 import { TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
@@ -65,7 +65,7 @@ describe('template registry', () => {
       const first = template.createFreeform?.()
       const second = template.createFreeform?.()
       expect(first?.slides).toHaveLength(template.pageCount)
-      expect(first && normalizeFreeformDocumentV9(first)).not.toBeNull()
+      expect(first && normalizeFreeformDocument(first)).not.toBeNull()
       expect(first?.slides.every((slide) => slide.width === 1080 && slide.height === 1440)).toBe(true)
       const validFontIds = new Set(FONTS.map((font) => font.id))
       const templateFonts = first?.slides.flatMap((slide) => textFontFamilies(slide.nodes)) ?? []

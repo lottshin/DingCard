@@ -69,7 +69,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(9)
+    expect(doc.documentVersion).toBe(10)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -994,6 +994,65 @@ describe('v8 appearance patches', () => {
     ]
     for (const [path, patch] of invalid) {
       expect(stylePatch(document, path, patch)).toBe(document)
+    }
+  })
+})
+
+describe('guides actions', () => {
+  it('replaces, clears, and validates page guides', () => {
+    const doc = createFreeformDocument()
+    const slideId = doc.slides[0].id
+
+    const withGuides = reduceFreeformDocument(doc, {
+      type: 'guides/set',
+      slideId,
+      guides: [
+        { id: 'g1', axis: 'x', position: 100 },
+        { id: 'g2', axis: 'y', position: 200 },
+      ],
+    })
+    expect(withGuides.slides[0].guides).toEqual([
+      { id: 'g1', axis: 'x', position: 100 },
+      { id: 'g2', axis: 'y', position: 200 },
+    ])
+
+    const replaced = reduceFreeformDocument(withGuides, {
+      type: 'guides/set',
+      slideId,
+      guides: [{ id: 'g3', axis: 'x', position: 50 }],
+    })
+    expect(replaced.slides[0].guides).toEqual([{ id: 'g3', axis: 'x', position: 50 }])
+
+    // Setting an identical list is a reference-equal no-op.
+    expect(reduceFreeformDocument(replaced, {
+      type: 'guides/set',
+      slideId,
+      guides: [{ id: 'g3', axis: 'x', position: 50 }],
+    })).toBe(replaced)
+
+    // Clearing guides removes the key entirely.
+    const cleared = reduceFreeformDocument(replaced, { type: 'guides/set', slideId, guides: [] })
+    expect('guides' in cleared.slides[0]).toBe(false)
+    expect(reduceFreeformDocument(doc, { type: 'guides/set', slideId, guides: [] })).toBe(doc)
+  })
+
+  it('ignores invalid guides and unknown pages', () => {
+    const doc = createFreeformDocument()
+    const slideId = doc.slides[0].id
+    const withGuides = reduceFreeformDocument(doc, {
+      type: 'guides/set',
+      slideId,
+      guides: [{ id: 'g1', axis: 'x', position: 100 }],
+    })
+
+    const invalid: unknown[] = [
+      { type: 'guides/set', slideId, guides: [{ id: 'g1', axis: 'x', position: 9999 }] },
+      { type: 'guides/set', slideId, guides: [{ id: 'g1', axis: 'x', position: 100 }, { id: 'g1', axis: 'y', position: 1 }] },
+      { type: 'guides/set', slideId, guides: [{ id: 'g1', axis: 'z', position: 100 }] },
+      { type: 'guides/set', slideId: 'missing-slide', guides: [] },
+    ]
+    for (const action of invalid) {
+      expect(reduceFreeformDocument(withGuides, action as FreeformAction)).toBe(withGuides)
     }
   })
 })

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, SetStateAction } from 'react'
 import { toBlob } from 'html-to-image'
 import { DraftsPanel } from '../DraftsPanel'
@@ -157,6 +157,8 @@ import {
   type Rect,
 } from './selection'
 import { snapRotationDegrees, snapSceneDrag, type SnapLine } from './snapping'
+import { MAX_GUIDES_PER_SLIDE } from './guides'
+import { pickRulerStep, rulerTicks } from './rulers'
 import type {
   FreeformAction,
   ColorPaint,
@@ -607,6 +609,14 @@ function centerNewElementInScope<T extends FreeformElement>(
 type Alignment = 'left' | 'h-center' | 'right' | 'top' | 'v-center' | 'bottom'
 type Distribution = 'horizontal' | 'vertical'
 type MarqueeState = { startX: number; startY: number; currentX: number; currentY: number }
+type RulerView = {
+  left: number
+  top: number
+  scale: number
+  width: number
+  height: number
+}
+type GuideDragState = { axis: 'x' | 'y'; guideId: string | null; position: number }
 
 function operationErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback
@@ -982,6 +992,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   const stageScrollRef = useRef<HTMLDivElement>(null)
   const artboardRef = useRef<HTMLDivElement>(null)
+  const stageViewportRef = useRef<HTMLDivElement>(null)
+  const [rulerView, setRulerView] = useState<RulerView | null>(null)
+  const [guideDrag, setGuideDrag] = useState<GuideDragState | null>(null)
+  const guideTapRef = useRef<{ guideId: string; time: number } | null>(null)
   const marqueePointerIdRef = useRef<number | null>(null)
   const propertiesTabRef = useRef<HTMLButtonElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -1336,7 +1350,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   // A native non-passive listener is required to override the browser page zoom.
   useEffect(() => {
     if (!isActive) return
-    const stage = stageScrollRef.current
+    const stage = stageViewportRef.current
     if (!stage) return
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return
@@ -1386,6 +1400,53 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     stage.scrollLeft += bounds.left - (anchor.clientX - anchor.worldX * renderScale)
     stage.scrollTop += bounds.top - (anchor.clientY - anchor.worldY * renderScale)
   })
+
+  // Rulers mirror the artboard's position inside the stage viewport. Measurement
+  // is event-driven (scroll, viewport resize, zoom, and page size) so it never
+  // fights React's render loop; the epsilon check keeps it change-driven.
+  const measureRulerView = useCallback(() => {
+    const viewport = stageViewportRef.current
+    const artboard = artboardRef.current
+    if (!viewport || !artboard || renderScale === null || renderScale <= 0) {
+      setRulerView(null)
+      return
+    }
+    const viewportRect = viewport.getBoundingClientRect()
+    const artboardRect = artboard.getBoundingClientRect()
+    const next: RulerView = {
+      left: artboardRect.left - viewportRect.left,
+      top: artboardRect.top - viewportRect.top,
+      scale: renderScale,
+      width: viewport.clientWidth,
+      height: viewport.clientHeight,
+    }
+    setRulerView((prev) => {
+      if (
+        prev
+        && prev.width === next.width
+        && prev.height === next.height
+        && Math.abs(prev.left - next.left) < 0.01
+        && Math.abs(prev.top - next.top) < 0.01
+        && Math.abs(prev.scale - next.scale) < 0.01
+      ) {
+        return prev
+      }
+      return next
+    })
+  }, [renderScale])
+
+  useEffect(() => {
+    measureRulerView()
+  }, [measureRulerView, renderScale, activeSlide.width, activeSlide.height])
+
+  useEffect(() => {
+    if (!isActive) return
+    const viewport = stageViewportRef.current
+    if (!viewport) return
+    const observer = new ResizeObserver(() => measureRulerView())
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [isActive, measureRulerView])
 
   // Keep the open context menu fully inside the viewport (measured post-mount, pre-paint).
   useLayoutEffect(() => {
@@ -3455,6 +3516,114 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   // Space-held panning drags the scroll container itself; the capture phase
   // keeps node pointer handlers (marquee, move, text editing) out of the way.
+  /**
+   * Drag a guide line from a ruler (guideId null) or move an existing one.
+   * Dragging off the page deletes an existing guide and discards a new one.
+   */
+  function guideDragPointerDown(
+    event: React.PointerEvent<HTMLElement>,
+    axis: 'x' | 'y',
+    guideId: string | null,
+  ) {
+    if (event.button !== 0) return
+    if (renderScale === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    const slide = activeSlide
+    if (!guideId && (slide.guides?.length ?? 0) >= MAX_GUIDES_PER_SLIDE) return
+    const start = rawArtboardPointFromClient(event.clientX, event.clientY)
+    if (!start) return
+    const pointerId = event.pointerId
+    const startPosition = axis === 'x' ? start.x : start.y
+    let position = startPosition
+    setGuideDrag({ axis, guideId, position })
+    const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
+      const point = rawArtboardPointFromClient(moveEvent.clientX, moveEvent.clientY)
+      if (!point) return
+      position = axis === 'x' ? point.x : point.y
+      setGuideDrag({ axis, guideId, position })
+    }
+    const stopListening = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+    }
+    const onUp = () => {
+      stopListening()
+      setGuideDrag(null)
+      const bound = axis === 'x' ? slide.width : slide.height
+      const settled = Math.round(position)
+      // preventDefault on the guide's pointerdown suppresses dblclick, so a
+      // second tap on the same barely-moved guide is detected manually.
+      if (guideId && Math.abs(settled - Math.round(startPosition)) <= 1) {
+        const lastTap = guideTapRef.current
+        const now = performance.now()
+        if (lastTap && lastTap.guideId === guideId && now - lastTap.time < 500) {
+          guideTapRef.current = null
+          applyAction(
+            {
+              type: 'guides/set',
+              slideId: slide.id,
+              guides: (slide.guides ?? []).filter((guide) => guide.id !== guideId),
+            },
+            '删除参考线',
+          )
+          return
+        }
+        guideTapRef.current = { guideId, time: now }
+      }
+      if (settled < 0 || settled > bound) {
+        if (guideId) {
+          applyAction(
+            {
+              type: 'guides/set',
+              slideId: slide.id,
+              guides: (slide.guides ?? []).filter((guide) => guide.id !== guideId),
+            },
+            '删除参考线',
+          )
+        }
+        return
+      }
+      if (guideId) {
+        const moved = (slide.guides ?? []).some(
+          (guide) => guide.id === guideId && guide.position === settled,
+        )
+        if (moved) return
+        applyAction(
+          {
+            type: 'guides/set',
+            slideId: slide.id,
+            guides: (slide.guides ?? []).map((guide) =>
+              guide.id === guideId ? { ...guide, position: settled } : guide,
+            ),
+          },
+          '调整参考线',
+        )
+        return
+      }
+      applyAction(
+        {
+          type: 'guides/set',
+          slideId: slide.id,
+          guides: [
+            ...(slide.guides ?? []),
+            { id: `guide-${crypto.randomUUID()}`, axis, position: settled },
+          ],
+        },
+        '新增参考线',
+      )
+    }
+    const onCancel = () => {
+      stopListening()
+      setGuideDrag(null)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+  }
+
   function onStagePointerDownCapture(event: React.PointerEvent<HTMLDivElement>) {
     if (spacePanReadyRef.current) {
       if (framingSessionRef.current || imageCropSessionRef.current) return
@@ -4207,6 +4376,28 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     : undefined
   const hasImageEditSession = Boolean(framingSession || imageCropSession)
 
+  const rulerStep = rulerView ? pickRulerStep(rulerView.scale) : 1
+  const rulerXTicks = rulerView
+    ? rulerTicks(
+      -rulerView.left / rulerView.scale,
+      (rulerView.width - rulerView.left) / rulerView.scale,
+      rulerStep,
+    )
+    : []
+  const rulerYTicks = rulerView
+    ? rulerTicks(
+      -rulerView.top / rulerView.scale,
+      (rulerView.height - rulerView.top) / rulerView.scale,
+      rulerStep,
+    )
+    : []
+  const guideDragBound = guideDrag
+    ? (guideDrag.axis === 'x' ? activeSlide.width : activeSlide.height)
+    : 0
+  const guideDragValid = guideDrag !== null
+    && guideDrag.position >= 0
+    && guideDrag.position <= guideDragBound
+
   return (
     <div
       className={[
@@ -4541,12 +4732,68 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           </div>
 
           <div
-            ref={stageScrollRef}
-            className={`freeform-stage-scroll${spacePanning ? ' space-panning' : spacePanReady ? ' space-pan-ready' : ''}`}
-            aria-busy={renderScale === null}
-            onPointerDownCapture={onStagePointerDownCapture}
-            onContextMenu={onStageContextMenu}
+            ref={stageViewportRef}
+            className={`freeform-stage-viewport${guideDrag ? ` guide-dragging-${guideDrag.axis}` : ''}`}
           >
+            {rulerView && (
+              <>
+                <div
+                  className="freeform-ruler freeform-ruler-x"
+                  data-testid="freeform-ruler-x"
+                  title="按住拖动可拉出竖向参考线"
+                  onPointerDown={(event) => guideDragPointerDown(event, 'x', null)}
+                >
+                  {rulerXTicks.map((tick) => (
+                    <Fragment key={tick.position}>
+                      <div
+                        className={`freeform-ruler-tick${tick.label !== null ? ' major' : ''}`}
+                        style={{ left: rulerView.left + tick.position * rulerView.scale }}
+                      />
+                      {tick.label !== null && (
+                        <div
+                          className="freeform-ruler-label"
+                          style={{ left: rulerView.left + tick.position * rulerView.scale }}
+                        >
+                          {tick.label}
+                        </div>
+                      )}
+                    </Fragment>
+                  ))}
+                </div>
+                <div
+                  className="freeform-ruler freeform-ruler-y"
+                  data-testid="freeform-ruler-y"
+                  title="按住拖动可拉出横向参考线"
+                  onPointerDown={(event) => guideDragPointerDown(event, 'y', null)}
+                >
+                  {rulerYTicks.map((tick) => (
+                    <Fragment key={tick.position}>
+                      <div
+                        className={`freeform-ruler-tick${tick.label !== null ? ' major' : ''}`}
+                        style={{ top: rulerView.top + tick.position * rulerView.scale }}
+                      />
+                      {tick.label !== null && (
+                        <div
+                          className="freeform-ruler-label"
+                          style={{ top: rulerView.top + tick.position * rulerView.scale }}
+                        >
+                          {tick.label}
+                        </div>
+                      )}
+                    </Fragment>
+                  ))}
+                </div>
+                <div className="freeform-ruler-corner" aria-hidden="true" />
+              </>
+            )}
+            <div
+              ref={stageScrollRef}
+              className={`freeform-stage-scroll${spacePanning ? ' space-panning' : spacePanReady ? ' space-pan-ready' : ''}`}
+              aria-busy={renderScale === null}
+              onScroll={measureRulerView}
+              onPointerDownCapture={onStagePointerDownCapture}
+              onContextMenu={onStageContextMenu}
+            >
             {renderScale !== null && (
               <div
                 className="freeform-stage-box"
@@ -4621,11 +4868,42 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                     {snapLines.map((line) => (
                       <div
                         key={`${line.axis}-${line.position}-${line.source}`}
-                        className={`freeform-ui-only freeform-snap-line freeform-snap-line-${line.axis}`}
+                        className={`freeform-ui-only freeform-snap-line freeform-snap-line-${line.axis} freeform-snap-source-${line.source}`}
                         data-testid="freeform-snap-line"
                         style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
                       />
                     ))}
+                    {(activeSlide.guides ?? [])
+                      .filter((guide) => guideDrag?.guideId !== guide.id)
+                      .map((guide) => (
+                        <div
+                          key={guide.id}
+                          className={`freeform-ui-only freeform-guide freeform-guide-${guide.axis}`}
+                          data-testid="freeform-guide"
+                          data-guide-axis={guide.axis}
+                          title="拖动参考线，拖出页面删除；双击移除"
+                          onPointerDown={(event) => guideDragPointerDown(event, guide.axis, guide.id)}
+                          style={guide.axis === 'x'
+                            ? { left: guide.position, width: 1 / renderScale }
+                            : { top: guide.position, height: 1 / renderScale }}
+                        >
+                          <div
+                            className="freeform-guide-hit"
+                            style={guide.axis === 'x'
+                              ? { width: 8 / renderScale }
+                              : { height: 8 / renderScale }}
+                          />
+                        </div>
+                      ))}
+                    {guideDrag && (
+                      <div
+                        className={`freeform-ui-only freeform-guide-ghost freeform-guide-${guideDrag.axis}${guideDragValid ? '' : ' freeform-guide-invalid'}`}
+                        data-testid="freeform-guide-dragging"
+                        style={guideDrag.axis === 'x'
+                          ? { left: guideDrag.position, width: 1 / renderScale }
+                          : { top: guideDrag.position, height: 1 / renderScale }}
+                      />
+                    )}
                   </div>
                   {imageCropSession
                     && imageCropRenderTarget
@@ -4688,6 +4966,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 </div>
               </div>
             )}
+            </div>
           </div>
           {framingRenderTarget && (
             <div className="freeform-framing-zoom" role="group" aria-label="图片缩放">

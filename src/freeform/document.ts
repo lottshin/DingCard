@@ -37,6 +37,7 @@ import {
   walkScene,
 } from './sceneTree'
 import { effectiveSceneState } from './sceneSelection'
+import { guidesEqual, normalizeSlideGuides } from './guides'
 import { normalizeRichTextSpans, remapRichTextSpans } from './richText'
 import {
   cloneSceneFilter,
@@ -121,7 +122,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 9,
+    documentVersion: 10,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -1227,6 +1228,20 @@ export function reduceFreeformDocument(
             ? slide
             : { ...slide, width: action.width, height: action.height },
         )
+      }
+      case 'guides/set': {
+        if (!Array.isArray(action.guides)) return document
+        return withSlide(document, action.slideId, (slide) => {
+          const guides = normalizeSlideGuides(action.guides, slide.width, slide.height)
+          if (!guides) return slide
+          if (guides.length === 0) {
+            if (!slide.guides) return slide
+            const { guides: _removed, ...rest } = slide
+            return rest
+          }
+          if (slide.guides && guidesEqual(slide.guides, guides)) return slide
+          return { ...slide, guides }
+        })
       }
       case 'node/set-locked':
       case 'node/set-hidden':

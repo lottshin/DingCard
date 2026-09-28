@@ -30,8 +30,9 @@ const SHADOW_HINT = "shadow?({ color, blur(0–400), offsetX(-1000–1000), offs
 const FILTER_HINT = "filter?({ brightness?(0–3), contrast?(0–3), saturation?(0–3), blur?(0–100 px) } 滤镜，至少一键)"
 const BLEND_HINT = "blendMode?('normal'|'multiply'|'screen'|'overlay'|'darken'|'lighten'|'color-dodge'|'color-burn'|'hard-light'|'soft-light'|'difference'|'exclusion'|'hue'|'saturation'|'color'|'luminosity' 混合模式)"
 const TEXT_STROKE_HINT = "stroke?(#RRGGBB 文字描边色，仅 v8；配 strokeWidth 使用), strokeWidth?(0.5–100 px 文字描边宽度，仅 v8), vertical?(true 竖排文字，仅 v9)"
-const DOCUMENT_SCHEMA_HINT = `document：自由画布 v9 文档（JSON；v1–v8 输入会自动迁移为 v9）。
-顶层 { documentVersion: 9, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes }。
+const DOCUMENT_SCHEMA_HINT = `document：自由画布 v10 文档（JSON；v1–v9 输入会自动迁移为 v10）。
+顶层 { documentVersion: 10, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes, guides? }。
+guides? 为该页编辑器参考线（仅 v10）：[{ id(非空且页内唯一), axis('x' 竖线 | 'y' 横线), position(页面内坐标，x ∈ [0, 页宽]，y ∈ [0, 页高]) }]，每页至多 64 条；仅用于编辑器显示与吸附，不参与渲染导出。
 background 为 { type: 'solid', color } | { type: 'linear-gradient', from, to, angle } | { type: 'linear-gradient', stops: [{ offset(0–1 递增), color }×2–8], angle } (仅 v8) | { type: 'transparent' }。
 ColorPaint 渐变支持两段式 { from, to, angle } 与多段式 { stops, angle }（stops 仅 v8）。
 节点四选一，键必须精确匹配（不允许多余/缺失键；v6–v9 外观键均可选、缺省即默认样式），公共键：id, name, locked, hidden, type, x, y, rotation, scale(>0)：
@@ -49,6 +50,7 @@ const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI �
 - { type: 'slide/duplicate', slideId, duplicateSlideId? } 复制页
 - { type: 'slide/delete', slideId } / { type: 'slide/select', slideId } / { type: 'slide/reorder', slideId, targetIndex }（把该页移动到 targetIndex，超出范围会收敛到末位）
 - { type: 'slide/update', slideId, patch: { name?, background? } } / { type: 'slide/resize', slideId, width, height }
+- { type: 'guides/set', slideId, guides: [{ id, axis('x'|'y'), position }] } 整体替换该页参考线（传 [] 清空；越界或重复 id 的整体提交会被忽略）
 - { type: 'node/insert-children', slideId, parentPath: string[], nodes: FreeformSceneNode[], index? } 插入节点
 - { type: 'node/update-content', slideId, updates: [{ path, patch: { text?, src?, alt? } }] }（改 text 时已有 spans 会按编辑位置自动保留/收缩）
 - { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?, fontFamily?, textFill?, align?, fontWeight?, spans?(整体替换文本片段，传 [] 清空), lineHeight?(传 null 恢复默认行高), letterSpacing?(传 null 恢复默认字距), italic?(true 开启斜体，false 取消), cornerRadius?(矩形圆角，传 null 恢复默认), opacity?(0–1 不透明度), shadow?(整体替换投影 { color, blur, offsetX, offsetY }，传 null 清除), filter?(整体替换滤镜 { brightness, contrast, saturation, blur } 至少一键，传 null 清除), blendMode?(混合模式，传 null 恢复正常), fit?, framing?, shape?, fill?, stroke?, strokeWidth?, lineKind?, dash?(虚线长度，传 null 恢复实线), cap?('round'|'butt'|'square' 线帽), stroke?(文字描边色，仅 v8，传 null 清除), strokeWidth?(文字描边宽度，仅 v8，传 null 清除), vertical?(true 竖排文字，仅 v9，false 恢复横排) } }] }

@@ -5140,7 +5140,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(9)
+  expect(storedDocument.documentVersion).toBe(10)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
@@ -10317,3 +10317,196 @@ test.describe('freeform history panel', () => {
 function panelLiveRegion(page: import('@playwright/test').Page) {
   return page.locator('[data-testid="freeform-layer-live"]')
 }
+
+test.describe('freeform rulers and guides', () => {
+  interface StageGeometry {
+    rulerTop: number
+    rulerLeft: number
+    artboardLeft: number
+    artboardTop: number
+    artboardRight: number
+    artboardBottom: number
+  }
+
+  async function stageGeometry(
+    page: import('@playwright/test').Page,
+  ): Promise<StageGeometry> {
+    return page.evaluate(() => {
+      const rulerX = document.querySelector('[data-testid="freeform-ruler-x"]')
+      const artboard = document.querySelector('[data-testid="freeform-canvas"]')
+      if (!rulerX || !artboard) throw new Error('stage rulers or artboard missing')
+      const ruler = rulerX.getBoundingClientRect()
+      const board = artboard.getBoundingClientRect()
+      return {
+        rulerTop: ruler.top,
+        rulerLeft: ruler.left,
+        artboardLeft: board.left,
+        artboardTop: board.top,
+        artboardRight: board.right,
+        artboardBottom: board.bottom,
+      }
+    })
+  }
+
+  /** Drag a fresh guide from a ruler and drop it at the given page position. */
+  async function dragGuideFromRuler(
+    page: import('@playwright/test').Page,
+    axis: 'x' | 'y',
+    worldPosition: number,
+  ) {
+    const geometry = await stageGeometry(page)
+    const scale = await freeformCanvasScale(page)
+    const dropX = axis === 'x'
+      ? geometry.artboardLeft + worldPosition * scale
+      : geometry.artboardLeft + 200 * scale
+    const dropY = axis === 'y'
+      ? geometry.artboardTop + worldPosition * scale
+      : geometry.artboardTop + 200 * scale
+    const startX = axis === 'x' ? dropX : geometry.rulerLeft + 10
+    const startY = axis === 'y' ? dropY : geometry.rulerTop + 10
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move((startX + dropX) / 2, (startY + dropY) / 2)
+    await page.mouse.move(dropX, dropY)
+    await page.mouse.up()
+  }
+
+  test('renders zoom-adaptive ruler ticks that track scrolling', async ({ page }) => {
+    await openFreeform(page)
+    await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
+    await expect(page.getByTestId('freeform-ruler-y')).toBeVisible()
+    await expect(page.locator('.freeform-ruler-x .freeform-ruler-label').first()).toBeVisible()
+
+    // At fit zoom the tick step is coarse, so a 250 label never appears.
+    await expect(
+      page.locator('.freeform-ruler-x .freeform-ruler-label', { hasText: /^250$/ }),
+    ).toHaveCount(0)
+    await setFreeformZoom(page, 300)
+    // Zooming in refines the step until 250 labels appear.
+    await expect(
+      page.locator('.freeform-ruler-x .freeform-ruler-label', { hasText: /^250$/ }),
+    ).toHaveCount(1)
+
+    // Scrolling the stage slides the ticks with the content: the fixed 250
+    // label moves left by exactly the scroll delta.
+    const label250 = page.locator('.freeform-ruler-x .freeform-ruler-label', { hasText: /^250$/ })
+    const before = await label250.boundingBox()
+    expect(before).toBeTruthy()
+    await page.evaluate(() => {
+      const scroll = document.querySelector('.freeform-stage-scroll')
+      if (!scroll) throw new Error('stage scroll missing')
+      scroll.scrollLeft = 120
+    })
+    await expect.poll(async () => {
+      const moved = await label250.boundingBox()
+      return moved ? moved.x : Number.NaN
+    }).toBeLessThan(before!.x - 100)
+  })
+
+  test('creates a guide from the ruler, undoes and redoes it', async ({ page }) => {
+    await openFreeform(page)
+    await dragGuideFromRuler(page, 'x', 420)
+    const guide = page.getByTestId('freeform-guide')
+    await expect(guide).toHaveCount(1)
+    await expect(guide).toHaveAttribute('data-guide-axis', 'x')
+    // Guides never render into exports: they carry the editor-only marker class.
+    await expect(guide).toHaveClass(/freeform-ui-only/)
+    expect(await guide.evaluate((node) => Number.parseFloat(node.style.left))).toBe(420)
+
+    await page.getByRole('button', { name: '撤销', exact: true }).click()
+    await expect(guide).toHaveCount(0)
+    await page.getByRole('button', { name: '重做', exact: true }).click()
+    await expect(guide).toHaveCount(1)
+    expect(await guide.evaluate((node) => Number.parseFloat(node.style.left))).toBe(420)
+  })
+
+  test('moves a guide by dragging and deletes it by dragging off the page', async ({ page }) => {
+    await openFreeform(page)
+    await dragGuideFromRuler(page, 'x', 300)
+    const guide = page.getByTestId('freeform-guide')
+    await expect(guide).toHaveCount(1)
+
+    const geometry = await stageGeometry(page)
+    const scale = await freeformCanvasScale(page)
+    const grabY = (geometry.artboardTop + geometry.artboardBottom) / 2
+    const fromX = geometry.artboardLeft + 300 * scale
+    const toX = geometry.artboardLeft + 520 * scale
+    await page.mouse.move(fromX, grabY)
+    await page.mouse.down()
+    await page.mouse.move((fromX + toX) / 2, grabY)
+    await page.mouse.move(toX, grabY)
+    await page.mouse.up()
+    await expect(guide).toHaveCount(1)
+    expect(await guide.evaluate((node) => Number.parseFloat(node.style.left))).toBe(520)
+
+    // Dragging the guide past the page edge removes it.
+    const edgeX = geometry.artboardRight + 80
+    await page.mouse.move(toX, grabY)
+    await page.mouse.down()
+    await page.mouse.move((toX + edgeX) / 2, grabY)
+    await page.mouse.move(edgeX, grabY)
+    await page.mouse.up()
+    await expect(guide).toHaveCount(0)
+  })
+
+  test('deletes a guide with a double tap', async ({ page }) => {
+    await openFreeform(page)
+    await dragGuideFromRuler(page, 'y', 360)
+    const guide = page.getByTestId('freeform-guide')
+    await expect(guide).toHaveCount(1)
+    await expect(guide).toHaveAttribute('data-guide-axis', 'y')
+
+    const geometry = await stageGeometry(page)
+    const scale = await freeformCanvasScale(page)
+    const tapX = (geometry.artboardLeft + geometry.artboardRight) / 2
+    const tapY = geometry.artboardTop + 360 * scale
+    await page.mouse.click(tapX, tapY)
+    await page.waitForTimeout(60)
+    await page.mouse.click(tapX, tapY)
+    await expect(guide).toHaveCount(0)
+  })
+
+  test('snaps a dragged shape onto a guide', async ({ page }) => {
+    await openFreeform(page)
+    await dragGuideFromRuler(page, 'x', 420)
+    await expect(page.getByTestId('freeform-guide')).toHaveCount(1)
+
+    await insertShape(page)
+    await setSelectedElementPosition(page, 300, 400)
+    const scale = await freeformCanvasScale(page)
+    const element = page.getByTestId('freeform-element')
+    const box = await element.boundingBox()
+    expect(box).toBeTruthy()
+
+    // Aim the left edge 3 world px left of the guide so the snap must engage.
+    const dragDistance = (417 - 300) * scale
+    const startX = box!.x + box!.width / 2
+    const startY = box!.y + box!.height / 2
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX + dragDistance / 2, startY)
+    await page.mouse.move(startX + dragDistance, startY)
+    await page.mouse.up()
+
+    const boxes = await freeformElementBoxes(page)
+    expect(boxes).toHaveLength(1)
+    expect(boxes[0].x).toBe(420)
+    expect(boxes[0].y).toBe(400)
+  })
+
+  test('keeps guides scoped to their page', async ({ page }) => {
+    await openFreeform(page)
+    await dragGuideFromRuler(page, 'x', 420)
+    const guide = page.getByTestId('freeform-guide')
+    await expect(guide).toHaveCount(1)
+
+    await page.getByRole('button', { name: '新增页面' }).click()
+    await expect(page.getByTestId('freeform-thumb')).toHaveCount(2)
+    // A fresh page starts without the first page's guides.
+    await expect(guide).toHaveCount(0)
+
+    await page.getByTestId('freeform-thumb').first().click()
+    await expect(guide).toHaveCount(1)
+    expect(await guide.evaluate((node) => Number.parseFloat(node.style.left))).toBe(420)
+  })
+})

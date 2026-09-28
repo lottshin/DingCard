@@ -11,7 +11,7 @@ import type { FreeformElement, FreeformSceneNode, FreeformSlide, ScenePath } fro
 export interface SnapLine {
   axis: 'x' | 'y'
   position: number
-  source: 'page' | 'element'
+  source: 'page' | 'guide' | 'element'
 }
 
 export interface SnapResult {
@@ -54,10 +54,10 @@ interface SnapCandidate {
 
 const DEFAULT_THRESHOLD = 6
 const ANCHOR_PRIORITY: Record<AnchorName, number> = { center: 0, start: 1, end: 2 }
-const SOURCE_PRIORITY: Record<SnapSource, number> = { page: 0, element: 1 }
+const SOURCE_PRIORITY: Record<SnapSource, number> = { page: 0, guide: 1, element: 2 }
 
 export function snapDrag(
-  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  slide: Pick<FreeformSlide, 'width' | 'height' | 'guides'>,
   elements: FreeformElement[],
   selectedIds: string[],
   dx: number,
@@ -139,7 +139,7 @@ function clampSceneMovement(
 
 function sceneAxisReferences(
   axis: Axis,
-  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  slide: Pick<FreeformSlide, 'width' | 'height' | 'guides'>,
   nodes: readonly FreeformSceneNode[],
   parentPath: ScenePath,
   selectedIds: ReadonlySet<string>,
@@ -165,7 +165,10 @@ function sceneAxisReferences(
         source: 'element' as const,
       }))
     })
-  return [...pageReferences, ...nodeReferences]
+  const guideReferences = (slide.guides ?? [])
+    .filter((guide) => guide.axis === axis)
+    .map((guide) => ({ position: guide.position, source: 'guide' as const }))
+  return [...pageReferences, ...guideReferences, ...nodeReferences]
 }
 
 function snapSceneAxis(
@@ -199,7 +202,7 @@ function snapSceneAxis(
 
 /** Snap a direct scene selection in page/world coordinates. */
 export function snapSceneDrag(
-  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  slide: Pick<FreeformSlide, 'width' | 'height' | 'guides'>,
   nodes: readonly FreeformSceneNode[],
   parentPath: ScenePath,
   selectedIds: readonly string[],
@@ -326,7 +329,7 @@ function compareCandidates(a: SnapCandidate, b: SnapCandidate): number {
 
 function getAxisReferences(
   axis: Axis,
-  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  slide: Pick<FreeformSlide, 'width' | 'height' | 'guides'>,
   elements: FreeformElement[],
   selectedIds: Set<string>,
 ): AxisReference[] {
@@ -343,8 +346,11 @@ function getAxisReferences(
         source: 'element' as const,
       })),
     )
+  const guideReferences = (slide.guides ?? [])
+    .filter((guide) => guide.axis === axis)
+    .map((guide) => ({ position: guide.position, source: 'guide' as const }))
 
-  return [...pageReferences, ...elementReferences]
+  return [...pageReferences, ...guideReferences, ...elementReferences]
 }
 
 function getAxisAnchors(bounds: Bounds, axis: Axis): AxisAnchor[] {

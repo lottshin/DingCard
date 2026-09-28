@@ -18,6 +18,10 @@
   --bg: #f4f4f5;          /* app canvas */
   --bg-sink: #eeeef0;     /* recessed areas (preview well) */
   --freeform-stage-sink: #f1efec;
+  --freeform-ruler-bg: #ffffff;
+  --freeform-ruler-tick: #c9c9ce;
+  --freeform-ruler-label: #8f8f96;
+  --freeform-guide: #ec4899;
   --surface: #ffffff;     /* panels, bars, modals */
   --surface-2: #fafafa;   /* subtle inset fills */
   --surface-3: #eeeef0;   /* active and pressed controls */
@@ -49,6 +53,10 @@
   --bg: #0b0b0d;
   --bg-sink: #101013;
   --freeform-stage-sink: #12110f;
+  --freeform-ruler-bg: #161619;
+  --freeform-ruler-tick: #3f3f46;
+  --freeform-ruler-label: #71717a;
+  --freeform-guide: #f472b6;
   --surface: #161619;
   --surface-2: #1c1c20;
   --surface-3: #26262b;
@@ -1463,9 +1471,19 @@ html.theme-anim * {
   justify-self: end;
 }
 
-.freeform-stage-pane .freeform-stage-scroll {
+.freeform-stage-viewport {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+}
+
+.freeform-stage-pane .freeform-stage-scroll {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 0;
+  bottom: 0;
   overflow: auto;
   display: grid;
   place-items: center;
@@ -1476,6 +1494,100 @@ html.theme-anim * {
 .freeform-stage-pane .freeform-stage-box {
   flex: 0 0 auto;
   box-shadow: 0 12px 30px rgba(24, 24, 27, 0.14), 0 2px 8px rgba(24, 24, 27, 0.08);
+}
+
+.freeform-ruler {
+  position: absolute;
+  background: var(--freeform-ruler-bg);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 14;
+}
+
+.freeform-ruler-x {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  border-bottom: 1px solid var(--line);
+  cursor: crosshair;
+  z-index: 15;
+}
+
+.freeform-ruler-y {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 20px;
+  border-right: 1px solid var(--line);
+  cursor: crosshair;
+}
+
+.freeform-ruler-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  background: var(--freeform-ruler-bg);
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  z-index: 16;
+}
+
+.freeform-ruler-tick {
+  position: absolute;
+  background: var(--freeform-ruler-tick);
+}
+
+.freeform-ruler-x .freeform-ruler-tick {
+  bottom: 0;
+  width: 1px;
+  height: 5px;
+}
+
+.freeform-ruler-x .freeform-ruler-tick.major {
+  height: 9px;
+}
+
+.freeform-ruler-y .freeform-ruler-tick {
+  right: 0;
+  height: 1px;
+  width: 5px;
+}
+
+.freeform-ruler-y .freeform-ruler-tick.major {
+  width: 9px;
+}
+
+.freeform-ruler-label {
+  position: absolute;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--freeform-ruler-label);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.freeform-ruler-x .freeform-ruler-label {
+  top: 3px;
+  transform: translateX(-50%);
+}
+
+.freeform-ruler-y .freeform-ruler-label {
+  left: 3px;
+  transform: translateY(-50%);
+}
+
+.freeform-stage-viewport.guide-dragging-x,
+.freeform-stage-viewport.guide-dragging-x * {
+  cursor: ew-resize !important;
+}
+
+.freeform-stage-viewport.guide-dragging-y,
+.freeform-stage-viewport.guide-dragging-y * {
+  cursor: ns-resize !important;
 }
 
 .freeform-artboard {
@@ -1553,6 +1665,70 @@ html.theme-anim * {
   right: 0;
   height: 2px;
   transform: translateY(-1px);
+}
+
+.freeform-snap-line.freeform-snap-source-guide {
+  background: var(--freeform-guide);
+}
+
+.freeform-guide {
+  position: absolute;
+  z-index: 20;
+  background: var(--freeform-guide);
+}
+
+.freeform-guide-x {
+  top: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+  cursor: ew-resize;
+}
+
+.freeform-guide-y {
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  cursor: ns-resize;
+}
+
+.freeform-guide-hit {
+  position: absolute;
+}
+
+.freeform-guide-x .freeform-guide-hit {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.freeform-guide-y .freeform-guide-hit {
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.freeform-guide-ghost {
+  position: absolute;
+  z-index: 21;
+  background: var(--freeform-guide);
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.freeform-guide-ghost.freeform-guide-x {
+  top: 0;
+  bottom: 0;
+}
+
+.freeform-guide-ghost.freeform-guide-y {
+  left: 0;
+  right: 0;
+}
+
+.freeform-guide-ghost.freeform-guide-invalid {
+  opacity: 0.35;
 }
 
 .element-resize {
