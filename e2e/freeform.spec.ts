@@ -10942,3 +10942,84 @@ test.describe('freeform duplicate and z-order shortcuts', () => {
     await page.keyboard.press('Escape')
   })
 })
+
+test.describe('freeform clipboard completion', () => {
+  test('cut removes the selection and paste-in-place restores the exact position', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 480, 640, 120, 80)
+
+    await page.keyboard.press('Control+x')
+    await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+
+    // Cut lands in history as one atomic step.
+    await page.getByRole('tab', { name: '历史', exact: true }).click()
+    await expect(page.getByTestId('freeform-history-item').locator('.freeform-history-label').first()).toHaveText('剪切对象')
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+    // Paste in place restores the exact source coordinates.
+    await page.keyboard.press('Control+Shift+v')
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 480, y: 640, width: 120, height: 80 },
+    ])
+    await page.getByRole('tab', { name: '历史', exact: true }).click()
+    await expect(page.getByTestId('freeform-history-item').locator('.freeform-history-label').first()).toHaveText('原位粘贴')
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+    // One undo removes the paste; a second restores the cut shape.
+    await page.keyboard.press('Control+z')
+    await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+    await page.keyboard.press('Control+z')
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 480, y: 640, width: 120, height: 80 },
+    ])
+  })
+
+  test('paste-in-place keeps coordinates across pages while normal paste offsets', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 480, 640, 120, 80)
+    await page.keyboard.press('Control+c')
+
+    await page.getByLabel('新增页面').click()
+    await expect(page.getByTestId('freeform-thumb')).toHaveCount(2)
+
+    // Normal paste offsets the copy by 16px.
+    await page.keyboard.press('Control+v')
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 496, y: 656, width: 120, height: 80 },
+    ])
+    await page.keyboard.press('Control+z')
+
+    // Paste in place lands at the exact source coordinates on the new page.
+    await page.keyboard.press('Control+Shift+v')
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 480, y: 640, width: 120, height: 80 },
+    ])
+  })
+
+  test('the context menu offers cut and paste-in-place', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 480, 640, 120, 80)
+
+    const menu = page.getByTestId('freeform-context-menu')
+    // Paste-in-place stays disabled without a clipboard.
+    await page.mouse.click(200, 300, { button: 'right' })
+    await expect(menu.getByTestId('freeform-context-menu-cut')).toBeDisabled()
+    await expect(menu.getByTestId('freeform-context-menu-paste-in-place')).toBeDisabled()
+    await page.keyboard.press('Escape')
+
+    // Cut through the menu removes the shape and fills the clipboard.
+    await page.getByTestId('freeform-element').click({ button: 'right' })
+    await menu.getByTestId('freeform-context-menu-cut').click()
+    await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+
+    // Paste-in-place through the menu restores the exact position.
+    await page.mouse.click(200, 300, { button: 'right' })
+    await menu.getByTestId('freeform-context-menu-paste-in-place').click()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 480, y: 640, width: 120, height: 80 },
+    ])
+  })
+})

@@ -2556,20 +2556,23 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setSelection(clones.map((node) => node.id))
   }
 
-  function pasteClipboard() {
+  function pasteClipboard(inPlace = false) {
     if (!clipboard || clipboard.nodes.length === 0) return
     if (blockDocumentMutationDuringInteraction()) return
     const targetParentWorld = sceneParentWorldMatrix(activeSlide.nodes, activeGroupPath)
     const inverseTarget = targetParentWorld ? invert(targetParentWorld) : null
     if (!targetParentWorld || !inverseTarget) return
-    const offset = translation(16, 16)
+    // A normal paste offsets the copies; paste-in-place keeps the source
+    // coordinates exactly (Photoshop semantics — useful across pages).
+    const offset = translation(inPlace ? 0 : 16, inPlace ? 0 : 16)
     const pasted = cloneSceneNodes(clipboard.nodes).flatMap((node) => {
       const localMatrix = multiply(
         inverseTarget,
         multiply(offset, multiply(clipboard.sourceParentWorld, sceneNodeLocalMatrix(node))),
       )
       const transformed = sceneNodeWithLocalMatrix(node, localMatrix)
-      return transformed ? [transformed] : []
+      return transformed ? [transformed]
+        : []
     })
     if (pasted.length !== clipboard.nodes.length) {
       setOperationNotice('无法在当前编辑范围内粘贴对象')
@@ -2580,13 +2583,30 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       slideId: activeSlide.id,
       parentPath: activeGroupPath,
       nodes: pasted,
-    })
+    }, inPlace ? '原位粘贴' : undefined)
     if (changed) {
       setSelection(pasted.map((node) => node.id))
     } else if (
       effectiveLockedSelection ||
       effectiveSceneState(activeSlide.nodes, activeGroupPath)?.locked
     ) {
+      showLockedOperationNotice()
+    }
+  }
+
+  /** Ctrl/⌘+X: copy the selection to the clipboard, then remove it — one undo step. */
+  function cutSelection() {
+    if (selection.length === 0) return
+    copySelection()
+    const changed = applyAction({
+      type: 'node/delete',
+      slideId: activeSlide.id,
+      parentPath: activeGroupPath,
+      nodeIds: selection,
+    }, '剪切对象')
+    if (changed) {
+      setSelection([])
+    } else if (effectiveLockedSelection || lockedDescendantSelection) {
       showLockedOperationNotice()
     }
   }
@@ -3054,7 +3074,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         return
       }
       const isDocumentShortcut = (
-        ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'v', 'g', 'd'].includes(key)) ||
+        ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'x', 'v', 'g', 'd'].includes(key)) ||
         [
           'arrowleft',
           'arrowright',
@@ -3172,6 +3192,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if ((event.ctrlKey || event.metaKey) && key === 'c') {
         event.preventDefault()
         copySelection()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && key === 'x') {
+        event.preventDefault()
+        cutSelection()
+        return
+      }
+      // Shift escalates paste to paste-in-place; check before the plain branch.
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === 'v') {
+        event.preventDefault()
+        pasteClipboard(true)
         return
       }
       if ((event.ctrlKey || event.metaKey) && key === 'v') {
@@ -6269,11 +6300,31 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             type="button"
             role="menuitem"
             className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-cut"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); cutSelection() }}
+          >
+            剪切
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
             data-testid="freeform-context-menu-paste"
             disabled={!clipboard || clipboard.nodes.length === 0}
             onClick={() => { closeContextMenu(); pasteClipboard() }}
           >
             粘贴
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-paste-in-place"
+            disabled={!clipboard || clipboard.nodes.length === 0}
+            onClick={() => { closeContextMenu(); pasteClipboard(true) }}
+          >
+            原位粘贴
           </button>
           <button
             type="button"
