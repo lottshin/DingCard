@@ -9984,7 +9984,11 @@ test.describe('freeform layout efficiency', () => {
     await insertShape(page)
     await setSelectedElementBox(page, 800, 60, 100, 110)
     const bar = page.getByTestId('freeform-align-bar')
-    await expect(bar).toHaveCount(0)
+    // A single selection shows the bar too (align-to-page mode); the
+    // distribute buttons stay disabled until three objects are selected.
+    await expect(bar).toBeVisible()
+    await expect(bar.getByTestId('freeform-distribute-h')).toBeDisabled()
+    await expect(bar.getByTestId('freeform-distribute-v')).toBeDisabled()
 
     const elements = page.getByTestId('freeform-element')
     await elements.nth(0).click({ modifiers: ['Shift'] })
@@ -10318,59 +10322,62 @@ function panelLiveRegion(page: import('@playwright/test').Page) {
   return page.locator('[data-testid="freeform-layer-live"]')
 }
 
+interface StageGeometry {
+  rulerTop: number
+  rulerLeft: number
+  artboardLeft: number
+  artboardTop: number
+  artboardRight: number
+  artboardBottom: number
+}
+
+async function stageGeometry(
+  page: import('@playwright/test').Page,
+): Promise<StageGeometry> {
+  // The rulers mount asynchronously after the canvas is ready; wait for both.
+  await page.getByTestId('freeform-ruler-x').waitFor({ state: 'attached' })
+  await page.getByTestId('freeform-canvas').waitFor({ state: 'attached' })
+  return page.evaluate(() => {
+    const rulerX = document.querySelector('[data-testid="freeform-ruler-x"]')
+    const artboard = document.querySelector('[data-testid="freeform-canvas"]')
+    if (!rulerX || !artboard) throw new Error('stage rulers or artboard missing')
+    const ruler = rulerX.getBoundingClientRect()
+    const board = artboard.getBoundingClientRect()
+    return {
+      rulerTop: ruler.top,
+      rulerLeft: ruler.left,
+      artboardLeft: board.left,
+      artboardTop: board.top,
+      artboardRight: board.right,
+      artboardBottom: board.bottom,
+    }
+  })
+}
+
+/** Drag a fresh guide from a ruler and drop it at the given page position. */
+async function dragGuideFromRuler(
+  page: import('@playwright/test').Page,
+  axis: 'x' | 'y',
+  worldPosition: number,
+) {
+  const geometry = await stageGeometry(page)
+  const scale = await freeformCanvasScale(page)
+  const dropX = axis === 'x'
+    ? geometry.artboardLeft + worldPosition * scale
+    : geometry.artboardLeft + 200 * scale
+  const dropY = axis === 'y'
+    ? geometry.artboardTop + worldPosition * scale
+    : geometry.artboardTop + 200 * scale
+  const startX = axis === 'x' ? dropX : geometry.rulerLeft + 10
+  const startY = axis === 'y' ? dropY : geometry.rulerTop + 10
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move((startX + dropX) / 2, (startY + dropY) / 2)
+  await page.mouse.move(dropX, dropY)
+  await page.mouse.up()
+}
+
 test.describe('freeform rulers and guides', () => {
-  interface StageGeometry {
-    rulerTop: number
-    rulerLeft: number
-    artboardLeft: number
-    artboardTop: number
-    artboardRight: number
-    artboardBottom: number
-  }
-
-  async function stageGeometry(
-    page: import('@playwright/test').Page,
-  ): Promise<StageGeometry> {
-    return page.evaluate(() => {
-      const rulerX = document.querySelector('[data-testid="freeform-ruler-x"]')
-      const artboard = document.querySelector('[data-testid="freeform-canvas"]')
-      if (!rulerX || !artboard) throw new Error('stage rulers or artboard missing')
-      const ruler = rulerX.getBoundingClientRect()
-      const board = artboard.getBoundingClientRect()
-      return {
-        rulerTop: ruler.top,
-        rulerLeft: ruler.left,
-        artboardLeft: board.left,
-        artboardTop: board.top,
-        artboardRight: board.right,
-        artboardBottom: board.bottom,
-      }
-    })
-  }
-
-  /** Drag a fresh guide from a ruler and drop it at the given page position. */
-  async function dragGuideFromRuler(
-    page: import('@playwright/test').Page,
-    axis: 'x' | 'y',
-    worldPosition: number,
-  ) {
-    const geometry = await stageGeometry(page)
-    const scale = await freeformCanvasScale(page)
-    const dropX = axis === 'x'
-      ? geometry.artboardLeft + worldPosition * scale
-      : geometry.artboardLeft + 200 * scale
-    const dropY = axis === 'y'
-      ? geometry.artboardTop + worldPosition * scale
-      : geometry.artboardTop + 200 * scale
-    const startX = axis === 'x' ? dropX : geometry.rulerLeft + 10
-    const startY = axis === 'y' ? dropY : geometry.rulerTop + 10
-    await page.mouse.move(startX, startY)
-    await page.mouse.down()
-    await page.mouse.move((startX + dropX) / 2, (startY + dropY) / 2)
-    await page.mouse.move(dropX, dropY)
-    await page.mouse.up()
-  }
-
   test('renders zoom-adaptive ruler ticks that track scrolling', async ({ page }) => {
     await openFreeform(page)
     await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
@@ -10508,5 +10515,173 @@ test.describe('freeform rulers and guides', () => {
     await page.getByTestId('freeform-thumb').first().click()
     await expect(guide).toHaveCount(1)
     expect(await guide.evaluate((node) => Number.parseFloat(node.style.left))).toBe(420)
+  })
+})
+
+test.describe('freeform selection completion', () => {
+  test('Cmd/Ctrl+A selects every object in the current scope', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await insertShape(page)
+    await insertShape(page)
+    await expect(page.getByTestId('freeform-element')).toHaveCount(3)
+
+    await page.keyboard.press('Control+a')
+    await expect(selectedFreeformElements(page)).toHaveCount(3)
+
+    // Cmd/Ctrl+Shift+A inverts the selection: everything selected -> nothing.
+    await page.keyboard.press('Control+Shift+a')
+    await expect(selectedFreeformElements(page)).toHaveCount(0)
+    // Inverting again restores the full selection.
+    await page.keyboard.press('Control+Shift+a')
+    await expect(selectedFreeformElements(page)).toHaveCount(3)
+
+    // Escape drops the selection again.
+    await page.keyboard.press('Escape')
+    await expect(selectedFreeformElements(page)).toHaveCount(0)
+  })
+
+  test('a single selected object aligns to the page bounds', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 120, 120, 80)
+
+    const bar = page.getByTestId('freeform-align-bar')
+    await expect(bar).toBeVisible()
+    await bar.getByTestId('freeform-align-left').click()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 0, y: 120, width: 120, height: 80 },
+    ])
+    await bar.getByTestId('freeform-align-hcenter').click()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 480, y: 120, width: 120, height: 80 },
+    ])
+    await bar.getByTestId('freeform-align-bottom').click()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 480, y: 1360, width: 120, height: 80 },
+    ])
+
+    // Inside a group, a single selected object aligns to the group's bounds
+    // instead of the page bounds. Move the first shape away from the page
+    // bottom first so the floating align bar can never cover it.
+    await setSelectedElementBox(page, 700, 200, 120, 80)
+    await insertShape(page)
+    const beforeGroup = await freeformElementBoxes(page)
+    expect(beforeGroup).toHaveLength(2)
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Control+g')
+    // Double-clicking a group child enters the group's scope. (A plain click
+    // selects the group itself, and Enter depends on where focus landed.)
+    await page.getByTestId('freeform-element').nth(1).dblclick()
+    const groupChildren = page.getByTestId('freeform-element')
+    await expect(groupChildren).toHaveCount(2)
+    // Select the big center-area child; the selected flag lands on the child
+    // element itself once the group scope is active.
+    await groupChildren.nth(1).click()
+    await expect(groupChildren.nth(1)).toHaveAttribute('data-selected', 'true')
+
+    // World-space box: grouped children expose local coordinates in their
+    // inline styles, so measure through the rendered DOM instead.
+    const childWorldBox = (locator: import('@playwright/test').Locator) =>
+      locator.evaluate((node) => {
+        const artboard = document.querySelector('[data-testid="freeform-canvas"]')
+        if (!artboard) throw new Error('artboard missing')
+        const board = artboard.getBoundingClientRect()
+        const rect = node.getBoundingClientRect()
+        const scale = board.width / 1080
+        return {
+          x: Math.round((rect.left - board.left) / scale),
+          y: Math.round((rect.top - board.top) / scale),
+          width: Math.round(rect.width / scale),
+          height: Math.round(rect.height / scale),
+        }
+      })
+
+    await page.getByTestId('freeform-align-bar')
+      .getByTestId('freeform-align-right').click()
+    // The child aligns to the group's right edge (the union's maximum
+    // right), not the page's right edge.
+    const groupRight = Math.max(...beforeGroup.map((box) => box.x + box.width))
+    await expect
+      .poll(() => childWorldBox(groupChildren.nth(1)))
+      .toEqual({
+        x: groupRight - beforeGroup[1].width,
+        y: beforeGroup[1].y,
+        width: beforeGroup[1].width,
+        height: beforeGroup[1].height,
+      })
+
+    // Each align step lands in history with the align-to-page label — the
+    // three page aligns plus the group-scoped one, with the grouping entry
+    // interleaved right after the newest align.
+    await page.getByRole('tab', { name: '历史', exact: true }).click()
+    const labels = page.getByTestId('freeform-history-item')
+      .locator('.freeform-history-label')
+    await expect(labels.nth(0)).toHaveText('对齐到页面')
+    await expect(labels.nth(1)).toHaveText('编组')
+    await expect(labels.filter({ hasText: '对齐到页面' })).toHaveCount(4)
+  })
+
+  test('the guides toggle hides guide lines and persists across reloads', async ({ page }) => {
+    await openFreeform(page)
+    await dragGuideFromRuler(page, 'x', 420)
+    const guide = page.getByTestId('freeform-guide')
+    await expect(guide).toHaveCount(1)
+
+    const toggle = page.getByTestId('freeform-guides-toggle')
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await expect(guide).toHaveCount(0)
+
+    // The preference survives a reload (the unsaved document does not, so a
+    // fresh empty page starts with zero guides but the toggle stays off).
+    await page.reload()
+    await page.getByTestId('workspace-tab-freeform').click()
+    await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
+    await expect(page.getByTestId('freeform-guides-toggle')).toHaveAttribute('aria-pressed', 'false')
+    await expect(guide).toHaveCount(0)
+
+    // Dragging a fresh guide from the ruler re-enables visibility.
+    await dragGuideFromRuler(page, 'x', 500)
+    await expect(page.getByTestId('freeform-guides-toggle')).toHaveAttribute('aria-pressed', 'true')
+    await expect(guide).toHaveCount(1)
+  })
+
+  test('the snap toggle disables snapping but keeps page clamping', async ({ page }) => {
+    await openFreeform(page)
+    await dragGuideFromRuler(page, 'x', 420)
+    await expect(page.getByTestId('freeform-guide')).toHaveCount(1)
+
+    await insertShape(page)
+    await setSelectedElementPosition(page, 300, 400)
+    const scale = await freeformCanvasScale(page)
+    const element = page.getByTestId('freeform-element')
+    const box = await element.boundingBox()
+    expect(box).toBeTruthy()
+
+    // With snapping off the shape lands 3 world px left of the guide.
+    await page.getByTestId('freeform-snap-toggle').click()
+    const dragDistance = (417 - 300) * scale
+    const startX = box!.x + box!.width / 2
+    const startY = box!.y + box!.height / 2
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX + dragDistance / 2, startY)
+    await page.mouse.move(startX + dragDistance, startY)
+    await page.mouse.up()
+    let boxes = await freeformElementBoxes(page)
+    expect(boxes).toHaveLength(1)
+    expect(boxes[0].x).toBe(417)
+
+    // Re-enabling snapping pulls the same drag onto the guide.
+    await page.getByTestId('freeform-snap-toggle').click()
+    const box2 = await element.boundingBox()
+    await page.mouse.move(box2!.x + box2!.width / 2, box2!.y + box2!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box2!.x + box2!.width / 2 + 2 * scale, box2!.y + box2!.height / 2)
+    await page.mouse.up()
+    boxes = await freeformElementBoxes(page)
+    expect(boxes[0].x).toBe(420)
   })
 })

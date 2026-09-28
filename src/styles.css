@@ -3497,6 +3497,16 @@ html.theme-anim * {
   background: var(--surface-2);
 }
 
+.freeform-stage-pane .freeform-stage-head .zoom-controls + .zoom-controls {
+  margin-left: 6px;
+}
+
+.freeform-stage-pane .freeform-stage-head .zoom-btn[aria-pressed='true'] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 6px;
+}
+
 .zoom-btn,
 .zoom-value {
   height: 26px;

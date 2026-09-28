@@ -159,6 +159,12 @@ import {
 import { snapRotationDegrees, snapSceneDrag, type SnapLine } from './snapping'
 import { MAX_GUIDES_PER_SLIDE } from './guides'
 import { pickRulerStep, rulerTicks } from './rulers'
+import {
+  DEFAULT_VIEW_PREFS,
+  loadViewPrefs,
+  saveViewPrefs,
+  type FreeformViewPrefs,
+} from './viewPrefs'
 import type {
   FreeformAction,
   ColorPaint,
@@ -899,6 +905,15 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [operationNotice, setOperationNotice] = useState<string | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
+  const [viewPrefs, setViewPrefs] = useState<FreeformViewPrefs>(loadViewPrefs)
+
+  function updateViewPrefs(patch: Partial<FreeformViewPrefs>) {
+    setViewPrefs((current) => {
+      const next = { ...DEFAULT_VIEW_PREFS, ...current, ...patch }
+      saveViewPrefs(next)
+      return next
+    })
+  }
   const [activeInteraction, setActiveInteraction] = useState<SelectionOverlayInteraction>(null)
   const activeInteractionRef = useRef<SelectionOverlayInteraction>(null)
   const [imageReadiness, setImageReadiness] = useState<ImageReadinessState>(
@@ -1143,7 +1158,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     return breadcrumbs
   }, [activeGroupPath, activeSlide.nodes])
   const canUseLogicalAlignment = useMemo(() => (
-    selectionPaths.length > 1 &&
+    selectionPaths.length > 0 &&
     !effectiveLockedSelection &&
     !lockedDescendantSelection &&
     selectionPaths.every((path) => (
@@ -2765,7 +2780,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function alignSelection(alignment: Alignment) {
     const selectedNodes = activeChildren.filter((node) => selection.includes(node.id) && !node.hidden)
-    if (selectedNodes.length < 2) return
+    if (selectedNodes.length < 1) return
     if (blockDocumentMutationDuringInteraction()) return
     const parentWorld = sceneParentWorldMatrix(activeSlide.nodes, activeGroupPath)
     const inverseParent = parentWorld ? invert(parentWorld) : null
@@ -2777,10 +2792,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     })
     if (entries.length !== selectedNodes.length) return
 
-    const left = Math.min(...entries.map(({ bounds }) => bounds.x))
-    const right = Math.max(...entries.map(({ bounds }) => bounds.x + bounds.width))
-    const top = Math.min(...entries.map(({ bounds }) => bounds.y))
-    const bottom = Math.max(...entries.map(({ bounds }) => bounds.y + bounds.height))
+    // A single selected object aligns against its parent container (the
+    // enclosing group's world bounds, or the page at the top level); multiple
+    // objects keep aligning against the selection's shared bounds.
+    const single = entries.length === 1
+    const parentBounds = single && activeGroupPath.length > 0
+      ? sceneNodeBoundsInWorld(activeSlide.nodes, activeGroupPath)
+      : null
+    const left = single
+      ? (parentBounds?.x ?? 0)
+      : Math.min(...entries.map(({ bounds }) => bounds.x))
+    const right = single
+      ? (parentBounds ? parentBounds.x + parentBounds.width : activeSlide.width)
+      : Math.max(...entries.map(({ bounds }) => bounds.x + bounds.width))
+    const top = single
+      ? (parentBounds?.y ?? 0)
+      : Math.min(...entries.map(({ bounds }) => bounds.y))
+    const bottom = single
+      ? (parentBounds ? parentBounds.y + parentBounds.height : activeSlide.height)
+      : Math.max(...entries.map(({ bounds }) => bounds.y + bounds.height))
     const horizontalCenter = (left + right) / 2
     const verticalCenter = (top + bottom) / 2
     applyAction(
@@ -2806,7 +2836,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           return { path, patch: { x: node.x + localDelta.x, y: node.y + localDelta.y } }
         }),
       },
-      '对齐',
+      single ? '对齐到页面' : '对齐',
     )
   }
 
@@ -3012,6 +3042,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if ((event.ctrlKey || event.metaKey) && event.altKey && event.code === 'KeyV') {
         event.preventDefault()
         pasteStyleToSelection()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.code === 'KeyA') {
+        event.preventDefault()
+        const selected = new Set(selectedElementIds.current)
+        setSelection(activeChildren
+          .map((node) => node.id)
+          .filter((id) => (event.shiftKey ? !selected.has(id) : true)))
         return
       }
       if (
@@ -3300,13 +3338,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if (moveEvent.pointerId !== pointerId) return
       const rawDx = (moveEvent.clientX - startX) / interactionScale
       const rawDy = (moveEvent.clientY - startY) / interactionScale
+      // Hidden guides never snap; a disabled snap toggle keeps the parent
+      // clamping but never engages or shows snap lines.
+      const snapSlide = viewPrefs.guidesVisible
+        ? startSlide
+        : { ...startSlide, guides: undefined }
       const snap = snapSceneDrag(
-        startSlide,
+        snapSlide,
         startSlide.nodes,
         activeGroupPath,
         draggingIds,
         rawDx,
         rawDy,
+        viewPrefs.snappingEnabled ? {} : { threshold: 0 },
       )
       const patches = moveSceneNodesWithinSlide(
         startSlide,
@@ -3531,6 +3575,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     event.stopPropagation()
     const slide = activeSlide
     if (!guideId && (slide.guides?.length ?? 0) >= MAX_GUIDES_PER_SLIDE) return
+    if (!guideId && !viewPrefs.guidesVisible) updateViewPrefs({ guidesVisible: true })
     const start = rawArtboardPointFromClient(event.clientX, event.clientY)
     if (!start) return
     const pointerId = event.pointerId
@@ -4694,40 +4739,70 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 </button>
               </div>
             ) : (
-              <div className="zoom-controls" aria-label="预览缩放">
-              <button
-                className="zoom-btn"
-                type="button"
-                aria-label="缩小画布"
-                title="缩小画布"
-                disabled={zoomPercent <= MIN_ZOOM_PERCENT}
-                onClick={() => setZoomPercent((value) => clampZoomPercent(value - ZOOM_STEP))}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M4 10h12" />
-                </svg>
-              </button>
-              <button
-                className="zoom-value"
-                type="button"
-                title="适应画布（恢复 100%）"
-                onClick={() => setZoomPercent(DEFAULT_ZOOM_PERCENT)}
-              >
-                {zoomPercent}%
-              </button>
-              <button
-                className="zoom-btn"
-                type="button"
-                aria-label="放大画布"
-                title="放大画布"
-                disabled={zoomPercent >= MAX_ZOOM_PERCENT}
-                onClick={() => setZoomPercent((value) => clampZoomPercent(value + ZOOM_STEP))}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M10 4v12M4 10h12" />
-                </svg>
-              </button>
-              </div>
+              <>
+                <div className="zoom-controls" aria-label="画布设置">
+                  <button
+                    className="zoom-btn"
+                    type="button"
+                    data-testid="freeform-guides-toggle"
+                    aria-label="显示参考线"
+                    title="显示参考线"
+                    aria-pressed={viewPrefs.guidesVisible}
+                    onClick={() => updateViewPrefs({ guidesVisible: !viewPrefs.guidesVisible })}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M6.5 3v14M13.5 3v14" />
+                    </svg>
+                  </button>
+                  <button
+                    className="zoom-btn"
+                    type="button"
+                    data-testid="freeform-snap-toggle"
+                    aria-label="对象吸附"
+                    title="对象吸附"
+                    aria-pressed={viewPrefs.snappingEnabled}
+                    onClick={() => updateViewPrefs({ snappingEnabled: !viewPrefs.snappingEnabled })}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M4 10h12M10 4v12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="zoom-controls" aria-label="预览缩放">
+                  <button
+                    className="zoom-btn"
+                    type="button"
+                    aria-label="缩小画布"
+                    title="缩小画布"
+                    disabled={zoomPercent <= MIN_ZOOM_PERCENT}
+                    onClick={() => setZoomPercent((value) => clampZoomPercent(value - ZOOM_STEP))}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M4 10h12" />
+                    </svg>
+                  </button>
+                  <button
+                    className="zoom-value"
+                    type="button"
+                    title="适应画布（恢复 100%）"
+                    onClick={() => setZoomPercent(DEFAULT_ZOOM_PERCENT)}
+                  >
+                    {zoomPercent}%
+                  </button>
+                  <button
+                    className="zoom-btn"
+                    type="button"
+                    aria-label="放大画布"
+                    title="放大画布"
+                    disabled={zoomPercent >= MAX_ZOOM_PERCENT}
+                    onClick={() => setZoomPercent((value) => clampZoomPercent(value + ZOOM_STEP))}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M10 4v12M4 10h12" />
+                    </svg>
+                  </button>
+                </div>
+              </>
             )}
           </div>
 
@@ -4873,7 +4948,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                         style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
                       />
                     ))}
-                    {(activeSlide.guides ?? [])
+                    {(viewPrefs.guidesVisible ? (activeSlide.guides ?? []) : [])
                       .filter((guide) => guideDrag?.guideId !== guide.id)
                       .map((guide) => (
                         <div
