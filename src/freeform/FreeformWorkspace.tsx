@@ -157,6 +157,11 @@ import {
   type Rect,
 } from './selection'
 import { snapRotationDegrees, snapSceneDrag, type SnapLine } from './snapping'
+import {
+  measureDragDistances,
+  type DragMeasurement,
+  type MeasurementReference,
+} from './measurements'
 import { MAX_GUIDES_PER_SLIDE } from './guides'
 import { pickRulerStep, rulerTicks } from './rulers'
 import {
@@ -905,6 +910,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [operationNotice, setOperationNotice] = useState<string | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
+  const [dragMeasurements, setDragMeasurements] = useState<DragMeasurement[]>([])
+  const [interactionBadge, setInteractionBadge] = useState<string | null>(null)
   const [viewPrefs, setViewPrefs] = useState<FreeformViewPrefs>(loadViewPrefs)
 
   function updateViewPrefs(patch: Partial<FreeformViewPrefs>) {
@@ -3268,6 +3275,21 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }))
   }
 
+  /** "W×H" readout for the live world bounds of the given nodes — the size the selection frame shows on screen. */
+  function sizeBadgeText(
+    slide: FreeformSlide,
+    parentPath: ScenePath,
+    ids: readonly string[],
+  ): string | null {
+    const bounds = sceneWorldBoundsForPaths(
+      slide.nodes,
+      ids.map((id) => [...parentPath, id]),
+    )
+    return bounds
+      ? `${Math.round(bounds.width)}×${Math.round(bounds.height)}`
+      : null
+  }
+
   function beginMovePointerDown(
     event: React.PointerEvent,
     primaryId: string,
@@ -3334,6 +3356,22 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     activeInteractionRef.current = 'move'
     setActiveInteraction('move')
 
+    // Red spacing lines: the non-dragged visible siblings are the references;
+    // the page edges only apply at the top level (a group scope measures
+    // object-to-object gaps, matching how groups are transparent containers).
+    const measurementReferences: MeasurementReference[] = startChildren
+      .filter((node) => !draggingIds.includes(node.id) && !node.hidden)
+      .flatMap((node) => {
+        const bounds = sceneNodeBoundsInWorld(
+          startSlide.nodes,
+          [...activeGroupPath, node.id],
+        )
+        return bounds ? [{ ...bounds, source: 'element' as const }] : []
+      })
+    const measurementPage = activeGroupPath.length === 0
+      ? { width: startSlide.width, height: startSlide.height }
+      : null
+
     const onMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return
       const rawDx = (moveEvent.clientX - startX) / interactionScale
@@ -3372,6 +3410,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         })
         return Object.is(next, current.current) ? current : { ...current, current: next }
       })
+      const liveSlide = currentDocumentRef.current.slides.find(
+        (slide) => slide.id === startSlide.id,
+      )
+      if (liveSlide) {
+        const draggedBounds = sceneWorldBoundsForPaths(
+          liveSlide.nodes,
+          draggingIds.map((id) => [...activeGroupPath, id]),
+        )
+        setDragMeasurements(draggedBounds
+          ? measureDragDistances(draggedBounds, measurementReferences, measurementPage)
+          : [])
+        setInteractionBadge(sizeBadgeText(liveSlide, activeGroupPath, draggingIds))
+      }
     }
 
     const cleanupDrag = () => {
@@ -3381,6 +3432,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       window.removeEventListener('blur', onBlur)
       activeInteractionRef.current = null
       setSnapLines([])
+      setDragMeasurements([])
+      setInteractionBadge(null)
       setActiveInteraction(null)
     }
     const finishDrag = () => {
@@ -3887,6 +3940,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         x: (moveEvent.clientX - startX) / interactionScale,
         y: (moveEvent.clientY - startY) / interactionScale,
       }
+      const refreshBadge = () => {
+        const liveSlide = currentDocumentRef.current.slides.find(
+          (slide) => slide.id === startSlide.id,
+        )
+        setInteractionBadge(liveSlide
+          ? sizeBadgeText(liveSlide, resizeParentPath, target.nodeIds)
+          : null)
+      }
       if (startLeaf && startLeafWorld && inverseLeafWorld && startLeafLocal) {
         const localDelta = transformVector(inverseLeafWorld, worldDelta)
         const worldScale = decomposeSimilarity(startLeafWorld)?.scale ?? 1
@@ -3919,6 +3980,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             patch: { x: resized.x, y: resized.y, width, height },
           }],
         })
+        refreshBadge()
         return
       }
       if (startLengthSquared <= Number.EPSILON) return
@@ -3948,6 +4010,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           target.nodeIds,
         ),
       })
+      refreshBadge()
     }
 
     const cleanupResize = () => {
@@ -3957,6 +4020,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       window.removeEventListener('blur', onBlur)
       activeInteractionRef.current = null
       setSnapLines([])
+      setInteractionBadge(null)
       setActiveInteraction(null)
     }
 
@@ -4040,6 +4104,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           target.nodeIds,
         ),
       })
+      setInteractionBadge(`${Math.round(degrees)}°`)
     }
     const cleanup = () => {
       window.removeEventListener('pointermove', onMove)
@@ -4047,6 +4112,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       window.removeEventListener('pointercancel', onCancel)
       window.removeEventListener('blur', onBlur)
       activeInteractionRef.current = null
+      setInteractionBadge(null)
       setActiveInteraction(null)
     }
     const finish = () => {
@@ -4948,6 +5014,35 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                         style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
                       />
                     ))}
+                    {dragMeasurements.map((measurement, index) => (
+                      <div
+                        key={`${measurement.axis}-${measurement.side}-${index}`}
+                        className="freeform-ui-only freeform-measurement"
+                        data-testid="freeform-measurement"
+                        data-measurement-axis={measurement.axis}
+                        data-measurement-side={measurement.side}
+                        data-measurement-source={measurement.source}
+                        style={measurement.axis === 'x' ? {
+                          left: Math.min(measurement.from, measurement.to),
+                          top: measurement.at,
+                          width: Math.max(Math.abs(measurement.to - measurement.from), 1 / renderScale),
+                          height: 1 / renderScale,
+                        } : {
+                          left: measurement.at,
+                          top: Math.min(measurement.from, measurement.to),
+                          width: 1 / renderScale,
+                          height: Math.max(Math.abs(measurement.to - measurement.from), 1 / renderScale),
+                        }}
+                      >
+                        <span
+                          className="freeform-ui-only freeform-measurement-label"
+                          data-testid="freeform-measurement-label"
+                          style={{ fontSize: 11 / renderScale }}
+                        >
+                          {measurement.distance}
+                        </span>
+                      </div>
+                    ))}
                     {(viewPrefs.guidesVisible ? (activeSlide.guides ?? []) : [])
                       .filter((guide) => guideDrag?.guideId !== guide.id)
                       .map((guide) => (
@@ -5029,6 +5124,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       renderScale={renderScale}
                       activeInteraction={activeInteraction}
                       interactive={!effectiveLockedSelection && !lockedDescendantSelection}
+                      badge={interactionBadge}
                       onMovePointerDown={(event, target) => beginMovePointerDown(
                         event,
                         target.nodeIds[0],

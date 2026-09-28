@@ -31,6 +31,8 @@ export interface FreeformSelectionOverlayProps {
   renderScale: number
   activeInteraction: SelectionOverlayInteraction
   interactive: boolean
+  /** Live size ("W×H") or angle ("30°") readout shown under the frame while a gesture runs. */
+  badge?: string | null
   onMovePointerDown: (
     event: ReactPointerEvent<HTMLButtonElement>,
     target: SelectionOverlayTarget,
@@ -147,6 +149,7 @@ export function FreeformSelectionOverlay({
   renderScale,
   activeInteraction,
   interactive,
+  badge,
   onMovePointerDown,
   onResizePointerDown,
   onRotatePointerDown,
@@ -210,6 +213,14 @@ export function FreeformSelectionOverlay({
                     onPointerDown={(event) => onRotatePointerDown(event, target)}
                   />
                 </>
+              )}
+              {badge && (
+                <span
+                  className="freeform-ui-only freeform-selection-badge"
+                  data-testid="freeform-selection-badge"
+                >
+                  {badge}
+                </span>
               )}
             </div>
           )

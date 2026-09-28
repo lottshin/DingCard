@@ -1636,6 +1636,22 @@ html.theme-anim * {
   border-width: calc(2px * var(--freeform-inverse-scale, 1));
 }
 
+.freeform-selection-badge {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 6px * var(--freeform-inverse-scale, 1));
+  transform: translateX(-50%);
+  padding: 0.15em 0.5em;
+  border-radius: 999px;
+  background: #0d99ff;
+  color: #fff;
+  font-size: calc(11px * var(--freeform-inverse-scale, 1));
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .freeform-marquee {
   position: absolute;
   z-index: 20;
@@ -1669,6 +1685,28 @@ html.theme-anim * {
 
 .freeform-snap-line.freeform-snap-source-guide {
   background: var(--freeform-guide);
+}
+
+.freeform-measurement {
+  position: absolute;
+  z-index: 19;
+  background: #f24822;
+  pointer-events: none;
+}
+
+.freeform-measurement-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0.15em 0.4em;
+  border-radius: 999px;
+  background: #f24822;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .freeform-guide {

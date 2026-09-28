@@ -10685,3 +10685,98 @@ test.describe('freeform selection completion', () => {
     expect(boxes[0].x).toBe(420)
   })
 })
+
+test.describe('freeform canvas feedback', () => {
+  test('dragging shows red distance measurements to siblings and page edges', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 120, 80)
+    await insertShape(page)
+    await setSelectedElementBox(page, 400, 100, 120, 80)
+
+    const geometry = await stageGeometry(page)
+    const scale = await freeformCanvasScale(page)
+    await expect(page.getByTestId('freeform-measurement')).toHaveCount(0)
+    await expect(page.getByTestId('freeform-selection-badge')).toHaveCount(0)
+
+    // Drag the first shape right so its right edge keeps a 60px gap to the
+    // second shape (100 -> 220).
+    const first = page.getByTestId('freeform-element').nth(0)
+    await first.hover()
+    await page.mouse.down()
+    await page.mouse.move(geometry.artboardLeft + 280 * scale, geometry.artboardTop + 140 * scale, { steps: 8 })
+
+    // Right: 60 to the sibling; left: 220 and top: 100 to the page edges;
+    // the far bottom page edge (1260) stays out of range.
+    const measurements = page.getByTestId('freeform-measurement')
+    await expect(measurements).toHaveCount(3)
+    await expect(page.getByTestId('freeform-selection-badge')).toHaveText('120×80')
+    const right = page.locator('[data-testid="freeform-measurement"][data-measurement-side="right"]')
+    await expect(right).toHaveAttribute('data-measurement-source', 'element')
+    await expect(right.getByTestId('freeform-measurement-label')).toHaveText('60')
+    await expect(page.locator('[data-testid="freeform-measurement"][data-measurement-side="left"] [data-testid="freeform-measurement-label"]')).toHaveText('220')
+    await expect(page.locator('[data-testid="freeform-measurement"][data-measurement-side="top"] [data-testid="freeform-measurement-label"]')).toHaveText('100')
+    // Measurements are canvas chrome and never reach exports.
+    await expect(measurements.first()).toHaveClass(/freeform-ui-only/)
+
+    await page.mouse.up()
+    await expect(measurements).toHaveCount(0)
+    await expect(page.getByTestId('freeform-selection-badge')).toHaveCount(0)
+    const boxes = await freeformElementBoxes(page)
+    // The client->world conversion carries sub-pixel float drift.
+    expect(boxes[0].x).toBeCloseTo(220, 1)
+  })
+
+  test('resizing shows a live size badge under the selection', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 120, 80)
+
+    const scale = await freeformCanvasScale(page)
+    const handle = page.getByTestId('freeform-selection-resize')
+    const handleBox = await handle.boundingBox()
+    expect(handleBox).toBeTruthy()
+    const startX = handleBox!.x + handleBox!.width / 2
+    const startY = handleBox!.y + handleBox!.height / 2
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX + 100 * scale, startY + 50 * scale, { steps: 5 })
+
+    await expect(page.getByTestId('freeform-selection-badge')).toHaveText('220×130')
+    await page.mouse.up()
+    await expect(page.getByTestId('freeform-selection-badge')).toHaveCount(0)
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 100, y: 100, width: 220, height: 130 },
+    ])
+  })
+
+  test('rotating shows a live angle badge', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 400, 500, 120, 80)
+
+    const geometry = await stageGeometry(page)
+    const scale = await freeformCanvasScale(page)
+    const rotate = page.getByTestId('freeform-selection-rotate')
+    const handleBox = await rotate.boundingBox()
+    expect(handleBox).toBeTruthy()
+    const centerX = geometry.artboardLeft + 460 * scale
+    const centerY = geometry.artboardTop + 540 * scale
+    const handleX = handleBox!.x + handleBox!.width / 2
+    const handleY = handleBox!.y + handleBox!.height / 2
+    const startAngle = Math.atan2(handleY - centerY, handleX - centerX)
+    const radius = Math.hypot(handleX - centerX, handleY - centerY)
+    const targetAngle = startAngle + Math.PI / 6
+
+    await page.mouse.move(handleX, handleY)
+    await page.mouse.down()
+    await page.mouse.move(
+      centerX + radius * Math.cos(targetAngle),
+      centerY + radius * Math.sin(targetAngle),
+      { steps: 10 },
+    )
+    await expect(page.getByTestId('freeform-selection-badge')).toHaveText('30°')
+    await page.mouse.up()
+    await expect(page.getByTestId('freeform-selection-badge')).toHaveCount(0)
+  })
+})
