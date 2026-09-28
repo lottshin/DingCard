@@ -10851,3 +10851,94 @@ test.describe('freeform color history', () => {
     await expect(popover).toHaveCount(0)
   })
 })
+
+test.describe('freeform duplicate and z-order shortcuts', () => {
+  test('Ctrl+D duplicates the selection in place and selects the copies', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 120, 160, 120, 80)
+
+    await page.keyboard.press('Control+d')
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 120, y: 160, width: 120, height: 80 },
+      { x: 120, y: 160, width: 120, height: 80 },
+    ])
+    // The fresh copy carries the selection.
+    await expect(page.getByTestId('freeform-element').nth(1)).toHaveAttribute('data-selected', 'true')
+    await expect(page.getByTestId('freeform-element').nth(0)).toHaveAttribute('data-selected', 'false')
+
+    // One history entry records the duplicate.
+    await page.getByRole('tab', { name: '历史', exact: true }).click()
+    await expect(page.getByTestId('freeform-history-item').locator('.freeform-history-label').first()).toHaveText('原位复制')
+  })
+
+  test('bracket keys and their modifiers reorder the selection', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 120, 80)
+    await insertShape(page)
+    await setSelectedElementBox(page, 400, 100, 120, 80)
+    await insertShape(page)
+    await setSelectedElementBox(page, 700, 100, 120, 80)
+    const elements = page.getByTestId('freeform-element')
+    await expect(elements).toHaveCount(3)
+
+    // Bare ] brings the first shape straight to the front (Figma semantics).
+    await elements.nth(0).click()
+    await page.keyboard.press(']')
+    await expect.poll(async () => (await freeformElementBoxes(page)).map((box) => box.x)).toEqual([400, 700, 100])
+
+    // Bare [ sends it straight back; Ctrl+] steps one layer up, Ctrl+[ back down.
+    await page.keyboard.press('[')
+    await expect.poll(async () => (await freeformElementBoxes(page)).map((box) => box.x)).toEqual([100, 400, 700])
+    await page.keyboard.press('Control+]')
+    await expect.poll(async () => (await freeformElementBoxes(page)).map((box) => box.x)).toEqual([400, 100, 700])
+    await page.keyboard.press('Control+[')
+    await expect.poll(async () => (await freeformElementBoxes(page)).map((box) => box.x)).toEqual([100, 400, 700])
+
+    // Ctrl+Shift+] / Ctrl+Shift+[ also jump to the front/back.
+    await page.keyboard.press('Control+Shift+]')
+    await expect.poll(async () => (await freeformElementBoxes(page)).map((box) => box.x)).toEqual([400, 700, 100])
+    await page.keyboard.press('Control+Shift+[')
+    await expect.poll(async () => (await freeformElementBoxes(page)).map((box) => box.x)).toEqual([100, 400, 700])
+
+    // While an input is focused the brackets never reorder the selection.
+    const positionInputs = page.locator('.freeform-inspector .field-grid').first().locator('input')
+    await positionInputs.nth(0).click()
+    await page.keyboard.press(']')
+    await expect.poll(async () => (await freeformElementBoxes(page)).map((box) => box.x)).toEqual([100, 400, 700])
+
+    // The context menu offers in-place duplication too (right-click an
+    // unselected shape — the selection overlay covers the selected one).
+    await page.getByTestId('freeform-element').nth(1).click({ button: 'right' })
+    await page.getByTestId('freeform-context-menu-duplicate').click()
+    await expect.poll(async () => await page.getByTestId('freeform-element').count()).toBe(4)
+  })
+
+  test('right-clicking a selected shape through its drag handle keeps the element menu', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    // A small shape at fit zoom: its center sits under the round drag handle.
+    await setSelectedElementBox(page, 400, 100, 120, 80)
+    const element = page.getByTestId('freeform-element')
+    // The inserted shape is already selected (the box edits above prove it).
+    await expect(element).toHaveAttribute('data-selected', 'true')
+
+    // Locator clicks refuse points owned by overlay chrome; use raw mouse
+    // events at the shape's center (under the drag handle at fit zoom).
+    const handleBox = await element.boundingBox()
+    expect(handleBox).toBeTruthy()
+    await page.mouse.click(
+      handleBox!.x + handleBox!.width / 2,
+      handleBox!.y + handleBox!.height / 2,
+      { button: 'right' },
+    )
+    const menu = page.getByTestId('freeform-context-menu')
+    await expect(menu).toBeVisible()
+    await expect(menu.getByTestId('freeform-context-menu-delete')).toBeEnabled()
+    await expect(menu.getByTestId('freeform-context-menu-duplicate')).toBeEnabled()
+    // The selection survives the right-click through overlay chrome.
+    await expect(element).toHaveAttribute('data-selected', 'true')
+    await page.keyboard.press('Escape')
+  })
+})

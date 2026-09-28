@@ -2525,6 +2525,37 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     })
   }
 
+  /** Ctrl/⌘+D: duplicate the selection in place and select the fresh copies. */
+  function duplicateSelection() {
+    if (selection.length === 0) return
+    const slideBefore = currentDocumentRef.current.slides.find(
+      (slide) => slide.id === activeSlide.id,
+    )
+    const childrenBefore = slideBefore
+      ? getChildrenAtPath(slideBefore.nodes, activeGroupPath)
+      : undefined
+    if (!childrenBefore) return
+    const idsBefore = new Set(childrenBefore.map((node) => node.id))
+    const changed = applyAction({
+      type: 'node/clone',
+      slideId: activeSlide.id,
+      parentPath: activeGroupPath,
+      nodeIds: selection,
+    }, '原位复制')
+    if (!changed) {
+      if (effectiveLockedSelection || lockedDescendantSelection) showLockedOperationNotice()
+      return
+    }
+    const slideAfter = currentDocumentRef.current.slides.find(
+      (slide) => slide.id === activeSlide.id,
+    )
+    const childrenAfter = slideAfter
+      ? getChildrenAtPath(slideAfter.nodes, activeGroupPath)
+      : undefined
+    const clones = (childrenAfter ?? []).filter((node) => !idsBefore.has(node.id))
+    setSelection(clones.map((node) => node.id))
+  }
+
   function pasteClipboard() {
     if (!clipboard || clipboard.nodes.length === 0) return
     if (blockDocumentMutationDuringInteraction()) return
@@ -3023,7 +3054,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         return
       }
       const isDocumentShortcut = (
-        ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'v', 'g'].includes(key)) ||
+        ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'v', 'g', 'd'].includes(key)) ||
         [
           'arrowleft',
           'arrowright',
@@ -3033,10 +3064,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           'backspace',
           'escape',
           'enter',
+          '[',
+          ']',
         ].includes(key)
       )
       if ((activeInteractionRef.current || marqueePointerIdRef.current !== null) && isDocumentShortcut) {
         event.preventDefault()
+        return
+      }
+      // Ctrl/⌘+D has no typing meaning anywhere: always duplicate in place and
+      // keep the browser's bookmark shortcut out of the way.
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.code === 'KeyD') {
+        event.preventDefault()
+        duplicateSelection()
         return
       }
       if (isTypingTarget(event.target)) return
@@ -3058,6 +3098,24 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           .map((node) => node.id)
           .filter((id) => (event.shiftKey ? !selected.has(id) : true)))
         return
+      }
+      // ]/[ jump straight to front/back (Figma/FigJam); Ctrl/⌘ steps one
+      // layer, Ctrl/⌘+Shift also jumps (Photoshop / Windows Figma). Bare
+      // brackets stay behind the typing guard so text input keeps them.
+      if (!event.altKey && (event.code === 'BracketRight' || event.code === 'BracketLeft')) {
+        const towardTop = event.code === 'BracketRight'
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault()
+          reorderSelection(towardTop
+            ? (event.shiftKey ? 'front' : 'forward')
+            : (event.shiftKey ? 'back' : 'backward'))
+          return
+        }
+        if (!event.shiftKey) {
+          event.preventDefault()
+          reorderSelection(towardTop ? 'front' : 'back')
+          return
+        }
       }
       if (
         (event.ctrlKey || event.metaKey)
@@ -3192,6 +3250,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     hitPath: ScenePath,
     state: SceneNodePointerState,
   ) {
+    // Secondary buttons never start scene gestures; the contextmenu event that
+    // follows keeps its original target (an early selection here would cover
+    // the click point with fresh overlay chrome and re-target it).
+    if (event.button !== 0) return
     if (framingSessionRef.current || imageCropSessionRef.current) {
       event.preventDefault()
       event.stopPropagation()
@@ -3295,6 +3357,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     primaryId: string,
     requestedIds?: readonly string[],
   ) {
+    // Only the primary button moves objects: a right-button press must stay a
+    // no-op so the context menu keeps its original hit target.
+    if (event.button !== 0) return
     if (renderScale === null) return
     if (blockDocumentMutationDuringInteraction()) {
       event.preventDefault()
@@ -3764,12 +3829,33 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     if (contextMenu) setContextMenu(null)
   }
 
+  /**
+   * Geometric fallback for context menus: the pointer can land on selection
+   * chrome (the drag/resize/rotate handles sit above the artwork), where the
+   * DOM hit carries no scene path. Resolve the topmost scene node whose
+   * rendered bounds contain the point instead.
+   */
+  function scenePathFromClientPoint(clientX: number, clientY: number): ScenePath | null {
+    const artboard = artboardRef.current
+    if (!artboard) return null
+    const nodes = Array.from(artboard.querySelectorAll<HTMLElement>('[data-scene-node-id]'))
+    for (let index = nodes.length - 1; index >= 0; index -= 1) {
+      const rect = nodes[index].getBoundingClientRect()
+      if (clientX > rect.left && clientX < rect.right && clientY > rect.top && clientY < rect.bottom) {
+        const path = scenePathFromDomTarget(nodes[index])
+        if (path) return path
+      }
+    }
+    return null
+  }
+
   function onStageContextMenu(event: React.MouseEvent<HTMLDivElement>) {
     if (framingSessionRef.current || imageCropSessionRef.current) return
     if (isTypingTarget(event.target)) return
     event.preventDefault()
     blurActiveTypingTarget()
     const hitPath = scenePathFromDomTarget(event.target)
+      ?? scenePathFromClientPoint(event.clientX, event.clientY)
     if (hitPath) {
       const directPath = directChildPathForScope(activeSlide.nodes, activeGroupPath, hitPath)
       if (directPath) {
@@ -6168,6 +6254,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             onClick={() => { closeContextMenu(); copySelection() }}
           >
             复制
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-duplicate"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); duplicateSelection() }}
+          >
+            原位复制
           </button>
           <button
             type="button"
