@@ -4,9 +4,11 @@ import {
   MAX_ZOOM_PERCENT,
   MIN_ZOOM_PERCENT,
   ZOOM_STEP,
+  ZOOM_TO_SELECTION_MARGIN,
   calculateFitScale,
   calculateRenderScale,
   clampZoomPercent,
+  zoomPercentForBounds,
   zoomPercentFromWheelDelta,
 } from '../viewportScale'
 
@@ -67,5 +69,26 @@ describe('viewport scale', () => {
     // Invalid input falls back to the clamped current value.
     expect(zoomPercentFromWheelDelta(Number.NaN, 100)).toBe(DEFAULT_ZOOM_PERCENT)
     expect(zoomPercentFromWheelDelta(100, Number.NaN)).toBe(100)
+  })
+
+  it('derives a zoom that fits bounds into the viewport with breathing room', () => {
+    expect(ZOOM_TO_SELECTION_MARGIN).toBe(0.8)
+    // Bounds narrower than the viewport: scale by the limiting axis.
+    expect(zoomPercentForBounds(0.5, 400, 600, 200, 100)).toBe(
+      Math.round((Math.min(400 / 200, 600 / 100) * 0.8 / 0.5) * 100),
+    )
+    // Bounds wider than tall: the height axis limits.
+    expect(zoomPercentForBounds(0.5, 400, 600, 200, 800)).toBe(
+      Math.round((Math.min(400 / 200, 600 / 800) * 0.8 / 0.5) * 100),
+    )
+    // Huge bounds clamp to the minimum zoom.
+    expect(zoomPercentForBounds(0.5, 400, 600, 1e6, 1e6)).toBe(MIN_ZOOM_PERCENT)
+    // Tiny bounds clamp to the maximum zoom.
+    expect(zoomPercentForBounds(0.5, 400, 600, 1, 1)).toBe(MAX_ZOOM_PERCENT)
+    // Invalid inputs never produce a zoom.
+    expect(zoomPercentForBounds(null, 400, 600, 200, 100)).toBeNull()
+    expect(zoomPercentForBounds(0.5, 0, 600, 200, 100)).toBeNull()
+    expect(zoomPercentForBounds(0.5, 400, 600, 0, 100)).toBeNull()
+    expect(zoomPercentForBounds(0.5, Number.NaN, 600, 200, 100)).toBeNull()
   })
 })

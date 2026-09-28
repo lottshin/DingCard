@@ -185,8 +185,10 @@ import {
   calculateFitScale,
   calculateRenderScale,
   clampZoomPercent,
+  zoomPercentForBounds,
   zoomPercentFromWheelDelta,
 } from './viewportScale'
+import { copyStylePatch, pasteStylePatch } from './styleClipboard'
 
 const FIT_SCALE_EPSILON = 0.0001
 const EXPORT_IMAGE_WAIT_MS = 3_500
@@ -835,6 +837,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     [activeGroupPath, activeSlide.nodes],
   )
   const [clipboard, setClipboard] = useState<SceneClipboard | null>(null)
+  const [styleClipboard, setStyleClipboard] = useState<FreeformNodeStylePatch | null>(null)
   const [zoomPercent, setZoomPercent] = useState(DEFAULT_ZOOM_PERCENT)
   const [fitScale, setFitScale] = useState<number | null>(null)
   // Space-held canvas panning and the anchor point for cursor-centered zoom.
@@ -844,6 +847,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const pendingZoomAnchorRef = useRef<{
     clientX: number
     clientY: number
+    worldX: number
+    worldY: number
+  } | null>(null)
+  const pendingZoomCenterRef = useRef<{
     worldX: number
     worldY: number
   } | null>(null)
@@ -905,6 +912,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const menuSelectionAllHidden = menuSelectionNodes.length > 0
     && menuSelectionNodes.every((node) => node.hidden)
   const menuSelectionHasGroup = menuSelectionNodes.some((node) => node.type === 'group')
+  const menuSelectionHasLeaf = menuSelectionNodes.some((node) => node.type !== 'group')
   const setSelection = useCallback((update: SetStateAction<string[]>) => {
     setSceneUiState((current) => {
       const currentIds = normalizeSceneSelection(
@@ -1302,13 +1310,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     return () => stage.removeEventListener('wheel', onWheel)
   })
 
-  // Keeps the grabbed world point pinned under the cursor after the scale change.
+  // Keeps the grabbed world point pinned under the cursor after the scale change,
+  // or centers a requested world point once scrollbars have settled.
   useLayoutEffect(() => {
+    const stage = stageScrollRef.current
+    const artboard = artboardRef.current
+    const center = pendingZoomCenterRef.current
+    if (center) {
+      pendingZoomCenterRef.current = null
+      pendingZoomAnchorRef.current = null
+      const box = stage ? stageContentBox() : null
+      if (!stage || !artboard || !box || renderScale === null || renderScale <= 0) return
+      const bounds = artboard.getBoundingClientRect()
+      stage.scrollLeft += bounds.left - (box.clientLeft + box.width / 2 - center.worldX * renderScale)
+      stage.scrollTop += bounds.top - (box.clientTop + box.height / 2 - center.worldY * renderScale)
+      return
+    }
     const anchor = pendingZoomAnchorRef.current
     if (!anchor) return
     pendingZoomAnchorRef.current = null
-    const stage = stageScrollRef.current
-    const artboard = artboardRef.current
     if (!stage || !artboard || renderScale === null || renderScale <= 0) return
     const bounds = artboard.getBoundingClientRect()
     stage.scrollLeft += bounds.left - (anchor.clientX - anchor.worldX * renderScale)
@@ -2813,6 +2833,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         return
       }
       if (isTypingTarget(event.target)) return
+      // Match on key codes: macOS Option combos remap event.key to special chars.
+      if ((event.ctrlKey || event.metaKey) && event.altKey && event.code === 'KeyC') {
+        event.preventDefault()
+        copySelectionStyle()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && event.altKey && event.code === 'KeyV') {
+        event.preventDefault()
+        pasteStyleToSelection()
+        return
+      }
       if (
         (event.ctrlKey || event.metaKey)
         && !event.altKey
@@ -2825,6 +2856,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key === '0') {
         event.preventDefault()
         zoomCanvasToPercent(DEFAULT_ZOOM_PERCENT)
+        return
+      }
+      if (
+        event.shiftKey
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
+        && (event.code === 'Digit1' || event.code === 'Digit2')
+      ) {
+        event.preventDefault()
+        if (event.code === 'Digit1') zoomCanvasToPercent(DEFAULT_ZOOM_PERCENT)
+        else zoomToSelectionBounds()
         return
       }
       if (
@@ -3219,6 +3262,86 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
     const rect = stage.getBoundingClientRect()
     zoomCanvas(percent, rect.left + rect.width / 2, rect.top + rect.height / 2)
+  }
+
+  /** Content box of the stage scroll area in client coordinates (scrollbar-aware). */
+  function stageContentBox() {
+    const stage = stageScrollRef.current
+    if (!stage) return null
+    const rect = stage.getBoundingClientRect()
+    const style = getComputedStyle(stage)
+    const borderLeft = cssPixels(style.borderLeftWidth)
+    const borderTop = cssPixels(style.borderTopWidth)
+    const paddingLeft = cssPixels(style.paddingLeft)
+    const paddingTop = cssPixels(style.paddingTop)
+    const width = stage.clientWidth - paddingLeft - cssPixels(style.paddingRight)
+    const height = stage.clientHeight - paddingTop - cssPixels(style.paddingBottom)
+    return {
+      clientLeft: rect.left + borderLeft + paddingLeft,
+      clientTop: rect.top + borderTop + paddingTop,
+      width,
+      height,
+    }
+  }
+
+  /** Zoom so the selection bounds fit the stage, centered after layout settles. */
+  function zoomToSelectionBounds() {
+    if (selectionPaths.length === 0 || fitScale === null) return
+    const box = stageContentBox()
+    if (!box || box.width <= 0 || box.height <= 0) return
+    const boundsList = selectionPaths.flatMap((path) => {
+      const bounds = sceneNodeBoundsInWorld(activeSlide.nodes, path)
+      return bounds ? [bounds] : []
+    })
+    if (boundsList.length !== selectionPaths.length || boundsList.length === 0) return
+    const left = Math.min(...boundsList.map((bounds) => bounds.x))
+    const top = Math.min(...boundsList.map((bounds) => bounds.y))
+    const right = Math.max(...boundsList.map((bounds) => bounds.x + bounds.width))
+    const bottom = Math.max(...boundsList.map((bounds) => bounds.y + bounds.height))
+    const width = right - left
+    const height = bottom - top
+    if (!(width > 0) || !(height > 0)) return
+    const next = zoomPercentForBounds(fitScale, box.width, box.height, width, height)
+    if (next === null || next === zoomPercent) return
+    // Scrollbars may appear once the canvas grows past the stage, so the
+    // centering is applied post-layout (in the zoom apply effect) rather
+    // than pinned to the current client point here.
+    pendingZoomCenterRef.current = {
+      worldX: left + width / 2,
+      worldY: top + height / 2,
+    }
+    setZoomPercent(next)
+  }
+
+  /** Copy the paint/typography/effect fields of the first selected leaf. */
+  function copySelectionStyle() {
+    const source = selectionPaths
+      .map((path) => findNodeAtPath(activeSlide.nodes, path))
+      .find((node) => node !== undefined && node.type !== 'group')
+    if (!source) return
+    setStyleClipboard(copyStylePatch(source))
+  }
+
+  /** Apply the copied style to every selected leaf in one history entry. */
+  function pasteStyleToSelection() {
+    if (!styleClipboard) return
+    if (blockDocumentMutationDuringInteraction()) return
+    const updates = selectionPaths.flatMap((path) => {
+      const node = findNodeAtPath(activeSlide.nodes, path)
+      if (!node || node.type === 'group') return []
+      const patch = pasteStylePatch(styleClipboard, node.type)
+      if (Object.keys(patch).length === 0) return []
+      return [{ path: [...path], patch }]
+    })
+    if (updates.length === 0) return
+    const changed = applyAction({
+      type: 'node/update-style',
+      slideId: activeSlide.id,
+      updates,
+    })
+    if (!changed && (effectiveLockedSelection || lockedDescendantSelection)) {
+      showLockedOperationNotice()
+    }
   }
 
   // Space-held panning drags the scroll container itself; the capture phase
@@ -4436,6 +4559,99 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               </button>
             </div>
           )}
+
+          {canUseLogicalAlignment && !activeInteraction && !framingSession && !imageCropSession && (
+            <div
+              className="freeform-align-bar"
+              data-testid="freeform-align-bar"
+              role="toolbar"
+              aria-label="对齐与分布"
+            >
+              <button
+                type="button"
+                className="align-bar-btn"
+                data-testid="freeform-align-left"
+                aria-label="左对齐"
+                title="左对齐"
+                onClick={() => alignSelection('left')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3v14M5 6h10M5 12h7" /></svg>
+              </button>
+              <button
+                type="button"
+                className="align-bar-btn"
+                data-testid="freeform-align-hcenter"
+                aria-label="水平居中"
+                title="水平居中"
+                onClick={() => alignSelection('h-center')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M5 6h10M7 12h6" /></svg>
+              </button>
+              <button
+                type="button"
+                className="align-bar-btn"
+                data-testid="freeform-align-right"
+                aria-label="右对齐"
+                title="右对齐"
+                onClick={() => alignSelection('right')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15 3v14M5 6h10M8 12h7" /></svg>
+              </button>
+              <button
+                type="button"
+                className="align-bar-btn"
+                data-testid="freeform-align-top"
+                aria-label="顶对齐"
+                title="顶对齐"
+                onClick={() => alignSelection('top')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 5v10M12 5v7" /></svg>
+              </button>
+              <button
+                type="button"
+                className="align-bar-btn"
+                data-testid="freeform-align-vcenter"
+                aria-label="垂直居中"
+                title="垂直居中"
+                onClick={() => alignSelection('v-center')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h14M6 5v10M12 7v6" /></svg>
+              </button>
+              <button
+                type="button"
+                className="align-bar-btn"
+                data-testid="freeform-align-bottom"
+                aria-label="底对齐"
+                title="底对齐"
+                onClick={() => alignSelection('bottom')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15h14M6 5v10M12 8v7" /></svg>
+              </button>
+              <span className="align-bar-separator" aria-hidden="true" />
+              <button
+                type="button"
+                className="align-bar-btn"
+                data-testid="freeform-distribute-h"
+                aria-label="水平均分"
+                title="水平均分"
+                disabled={selectionPaths.length < 3}
+                onClick={() => distributeSelection('horizontal')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5v10M10 5v10M15 5v10" /></svg>
+              </button>
+              <button
+                type="button"
+                className="align-bar-btn"
+                data-testid="freeform-distribute-v"
+                aria-label="垂直均分"
+                title="垂直均分"
+                disabled={selectionPaths.length < 3}
+                onClick={() => distributeSelection('vertical')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5h10M5 10h10M5 15h10" /></svg>
+              </button>
+            </div>
+          )}
         </section>
 
         <FreeformRightPanel
@@ -5397,6 +5613,37 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             }}
           >
             {menuSelectionAllHidden ? '取消隐藏' : '隐藏'}
+          </button>
+          <div className="freeform-context-menu-separator" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-copy-style"
+            disabled={!menuSelectionHasLeaf}
+            onClick={() => { closeContextMenu(); copySelectionStyle() }}
+          >
+            复制样式
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-paste-style"
+            disabled={!styleClipboard || !menuSelectionHasLeaf}
+            onClick={() => { closeContextMenu(); pasteStyleToSelection() }}
+          >
+            粘贴样式
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-zoom-selection"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); zoomToSelectionBounds() }}
+          >
+            缩放到选区
           </button>
         </div>
       )}

@@ -6420,7 +6420,7 @@ test('multi-selects elements and aligns them left', async ({ page }) => {
   ])
 
   await page.locator('.freeform-element').first().click({ modifiers: ['Shift'] })
-  await page.getByRole('button', { name: '左对齐' }).click()
+  await page.locator('.freeform-inspector').getByRole('button', { name: '左对齐' }).click()
 
   await expect.poll(() => freeformElementPositions(page)).toEqual([
     { x: 100, y: 120 },
@@ -6966,7 +6966,7 @@ test('marquee selects elements by dragging empty canvas', async ({ page }) => {
 
   await expect(selectedFreeformElements(page)).toHaveCount(2)
 
-  await page.getByRole('button', { name: '左对齐' }).click()
+  await page.locator('.freeform-inspector').getByRole('button', { name: '左对齐' }).click()
 
   await expect.poll(() => freeformElementPositions(page)).toEqual([
     { x: 100, y: 100 },
@@ -6997,7 +6997,7 @@ test('distributes selected elements horizontally', async ({ page }) => {
 
   await page.locator('.freeform-element').nth(0).click({ modifiers: ['Shift'] })
   await page.locator('.freeform-element').nth(1).click({ modifiers: ['Shift'] })
-  await page.getByRole('button', { name: '水平均分' }).click()
+  await page.locator('.freeform-inspector').getByRole('button', { name: '水平均分' }).click()
 
   await expect.poll(() => freeformElementPositions(page)).toEqual([
     { x: 100, y: 160 },
@@ -7501,8 +7501,6 @@ test('hidden group export excludes hidden pixels while preserving tree managemen
 
   const hiddenLeafToggle = hiddenLeaf.getByRole('button', { name: '隐藏图层 Hidden leaf' })
   await hiddenLeafToggle.focus()
-  // Wait for focus to settle: the panel refocuses rows on animation frames,
-  // and under load that refocus can land after focus() but before Enter.
   await expect(hiddenLeafToggle).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(hiddenLeafToggle).toBeFocused()
@@ -9574,7 +9572,7 @@ test('logical group alignment moves a group as one unit', async ({ page }) => {
   expect(beforeA).toBeTruthy()
   expect(beforeB).toBeTruthy()
   await page.getByRole('tab', { name: '属性', exact: true }).click()
-  await page.getByRole('button', { name: '左对齐', exact: true }).click()
+  await page.locator('.freeform-inspector').getByRole('button', { name: '左对齐', exact: true }).click()
 
   const afterA = await layerA.boundingBox()
   const afterB = await layerB.boundingBox()
@@ -9971,6 +9969,143 @@ test.describe('freeform context menu', () => {
     await expect(element).toBeHidden()
     await page.keyboard.press('Control+Z')
     await expect(element).toBeVisible()
+  })
+})
+
+test.describe('freeform layout efficiency', () => {
+  test('floating align bar aligns and distributes the multi-selection', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 100, 80)
+    await insertShape(page)
+    await setSelectedElementBox(page, 350, 180, 100, 60)
+    await insertShape(page)
+    await setSelectedElementBox(page, 800, 60, 100, 110)
+    const bar = page.getByTestId('freeform-align-bar')
+    await expect(bar).toHaveCount(0)
+
+    const elements = page.getByTestId('freeform-element')
+    await elements.nth(0).click({ modifiers: ['Shift'] })
+    await expect(bar).toBeVisible()
+    await expect(bar).toHaveAttribute('role', 'toolbar')
+    await expect(bar).toHaveAttribute('aria-label', '对齐与分布')
+    await expect(bar.getByTestId('freeform-distribute-h')).toBeDisabled()
+    await expect(bar.getByTestId('freeform-distribute-v')).toBeDisabled()
+    await elements.nth(1).click({ modifiers: ['Shift'] })
+    await expect(selectedFreeformElements(page)).toHaveCount(3)
+    await expect(bar.getByTestId('freeform-distribute-h')).toBeEnabled()
+    await expect(bar.getByTestId('freeform-distribute-v')).toBeEnabled()
+
+    // Gaps 150 and 350 become equal 250 gaps; the outer elements stay put.
+    await bar.getByTestId('freeform-distribute-h').click()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 100, y: 100, width: 100, height: 80 },
+      { x: 450, y: 180, width: 100, height: 60 },
+      { x: 800, y: 60, width: 100, height: 110 },
+    ])
+
+    await bar.getByTestId('freeform-align-left').click()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 100, y: 100, width: 100, height: 80 },
+      { x: 100, y: 180, width: 100, height: 60 },
+      { x: 100, y: 60, width: 100, height: 110 },
+    ])
+
+    await bar.getByTestId('freeform-align-top').click()
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 100, y: 60, width: 100, height: 80 },
+      { x: 100, y: 60, width: 100, height: 60 },
+      { x: 100, y: 60, width: 100, height: 110 },
+    ])
+
+    await page.keyboard.press('Escape')
+    await expect(bar).toHaveCount(0)
+  })
+
+  test('shift+2 zooms to the selection and shift+1 fits the page again', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openFreeform(page)
+    await insertShape(page)
+    // Off the page center so the recentering is observable, and mid-page so
+    // the required scroll stays clear of the bottom clamp.
+    await setSelectedElementBox(page, 150, 500, 500, 250)
+    const value = page.locator('.freeform-stage-pane .zoom-value')
+    await expect(value).toHaveText('100%')
+    const stage = page.locator('.freeform-stage-scroll')
+    const stageBox = await stage.boundingBox()
+    expect(stageBox).toBeTruthy()
+
+    // Leave the inspector inputs so the shortcut reaches the canvas handler.
+    const element = page.getByTestId('freeform-element')
+    await element.click()
+    await page.keyboard.press('Shift+2')
+    await expect(value).not.toHaveText('100%')
+
+    const box = await element.boundingBox()
+    expect(box).toBeTruthy()
+    // The visible content center: clientWidth/Height exclude any scrollbar
+    // that appeared once the zoomed canvas outgrew the stage.
+    const visibleCenter = await stage.evaluate((node) => {
+      const style = getComputedStyle(node)
+      const rect = node.getBoundingClientRect()
+      const padding = (value: string) => Number.parseFloat(value) || 0
+      const paddingLeft = padding(style.paddingLeft)
+      const paddingTop = padding(style.paddingTop)
+      return {
+        x: rect.left + node.clientLeft + paddingLeft
+          + (node.clientWidth - paddingLeft - padding(style.paddingRight)) / 2,
+        y: rect.top + node.clientTop + paddingTop
+          + (node.clientHeight - paddingTop - padding(style.paddingBottom)) / 2,
+      }
+    })
+    expect(Math.abs(box!.x + box!.width / 2 - visibleCenter.x)).toBeLessThan(2)
+    expect(Math.abs(box!.y + box!.height / 2 - visibleCenter.y)).toBeLessThan(2)
+
+    await page.keyboard.press('Shift+1')
+    await expect(value).toHaveText('100%')
+  })
+
+  test('copy and paste style between leaves with shortcuts and the context menu', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 120, 100)
+    const hexInput = page.getByTestId('inspector-fill')
+      .getByTestId('shape-fill-paint')
+      .getByLabel('填充 hex', { exact: true })
+    await hexInput.fill('#8b5cf6')
+    await expect(hexInput).toHaveValue('#8b5cf6')
+
+    await insertShape(page)
+    await setSelectedElementBox(page, 300, 340, 100, 100)
+    await expect(hexInput).not.toHaveValue('#8b5cf6')
+
+    const elements = page.getByTestId('freeform-element')
+    const menu = page.getByTestId('freeform-context-menu')
+    await elements.nth(1).click({ button: 'right' })
+    await expect(menu.getByTestId('freeform-context-menu-copy-style')).toBeEnabled()
+    await expect(menu.getByTestId('freeform-context-menu-paste-style')).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+
+    await elements.first().click({ button: 'right' })
+    await menu.getByTestId('freeform-context-menu-copy-style').click()
+    await expect(menu).toHaveCount(0)
+
+    await elements.nth(1).click()
+    const workspace = page.locator('.freeform-workspace')
+    const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+    await page.keyboard.press('Control+Alt+V')
+    await expect(hexInput).toHaveValue('#8b5cf6')
+    await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+
+    await page.keyboard.press('Control+Z')
+    await expect(hexInput).not.toHaveValue('#8b5cf6')
+
+    await elements.nth(1).click({ button: 'right' })
+    await expect(menu.getByTestId('freeform-context-menu-paste-style')).toBeEnabled()
+    await menu.getByTestId('freeform-context-menu-zoom-selection').click()
+    await expect(menu).toHaveCount(0)
+    await expect(page.locator('.freeform-stage-pane .zoom-value')).not.toHaveText('100%')
   })
 })
 

@@ -747,6 +747,74 @@ html.theme-anim * {
   cursor: grabbing !important;
 }
 
+.freeform-align-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+}
+
+.align-bar-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.align-bar-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.align-bar-btn:hover:not(:disabled),
+.align-bar-btn:focus-visible {
+  outline: none;
+  background: var(--accent-weak);
+  color: var(--accent-text);
+}
+
+.align-bar-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.align-bar-separator {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--line);
+}
+
+[data-theme='dark'] .freeform-align-bar {
+  border-color: #3a3a44;
+  background: #24242a;
+}
+
+[data-theme='dark'] .align-bar-btn:hover:not(:disabled),
+[data-theme='dark'] .align-bar-btn:focus-visible {
+  background: #2c2c34;
+  color: var(--text);
+}
+
 .workspace-toolbar .page-size-control {
   position: relative;
   flex: 0 0 auto;

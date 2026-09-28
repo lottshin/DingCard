@@ -34,6 +34,31 @@ export function clampZoomPercent(value: number): number {
   return Math.min(MAX_ZOOM_PERCENT, Math.max(MIN_ZOOM_PERCENT, value))
 }
 
+/** Breathing room kept around bounds when zooming to a selection. */
+export const ZOOM_TO_SELECTION_MARGIN = 0.8
+
+/**
+ * Zoom percentage that fits the given world bounds into the stage viewport
+ * (content box, borders and padding excluded by the caller).
+ */
+export function zoomPercentForBounds(
+  fitScale: number | null,
+  viewportWidth: number,
+  viewportHeight: number,
+  boundsWidth: number,
+  boundsHeight: number,
+): number | null {
+  if (fitScale === null || !isPositiveFinite(fitScale)) return null
+  if (
+    ![viewportWidth, viewportHeight, boundsWidth, boundsHeight].every(isPositiveFinite)
+  ) return null
+  const requiredScale = Math.min(
+    viewportWidth / boundsWidth,
+    viewportHeight / boundsHeight,
+  ) * ZOOM_TO_SELECTION_MARGIN
+  return clampZoomPercent(Math.round((requiredScale / fitScale) * 100))
+}
+
 /**
  * Zoom step for one ctrl+wheel event: trackpad pinches fire many small deltas
  * (multiplicative), discrete mouse wheels fire ±100-ish notches.

@@ -261,12 +261,16 @@ export function FreeformLayersPanel({
       const fallback = after ?? before ?? parent ?? rows[0]
       const nextKey = scenePathKey(fallback.path)
       const active = document.activeElement
-      const shouldRestoreFocus =
-        active === document.body ||
-        active === null ||
-        Boolean(active && treeRef.current?.contains(active))
+      // Only move focus when it actually died with the removed row; a frame
+      // can land arbitrarily late under load, so never steal focus from a
+      // control the user is already on.
+      const shouldRestoreFocus = active === null || active === document.body
       setFocusedKey(nextKey)
-      if (shouldRestoreFocus) requestAnimationFrame(() => rowRefs.current.get(nextKey)?.focus())
+      if (shouldRestoreFocus) requestAnimationFrame(() => {
+        if (document.activeElement === null || document.activeElement === document.body) {
+          rowRefs.current.get(nextKey)?.focus()
+        }
+      })
     }
     previousRowsRef.current = rows
   }, [focusedKey, rowByKey, rows])
@@ -281,7 +285,15 @@ export function FreeformLayersPanel({
     if (!key) return
     setFocusedKey(key)
     rowRefs.current.get(key)?.focus()
-    requestAnimationFrame(() => rowRefs.current.get(key)?.focus())
+    requestAnimationFrame(() => {
+      // Only reclaim focus if it was lost (e.g. the row remounted); a frame
+      // can land arbitrarily late under load, so never steal focus back
+      // from wherever the user moved in the meantime.
+      const active = document.activeElement
+      if (active === null || active === document.body) {
+        rowRefs.current.get(key)?.focus()
+      }
+    })
   }
 
   function announce(message: string) {
