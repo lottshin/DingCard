@@ -9,6 +9,11 @@ import {
   toSolidPaint,
 } from './paint'
 import { GRADIENT_STOPS_MAX, GRADIENT_STOPS_MIN } from './appearance'
+import {
+  loadRecentColors,
+  pushRecentColor,
+  saveRecentColors,
+} from './recentColors'
 import type { ColorPaint, GradientStop, ShapeFill, SlideBackground } from './types'
 
 export type PaintMode = 'solid' | 'linear-gradient' | 'transparent' | 'image'
@@ -104,25 +109,79 @@ function channelGradient(channel: keyof Rgb, rgb: Rgb): string {
   return `linear-gradient(90deg, ${rgbToHex(start)}, ${rgbToHex(end)})`
 }
 
+/** Minimal shape of the desktop-Chromium EyeDropper API (Chrome/Edge 95+). */
+interface EyeDropperLike {
+  open: () => Promise<{ sRGBHex: string }>
+}
+type EyeDropperConstructor = new () => EyeDropperLike
+
+function eyeDropperConstructor(): EyeDropperConstructor | null {
+  const ctor = (window as unknown as { EyeDropper?: EyeDropperConstructor }).EyeDropper
+  return typeof ctor === 'function' ? ctor : null
+}
+
 export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
+  const [recentColors, setRecentColors] = useState<string[]>(loadRecentColors)
+  const [eyedropperBusy, setEyedropperBusy] = useState(false)
+  // The color this picker session last committed, recorded as a recent color
+  // when the popover closes (channel-slider noise never lands in the list).
+  const sessionColorRef = useRef<string | null>(null)
   const rgb = hexToRgb(color)
+
+  function openPopover() {
+    // Re-read storage so parallel popovers (fill, gradient stops, stroke)
+    // see each other's committed colors.
+    setRecentColors(loadRecentColors())
+    sessionColorRef.current = null
+    setOpen(true)
+  }
+
+  function closePopover() {
+    const sessionColor = sessionColorRef.current
+    if (sessionColor) {
+      const next = pushRecentColor(loadRecentColors(), sessionColor)
+      saveRecentColors(next)
+      setRecentColors(next)
+    }
+    sessionColorRef.current = null
+    setOpen(false)
+  }
+
+  function commitColor(next: string) {
+    if (isHexColor(next)) sessionColorRef.current = next
+    onChange(next)
+  }
+
+  async function pickWithEyeDropper() {
+    const EyeDropper = eyeDropperConstructor()
+    if (!EyeDropper || eyedropperBusy) return
+    setEyedropperBusy(true)
+    try {
+      const result = await new EyeDropper().open()
+      if (isHexColor(result.sRGBHex)) commitColor(result.sRGBHex)
+    } catch {
+      // The user dismissed the native picker (AbortError): keep the color.
+    } finally {
+      setEyedropperBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
 
     function closeOnOutsidePointer(event: PointerEvent) {
       const root = rootRef.current
-      if (root && !root.contains(event.target as Node)) setOpen(false)
+      if (root && !root.contains(event.target as Node)) closePopover()
     }
 
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key !== 'Escape') return
       event.preventDefault()
       event.stopPropagation()
-      setOpen(false)
+      closePopover()
       requestAnimationFrame(() => triggerRef.current?.focus())
     }
 
@@ -135,7 +194,7 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
   }, [open])
 
   function updateChannel(channel: keyof Rgb, value: string) {
-    onChange(rgbToHex({ ...rgb, [channel]: clampChannel(Number(value)) }))
+    commitColor(rgbToHex({ ...rgb, [channel]: clampChannel(Number(value)) }))
   }
 
   return (
@@ -149,7 +208,7 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
         aria-haspopup="dialog"
         aria-expanded={open}
         style={{ background: color }}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => (open ? closePopover() : openPopover())}
       />
       {open && (
         <div className="paint-popover" data-testid="paint-popover" role="dialog" aria-label={`${label} 色板`}>
@@ -161,9 +220,24 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
               aria-label={`${label} 自定义 HEX`}
               onChange={(event) => {
                 const nextColor = event.currentTarget.value
-                if (isHexColor(nextColor)) onChange(nextColor)
+                if (isHexColor(nextColor)) commitColor(nextColor)
               }}
             />
+            {eyeDropperConstructor() && (
+              <button
+                type="button"
+                className="paint-eyedropper"
+                data-testid="paint-eyedropper"
+                aria-label={`${label} 屏幕取色`}
+                title="屏幕取色"
+                disabled={eyedropperBusy}
+                onClick={() => { void pickWithEyeDropper() }}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M13.4 3.6a2.5 2.5 0 0 1 3.5 3.5l-1.5 1.4 1.1 1.1-1.4 1.4-1.1-1.1-6 6-3 0.7 0.7-3 6-6-1.1-1.1 1.4-1.4 1.1 1.1 1.4-1.5z" />
+                </svg>
+              </button>
+            )}
           </div>
           <div className="paint-swatch-grid" aria-label={`${label} 常用颜色`}>
             {PRESET_COLORS.map((preset) => (
@@ -173,10 +247,25 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
                 className="paint-swatch"
                 aria-label={`${label} ${preset}`}
                 style={{ background: preset }}
-                onClick={() => onChange(preset)}
+                onClick={() => commitColor(preset)}
               />
             ))}
           </div>
+          {recentColors.length > 0 && (
+            <div className="paint-swatch-grid paint-recent-grid" aria-label={`${label} 最近使用`} data-testid="paint-recent-grid">
+              {recentColors.map((recent) => (
+                <button
+                  key={recent}
+                  type="button"
+                  className="paint-swatch"
+                  data-testid="paint-recent-swatch"
+                  aria-label={`${label} 最近 ${recent}`}
+                  style={{ background: recent }}
+                  onClick={() => commitColor(recent)}
+                />
+              ))}
+            </div>
+          )}
           <div className="paint-channel-list">
             {(['r', 'g', 'b'] as const).map((channel) => (
               <label className="paint-channel" key={channel}>

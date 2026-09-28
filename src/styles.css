@@ -3041,7 +3041,7 @@ html.theme-anim * {
 
 .freeform-inspector .paint-popover-head {
   display: grid;
-  grid-template-columns: 34px 1fr;
+  grid-template-columns: 34px 1fr auto;
   gap: 8px;
   align-items: center;
 }
@@ -3057,6 +3057,39 @@ html.theme-anim * {
 .freeform-inspector .paint-popover-hex {
   width: 100%;
   text-transform: lowercase;
+}
+
+.freeform-inspector .paint-eyedropper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xs);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.freeform-inspector .paint-eyedropper:hover {
+  color: var(--ink-1);
+  border-color: var(--line-1);
+}
+
+.freeform-inspector .paint-eyedropper:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.freeform-inspector .paint-eyedropper svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.freeform-inspector .paint-recent-grid {
+  margin-top: 7px;
 }
 
 .freeform-inspector .paint-swatch-grid {

@@ -10780,3 +10780,74 @@ test.describe('freeform canvas feedback', () => {
     await expect(page.getByTestId('freeform-selection-badge')).toHaveCount(0)
   })
 })
+
+test.describe('freeform color history', () => {
+  test('recent colors record committed picks and persist across reloads', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    const paint = page.getByTestId('shape-fill-paint')
+    const popover = paint.getByTestId('paint-popover')
+    const trigger = paint.getByTestId('paint-color-button')
+
+    await trigger.click()
+    await expect(popover).toBeVisible()
+    await expect(popover.getByTestId('paint-recent-grid')).toHaveCount(0)
+
+    // Pick the first preset and close: one recent swatch appears, newest
+    // first, and the trigger reflects the picked color.
+    const presets = popover.locator('.paint-swatch-grid .paint-swatch')
+    const firstPresetColor = await presets.nth(0).evaluate((node) => getComputedStyle(node).backgroundColor)
+    await presets.nth(0).click()
+    await page.keyboard.press('Escape')
+    await expect(popover).toHaveCount(0)
+    await expect(trigger).toHaveCSS('background-color', firstPresetColor)
+
+    await trigger.click()
+    const recent = popover.getByTestId('paint-recent-grid')
+    await expect(recent).toBeVisible()
+    await expect(recent.locator('.paint-swatch')).toHaveCount(1)
+    expect(await recent.locator('.paint-swatch').first().evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(firstPresetColor)
+
+    // A second pick moves to the front; the list keeps both, newest first.
+    const secondPresetColor = await presets.nth(1).evaluate((node) => getComputedStyle(node).backgroundColor)
+    await presets.nth(1).click()
+    await page.keyboard.press('Escape')
+    await trigger.click()
+    await expect(recent.locator('.paint-swatch')).toHaveCount(2)
+    expect(await recent.locator('.paint-swatch').first().evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(secondPresetColor)
+    expect(await recent.locator('.paint-swatch').nth(1).evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(firstPresetColor)
+
+    // Closing without a pick records nothing (untouched sessions are free).
+    await page.keyboard.press('Escape')
+    await trigger.click()
+    await expect(recent.locator('.paint-swatch')).toHaveCount(2)
+
+    // The recents survive a reload (the unsaved shape does not).
+    await page.keyboard.press('Escape')
+    await page.reload()
+    await page.getByTestId('workspace-tab-freeform').click()
+    await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
+    await insertShape(page)
+    await page.getByTestId('shape-fill-paint').getByTestId('paint-color-button').click()
+    const recentAfterReload = page.getByTestId('paint-popover').getByTestId('paint-recent-grid')
+    await expect(recentAfterReload.locator('.paint-swatch')).toHaveCount(2)
+    expect(await recentAfterReload.locator('.paint-swatch').first().evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(secondPresetColor)
+  })
+
+  test('the eyedropper control follows EyeDropper API availability', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    const paint = page.getByTestId('shape-fill-paint')
+    await paint.getByTestId('paint-color-button').click()
+    const popover = paint.getByTestId('paint-popover')
+    await expect(popover).toBeVisible()
+
+    // The native picker cannot be driven by automation — only assert the
+    // control matches the platform API and that the popover still closes.
+    const supported = await page.evaluate(() => 'EyeDropper' in window)
+    await expect(paint.getByTestId('paint-eyedropper')).toHaveCount(supported ? 1 : 0)
+
+    await page.keyboard.press('Escape')
+    await expect(popover).toHaveCount(0)
+  })
+})
