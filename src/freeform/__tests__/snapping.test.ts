@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 
-import { snapDrag, snapSceneDrag } from '../snapping'
+import { ROTATION_SNAP_STEP, snapDrag, snapRotationDegrees, snapSceneDrag } from '../snapping'
 import type { FreeformElement, FreeformSceneNode } from '../types'
 
 const rect = (
@@ -205,4 +205,21 @@ it('snaps nested direct children in world space while excluding hidden reference
   const xLine = result.lines.find((line) => line.axis === 'x')
   expect(xLine).toEqual(expect.objectContaining({ axis: 'x', source: 'element' }))
   expect(xLine!.position).toBeCloseTo(495.788383, 6)
+})
+
+it('snaps rotation deltas to 15° increments without negative zero', () => {
+  expect(ROTATION_SNAP_STEP).toBe(15)
+  expect(snapRotationDegrees(0)).toBe(0)
+  expect(snapRotationDegrees(7.4)).toBe(0)
+  expect(snapRotationDegrees(7.6)).toBe(15)
+  expect(snapRotationDegrees(22.5)).toBe(30)
+  expect(snapRotationDegrees(-7.4)).toBe(0)
+  // Math.round ties (-x.5) toward +Infinity, matching every other snap here.
+  expect(snapRotationDegrees(-22.5)).toBe(-15)
+  expect(snapRotationDegrees(-22.51)).toBe(-30)
+  expect(snapRotationDegrees(90)).toBe(90)
+  expect(snapRotationDegrees(179)).toBe(180)
+  expect(snapRotationDegrees(-179)).toBe(-180)
+  expect(snapRotationDegrees(Number.NaN)).toBe(0)
+  expect(snapRotationDegrees(Number.POSITIVE_INFINITY)).toBe(0)
 })

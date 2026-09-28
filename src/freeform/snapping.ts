@@ -395,3 +395,12 @@ function getGroupBounds(elements: FreeformElement[]): Bounds | undefined {
     elementBounds(elements[0]),
   )
 }
+
+export const ROTATION_SNAP_STEP = 15
+
+/** Snap a rotation delta to 15° steps while Shift is held. */
+export function snapRotationDegrees(degrees: number): number {
+  if (!Number.isFinite(degrees)) return 0
+  const snapped = Math.round(degrees / ROTATION_SNAP_STEP) * ROTATION_SNAP_STEP
+  return snapped === 0 ? 0 : snapped
+}

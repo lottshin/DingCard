@@ -154,7 +154,7 @@ import {
   moveSceneNodesWithinSlide,
   type Rect,
 } from './selection'
-import { snapSceneDrag, type SnapLine } from './snapping'
+import { snapRotationDegrees, snapSceneDrag, type SnapLine } from './snapping'
 import type {
   FreeformAction,
   ColorPaint,
@@ -185,6 +185,7 @@ import {
   calculateFitScale,
   calculateRenderScale,
   clampZoomPercent,
+  zoomPercentFromWheelDelta,
 } from './viewportScale'
 
 const FIT_SCALE_EPSILON = 0.0001
@@ -438,6 +439,31 @@ function isTypingTarget(target: EventTarget | null): boolean {
 function isBareEnterContext(target: EventTarget | null): boolean {
   if (target === globalThis.document?.body) return true
   return target instanceof HTMLElement && Boolean(target.closest('[data-testid="freeform-canvas"]'))
+}
+
+/** Elements where Space keeps its native meaning (activate/click) instead of arming canvas panning. */
+function isSpacePanSuppressedTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return Boolean(target.closest(
+    'button, input, textarea, select, a[href], label, summary, '
+    + '[contenteditable="true"], [role="treeitem"], [role="option"], [role="menuitem"], [role="menu"]',
+  ))
+}
+
+/** Climb from a DOM hit to the scene path it belongs to: outermost node first. */
+function scenePathFromDomTarget(target: EventTarget | null): ScenePath | null {
+  if (!(target instanceof Element)) return null
+  const ids: string[] = []
+  for (
+    let wrapper: Element | null = target.closest('[data-scene-node-id]');
+    wrapper;
+    wrapper = wrapper.parentElement?.closest('[data-scene-node-id]') ?? null
+  ) {
+    const id = wrapper.getAttribute('data-scene-node-id')
+    if (!id) break
+    ids.unshift(id)
+  }
+  return ids.length > 0 ? ids : null
 }
 
 function blurActiveTypingTarget() {
@@ -811,6 +837,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [clipboard, setClipboard] = useState<SceneClipboard | null>(null)
   const [zoomPercent, setZoomPercent] = useState(DEFAULT_ZOOM_PERCENT)
   const [fitScale, setFitScale] = useState<number | null>(null)
+  // Space-held canvas panning and the anchor point for cursor-centered zoom.
+  const [spacePanReady, setSpacePanReady] = useState(false)
+  const [spacePanning, setSpacePanning] = useState(false)
+  const spacePanReadyRef = useRef(false)
+  const pendingZoomAnchorRef = useRef<{
+    clientX: number
+    clientY: number
+    worldX: number
+    worldY: number
+  } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
@@ -857,6 +895,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     () => selectionPaths.map((path) => path[path.length - 1]),
     [selectionPaths],
   )
+  // Context-menu state derived from the current selection.
+  const menuSelectionNodes = useMemo(
+    () => activeChildren.filter((node) => selection.includes(node.id)),
+    [activeChildren, selection],
+  )
+  const menuSelectionAllLocked = menuSelectionNodes.length > 0
+    && menuSelectionNodes.every((node) => node.locked)
+  const menuSelectionAllHidden = menuSelectionNodes.length > 0
+    && menuSelectionNodes.every((node) => node.hidden)
+  const menuSelectionHasGroup = menuSelectionNodes.some((node) => node.type === 'group')
   const setSelection = useCallback((update: SetStateAction<string[]>) => {
     setSceneUiState((current) => {
       const currentIds = normalizeSceneSelection(
@@ -1223,6 +1271,73 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     observer.observe(stage)
     return () => observer.disconnect()
   }, [isActive, measureFitScale])
+
+  // Ctrl/Cmd + wheel zooms the canvas around the cursor instead of scrolling.
+  // A native non-passive listener is required to override the browser page zoom.
+  useEffect(() => {
+    if (!isActive) return
+    const stage = stageScrollRef.current
+    if (!stage) return
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      const next = zoomPercentFromWheelDelta(zoomPercent, event.deltaY)
+      if (next === zoomPercent) return
+      const artboard = artboardRef.current
+      if (!artboard || renderScale === null || renderScale <= 0) {
+        pendingZoomAnchorRef.current = null
+        setZoomPercent(next)
+        return
+      }
+      const bounds = artboard.getBoundingClientRect()
+      pendingZoomAnchorRef.current = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        worldX: (event.clientX - bounds.left) / renderScale,
+        worldY: (event.clientY - bounds.top) / renderScale,
+      }
+      setZoomPercent(next)
+    }
+    stage.addEventListener('wheel', onWheel, { passive: false })
+    return () => stage.removeEventListener('wheel', onWheel)
+  })
+
+  // Keeps the grabbed world point pinned under the cursor after the scale change.
+  useLayoutEffect(() => {
+    const anchor = pendingZoomAnchorRef.current
+    if (!anchor) return
+    pendingZoomAnchorRef.current = null
+    const stage = stageScrollRef.current
+    const artboard = artboardRef.current
+    if (!stage || !artboard || renderScale === null || renderScale <= 0) return
+    const bounds = artboard.getBoundingClientRect()
+    stage.scrollLeft += bounds.left - (anchor.clientX - anchor.worldX * renderScale)
+    stage.scrollTop += bounds.top - (anchor.clientY - anchor.worldY * renderScale)
+  })
+
+  // Keep the context menu fully inside the viewport (measured after mount, pre-paint).
+  useLayoutEffect(() => {
+    if (!contextMenu) return
+    const menu = contextMenuRef.current
+    if (!menu) return
+    const bounds = menu.getBoundingClientRect()
+    const margin = 8
+    const x = clamp(contextMenu.x, margin, Math.max(margin, window.innerWidth - bounds.width - margin))
+    const y = clamp(contextMenu.y, margin, Math.max(margin, window.innerHeight - bounds.height - margin))
+    if (x !== contextMenu.x || y !== contextMenu.y) setContextMenu({ x, y })
+  }, [contextMenu])
+
+  // Clicking anywhere outside the context menu dismisses it.
+  useEffect(() => {
+    if (!contextMenu) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && contextMenuRef.current?.contains(target)) return
+      setContextMenu(null)
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    return () => window.removeEventListener('pointerdown', onPointerDown, true)
+  }, [contextMenu])
 
   useEffect(() => {
     const nextUserId = user?.id ?? null
@@ -2675,6 +2790,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         ) event.preventDefault()
         return
       }
+      if (contextMenu && event.key === 'Escape') {
+        event.preventDefault()
+        setContextMenu(null)
+        return
+      }
       const isDocumentShortcut = (
         ((event.ctrlKey || event.metaKey) && ['z', 'y', 'c', 'v', 'g'].includes(key)) ||
         [
@@ -2693,6 +2813,35 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         return
       }
       if (isTypingTarget(event.target)) return
+      if (
+        (event.ctrlKey || event.metaKey)
+        && !event.altKey
+        && ['=', '+', '-', '_'].includes(event.key)
+      ) {
+        event.preventDefault()
+        zoomCanvasByStep(event.key === '-' || event.key === '_' ? -ZOOM_STEP : ZOOM_STEP)
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key === '0') {
+        event.preventDefault()
+        zoomCanvasToPercent(DEFAULT_ZOOM_PERCENT)
+        return
+      }
+      if (
+        event.code === 'Space'
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
+        && !event.shiftKey
+        && !isSpacePanSuppressedTarget(event.target)
+      ) {
+        event.preventDefault()
+        if (!spacePanReadyRef.current) {
+          spacePanReadyRef.current = true
+          setSpacePanReady(true)
+        }
+        return
+      }
       if ((event.ctrlKey || event.metaKey) && key === 'z') {
         event.preventDefault()
         if (event.shiftKey) redoDocument()
@@ -2757,6 +2906,26 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  })
+
+  // Releasing Space (or losing the window) disarms canvas panning.
+  useEffect(() => {
+    if (!isActive) return
+    const releaseSpacePan = () => {
+      spacePanReadyRef.current = false
+      setSpacePanReady(false)
+      setSpacePanning(false)
+    }
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return
+      releaseSpacePan()
+    }
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', releaseSpacePan)
+    return () => {
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', releaseSpacePan)
+    }
   })
 
   function onSceneNodePointerDown(
@@ -2862,19 +3031,50 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     event.preventDefault()
     event.stopPropagation()
     blurActiveTypingTarget()
+    // startDocument stays the pre-gesture document: it is the undo baseline
+    // for the whole drag, including the Alt-duplicate insert below.
     const startDocument = currentDocumentRef.current
-    const startSlide = startDocument.slides.find((slide) => slide.id === activeSlide.id)
-    const startChildren = startSlide
+    let startSlide = startDocument.slides.find((slide) => slide.id === activeSlide.id)
+    let startChildren = startSlide
       ? getChildrenAtPath(startSlide.nodes, activeGroupPath)
       : undefined
     if (!startSlide || !startChildren) return
     const currentSelection = selectedElementIds.current
-    const draggingIds = requestedIds && requestedIds.length > 0
+    const requestedDraggingIds = requestedIds && requestedIds.length > 0
       ? [...requestedIds]
       : currentSelection.includes(primaryId) ? currentSelection : [primaryId]
     const directIds = new Set(startChildren.map((node) => node.id))
-    if (draggingIds.some((id) => !directIds.has(id))) return
+    if (requestedDraggingIds.some((id) => !directIds.has(id))) return
     if (!currentSelection.includes(primaryId)) setSelection([primaryId])
+
+    // Alt+drag duplicates the dragged nodes in place first; the insert rides
+    // the same live edit, so one undo removes duplicate and move together.
+    let draggingIds = requestedDraggingIds
+    if (event.altKey) {
+      const sourceNodes = startChildren.filter((node) => requestedDraggingIds.includes(node.id))
+      if (sourceNodes.length > 0) {
+        const duplicates = cloneSceneNodes(sourceNodes)
+        let inserted = false
+        updateHistory((current) => {
+          const next = freeformReducer(current.current, {
+            type: 'node/insert-children',
+            slideId: activeSlide.id,
+            parentPath: activeGroupPath,
+            nodes: duplicates,
+          })
+          if (next === current.current) return current
+          inserted = true
+          return { ...current, current: next }
+        })
+        if (inserted) {
+          startSlide = currentDocumentRef.current.slides.find(
+            (slide) => slide.id === activeSlide.id,
+          ) ?? startSlide
+          draggingIds = duplicates.map((node) => node.id)
+          setSelection(draggingIds)
+        }
+      }
+    }
 
     const interactionScale = renderScale
     const pointerId = event.pointerId
@@ -2984,6 +3184,108 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       x: (clientX - bounds.left) / renderScale,
       y: (clientY - bounds.top) / renderScale,
     }
+  }
+
+  /** Zoom while keeping the world point under the given client position stationary. */
+  function zoomCanvas(nextPercent: number, clientX: number, clientY: number) {
+    if (nextPercent === zoomPercent) return
+    const point = rawArtboardPointFromClient(clientX, clientY)
+    pendingZoomAnchorRef.current = point
+      ? { clientX, clientY, worldX: point.x, worldY: point.y }
+      : null
+    setZoomPercent(clampZoomPercent(nextPercent))
+  }
+
+  /** Keyboard zoom anchors on the center of the visible stage. */
+  function zoomCanvasByStep(step: number) {
+    const stage = stageScrollRef.current
+    if (!stage) {
+      setZoomPercent((value) => clampZoomPercent(value + step))
+      return
+    }
+    const rect = stage.getBoundingClientRect()
+    zoomCanvas(
+      clampZoomPercent(zoomPercent + step),
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    )
+  }
+
+  function zoomCanvasToPercent(percent: number) {
+    const stage = stageScrollRef.current
+    if (!stage) {
+      setZoomPercent(clampZoomPercent(percent))
+      return
+    }
+    const rect = stage.getBoundingClientRect()
+    zoomCanvas(percent, rect.left + rect.width / 2, rect.top + rect.height / 2)
+  }
+
+  // Space-held panning drags the scroll container itself; the capture phase
+  // keeps node pointer handlers (marquee, move, text editing) out of the way.
+  function onStagePointerDownCapture(event: React.PointerEvent<HTMLDivElement>) {
+    if (spacePanReadyRef.current) {
+      if (framingSessionRef.current || imageCropSessionRef.current) return
+      if (event.button !== 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      blurActiveTypingTarget()
+      setSpacePanning(true)
+      const stage = stageScrollRef.current
+      if (!stage) return
+      const pointerId = event.pointerId
+      const startClientX = event.clientX
+      const startClientY = event.clientY
+      const startScrollLeft = stage.scrollLeft
+      const startScrollTop = stage.scrollTop
+      const onMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== pointerId) return
+        stage.scrollLeft = startScrollLeft - (moveEvent.clientX - startClientX)
+        stage.scrollTop = startScrollTop - (moveEvent.clientY - startClientY)
+      }
+      const finishPan = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onCancel)
+        window.removeEventListener('blur', finishPan)
+        setSpacePanning(false)
+      }
+      const onUp = (upEvent: PointerEvent) => {
+        if (upEvent.pointerId === pointerId) finishPan()
+      }
+      const onCancel = (cancelEvent: PointerEvent) => {
+        if (cancelEvent.pointerId === pointerId) finishPan()
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onCancel)
+      window.addEventListener('blur', finishPan)
+      return
+    }
+    if (contextMenu) setContextMenu(null)
+  }
+
+  function onStageContextMenu(event: React.MouseEvent<HTMLDivElement>) {
+    if (framingSessionRef.current || imageCropSessionRef.current) return
+    if (isTypingTarget(event.target)) return
+    event.preventDefault()
+    blurActiveTypingTarget()
+    const hitPath = scenePathFromDomTarget(event.target)
+    if (hitPath) {
+      const directPath = directChildPathForScope(activeSlide.nodes, activeGroupPath, hitPath)
+      if (directPath) {
+        const directId = directPath[directPath.length - 1]
+        if (!selection.includes(directId)) setSelection([directId])
+      }
+    } else {
+      // Right-clicking bare canvas scopes the menu to paste-only.
+      setSelection([])
+    }
+    setContextMenu({ x: event.clientX, y: event.clientY })
+  }
+
+  function closeContextMenu() {
+    setContextMenu(null)
   }
 
   function artboardPointFromClient(clientX: number, clientY: number) {
@@ -3141,8 +3443,22 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       if (startLeaf && startLeafWorld && inverseLeafWorld && startLeafLocal) {
         const localDelta = transformVector(inverseLeafWorld, worldDelta)
         const worldScale = decomposeSimilarity(startLeafWorld)?.scale ?? 1
-        const width = Math.max(40 / worldScale, startLeaf.width + localDelta.x)
-        const height = Math.max(40 / worldScale, startLeaf.height + localDelta.y)
+        let width: number
+        let height: number
+        if (moveEvent.shiftKey && startLengthSquared > Number.EPSILON) {
+          // Shift keeps the leaf's aspect ratio: scale both edges by the
+          // pointer's distance change from the resize pivot.
+          const currentLength = Math.hypot(
+            startVector.x + worldDelta.x,
+            startVector.y + worldDelta.y,
+          )
+          const factor = currentLength / Math.sqrt(startLengthSquared)
+          width = Math.max(40 / worldScale, startLeaf.width * factor)
+          height = Math.max(40 / worldScale, startLeaf.height * factor)
+        } else {
+          width = Math.max(40 / worldScale, startLeaf.width + localDelta.x)
+          height = Math.max(40 / worldScale, startLeaf.height + localDelta.y)
+        }
         const resized = sceneNodeWithLocalMatrix(
           { ...startLeaf, width, height },
           startLeafLocal,
@@ -3257,7 +3573,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         point.y - center.y,
         point.x - center.x,
       )
-      const degrees = ((angle - startAngle) * 180) / Math.PI
+      const rawDegrees = ((angle - startAngle) * 180) / Math.PI
+      // Shift snaps the rotation delta to 15° steps.
+      const degrees = moveEvent.shiftKey ? snapRotationDegrees(rawDegrees) : rawDegrees
       const transformed = transformSceneNodesByWorldMatrix(
         startSlide.nodes,
         parentPath,
@@ -3930,8 +4248,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
           <div
             ref={stageScrollRef}
-            className="freeform-stage-scroll"
+            className={`freeform-stage-scroll${spacePanning ? ' space-panning' : spacePanReady ? ' space-pan-ready' : ''}`}
             aria-busy={renderScale === null}
+            onPointerDownCapture={onStagePointerDownCapture}
+            onContextMenu={onStageContextMenu}
           >
             {renderScale !== null && (
               <div
@@ -4947,6 +5267,137 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="freeform-context-menu"
+          data-testid="freeform-context-menu"
+          role="menu"
+          aria-label="画布操作"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-copy"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); copySelection() }}
+          >
+            复制
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-paste"
+            disabled={!clipboard || clipboard.nodes.length === 0}
+            onClick={() => { closeContextMenu(); pasteClipboard() }}
+          >
+            粘贴
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-delete"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); deleteSelection() }}
+          >
+            删除
+          </button>
+          <div className="freeform-context-menu-separator" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-forward"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); reorderSelection('forward') }}
+          >
+            上移一层
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-backward"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); reorderSelection('backward') }}
+          >
+            下移一层
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-front"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); reorderSelection('front') }}
+          >
+            置于顶层
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-back"
+            disabled={selection.length === 0}
+            onClick={() => { closeContextMenu(); reorderSelection('back') }}
+          >
+            移到底层
+          </button>
+          <div className="freeform-context-menu-separator" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-group"
+            disabled={selectionPaths.length < 2}
+            onClick={() => { closeContextMenu(); groupSelection() }}
+          >
+            编组
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-ungroup"
+            disabled={!menuSelectionHasGroup}
+            onClick={() => { closeContextMenu(); ungroupSelection() }}
+          >
+            解组
+          </button>
+          <div className="freeform-context-menu-separator" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-lock"
+            disabled={selection.length === 0}
+            onClick={() => {
+              closeContextMenu()
+              selectionPaths.forEach((path) => { setLayerLocked(path, !menuSelectionAllLocked) })
+            }}
+          >
+            {menuSelectionAllLocked ? '解锁' : '锁定'}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-context-menu-visibility"
+            disabled={selection.length === 0}
+            onClick={() => {
+              closeContextMenu()
+              selectionPaths.forEach((path) => { setLayerHidden(path, !menuSelectionAllHidden) })
+            }}
+          >
+            {menuSelectionAllHidden ? '取消隐藏' : '隐藏'}
+          </button>
         </div>
       )}
     </div>

@@ -7501,6 +7501,9 @@ test('hidden group export excludes hidden pixels while preserving tree managemen
 
   const hiddenLeafToggle = hiddenLeaf.getByRole('button', { name: '隐藏图层 Hidden leaf' })
   await hiddenLeafToggle.focus()
+  // Wait for focus to settle: the panel refocuses rows on animation frames,
+  // and under load that refocus can land after focus() but before Enter.
+  await expect(hiddenLeafToggle).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(hiddenLeafToggle).toBeFocused()
   await expect(hiddenLeafToggle).toHaveAttribute('aria-pressed', 'true')
@@ -9595,6 +9598,380 @@ test('nested local nudge uses the inverse parent world matrix', async ({ page })
   const after = await sourceLeaf.boundingBox()
   expect(after).toBeTruthy()
   expect((after!.x - before!.x) / scale).toBeCloseTo(1, 2)
+})
+
+test.describe('freeform canvas interaction polish', () => {
+  async function canvasWorldPointAt(
+    page: import('@playwright/test').Page,
+    clientX: number,
+    clientY: number,
+  ) {
+    return page.getByTestId('freeform-canvas').evaluate((canvas, point) => {
+      const rect = canvas.getBoundingClientRect()
+      const scale = rect.width / Number.parseFloat(canvas.style.width)
+      return { x: (point.x - rect.left) / scale, y: (point.y - rect.top) / scale }
+    }, { x: clientX, y: clientY })
+  }
+
+  async function elementRotationDegrees(
+    page: import('@playwright/test').Page,
+  ) {
+    return page.getByTestId('freeform-element').evaluate((node) => {
+      const transform = getComputedStyle(node).transform
+      if (transform === 'none') return 0
+      const matrix = new DOMMatrixReadOnly(transform)
+      return (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI
+    })
+  }
+
+  test('ctrl+wheel zooms around the cursor while plain wheel still scrolls', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openFreeform(page)
+    await selectFreeformPagePreset(page, '16:9')
+    await setFreeformZoom(page, 200)
+    const stage = page.locator('.freeform-stage-scroll')
+    await stage.evaluate((node) => {
+      node.scrollLeft = (node.scrollWidth - node.clientWidth) / 2
+      node.scrollTop = (node.scrollHeight - node.clientHeight) / 2
+    })
+    const value = page.locator('.freeform-stage-pane .zoom-value')
+    await expect(value).toHaveText('200%')
+
+    const stageBox = await stage.boundingBox()
+    expect(stageBox).toBeTruthy()
+    const cursor = {
+      x: stageBox!.x + stageBox!.width * 0.6,
+      y: stageBox!.y + stageBox!.height * 0.4,
+    }
+    const before = await canvasWorldPointAt(page, cursor.x, cursor.y)
+
+    await page.mouse.move(cursor.x, cursor.y)
+    await page.keyboard.down('Control')
+    await page.mouse.wheel(0, -120)
+    await page.keyboard.up('Control')
+
+    await expect(value).not.toHaveText('200%')
+    const after = await canvasWorldPointAt(page, cursor.x, cursor.y)
+    expect(after.x).toBeCloseTo(before.x, 0)
+    expect(after.y).toBeCloseTo(before.y, 0)
+
+    // Without Ctrl the wheel keeps scrolling the stage natively.
+    await stage.evaluate((node) => { node.scrollTop = 0 })
+    await page.mouse.wheel(0, 120)
+    await expect.poll(() => stage.evaluate((node) => node.scrollTop)).toBeGreaterThan(0)
+  })
+
+  test('ctrl +/-/0 keyboard shortcuts step and reset the canvas zoom', async ({ page }) => {
+    await openFreeform(page)
+    const value = page.locator('.freeform-stage-pane .zoom-value')
+    await expect(value).toHaveText('100%')
+
+    await page.keyboard.press('Control+=')
+    await expect(value).toHaveText('110%')
+    await page.keyboard.press('Control+Shift+=')
+    await expect(value).toHaveText('120%')
+    await page.keyboard.press('Control+-')
+    await expect(value).toHaveText('110%')
+    await page.keyboard.press('Control+0')
+    await expect(value).toHaveText('100%')
+  })
+
+  test('holding space pans the canvas instead of selecting or dragging', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openFreeform(page)
+    await selectFreeformPagePreset(page, '16:9')
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 120, 100)
+    await page.keyboard.press('Escape')
+    await setFreeformZoom(page, 200)
+    const stage = page.locator('.freeform-stage-scroll')
+    await stage.evaluate((node) => {
+      node.scrollLeft = (node.scrollWidth - node.clientWidth) / 2
+      node.scrollTop = (node.scrollHeight - node.clientHeight) / 2
+    })
+    const before = await stage.evaluate((node) => ({
+      left: node.scrollLeft,
+      top: node.scrollTop,
+    }))
+    const stageBox = await stage.boundingBox()
+    expect(stageBox).toBeTruthy()
+
+    // Focus still sits on the zoom button (canvas pointerdown is prevented);
+    // blur it so Space arms panning the way it does for a plain page focus.
+    await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur() })
+    await page.keyboard.down('Space')
+    await expect(stage).toHaveClass(/space-pan-ready/)
+    await expect(stage).toHaveCSS('cursor', 'grab')
+
+    const panFrom = {
+      x: stageBox!.x + stageBox!.width / 2,
+      y: stageBox!.y + stageBox!.height / 2,
+    }
+    await page.mouse.move(panFrom.x, panFrom.y)
+    await page.mouse.down()
+    await expect(stage).toHaveClass(/space-panning/)
+    await expect(stage).toHaveCSS('cursor', 'grabbing')
+    await page.mouse.move(panFrom.x - 120, panFrom.y - 80)
+    await page.mouse.up()
+    await expect(stage).not.toHaveClass(/space-panning/)
+    await expect(stage).toHaveClass(/space-pan-ready/)
+
+    const afterPan = await stage.evaluate((node) => ({
+      left: node.scrollLeft,
+      top: node.scrollTop,
+    }))
+    expect(afterPan.left).toBeCloseTo(before.left + 120, 0)
+    expect(afterPan.top).toBeCloseTo(before.top + 80, 0)
+
+    await expect(page.getByTestId('freeform-selection-box')).toHaveCount(0)
+    await expect
+      .poll(() => freeformElementBoxes(page))
+      .toEqual([{ x: 100, y: 100, width: 120, height: 100 }])
+
+    await page.keyboard.up('Space')
+    await expect(stage).not.toHaveClass(/space-pan-ready/)
+
+    // Space on a focused button keeps activating the button instead of panning.
+    await page.getByRole('button', { name: '放大画布', exact: true }).focus()
+    await page.keyboard.down('Space')
+    await expect(stage).not.toHaveClass(/space-pan-ready/)
+    await page.keyboard.up('Space')
+  })
+
+  test('alt+drag duplicates the selection in one undo entry', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 80, 120, 100)
+    const element = page.getByTestId('freeform-element')
+    await expect(element).toHaveCount(1)
+    const scale = await freeformCanvasScale(page)
+    const workspace = page.locator('.freeform-workspace')
+    const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
+
+    const box = await element.boundingBox()
+    expect(box).toBeTruthy()
+    const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+    await page.keyboard.down('Alt')
+    await page.mouse.move(start.x, start.y)
+    await page.mouse.down()
+    await page.mouse.move(start.x + 120 * scale, start.y + 80 * scale)
+    await page.mouse.up()
+    await page.keyboard.up('Alt')
+
+    await expect(element).toHaveCount(2)
+    await expect(selectedFreeformElements(page)).toHaveCount(1)
+    await expect
+      .poll(() => freeformElementBoxes(page))
+      .toEqual([
+        { x: 100, y: 80, width: 120, height: 100 },
+        { x: 220, y: 160, width: 120, height: 100 },
+      ])
+    await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
+
+    await page.keyboard.press('Control+Z')
+    await expect(element).toHaveCount(1)
+    await expect
+      .poll(() => freeformElementBoxes(page))
+      .toEqual([{ x: 100, y: 80, width: 120, height: 100 }])
+  })
+
+  test('shift rotation snaps to 15° steps', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 200, 200, 120, 100)
+    const element = page.getByTestId('freeform-element')
+
+    const handleBox = await page.getByTestId('freeform-selection-rotate').boundingBox()
+    const selBox = await page.getByTestId('freeform-selection-box').boundingBox()
+    expect(handleBox).toBeTruthy()
+    expect(selBox).toBeTruthy()
+    const center = { x: selBox!.x + selBox!.width / 2, y: selBox!.y + selBox!.height / 2 }
+    const start = {
+      x: handleBox!.x + handleBox!.width / 2,
+      y: handleBox!.y + handleBox!.height / 2,
+    }
+    const vector = { x: start.x - center.x, y: start.y - center.y }
+    const pointAtAngle = (degrees: number) => {
+      const rad = (degrees * Math.PI) / 180
+      return {
+        x: center.x + vector.x * Math.cos(rad) - vector.y * Math.sin(rad),
+        y: center.y + vector.x * Math.sin(rad) + vector.y * Math.cos(rad),
+      }
+    }
+
+    await page.mouse.move(start.x, start.y)
+    await page.mouse.down()
+    await page.keyboard.down('Shift')
+    await page.mouse.move(pointAtAngle(26).x, pointAtAngle(26).y)
+    await page.mouse.up()
+    await page.keyboard.up('Shift')
+    await expect.poll(() => elementRotationDegrees(page)).toBeCloseTo(30, 0)
+
+    await page.keyboard.press('Control+Z')
+    await expect.poll(() => elementRotationDegrees(page)).toBeCloseTo(0, 1)
+
+    // The same gesture without Shift lands on the raw angle.
+    await element.click()
+    const secondHandle = await page.getByTestId('freeform-selection-rotate').boundingBox()
+    const secondBox = await page.getByTestId('freeform-selection-box').boundingBox()
+    expect(secondHandle).toBeTruthy()
+    expect(secondBox).toBeTruthy()
+    const secondCenter = {
+      x: secondBox!.x + secondBox!.width / 2,
+      y: secondBox!.y + secondBox!.height / 2,
+    }
+    const secondStart = {
+      x: secondHandle!.x + secondHandle!.width / 2,
+      y: secondHandle!.y + secondHandle!.height / 2,
+    }
+    const secondVector = { x: secondStart.x - secondCenter.x, y: secondStart.y - secondCenter.y }
+    const secondPoint = (degrees: number) => {
+      const rad = (degrees * Math.PI) / 180
+      return {
+        x: secondCenter.x + secondVector.x * Math.cos(rad) - secondVector.y * Math.sin(rad),
+        y: secondCenter.y + secondVector.x * Math.sin(rad) + secondVector.y * Math.cos(rad),
+      }
+    }
+    await page.mouse.move(secondStart.x, secondStart.y)
+    await page.mouse.down()
+    await page.mouse.move(secondPoint(26).x, secondPoint(26).y)
+    await page.mouse.up()
+    await expect.poll(() => elementRotationDegrees(page)).toBeCloseTo(26, 0)
+  })
+
+  test('shift resize keeps the leaf aspect ratio', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 120, 100)
+    const scale = await freeformCanvasScale(page)
+
+    const handleBox = await page.getByTestId('freeform-selection-resize').boundingBox()
+    expect(handleBox).toBeTruthy()
+    const start = {
+      x: handleBox!.x + handleBox!.width / 2,
+      y: handleBox!.y + handleBox!.height / 2,
+    }
+    await page.mouse.move(start.x, start.y)
+    await page.mouse.down()
+    await page.keyboard.down('Shift')
+    await page.mouse.move(start.x + 60 * scale, start.y + 30 * scale)
+    await page.mouse.up()
+    await page.keyboard.up('Shift')
+
+    const [resized] = await freeformElementBoxes(page)
+    // Shift scales both edges by the same factor, so the 120:100 aspect
+    // survives while neither edge keeps its per-axis delta (180 / 130).
+    expect(resized.width / resized.height).toBeCloseTo(1.2, 2)
+    expect(resized.width).toBeGreaterThan(160)
+    expect(resized.width).toBeLessThan(180)
+    expect(resized.height).toBeGreaterThan(135)
+    expect(resized.height).toBeLessThan(150)
+  })
+})
+
+test.describe('freeform context menu', () => {
+  test('right-click opens a scoped menu and delete removes the node', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    const element = page.getByTestId('freeform-element')
+    await expect(element).toHaveCount(1)
+
+    await element.click({ button: 'right' })
+    const menu = page.getByTestId('freeform-context-menu')
+    await expect(menu).toBeVisible()
+    await expect(menu).toHaveAttribute('role', 'menu')
+    await expect(menu).toHaveAttribute('aria-label', '画布操作')
+    await expect(menu.getByTestId('freeform-context-menu-copy')).toBeEnabled()
+    await expect(menu.getByTestId('freeform-context-menu-paste')).toBeDisabled()
+    await expect(menu.getByTestId('freeform-context-menu-delete')).toBeEnabled()
+    await expect(menu.getByTestId('freeform-context-menu-forward')).toBeEnabled()
+    await expect(menu.getByTestId('freeform-context-menu-group')).toBeDisabled()
+    await expect(menu.getByTestId('freeform-context-menu-ungroup')).toBeDisabled()
+    await expect(menu.getByTestId('freeform-context-menu-lock')).toHaveText('锁定')
+    await expect(menu.getByTestId('freeform-context-menu-visibility')).toHaveText('隐藏')
+
+    await menu.getByTestId('freeform-context-menu-delete').click()
+    await expect(menu).toHaveCount(0)
+    await expect(element).toHaveCount(0)
+  })
+
+  test('groups and ungroups from the context menu', async ({ page }) => {
+    await insertTwoSelectedRectangles(page)
+    const element = page.getByTestId('freeform-element')
+    await expect(element).toHaveCount(2)
+
+    await element.first().click({ button: 'right' })
+    const menu = page.getByTestId('freeform-context-menu')
+    await expect(menu).toBeVisible()
+    await expect(menu.getByTestId('freeform-context-menu-group')).toBeEnabled()
+    await menu.getByTestId('freeform-context-menu-group').click()
+    await expect(menu).toHaveCount(0)
+    const group = page.getByTestId('freeform-scene-group')
+    await expect(group).toHaveCount(1)
+
+    // The group wrapper itself has no box (children are absolutely placed);
+    // right-click a child, whose hit path climbs to the group.
+    await element.first().click({ button: 'right' })
+    await expect(page.getByTestId('freeform-context-menu')).toBeVisible()
+    await expect(page.getByTestId('freeform-context-menu-ungroup')).toBeEnabled()
+    await page.getByTestId('freeform-context-menu-ungroup').click()
+    await expect(page.getByTestId('freeform-context-menu')).toHaveCount(0)
+    await expect(element).toHaveCount(2)
+  })
+
+  test('empty-canvas menu pastes and closes on escape and outside click', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    const element = page.getByTestId('freeform-element')
+    await element.click()
+    await page.keyboard.press('Control+C')
+    const canvas = page.getByTestId('freeform-canvas')
+
+    await canvas.click({ position: { x: 20, y: 20 }, button: 'right' })
+    const menu = page.getByTestId('freeform-context-menu')
+    await expect(menu).toBeVisible()
+    await expect(menu.getByTestId('freeform-context-menu-delete')).toBeDisabled()
+    await expect(menu.getByTestId('freeform-context-menu-copy')).toBeDisabled()
+    await expect(menu.getByTestId('freeform-context-menu-paste')).toBeEnabled()
+
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+
+    await canvas.click({ position: { x: 20, y: 20 }, button: 'right' })
+    await expect(menu).toBeVisible()
+    await page.locator('.freeform-inspector .inspector-empty').click()
+    await expect(menu).toHaveCount(0)
+
+    await canvas.click({ position: { x: 20, y: 20 }, button: 'right' })
+    await expect(menu).toBeVisible()
+    await menu.getByTestId('freeform-context-menu-paste').click()
+    await expect(menu).toHaveCount(0)
+    await expect(element).toHaveCount(2)
+  })
+
+  test('lock and hide toggle from the context menu', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    const element = page.getByTestId('freeform-element')
+
+    await element.click({ button: 'right' })
+    const menu = page.getByTestId('freeform-context-menu')
+    await expect(menu).toBeVisible()
+    await menu.getByTestId('freeform-context-menu-lock').click()
+    await expect(menu).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^解锁/ })).toBeVisible()
+
+    await element.click({ button: 'right' })
+    await expect(page.getByTestId('freeform-context-menu-lock')).toHaveText('解锁')
+    await page.getByTestId('freeform-context-menu-lock').click()
+    await expect(page.getByRole('button', { name: /^解锁/ })).toHaveCount(0)
+
+    await element.click({ button: 'right' })
+    await page.getByTestId('freeform-context-menu-visibility').click()
+    await expect(element).toBeHidden()
+    await page.keyboard.press('Control+Z')
+    await expect(element).toBeVisible()
+  })
 })
 
 function panelLiveRegion(page: import('@playwright/test').Page) {

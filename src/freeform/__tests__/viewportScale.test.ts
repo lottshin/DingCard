@@ -7,6 +7,7 @@ import {
   calculateFitScale,
   calculateRenderScale,
   clampZoomPercent,
+  zoomPercentFromWheelDelta,
 } from '../viewportScale'
 
 describe('viewport scale', () => {
@@ -51,5 +52,20 @@ describe('viewport scale', () => {
     expect(clampZoomPercent(105)).toBe(105)
     expect(clampZoomPercent(500)).toBe(400)
     expect(clampZoomPercent(Number.NaN)).toBe(100)
+  })
+
+  it('maps wheel deltas to smooth clamped zoom steps', () => {
+    // A trackpad pinch-in (deltaY > 0) zooms out, pinch-out zooms in.
+    expect(zoomPercentFromWheelDelta(100, 100)).toBeLessThan(100)
+    expect(zoomPercentFromWheelDelta(100, -100)).toBeGreaterThan(100)
+    // Small deltas still move the zoom (trackpad-friendly), zero does not.
+    expect(zoomPercentFromWheelDelta(100, 10)).toBeLessThan(100)
+    expect(zoomPercentFromWheelDelta(100, 0)).toBe(100)
+    // Bounds are enforced in both directions.
+    expect(zoomPercentFromWheelDelta(MIN_ZOOM_PERCENT, 1e6)).toBe(MIN_ZOOM_PERCENT)
+    expect(zoomPercentFromWheelDelta(MAX_ZOOM_PERCENT, -1e6)).toBe(MAX_ZOOM_PERCENT)
+    // Invalid input falls back to the clamped current value.
+    expect(zoomPercentFromWheelDelta(Number.NaN, 100)).toBe(DEFAULT_ZOOM_PERCENT)
+    expect(zoomPercentFromWheelDelta(100, Number.NaN)).toBe(100)
   })
 })
