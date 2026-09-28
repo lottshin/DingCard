@@ -7011,7 +7011,7 @@ test('layers tab exposes a reverse accessible tree with roving keyboard focus', 
 
   const tablist = page.getByRole('tablist', { name: '自由编辑面板' })
   await expect(tablist).toBeVisible()
-  await expect(tablist.getByRole('tab')).toHaveCount(2)
+  await expect(tablist.getByRole('tab')).toHaveCount(3)
   await tablist.getByRole('tab', { name: '图层', exact: true }).click()
 
   const panel = page.getByRole('tabpanel', { name: '图层' })
@@ -7126,6 +7126,7 @@ test('layers tabs and tree directional keys stay in the panel without canvas nud
   const tablist = page.getByRole('tablist', { name: '自由编辑面板' })
   const propertiesTab = tablist.getByRole('tab', { name: '属性', exact: true })
   const layersTab = tablist.getByRole('tab', { name: '图层', exact: true })
+  const historyTab = tablist.getByRole('tab', { name: '历史', exact: true })
   await propertiesTab.focus()
   await page.keyboard.press('ArrowRight')
   await expect(layersTab).toHaveAttribute('aria-selected', 'true')
@@ -7139,8 +7140,9 @@ test('layers tabs and tree directional keys stay in the panel without canvas nud
   await expect(propertiesTab).toBeFocused()
   await propertiesTab.focus()
   await page.keyboard.press('End')
-  await expect(layersTab).toHaveAttribute('aria-selected', 'true')
-  await expect(layersTab).toBeFocused()
+  await expect(historyTab).toHaveAttribute('aria-selected', 'true')
+  await expect(historyTab).toBeFocused()
+  await layersTab.click()
 
   const tree = page.getByRole('tree', { name: '图层树' })
   const outer = tree.getByRole('treeitem', { name: 'Outer group' })
@@ -10210,6 +10212,105 @@ test.describe('freeform page management', () => {
     await expect(page.getByTestId('freeform-slide-context-menu-back')).toBeDisabled()
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('freeform-slide-context-menu')).toHaveCount(0)
+  })
+})
+
+test.describe('freeform history panel', () => {
+  const historyItem = (page: import('@playwright/test').Page, label: string) =>
+    page.locator('[data-testid="freeform-history-item"]').filter({
+      has: page.locator('.freeform-history-label', { hasText: label }),
+    })
+
+  test('lists labeled steps and jumps to any state on the timeline', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementPosition(page, 300, 240)
+    const hexInput = page.getByTestId('inspector-fill')
+      .getByTestId('shape-fill-paint')
+      .getByLabel('填充 hex', { exact: true })
+    await hexInput.fill('#8b5cf6')
+
+    const element = page.getByTestId('freeform-element')
+    const shapeFill = async () => element.locator('.freeform-shape').evaluate((node) =>
+      getComputedStyle(node).backgroundColor,
+    )
+    expect(await shapeFill()).toBe('rgb(139, 92, 246)')
+
+    await page.getByRole('tab', { name: '历史', exact: true }).click()
+    await expect(page.getByTestId('freeform-history-panel')).toBeVisible()
+    const items = page.getByTestId('freeform-history-item')
+    // Insert, X move, Y move, fill: the newest edit sits on top.
+    await expect(items).toHaveCount(5)
+    await expect(items.nth(0)).toHaveAttribute('data-history-kind', 'current')
+    await expect(items.nth(0).locator('.freeform-history-label')).toHaveText('更改样式')
+    await expect(items.nth(1)).toHaveAttribute('data-history-kind', 'past')
+    await expect(items.nth(1).locator('.freeform-history-label')).toHaveText('移动对象')
+    await expect(items.nth(2).locator('.freeform-history-label')).toHaveText('移动对象')
+    await expect(items.nth(3).locator('.freeform-history-label')).toHaveText('插入对象')
+    await expect(items.nth(4).locator('.freeform-history-label')).toHaveText('初始文档')
+
+    // Jump to the state right after the insert: the fill reverts.
+    await historyItem(page, '插入对象').click()
+    await expect(items).toHaveCount(5)
+    await expect(items.nth(3)).toHaveAttribute('data-history-kind', 'current')
+    await expect(items.nth(3).locator('.freeform-history-label')).toHaveText('插入对象')
+    await expect(items.nth(0)).toHaveAttribute('data-history-kind', 'future')
+    await expect(items.nth(0).locator('.freeform-history-label')).toHaveText('更改样式')
+    await expect(items.nth(1).locator('.freeform-history-label')).toHaveText('移动对象')
+    await expect(await shapeFill()).not.toBe('rgb(139, 92, 246)')
+    await expect(element).toHaveCount(1)
+
+    // Jump to the very first state: the shape disappears.
+    await historyItem(page, '初始文档').first().click()
+    await expect(element).toHaveCount(0)
+
+    // Jump forward to the newest future state: everything comes back.
+    await historyItem(page, '更改样式').first().click()
+    await expect(element).toHaveCount(1)
+    expect(await shapeFill()).toBe('rgb(139, 92, 246)')
+    await expect(items).toHaveCount(5)
+    await expect(items.nth(0)).toHaveAttribute('data-history-kind', 'current')
+
+    // A fresh edit clears the redo branch.
+    await insertShape(page)
+    await expect(items).toHaveCount(6)
+    await expect(items.nth(0).locator('.freeform-history-label')).toHaveText('插入对象')
+    for (const item of await items.all()) {
+      await expect(item).not.toHaveAttribute('data-history-kind', 'future')
+    }
+  })
+
+  test('labels live-edit gestures on the timeline', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    const scale = await freeformCanvasScale(page)
+    const element = page.getByTestId('freeform-element')
+
+    const box = await element.boundingBox()
+    expect(box).toBeTruthy()
+    const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+    await page.mouse.move(start.x, start.y)
+    await page.mouse.down()
+    await page.mouse.move(start.x + 60 * scale, start.y + 40 * scale)
+    await page.mouse.up()
+
+    await page.keyboard.down('Alt')
+    const moved = await element.boundingBox()
+    expect(moved).toBeTruthy()
+    const second = { x: moved!.x + moved!.width / 2, y: moved!.y + moved!.height / 2 }
+    await page.mouse.move(second.x, second.y)
+    await page.mouse.down()
+    await page.mouse.move(second.x + 50 * scale, second.y + 30 * scale)
+    await page.mouse.up()
+    await page.keyboard.up('Alt')
+
+    await page.getByRole('tab', { name: '历史', exact: true }).click()
+    const items = page.getByTestId('freeform-history-item')
+    await expect(items).toHaveCount(4)
+    await expect(items.nth(0).locator('.freeform-history-label')).toHaveText('拖拽复制')
+    await expect(items.nth(1).locator('.freeform-history-label')).toHaveText('移动对象')
+    await expect(items.nth(2).locator('.freeform-history-label')).toHaveText('插入对象')
+    await expect(items.nth(3).locator('.freeform-history-label')).toHaveText('初始文档')
   })
 })
 

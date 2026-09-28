@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react'
 
-export type FreeformRightPanelTab = 'properties' | 'layers'
+export type FreeformRightPanelTab = 'properties' | 'layers' | 'history'
 
 export interface FreeformRightPanelProps {
   children: ReactNode
   layers: ReactNode
+  history: ReactNode
   propertiesTabRef?: Ref<HTMLButtonElement>
   disabled?: boolean
 }
@@ -12,12 +13,14 @@ export interface FreeformRightPanelProps {
 const TABS: Array<{ id: FreeformRightPanelTab; label: string }> = [
   { id: 'properties', label: '属性' },
   { id: 'layers', label: '图层' },
+  { id: 'history', label: '历史' },
 ]
 
-/** Right-side property/layers switcher. Tab state is intentionally UI-only. */
+/** Right-side properties/layers/history switcher. Tab state is intentionally UI-only. */
 export function FreeformRightPanel({
   children,
   layers,
+  history,
   propertiesTabRef,
   disabled = false,
 }: FreeformRightPanelProps) {
@@ -98,6 +101,15 @@ export function FreeformRightPanel({
         hidden={activeTab !== 'layers'}
       >
         {layers}
+      </div>
+      <div
+        id={panelId('history')}
+        className="freeform-right-tabpanel freeform-history-tabpanel"
+        role="tabpanel"
+        aria-labelledby={tabId('history')}
+        hidden={activeTab !== 'history'}
+      >
+        {history}
       </div>
     </aside>
   )

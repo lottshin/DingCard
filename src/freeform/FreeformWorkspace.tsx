@@ -60,11 +60,13 @@ import { InspectorSection } from './InspectorSection'
 import {
   createHistory,
   isLatestSaveForDraft,
+  jumpHistory,
   pushHistory,
   redo,
   undo,
   type HistoryState,
 } from './history'
+import { describeFreeformAction } from './actionLabels'
 import {
   buildFreeformFontCSS,
   collectFreeformFontRequests,
@@ -928,6 +930,41 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const slideMenuIndex = slideContextMenu
     ? doc.slides.findIndex((slide) => slide.id === slideContextMenu.slideId)
     : -1
+  // Timeline rows for the history panel, newest first. Each row is labeled
+  // with the edit that produced its state (edges live on the source entry).
+  const historyRows = useMemo(() => {
+    const rows: Array<{
+      key: string
+      label: string
+      kind: 'past' | 'current' | 'future'
+      index: number
+    }> = []
+    for (let j = history.future.length - 1; j >= 0; j -= 1) {
+      rows.push({
+        key: `future-${j}`,
+        label: history.future[j].label,
+        kind: 'future',
+        index: j,
+      })
+    }
+    rows.push({
+      key: 'current',
+      label: history.past.length > 0
+        ? history.past[history.past.length - 1].label
+        : '初始文档',
+      kind: 'current',
+      index: -1,
+    })
+    for (let i = history.past.length - 1; i >= 0; i -= 1) {
+      rows.push({
+        key: `past-${i}`,
+        label: i > 0 ? history.past[i - 1].label : '初始文档',
+        kind: 'past',
+        index: i,
+      })
+    }
+    return rows
+  }, [history])
   const setSelection = useCallback((update: SetStateAction<string[]>) => {
     setSceneUiState((current) => {
       const currentIds = normalizeSceneSelection(
@@ -1471,15 +1508,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     return () => window.clearTimeout(timer)
   }, [documentFontRequests])
 
-  const applyAction = useCallback((action: FreeformAction) => {
+  const applyAction = useCallback((action: FreeformAction, label?: string) => {
     if (blockDocumentMutationDuringInteraction()) return false
     const start = currentDocumentRef.current
     const next = freeformReducer(start, action)
     if (Object.is(next, start)) return false
+    const entryLabel = label ?? describeFreeformAction(action)
     updateHistory((current) => {
-      if (Object.is(current.current, start)) return pushHistory(current, next)
+      if (Object.is(current.current, start)) return pushHistory(current, next, entryLabel)
       const rebased = freeformReducer(current.current, action)
-      return Object.is(rebased, current.current) ? current : pushHistory(current, rebased)
+      return Object.is(rebased, current.current)
+        ? current
+        : pushHistory(current, rebased, entryLabel)
     })
     setSavedAt(null)
     return true
@@ -1612,7 +1652,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     })
   }, [updateHistory])
 
-  const commitLiveEdit = useCallback((startDocument: FreeformDocument) => {
+  const commitLiveEdit = useCallback((startDocument: FreeformDocument, label = '编辑') => {
     const savedStart = successfulSaveRef.current
     const historyStart = savedStart && (
       Object.is(savedStart.source, startDocument) || Object.is(savedStart.document, startDocument)
@@ -1624,7 +1664,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         return current
       }
       return {
-        past: [...current.past, historyStart],
+        past: [...current.past, { state: historyStart, label }],
         current: current.current,
         future: [],
       }
@@ -1653,6 +1693,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     startDocument: FreeformDocument,
     action: FreeformAction,
     expectedChanged: boolean,
+    label?: string,
   ): LiveEditCommitResult => {
     if (!expectedChanged) {
       cancelLiveEdit(startDocument)
@@ -1669,13 +1710,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     )
       ? savedStart.document
       : startDocument
+    const entryLabel = label ?? describeFreeformAction(action)
     const commitState: { result: LiveEditCommitResult } = { result: 'rejected' }
     updateHistory((current) => {
       const next = freeformReducer(current.current, action)
       if (Object.is(next, current.current)) return current
       commitState.result = 'committed'
       return {
-        past: [...current.past, historyStart],
+        past: [...current.past, { state: historyStart, label: entryLabel }],
         current: next,
         future: [],
       }
@@ -1917,6 +1959,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         },
       },
       imageCropUpdateChangesNode(session.startNode, update),
+      '调整裁切',
     )
     setOperationNotice(result === 'rejected' ? '图片裁剪未能应用，请重试' : null)
     imageCropSessionRef.current = null
@@ -2011,7 +2054,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     if (!current || imageFramingEquals(current.target.framing, session.startFraming)) {
       cancelLiveEdit(session.startDocument)
     } else {
-      commitLiveEdit(session.startDocument)
+      commitLiveEdit(session.startDocument, '调整取景')
     }
     clearImageFramingSession()
   }
@@ -2679,28 +2722,31 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const bottom = Math.max(...entries.map(({ bounds }) => bounds.y + bounds.height))
     const horizontalCenter = (left + right) / 2
     const verticalCenter = (top + bottom) / 2
-    applyAction({
-      type: 'node/update-geometry',
-      slideId: activeSlide.id,
-      updates: entries.map(({ node, path, bounds }) => {
-        const dx = alignment === 'left'
-          ? left - bounds.x
-          : alignment === 'h-center'
-            ? horizontalCenter - (bounds.x + bounds.width / 2)
-            : alignment === 'right'
-              ? right - (bounds.x + bounds.width)
-              : 0
-        const dy = alignment === 'top'
-          ? top - bounds.y
-          : alignment === 'v-center'
-            ? verticalCenter - (bounds.y + bounds.height / 2)
-            : alignment === 'bottom'
-              ? bottom - (bounds.y + bounds.height)
-              : 0
-        const localDelta = transformVector(inverseParent, { x: dx, y: dy })
-        return { path, patch: { x: node.x + localDelta.x, y: node.y + localDelta.y } }
-      }),
-    })
+    applyAction(
+      {
+        type: 'node/update-geometry',
+        slideId: activeSlide.id,
+        updates: entries.map(({ node, path, bounds }) => {
+          const dx = alignment === 'left'
+            ? left - bounds.x
+            : alignment === 'h-center'
+              ? horizontalCenter - (bounds.x + bounds.width / 2)
+              : alignment === 'right'
+                ? right - (bounds.x + bounds.width)
+                : 0
+          const dy = alignment === 'top'
+            ? top - bounds.y
+            : alignment === 'v-center'
+              ? verticalCenter - (bounds.y + bounds.height / 2)
+              : alignment === 'bottom'
+                ? bottom - (bounds.y + bounds.height)
+                : 0
+          const localDelta = transformVector(inverseParent, { x: dx, y: dy })
+          return { path, patch: { x: node.x + localDelta.x, y: node.y + localDelta.y } }
+        }),
+      },
+      '对齐',
+    )
   }
 
   function distributeSelection(distribution: Distribution) {
@@ -2747,7 +2793,23 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         patch: { x: node.x + localDelta.x, y: node.y + localDelta.y },
       }
     })
-    applyAction({ type: 'node/update-geometry', slideId: activeSlide.id, updates })
+    applyAction({ type: 'node/update-geometry', slideId: activeSlide.id, updates }, '分布')
+  }
+
+  /** Jump the timeline to any past or future state in one step. */
+  function jumpToHistoryState(kind: 'past' | 'future', index: number) {
+    if (blockDocumentMutationDuringInteraction()) return
+    let changed = false
+    updateHistory((current) => {
+      const next = jumpHistory(current, { kind, index })
+      changed = next !== current
+      return next
+    })
+    if (changed) {
+      inspectorNumberResetGenerationRef.current += 1
+      setSelection([])
+      setSavedAt(null)
+    }
   }
 
   function applySlideSize(width: number, height: number) {
@@ -3218,7 +3280,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
     const finishDrag = () => {
       cleanupDrag()
-      commitLiveEdit(startDocument)
+      commitLiveEdit(startDocument, event.altKey ? '拖拽复制' : '移动对象')
     }
     const cancelDrag = () => {
       cleanupDrag()
@@ -3686,7 +3748,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
     const finishResize = () => {
       cleanupResize()
-      commitLiveEdit(startDocument)
+      commitLiveEdit(startDocument, '调整大小')
     }
 
     const cancelResize = () => {
@@ -3775,7 +3837,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     }
     const finish = () => {
       cleanup()
-      commitLiveEdit(startDocument)
+      commitLiveEdit(startDocument, '旋转对象')
     }
     const cancel = () => {
       cleanup()
@@ -4782,6 +4844,49 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               onGroup={groupSelection}
               onUngroup={ungroupSelection}
             />
+          )}
+          history={(
+            <div
+              className="freeform-history-panel"
+              data-testid="freeform-history-panel"
+              data-history-count={historyRows.length}
+            >
+              <p className="freeform-history-hint">点击任意步骤，在时间线上前后跳转；新编辑会清空重做步骤。</p>
+              <ol className="freeform-history-list" aria-label="编辑历史">
+                {historyRows.map((row) => {
+                  const { kind, index } = row
+                  return kind === 'current' ? (
+                    <li key={row.key}>
+                      <div
+                        className="freeform-history-item is-current"
+                        data-testid="freeform-history-item"
+                        data-history-kind="current"
+                      >
+                        <span className="freeform-history-label">{row.label}</span>
+                        <span className="freeform-history-state">当前</span>
+                      </div>
+                    </li>
+                  ) : (
+                    <li key={row.key}>
+                      <button
+                        type="button"
+                        className="freeform-history-item"
+                        data-testid="freeform-history-item"
+                        data-history-kind={kind}
+                        data-history-index={index}
+                        title={kind === 'past' ? '撤销到这一步' : '重做到这一步'}
+                        onClick={() => jumpToHistoryState(kind, index)}
+                      >
+                        <span className="freeform-history-label">{row.label}</span>
+                        <span className="freeform-history-state">
+                          {kind === 'past' ? '撤销' : '重做'}
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
           )}
         >
           <div className="freeform-panel-head">
