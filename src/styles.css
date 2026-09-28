@@ -1426,6 +1426,31 @@ html.theme-anim * {
   text-overflow: ellipsis;
 }
 
+.freeform-thumb-wrap {
+  position: relative;
+}
+
+.freeform-thumb-rename {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.freeform-thumb-rename:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
 .freeform-rail-actions {
   flex: 0 0 auto;
   display: grid;

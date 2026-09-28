@@ -2313,6 +2313,44 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setSelection([])
   }
 
+  const [renamingSlideId, setRenamingSlideId] = useState<string | null>(null)
+  const [slideRenameValue, setSlideRenameValue] = useState('')
+  const slideRenameCompositionRef = useRef(false)
+  const slideRenameInputRef = useRef<HTMLInputElement>(null)
+
+  function beginSlideRename(slideId: string) {
+    const slide = doc.slides.find((candidate) => candidate.id === slideId)
+    if (!slide) return
+    slideRenameCompositionRef.current = false
+    setRenamingSlideId(slideId)
+    setSlideRenameValue(slide.name)
+    requestAnimationFrame(() => {
+      slideRenameInputRef.current?.focus()
+      slideRenameInputRef.current?.select()
+    })
+  }
+
+  /** Empty names keep the current one; an unchanged name records no history. */
+  function commitSlideRename() {
+    slideRenameCompositionRef.current = false
+    const slideId = renamingSlideId
+    const slide = doc.slides.find((candidate) => candidate.id === slideId)
+    if (slideId && slide) {
+      const nextName = slideRenameValue.trim()
+      if (nextName && nextName !== slide.name) {
+        applyAction({ type: 'slide/update', slideId, patch: { name: nextName } })
+      }
+    }
+    setRenamingSlideId(null)
+    setSlideRenameValue('')
+  }
+
+  function cancelSlideRename() {
+    slideRenameCompositionRef.current = false
+    setRenamingSlideId(null)
+    setSlideRenameValue('')
+  }
+
   function deleteSlide(slideId: string = activeSlide.id) {
     if (blockDocumentMutationDuringInteraction()) return
     applyAction({ type: 'slide/delete', slideId })
@@ -4792,71 +4830,112 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             }}
           >
             {doc.slides.map((slide, index) => (
-              <button
-                key={slide.id}
-                type="button"
-                draggable
-                className={`freeform-thumb${slide.id === activeSlide.id ? ' on' : ''}${
-                  slideDropTarget?.slideId === slide.id
-                    ? slideDropTarget.position === 'before' ? ' drop-before' : ' drop-after'
-                    : ''
-                }`}
-                aria-current={slide.id === activeSlide.id ? 'page' : undefined}
-                data-testid="freeform-thumb"
-                onClick={() => selectSlide(slide.id)}
-                onDragStart={(event) => {
-                  dragSlideIdRef.current = slide.id
-                  event.dataTransfer.effectAllowed = 'move'
-                  event.dataTransfer.setData('text/plain', slide.id)
-                }}
-                onDragEnd={() => {
-                  dragSlideIdRef.current = null
-                  setSlideDropTarget(null)
-                }}
-                onDragOver={(event) => {
-                  if (!dragSlideIdRef.current || dragSlideIdRef.current === slide.id) return
-                  event.preventDefault()
-                  event.dataTransfer.dropEffect = 'move'
-                  const bounds = event.currentTarget.getBoundingClientRect()
-                  const position: 'before' | 'after' =
-                    event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
-                  setSlideDropTarget((current) =>
-                    current && current.slideId === slide.id && current.position === position
-                      ? current
-                      : { slideId: slide.id, position },
-                  )
-                }}
-                onDragLeave={() => {
-                  setSlideDropTarget((current) =>
-                    current?.slideId === slide.id ? null : current,
-                  )
-                }}
-                onDrop={(event) => {
-                  const sourceId = dragSlideIdRef.current
-                  if (!sourceId || sourceId === slide.id) return
-                  event.preventDefault()
-                  event.stopPropagation()
-                  dragSlideIdRef.current = null
-                  setSlideDropTarget(null)
-                  const bounds = event.currentTarget.getBoundingClientRect()
-                  const after = event.clientY >= bounds.top + bounds.height / 2
-                  const targetIndex = slideDropTargetIndex(sourceId, slide.id, after)
-                  if (targetIndex !== null) reorderSlide(sourceId, targetIndex)
-                }}
-                onContextMenu={(event) => onSlideThumbContextMenu(event, slide.id)}
-              >
-                <FreeformSlidePreview
-                  slide={slide}
-                  frameWidth={104}
-                  frameHeight={128}
-                  className="freeform-thumb-art"
-                  deferOffscreen={slide.id !== activeSlide.id}
-                />
-                <span className="freeform-thumb-caption">
-                  <span className="freeform-thumb-number">{String(index + 1).padStart(2, '0')}</span>
-                  <span className="freeform-thumb-title">{slide.name}</span>
-                </span>
-              </button>
+              <div key={slide.id} className="freeform-thumb-wrap">
+                <button
+                  type="button"
+                  draggable
+                  className={`freeform-thumb${slide.id === activeSlide.id ? ' on' : ''}${
+                    slideDropTarget?.slideId === slide.id
+                      ? slideDropTarget.position === 'before' ? ' drop-before' : ' drop-after'
+                      : ''
+                  }`}
+                  aria-current={slide.id === activeSlide.id ? 'page' : undefined}
+                  data-testid="freeform-thumb"
+                  onClick={() => selectSlide(slide.id)}
+                  onDragStart={(event) => {
+                    dragSlideIdRef.current = slide.id
+                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.setData('text/plain', slide.id)
+                  }}
+                  onDragEnd={() => {
+                    dragSlideIdRef.current = null
+                    setSlideDropTarget(null)
+                  }}
+                  onDragOver={(event) => {
+                    if (!dragSlideIdRef.current || dragSlideIdRef.current === slide.id) return
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                    const bounds = event.currentTarget.getBoundingClientRect()
+                    const position: 'before' | 'after' =
+                      event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
+                    setSlideDropTarget((current) =>
+                      current && current.slideId === slide.id && current.position === position
+                        ? current
+                        : { slideId: slide.id, position },
+                    )
+                  }}
+                  onDragLeave={() => {
+                    setSlideDropTarget((current) =>
+                      current?.slideId === slide.id ? null : current,
+                    )
+                  }}
+                  onDrop={(event) => {
+                    const sourceId = dragSlideIdRef.current
+                    if (!sourceId || sourceId === slide.id) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    dragSlideIdRef.current = null
+                    setSlideDropTarget(null)
+                    const bounds = event.currentTarget.getBoundingClientRect()
+                    const after = event.clientY >= bounds.top + bounds.height / 2
+                    const targetIndex = slideDropTargetIndex(sourceId, slide.id, after)
+                    if (targetIndex !== null) reorderSlide(sourceId, targetIndex)
+                  }}
+                  onContextMenu={(event) => onSlideThumbContextMenu(event, slide.id)}
+                >
+                  <FreeformSlidePreview
+                    slide={slide}
+                    frameWidth={104}
+                    frameHeight={128}
+                    className="freeform-thumb-art"
+                    deferOffscreen={slide.id !== activeSlide.id}
+                  />
+                  <span className="freeform-thumb-caption">
+                    <span className="freeform-thumb-number">{String(index + 1).padStart(2, '0')}</span>
+                    <span
+                      className="freeform-thumb-title"
+                      data-testid="freeform-thumb-title"
+                      title={slide.name}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation()
+                        event.preventDefault()
+                        beginSlideRename(slide.id)
+                      }}
+                    >
+                      {slide.name}
+                    </span>
+                  </span>
+                </button>
+                {renamingSlideId === slide.id && (
+                  <input
+                    ref={slideRenameInputRef}
+                    className="freeform-thumb-rename"
+                    data-testid="freeform-thumb-rename"
+                    aria-label="重命名页面"
+                    value={slideRenameValue}
+                    onChange={(event) => setSlideRenameValue(event.currentTarget.value)}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onBlur={() => commitSlideRename()}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                      if (event.key === 'Enter') {
+                        if (event.nativeEvent.isComposing || slideRenameCompositionRef.current) return
+                        event.preventDefault()
+                        commitSlideRename()
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelSlideRename()
+                      }
+                    }}
+                    onCompositionStart={() => {
+                      slideRenameCompositionRef.current = true
+                    }}
+                    onCompositionEnd={() => {
+                      slideRenameCompositionRef.current = false
+                    }}
+                  />
+                )}
+              </div>
             ))}
           </div>
           <div className="freeform-rail-actions">
@@ -6468,6 +6547,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           aria-label="页面操作"
           style={{ left: slideContextMenu.x, top: slideContextMenu.y }}
         >
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-slide-context-menu-rename"
+            onClick={() => {
+              const slideId = slideContextMenu.slideId
+              setSlideContextMenu(null)
+              beginSlideRename(slideId)
+            }}
+          >
+            重命名此页
+          </button>
           <button
             type="button"
             role="menuitem"

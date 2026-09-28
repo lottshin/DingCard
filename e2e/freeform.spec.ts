@@ -11023,3 +11023,60 @@ test.describe('freeform clipboard completion', () => {
     ])
   })
 })
+
+test.describe('freeform page rename', () => {
+  test('double-clicking the caption renames a page inline', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+
+    const title = page.getByTestId('freeform-thumb-title').first()
+    await expect(title).toHaveText('Page 1')
+    await title.dblclick()
+
+    const input = page.getByTestId('freeform-thumb-rename')
+    await expect(input).toBeFocused()
+    await expect(input).toHaveValue('Page 1')
+    await input.fill('封面页')
+    await input.press('Enter')
+    await expect(page.getByTestId('freeform-thumb-rename')).toHaveCount(0)
+    await expect(title).toHaveText('封面页')
+
+    // The rename lands in history as one step.
+    await page.getByRole('tab', { name: '历史', exact: true }).click()
+    await expect(page.getByTestId('freeform-history-item').locator('.freeform-history-label').first()).toHaveText('重命名页面')
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+    // Escape cancels without recording anything.
+    await title.dblclick()
+    await page.getByTestId('freeform-thumb-rename').fill('放弃')
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('freeform-thumb-rename')).toHaveCount(0)
+    await expect(title).toHaveText('封面页')
+
+    // Empty input keeps the current name.
+    await title.dblclick()
+    await page.getByTestId('freeform-thumb-rename').fill('   ')
+    await page.getByTestId('freeform-thumb-rename').press('Enter')
+    await expect(title).toHaveText('封面页')
+  })
+
+  test('the slide context menu renames the right-clicked page', async ({ page }) => {
+    await openFreeform(page)
+    await page.getByLabel('新增页面').click()
+    await expect(page.getByTestId('freeform-thumb')).toHaveCount(2)
+
+    // Right-click the second thumbnail and rename it.
+    await page.getByTestId('freeform-thumb').nth(1).click({ button: 'right' })
+    const menu = page.getByTestId('freeform-slide-context-menu')
+    await expect(menu.getByTestId('freeform-slide-context-menu-rename')).toBeVisible()
+    await menu.getByTestId('freeform-slide-context-menu-rename').click()
+
+    const input = page.getByTestId('freeform-thumb-rename')
+    await expect(input).toBeFocused()
+    await expect(input).toHaveValue('Page 2')
+    await input.fill('结尾页')
+    await input.press('Enter')
+    await expect(page.getByTestId('freeform-thumb-title').nth(1)).toHaveText('结尾页')
+    await expect(page.getByTestId('freeform-thumb-title').nth(0)).toHaveText('Page 1')
+  })
+})
