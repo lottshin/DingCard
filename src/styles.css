@@ -1267,6 +1267,21 @@ html.theme-anim * {
   color: var(--text);
 }
 
+.freeform-thumb.drop-before {
+  box-shadow: 0 -2px 0 0 var(--accent);
+}
+
+.freeform-thumb.drop-after {
+  box-shadow: 0 2px 0 0 var(--accent);
+}
+
+/* Keep thumbnail dragging owned by the thumb itself, not preview images. */
+.freeform-thumb-art img,
+.freeform-thumb-art svg {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
 .freeform-thumb-art {
   width: 104px;
   height: 128px;

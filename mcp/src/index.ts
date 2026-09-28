@@ -47,7 +47,7 @@ const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。第一行 "# 总�
 const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI 完全同一归约器）。常用动作：
 - { type: 'slide/add-after-active', slideId? } 在当前页后新增空白页
 - { type: 'slide/duplicate', slideId, duplicateSlideId? } 复制页
-- { type: 'slide/delete', slideId } / { type: 'slide/select', slideId }
+- { type: 'slide/delete', slideId } / { type: 'slide/select', slideId } / { type: 'slide/reorder', slideId, targetIndex }（把该页移动到 targetIndex，超出范围会收敛到末位）
 - { type: 'slide/update', slideId, patch: { name?, background? } } / { type: 'slide/resize', slideId, width, height }
 - { type: 'node/insert-children', slideId, parentPath: string[], nodes: FreeformSceneNode[], index? } 插入节点
 - { type: 'node/update-content', slideId, updates: [{ path, patch: { text?, src?, alt? } }] }（改 text 时已有 spans 会按编辑位置自动保留/收缩）

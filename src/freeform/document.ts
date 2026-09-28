@@ -1190,6 +1190,17 @@ export function reduceFreeformDocument(
         }
         return { ...document, activeSlideId: action.slideId }
       }
+      case 'slide/reorder': {
+        if (!Number.isInteger(action.targetIndex) || action.targetIndex < 0) return document
+        const index = document.slides.findIndex((slide) => slide.id === action.slideId)
+        if (index < 0) return document
+        const targetIndex = Math.min(action.targetIndex, document.slides.length - 1)
+        if (targetIndex === index) return document
+        const slides = [...document.slides]
+        const [moved] = slides.splice(index, 1)
+        slides.splice(targetIndex, 0, moved)
+        return { ...document, slides }
+      }
       case 'slide/update': {
         if (!isRecord(action.patch) || !hasOnlyKeys(action.patch, new Set(['name', 'background']))) {
           return document

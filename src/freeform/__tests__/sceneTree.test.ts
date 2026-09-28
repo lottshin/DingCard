@@ -2132,6 +2132,72 @@ describe('v3 reducer safety limits and stable failures', () => {
     })
   })
 
+  it('reorders pages without changing the active page', () => {
+    const original = documentWith([], [
+      slide('slide-1'),
+      slide('slide-2'),
+      slide('slide-3'),
+      slide('slide-4'),
+    ])
+    const snapshot = structuredClone(original)
+
+    const movedUp = reduceFreeformDocument(original, {
+      type: 'slide/reorder',
+      slideId: 'slide-3',
+      targetIndex: 0,
+    })
+    expect(movedUp.slides.map((candidate) => candidate.id)).toEqual([
+      'slide-3',
+      'slide-1',
+      'slide-2',
+      'slide-4',
+    ])
+    expect(movedUp.activeSlideId).toBe('slide-1')
+
+    const movedDown = reduceFreeformDocument(original, {
+      type: 'slide/reorder',
+      slideId: 'slide-1',
+      targetIndex: 2,
+    })
+    expect(movedDown.slides.map((candidate) => candidate.id)).toEqual([
+      'slide-2',
+      'slide-3',
+      'slide-1',
+      'slide-4',
+    ])
+
+    const clamped = reduceFreeformDocument(original, {
+      type: 'slide/reorder',
+      slideId: 'slide-1',
+      targetIndex: 99,
+    })
+    expect(clamped.slides.map((candidate) => candidate.id)).toEqual([
+      'slide-2',
+      'slide-3',
+      'slide-4',
+      'slide-1',
+    ])
+
+    expect(reduceFreeformDocument(original, {
+      type: 'slide/reorder',
+      slideId: 'slide-1',
+      targetIndex: 0,
+    })).toBe(original)
+    expect(reduceFreeformDocument(original, {
+      type: 'slide/reorder',
+      slideId: 'missing',
+      targetIndex: 0,
+    })).toBe(original)
+    for (const invalid of [-1, 1.5, Number.NaN]) {
+      expect(reduceFreeformDocument(original, {
+        type: 'slide/reorder',
+        slideId: 'slide-1',
+        targetIndex: invalid,
+      })).toBe(original)
+    }
+    expect(original).toEqual(snapshot)
+  })
+
   it('rejects grouping that would push a selected depth-32 node to depth 33', () => {
     let child: FreeformSceneNode = textLeaf('depth-32')
     const parentIds: string[] = []

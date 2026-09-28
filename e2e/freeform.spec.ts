@@ -10109,6 +10109,110 @@ test.describe('freeform layout efficiency', () => {
   })
 })
 
+test.describe('freeform page management', () => {
+  test('thumbnail drag reorders pages with an insertion indicator', async ({ page }) => {
+    await openFreeform(page)
+    const addPage = page.getByRole('button', { name: '新增页面' })
+    await addPage.click()
+    await addPage.click()
+    const thumbs = page.getByTestId('freeform-thumb')
+    const titles = page.locator('.freeform-thumb-title')
+    await expect(thumbs).toHaveCount(3)
+    await expect(titles).toHaveText(['Page 1', 'Page 2', 'Page 3'])
+
+    // The insertion indicator follows the pointer's half of the hovered thumb.
+    const dragOver = (locator: import('@playwright/test').Locator, ratio: number) =>
+      locator.evaluate((node, y) => {
+        const bounds = node.getBoundingClientRect()
+        node.dispatchEvent(new DragEvent('dragover', {
+          bubbles: true,
+          cancelable: true,
+          clientX: bounds.left + 20,
+          clientY: bounds.top + bounds.height * y,
+          dataTransfer: new DataTransfer(),
+        }))
+      }, ratio)
+    await thumbs.first().evaluate((node) => {
+      node.dispatchEvent(new DragEvent('dragstart', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: new DataTransfer(),
+      }))
+    })
+    await dragOver(thumbs.nth(2), 0.75)
+    await expect(thumbs.nth(2)).toHaveClass(/drop-after/)
+    await dragOver(thumbs.nth(2), 0.25)
+    await expect(thumbs.nth(2)).toHaveClass(/drop-before/)
+    await expect(thumbs.nth(2)).not.toHaveClass(/drop-after/)
+    await thumbs.first().evaluate((node) => {
+      node.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true }))
+    })
+    await expect(thumbs.nth(2)).not.toHaveClass(/drop-before/)
+
+    // A real drag gesture moves page 1 below page 3.
+    const target = await thumbs.nth(2).boundingBox()
+    expect(target).toBeTruthy()
+    await thumbs.first().dragTo(thumbs.nth(2), {
+      targetPosition: { x: 40, y: target!.height * 0.75 },
+    })
+    await expect(titles).toHaveText(['Page 2', 'Page 3', 'Page 1'])
+    // Reordering never changes the active page.
+    await expect(page.locator('.freeform-thumb.on .freeform-thumb-title')).toHaveText('Page 3')
+
+    await page.keyboard.press('Control+z')
+    await expect(titles).toHaveText(['Page 1', 'Page 2', 'Page 3'])
+  })
+
+  test('thumbnail context menu duplicates, deletes, and moves pages', async ({ page }) => {
+    await openFreeform(page)
+    await page.getByRole('button', { name: '新增页面' }).click()
+    const thumbs = page.getByTestId('freeform-thumb')
+    const titles = page.locator('.freeform-thumb-title')
+    await expect(titles).toHaveText(['Page 1', 'Page 2'])
+
+    await thumbs.nth(1).click({ button: 'right' })
+    const menu = page.getByTestId('freeform-slide-context-menu')
+    await expect(menu).toBeVisible()
+    await expect(menu).toHaveAttribute('role', 'menu')
+    await expect(menu).toHaveAttribute('aria-label', '页面操作')
+    await expect(menu.getByTestId('freeform-slide-context-menu-up')).toBeEnabled()
+    await expect(menu.getByTestId('freeform-slide-context-menu-down')).toBeDisabled()
+    await expect(menu.getByTestId('freeform-slide-context-menu-delete')).toBeEnabled()
+    await menu.getByTestId('freeform-slide-context-menu-up').click()
+    await expect(menu).toHaveCount(0)
+    await expect(titles).toHaveText(['Page 2', 'Page 1'])
+
+    await thumbs.first().click({ button: 'right' })
+    await page.getByTestId('freeform-slide-context-menu-back').click()
+    await expect(titles).toHaveText(['Page 1', 'Page 2'])
+
+    await thumbs.nth(1).click({ button: 'right' })
+    await page.getByTestId('freeform-slide-context-menu-duplicate').click()
+    await expect(thumbs).toHaveCount(3)
+    await expect(titles).toHaveText(['Page 1', 'Page 2', 'Page 2 copy'])
+    await expect(page.locator('.freeform-thumb.on .freeform-thumb-title')).toHaveText('Page 2 copy')
+
+    await thumbs.nth(2).click({ button: 'right' })
+    await page.getByTestId('freeform-slide-context-menu-delete').click()
+    await expect(thumbs).toHaveCount(2)
+    await expect(titles).toHaveText(['Page 1', 'Page 2'])
+
+    await thumbs.first().click({ button: 'right' })
+    await page.getByTestId('freeform-slide-context-menu-delete').click()
+    await expect(thumbs).toHaveCount(1)
+    await expect(titles).toHaveText(['Page 2'])
+
+    await thumbs.first().click({ button: 'right' })
+    await expect(page.getByTestId('freeform-slide-context-menu-delete')).toBeDisabled()
+    await expect(page.getByTestId('freeform-slide-context-menu-up')).toBeDisabled()
+    await expect(page.getByTestId('freeform-slide-context-menu-down')).toBeDisabled()
+    await expect(page.getByTestId('freeform-slide-context-menu-front')).toBeDisabled()
+    await expect(page.getByTestId('freeform-slide-context-menu-back')).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('freeform-slide-context-menu')).toHaveCount(0)
+  })
+})
+
 function panelLiveRegion(page: import('@playwright/test').Page) {
   return page.locator('[data-testid="freeform-layer-live"]')
 }

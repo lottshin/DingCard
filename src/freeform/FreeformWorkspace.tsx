@@ -23,7 +23,7 @@ import {
   userTemplateToDefinition,
   type UserTemplate,
 } from '../templates/userTemplates'
-import { MAX_EFFECTIVE_SCALE, MIN_EFFECTIVE_SCALE } from './constants'
+import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE } from './constants'
 import {
   createFreeformDocument,
   createImageElement,
@@ -856,6 +856,18 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  // Per-thumbnail context menu and HTML5 drag state for reordering pages.
+  const [slideContextMenu, setSlideContextMenu] = useState<{
+    slideId: string
+    x: number
+    y: number
+  } | null>(null)
+  const slideContextMenuRef = useRef<HTMLDivElement>(null)
+  const dragSlideIdRef = useRef<string | null>(null)
+  const [slideDropTarget, setSlideDropTarget] = useState<{
+    slideId: string
+    position: 'before' | 'after'
+  } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
@@ -913,6 +925,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     && menuSelectionNodes.every((node) => node.hidden)
   const menuSelectionHasGroup = menuSelectionNodes.some((node) => node.type === 'group')
   const menuSelectionHasLeaf = menuSelectionNodes.some((node) => node.type !== 'group')
+  const slideMenuIndex = slideContextMenu
+    ? doc.slides.findIndex((slide) => slide.id === slideContextMenu.slideId)
+    : -1
   const setSelection = useCallback((update: SetStateAction<string[]>) => {
     setSceneUiState((current) => {
       const currentIds = normalizeSceneSelection(
@@ -1335,29 +1350,36 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     stage.scrollTop += bounds.top - (anchor.clientY - anchor.worldY * renderScale)
   })
 
-  // Keep the context menu fully inside the viewport (measured after mount, pre-paint).
+  // Keep the open context menu fully inside the viewport (measured post-mount, pre-paint).
   useLayoutEffect(() => {
-    if (!contextMenu) return
-    const menu = contextMenuRef.current
+    const open = slideContextMenu ?? contextMenu
+    if (!open) return
+    const menu = slideContextMenu ? slideContextMenuRef.current : contextMenuRef.current
     if (!menu) return
     const bounds = menu.getBoundingClientRect()
     const margin = 8
-    const x = clamp(contextMenu.x, margin, Math.max(margin, window.innerWidth - bounds.width - margin))
-    const y = clamp(contextMenu.y, margin, Math.max(margin, window.innerHeight - bounds.height - margin))
-    if (x !== contextMenu.x || y !== contextMenu.y) setContextMenu({ x, y })
-  }, [contextMenu])
+    const x = clamp(open.x, margin, Math.max(margin, window.innerWidth - bounds.width - margin))
+    const y = clamp(open.y, margin, Math.max(margin, window.innerHeight - bounds.height - margin))
+    if (x === open.x && y === open.y) return
+    if (slideContextMenu) setSlideContextMenu({ ...slideContextMenu, x, y })
+    else setContextMenu({ x, y })
+  }, [contextMenu, slideContextMenu])
 
-  // Clicking anywhere outside the context menu dismisses it.
+  // Clicking anywhere outside the open context menus dismisses them.
   useEffect(() => {
-    if (!contextMenu) return
+    if (!contextMenu && !slideContextMenu) return
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target
-      if (target instanceof Node && contextMenuRef.current?.contains(target)) return
+      if (target instanceof Node && (
+        contextMenuRef.current?.contains(target)
+        || slideContextMenuRef.current?.contains(target)
+      )) return
       setContextMenu(null)
+      setSlideContextMenu(null)
     }
     window.addEventListener('pointerdown', onPointerDown, true)
     return () => window.removeEventListener('pointerdown', onPointerDown, true)
-  }, [contextMenu])
+  }, [contextMenu, slideContextMenu])
 
   useEffect(() => {
     const nextUserId = user?.id ?? null
@@ -2159,16 +2181,40 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setSelection([])
   }
 
-  function duplicateSlide() {
+  function duplicateSlide(slideId: string = activeSlide.id) {
     if (blockDocumentMutationDuringInteraction()) return
-    applyAction({ type: 'slide/duplicate', slideId: activeSlide.id })
+    applyAction({ type: 'slide/duplicate', slideId })
     setSelection([])
   }
 
-  function deleteSlide() {
+  function deleteSlide(slideId: string = activeSlide.id) {
     if (blockDocumentMutationDuringInteraction()) return
-    applyAction({ type: 'slide/delete', slideId: activeSlide.id })
+    applyAction({ type: 'slide/delete', slideId })
     setSelection([])
+  }
+
+  function reorderSlide(slideId: string, targetIndex: number) {
+    if (blockDocumentMutationDuringInteraction()) return
+    applyAction({ type: 'slide/reorder', slideId, targetIndex })
+    setSelection([])
+  }
+
+  /** Insertion index for a drop on a thumbnail half, mapped to the post-removal order. */
+  function slideDropTargetIndex(sourceId: string, targetSlideId: string, after: boolean) {
+    const sourceIndex = doc.slides.findIndex((slide) => slide.id === sourceId)
+    const targetSlideIndex = doc.slides.findIndex((slide) => slide.id === targetSlideId)
+    if (sourceIndex < 0 || targetSlideIndex < 0) return null
+    const insertion = after ? targetSlideIndex + 1 : targetSlideIndex
+    return insertion > sourceIndex ? insertion - 1 : insertion
+  }
+
+  function onSlideThumbContextMenu(event: React.MouseEvent<HTMLButtonElement>, slideId: string) {
+    if (framingSessionRef.current || imageCropSessionRef.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (slideId !== activeSlide.id) selectSlide(slideId)
+    setContextMenu(null)
+    setSlideContextMenu({ slideId, x: event.clientX, y: event.clientY })
   }
 
   function selectInsertedNode(
@@ -2810,9 +2856,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         ) event.preventDefault()
         return
       }
-      if (contextMenu && event.key === 'Escape') {
+      if ((contextMenu || slideContextMenu) && event.key === 'Escape') {
         event.preventDefault()
         setContextMenu(null)
+        setSlideContextMenu(null)
         return
       }
       const isDocumentShortcut = (
@@ -3404,6 +3451,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       // Right-clicking bare canvas scopes the menu to paste-only.
       setSelection([])
     }
+    setSlideContextMenu(null)
     setContextMenu({ x: event.clientX, y: event.clientY })
   }
 
@@ -4246,14 +4294,75 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               </svg>
             </button>
           </div>
-          <div className="freeform-slide-list">
+          <div
+            className="freeform-slide-list"
+            onDragOver={(event) => {
+              if (!dragSlideIdRef.current) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+            }}
+            onDrop={(event) => {
+              const sourceId = dragSlideIdRef.current
+              if (!sourceId) return
+              event.preventDefault()
+              dragSlideIdRef.current = null
+              setSlideDropTarget(null)
+              reorderSlide(sourceId, doc.slides.length - 1)
+            }}
+          >
             {doc.slides.map((slide, index) => (
               <button
                 key={slide.id}
                 type="button"
-                className={slide.id === activeSlide.id ? 'freeform-thumb on' : 'freeform-thumb'}
+                draggable
+                className={`freeform-thumb${slide.id === activeSlide.id ? ' on' : ''}${
+                  slideDropTarget?.slideId === slide.id
+                    ? slideDropTarget.position === 'before' ? ' drop-before' : ' drop-after'
+                    : ''
+                }`}
                 aria-current={slide.id === activeSlide.id ? 'page' : undefined}
+                data-testid="freeform-thumb"
                 onClick={() => selectSlide(slide.id)}
+                onDragStart={(event) => {
+                  dragSlideIdRef.current = slide.id
+                  event.dataTransfer.effectAllowed = 'move'
+                  event.dataTransfer.setData('text/plain', slide.id)
+                }}
+                onDragEnd={() => {
+                  dragSlideIdRef.current = null
+                  setSlideDropTarget(null)
+                }}
+                onDragOver={(event) => {
+                  if (!dragSlideIdRef.current || dragSlideIdRef.current === slide.id) return
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'move'
+                  const bounds = event.currentTarget.getBoundingClientRect()
+                  const position: 'before' | 'after' =
+                    event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
+                  setSlideDropTarget((current) =>
+                    current && current.slideId === slide.id && current.position === position
+                      ? current
+                      : { slideId: slide.id, position },
+                  )
+                }}
+                onDragLeave={() => {
+                  setSlideDropTarget((current) =>
+                    current?.slideId === slide.id ? null : current,
+                  )
+                }}
+                onDrop={(event) => {
+                  const sourceId = dragSlideIdRef.current
+                  if (!sourceId || sourceId === slide.id) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  dragSlideIdRef.current = null
+                  setSlideDropTarget(null)
+                  const bounds = event.currentTarget.getBoundingClientRect()
+                  const after = event.clientY >= bounds.top + bounds.height / 2
+                  const targetIndex = slideDropTargetIndex(sourceId, slide.id, after)
+                  if (targetIndex !== null) reorderSlide(sourceId, targetIndex)
+                }}
+                onContextMenu={(event) => onSlideThumbContextMenu(event, slide.id)}
               >
                 <FreeformSlidePreview
                   slide={slide}
@@ -4270,10 +4379,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             ))}
           </div>
           <div className="freeform-rail-actions">
-            <button className="ghost" type="button" onClick={duplicateSlide}>
+            <button className="ghost" type="button" onClick={() => duplicateSlide()}>
               复制页面
             </button>
-            <button className="ghost" type="button" onClick={deleteSlide} disabled={doc.slides.length <= 1}>
+            <button className="ghost" type="button" onClick={() => deleteSlide()} disabled={doc.slides.length <= 1}>
               删除页面
             </button>
           </div>
@@ -5644,6 +5753,97 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             onClick={() => { closeContextMenu(); zoomToSelectionBounds() }}
           >
             缩放到选区
+          </button>
+        </div>
+      )}
+
+      {slideContextMenu && slideMenuIndex >= 0 && (
+        <div
+          ref={slideContextMenuRef}
+          className="freeform-context-menu"
+          data-testid="freeform-slide-context-menu"
+          role="menu"
+          aria-label="页面操作"
+          style={{ left: slideContextMenu.x, top: slideContextMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-slide-context-menu-duplicate"
+            disabled={doc.slides.length >= MAX_FREEFORM_SLIDES}
+            onClick={() => {
+              setSlideContextMenu(null)
+              duplicateSlide(slideContextMenu.slideId)
+            }}
+          >
+            复制此页
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-slide-context-menu-delete"
+            disabled={doc.slides.length <= 1}
+            onClick={() => {
+              setSlideContextMenu(null)
+              deleteSlide(slideContextMenu.slideId)
+            }}
+          >
+            删除此页
+          </button>
+          <div className="freeform-context-menu-separator" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-slide-context-menu-up"
+            disabled={slideMenuIndex === 0}
+            onClick={() => {
+              setSlideContextMenu(null)
+              reorderSlide(slideContextMenu.slideId, slideMenuIndex - 1)
+            }}
+          >
+            上移一位
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-slide-context-menu-down"
+            disabled={slideMenuIndex === doc.slides.length - 1}
+            onClick={() => {
+              setSlideContextMenu(null)
+              reorderSlide(slideContextMenu.slideId, slideMenuIndex + 1)
+            }}
+          >
+            下移一位
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-slide-context-menu-front"
+            disabled={slideMenuIndex === 0}
+            onClick={() => {
+              setSlideContextMenu(null)
+              reorderSlide(slideContextMenu.slideId, 0)
+            }}
+          >
+            移到最前
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="freeform-context-menu-item"
+            data-testid="freeform-slide-context-menu-back"
+            disabled={slideMenuIndex === doc.slides.length - 1}
+            onClick={() => {
+              setSlideContextMenu(null)
+              reorderSlide(slideContextMenu.slideId, doc.slides.length - 1)
+            }}
+          >
+            移到最后
           </button>
         </div>
       )}

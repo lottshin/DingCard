@@ -279,6 +279,7 @@ export type FreeformAction =
     }
   | { type: 'slide/delete'; slideId: string }
   | { type: 'slide/select'; slideId: string }
+  | { type: 'slide/reorder'; slideId: string; targetIndex: number }
   | {
       type: 'slide/update'
       slideId: string
