@@ -4855,7 +4855,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               setShowDrafts(true)
             }}
           >
-            草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
+            我的草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
           </button>
           <button
             className="bar-btn"

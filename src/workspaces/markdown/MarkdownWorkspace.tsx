@@ -775,7 +775,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               setShowDrafts(true)
             }}
           >
-            草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
+            我的草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
           </button>
 
           <button className="toolbar-primary" onClick={exportAllZip} disabled={exporting}>

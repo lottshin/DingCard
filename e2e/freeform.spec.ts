@@ -1049,7 +1049,7 @@ async function openNestedV3Draft(
   }, draft)
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^\u8349\u7a3f(?: · \d+)?$/ }).click()
+  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Nested v3 scene' }).click()
 }
 
@@ -2242,7 +2242,7 @@ test('drafts panel imports a freeform document JSON and opens it', async ({ page
   await page.reload()
   await openFreeform(page)
   // Opening the drafts drawer without an account first opens the auth modal.
-  await page.getByRole('button', { name: /^草稿/ }).click()
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
   await registerUser(page, `import-${Date.now()}`)
 
   const importedDocument = {
@@ -2280,7 +2280,7 @@ test('drafts panel imports a freeform document JSON and opens it', async ({ page
     ],
   }
 
-  await page.getByRole('button', { name: /^草稿/ }).click()
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
   await expect(page.getByTestId('drafts-drawer')).toBeVisible()
   await page.getByLabel('导入 JSON 文档').setInputFiles({
     name: 'ai-card.json',
@@ -2292,7 +2292,7 @@ test('drafts panel imports a freeform document JSON and opens it', async ({ page
   await expect(page.getByTestId('freeform-element')).toHaveCount(1)
   await expect(page.getByTestId('freeform-textbox')).toContainText('AI 导入的标题')
 
-  await page.getByRole('button', { name: /^草稿/ }).click()
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
   await expect(page.getByTestId('drafts-drawer')).toContainText('AI 生成页')
   await expect(page.getByTestId('drafts-drawer')).toContainText('自由编辑')
 })
@@ -2302,10 +2302,10 @@ test('drafts panel import rejects invalid JSON with an error notice', async ({ p
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
-  await page.getByRole('button', { name: /^草稿/ }).click()
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
   await registerUser(page, `import-bad-${Date.now()}`)
 
-  await page.getByRole('button', { name: /^草稿/ }).click()
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
   await expect(page.getByTestId('drafts-drawer')).toBeVisible()
   await page.getByLabel('导入 JSON 文档').setInputFiles({
     name: 'broken.json',
@@ -3373,10 +3373,10 @@ test('compact saved freeform toolbar keeps controls from overlapping', async ({ 
   await page.getByRole('button', { name: '保存草稿' }).click()
 
   await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-  await expect(page.getByRole('button', { name: /^草稿(?: · \d+)?$/ })).toHaveText('草稿 · 1')
+  await expect(page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ })).toHaveText('我的草稿 · 1')
   await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
   await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '草稿 · 1', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '我的草稿 · 1', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '打包导出', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '导出当前页', exact: true })).toBeVisible()
   await expectVisibleFreeformToolbarButtonsToFit(page)
@@ -5168,7 +5168,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
   await page.evaluate(() => sessionStorage.removeItem('slicer.images.v1'))
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Page 1' }).click()
   await expectFreeformImagesDecoded(page)
 
@@ -5539,7 +5539,7 @@ test('crop transition commits images while shape framing cancels across draft sw
     localStorage.setItem(key, JSON.stringify([...drafts, source]))
   })
   await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
-  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).click()
+  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).click()
   await expect(page.locator('.draft-item', { hasText: 'Crop draft transition target' })).toBeVisible()
 
   const selectLayer = async (name: '\u56fe\u7247' | '\u5f62\u72b6') => {
@@ -5559,7 +5559,7 @@ test('crop transition commits images while shape framing cancels across draft sw
   const cropChanged = cropGeometryOf(await readCropOverlayDraft(page))
   expect(cropChanged.frame.right).not.toBeCloseTo(cropBefore.frame.right, 4)
 
-  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).evaluate(
+  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).evaluate(
     (button) => (button as HTMLButtonElement).click(),
   )
   await page.locator('.drawer').getByText('Crop draft transition target', { exact: true }).click()
@@ -5570,7 +5570,7 @@ test('crop transition commits images while shape framing cancels across draft sw
     .toEqual(cropBefore)
   await page.getByTestId('freeform-image-crop-done').click()
 
-  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).evaluate(
+  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).evaluate(
     (button) => (button as HTMLButtonElement).click(),
   )
   await page.locator('.drawer').getByText('Page 1', { exact: true }).click()
@@ -5583,12 +5583,12 @@ test('crop transition commits images while shape framing cancels across draft sw
   await selectLayer('\u5f62\u72b6')
   await page.getByTestId('freeform-adjust-framing').click()
   await setRangeValue(page.getByTestId('freeform-framing-zoom'), 180)
-  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).evaluate(
+  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).evaluate(
     (button) => (button as HTMLButtonElement).click(),
   )
   await page.locator('.drawer').getByText('Crop draft transition target', { exact: true }).click()
   await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
-  await page.getByRole('button', { name: /^\u8349\u7a3f/ }).evaluate(
+  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).evaluate(
     (button) => (button as HTMLButtonElement).click(),
   )
   await page.locator('.drawer').getByText('Page 1', { exact: true }).click()
@@ -5675,7 +5675,7 @@ test('persists image element and shape fill through ImageStore', async ({ page }
   await page.evaluate(() => sessionStorage.removeItem('slicer.images.v1'))
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Page 1' }).click()
 
   await expectFreeformImagesDecoded(page)
@@ -6298,7 +6298,7 @@ test('saves and restores a freeform draft', async ({ page }) => {
 
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Page 1' }).click()
   await expect(page.getByLabel('文本内容')).toContainText('保存恢复测试')
 })
@@ -7223,7 +7223,7 @@ test('layers selection resets when another draft opens in the same workspace mou
     localStorage.setItem(key, JSON.stringify([...drafts, source]))
   })
   await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Other freeform draft' }).click()
 
   await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
@@ -7858,7 +7858,7 @@ test('locked layer metadata remains manageable through inherited state and reloa
   await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Nested scene' }).click()
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   const restoredTree = page.getByRole('tree', { name: '图层树' })
@@ -8247,7 +8247,7 @@ test('number inspector drops an old draft buffer when the draft identity changes
   const oldX = page.getByTestId('inspector-geometry').getByLabel('X', { exact: true })
   await oldX.fill('510')
 
-  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).evaluate(
+  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).evaluate(
     (button) => (button as HTMLButtonElement).click(),
   )
   await page.locator('.draft-item', { hasText: 'Number buffer other draft' }).click()
@@ -8374,7 +8374,7 @@ test('delayed shape image fill cannot write into another draft with the same sce
     localStorage.setItem(key, JSON.stringify([...drafts, source]))
   })
   await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByRole('button', { name: /^草稿(?: · \d+)?$/ })).toContainText('2')
+  await expect(page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ })).toContainText('2')
 
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   await page.getByRole('tree', { name: '图层树' })
@@ -8391,7 +8391,7 @@ test('delayed shape image fill cannot write into another draft with the same sce
   })
   await expectShapeFillFileReaderStarted(page)
 
-  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Shape fill race target' }).click()
   await releaseShapeFillFileReaderGate(page)
   await expect.poll(() => page.evaluate(() => {
@@ -9289,7 +9289,7 @@ test('opening another draft cannot be rolled back by an old pointer cancellation
     'move',
   )
 
-  await page.getByRole('button', { name: /^草稿(?: · \d+)?$/ }).click()
+  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
   await page.locator('.draft-item', { hasText: 'Nested v3 scene' }).click()
   await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
   await expect(page.locator('.drawer')).toBeVisible()
@@ -11109,7 +11109,7 @@ test.describe('freeform reload restore', () => {
     await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
     await expect(page.getByTestId('freeform-element')).toHaveCount(1)
     await expect(page.getByLabel('文本内容')).toContainText('刷新恢复的内容')
-    await expect(page.getByRole('button', { name: '草稿 · 1', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '我的草稿 · 1', exact: true })).toBeVisible()
   })
 
   test('reload falls back to a fresh document when the recorded draft was deleted', async ({ page }) => {
@@ -11126,7 +11126,7 @@ test.describe('freeform reload restore', () => {
     await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
 
     // 删除这份草稿（恢复记录随之清空），再刷新。
-    await page.getByRole('button', { name: '草稿 · 1', exact: true }).click()
+    await page.getByRole('button', { name: '我的草稿 · 1', exact: true }).click()
     await page.locator('.draft-item').first().getByRole('button', { name: '删除草稿' }).click()
     await expect(page.getByTestId('drafts-drawer')).toBeVisible()
     await expect(page.locator('.draft-item')).toHaveCount(0)
