@@ -122,7 +122,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 10,
+    documentVersion: 11,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -278,6 +278,7 @@ function cloneColorPaint(paint: ColorPaint): ColorPaint {
 }
 
 function cloneShapeFill(fill: ShapeFill): ShapeFill {
+  if (fill.type === 'transparent') return { type: 'transparent' }
   return fill.type === 'image'
     ? {
         type: 'image',

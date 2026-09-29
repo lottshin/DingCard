@@ -73,7 +73,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -188,6 +188,11 @@ function cloneStrictShapeFill(
   value: unknown,
   inputVersion: StrictDocumentVersion,
 ): ShapeFill | null {
+  // The no-fill variant is v11-only; older input versions must reject it.
+  if (isRecord(value) && value.type === 'transparent') {
+    if (inputVersion < 11 || !hasExactKeys(value, TRANSPARENT_PAINT_KEYS)) return null
+    return { type: 'transparent' }
+  }
   if (isRecord(value) && value.type === 'image') {
     const expectedKeys = inputVersion >= 4 ? IMAGE_FILL_V4_KEYS : IMAGE_FILL_V3_KEYS
     if (
@@ -647,7 +652,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 10,
+    documentVersion: 11,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -691,6 +696,11 @@ export function normalizeFreeformDocumentV9(value: unknown): FreeformDocument | 
 /** Strictly validates and clones an already-v10 document. */
 export function normalizeFreeformDocumentV10(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 10)
+}
+
+/** Strictly validates and clones an already-v11 document. */
+export function normalizeFreeformDocumentV11(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 11)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -948,7 +958,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
     ),
   }))
   const activeIndex = candidates.findIndex(({ sourceId }) => sourceId === value.activeSlideId)
-  // A v9-shaped input handed to the strict reader, which upgrades it to v10.
+  // A v9-shaped input handed to the strict reader, which upgrades it to current.
   const candidate = {
     documentVersion: 9,
     slides,
@@ -957,9 +967,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v10 object. */
+/** Normalize any supported freeform document version to a fresh v11 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 11) return normalizeFreeformDocumentV11(value)
   if (value.documentVersion === 10) return normalizeFreeformDocumentV10(value)
   if (value.documentVersion === 9) return normalizeFreeformDocumentV9(value)
   if (value.documentVersion === 8) return normalizeFreeformDocumentV8(value)
@@ -998,7 +1009,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 10,
+    documentVersion: 11,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1031,7 +1042,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 10,
+    documentVersion: 11,
     activeSlideId: document.activeSlideId,
     slides,
   }

@@ -69,7 +69,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(10)
+    expect(doc.documentVersion).toBe(11)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -945,6 +945,24 @@ describe('v8 appearance patches', () => {
       type: 'linear-gradient',
       stops,
       angle: 45,
+    })
+  })
+
+  it('applies the v11 transparent shape fill and treats repeats as no-ops', () => {
+    const document = documentWith([{ ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' }])
+
+    const styled = stylePatch(document, ['shape-1'], { fill: { type: 'transparent' } })
+    const node = styled.slides[0].nodes[0] as FreeformShapeElement
+    expect(node.fill).toEqual({ type: 'transparent' })
+
+    const noop = stylePatch(styled, ['shape-1'], { fill: { type: 'transparent' } })
+    expect(noop).toBe(styled)
+
+    // Leaving the no-fill state restores a regular paint untouched.
+    const restored = stylePatch(styled, ['shape-1'], { fill: { type: 'solid', color: '#c2410c' } })
+    expect((restored.slides[0].nodes[0] as FreeformShapeElement).fill).toEqual({
+      type: 'solid',
+      color: '#c2410c',
     })
   })
 

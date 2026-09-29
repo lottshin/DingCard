@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 10,
+    documentVersion: 11,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,8 +74,29 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(10)
+    expect(result.document.documentVersion).toBe(11)
     expect(result.document.slides[0].id).toBe('slide-1')
+  })
+
+  test('accepts the v11 transparent shape fill and rejects it on v10 inputs', () => {
+    const noFill = seedDocument() as unknown as Record<string, unknown>
+    const slide = (noFill.slides as Array<Record<string, unknown>>)[0]
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    const shape = (nodes[1].children as Array<Record<string, unknown>>)[0]
+    shape.fill = { type: 'transparent' }
+    shape.stroke = '#c2410c'
+    shape.strokeWidth = 4
+    const accepted = validateDocument(noFill)
+    expect(accepted.ok).toBe(true)
+
+    const legacy = structuredClone(noFill)
+    legacy.documentVersion = 10
+    expect(validateDocument(legacy).ok).toBe(false)
+
+    const malformed = structuredClone(noFill)
+    const malformedShape = (((malformed.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>)[1].children as Array<Record<string, unknown>>)[0]
+    malformedShape.fill = { type: 'transparent', color: '#ffffff' }
+    expect(validateDocument(malformed).ok).toBe(false)
   })
 
   test('accepts v9 text features, rejects vertical text on v8 inputs', () => {

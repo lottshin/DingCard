@@ -327,7 +327,7 @@ if (!payload || typeof payload !== 'object') {
 } else {
   const doc = normalizeFreeformDocument(payload.document)
   if (!doc) {
-    writeResult({ ok: false, error: '文档未通过自由画布 v4 校验' })
+    writeResult({ ok: false, error: '文档未通过自由画布文档校验' })
   } else {
     createRoot(document.getElementById('root')!).render(<RenderApp document={doc} />)
   }

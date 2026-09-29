@@ -1378,6 +1378,50 @@ test('line stroke color and width controls align in the compact inspector', asyn
   ))).toBe(true)
 })
 
+test('shape fill transparent mode renders an outline-only shape and persists', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertShape(page)
+  const shapeView = page.locator('.freeform-shape')
+  await expect(shapeView).toHaveCSS('background-color', 'rgb(254, 215, 170)')
+
+  const shapeFill = page.getByTestId('shape-fill-paint')
+  await shapeFill.getByTestId('paint-mode-transparent').click()
+  await expect(shapeView).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(shapeView).toHaveCSS('background-image', 'none')
+  // The freshly inserted shape still has a 0-width stroke: the outline needs widening by hand.
+  await expect(shapeView).toHaveCSS('border-top-width', '0px')
+
+  const strokeSection = page.getByTestId('inspector-stroke')
+  const strokeWidthInput = strokeSection.getByLabel('描边宽', { exact: true })
+  await strokeWidthInput.fill('6')
+  await strokeWidthInput.press('Enter')
+  await expect(shapeView).toHaveCSS('border-top-width', '6px')
+  await expect(shapeView).toHaveCSS('border-top-color', 'rgb(194, 65, 12)')
+
+  // Solid restores the paint without touching the widened stroke, and undo walks the flip back.
+  await shapeFill.getByTestId('paint-mode-solid').click()
+  await expect(shapeView).toHaveCSS('background-color', 'rgb(254, 215, 170)')
+  await expect(shapeView).toHaveCSS('border-top-width', '6px')
+  await shapeFill.getByTestId('paint-mode-transparent').click()
+  await expect(shapeView).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(shapeView).toHaveCSS('background-color', 'rgb(254, 215, 170)')
+  await shapeFill.getByTestId('paint-mode-transparent').click()
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await registerUser(page, `no-fill-${Date.now().toString(36)}`)
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  const slideStatus = page.getByTestId('freeform-slide-meta')
+  await expect(slideStatus).toContainText('已保存')
+
+  await page.reload()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  const restoredShape = page.locator('.freeform-shape')
+  await expect(restoredShape).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(restoredShape).toHaveCSS('border-top-width', '6px')
+})
+
 test('inspector appearance controls style leaves end to end', async ({ page }) => {
   await openFreeform(page)
 
@@ -5140,7 +5184,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(10)
+  expect(storedDocument.documentVersion).toBe(11)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 10
+  documentVersion: 11
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -375,4 +375,6 @@ export type FreeformAction =
 
 export type ShapeFill =
   | ColorPaint
+  /** The v11 no-fill variant: an outline-only shape. */
+  | { type: 'transparent' }
   | { type: 'image'; src: string; fit: 'cover' | 'contain'; framing: ImageFraming }

@@ -6075,7 +6075,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                             <PaintField
                               label="填充"
                               value={selectedElement.fill}
-                              modes={['solid', 'linear-gradient', 'image']}
+                              modes={['solid', 'linear-gradient', 'transparent', 'image']}
                               fallbackPaint={DEFAULT_SHAPE_PAINT}
                               onChange={(fill) =>
                                 updateSelectedShapeFill(fill as ShapeFill)

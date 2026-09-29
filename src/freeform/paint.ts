@@ -69,6 +69,7 @@ export function slideBackgroundToCss(background: SlideBackground): string {
 
 export function shapeFillToStyle(fill: ShapeFill): CSSProperties {
   if (fill.type === 'image') return {}
+  if (fill.type === 'transparent') return { background: 'none' }
 
   return { background: paintToCssBackground(fill) }
 }

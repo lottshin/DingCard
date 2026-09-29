@@ -282,7 +282,7 @@ export async function renderDocument(
 ): Promise<RenderResult> {
   const document = normalizeFreeformDocument(value)
   if (!document) {
-    return { ok: false, error: '文档未通过自由画布 v4 校验，已拒绝渲染' }
+    return { ok: false, error: '文档未通过自由画布文档校验，已拒绝渲染' }
   }
   const selected = options.slideIds
     ? document.slides.filter((slide) => options.slideIds!.includes(slide.id))

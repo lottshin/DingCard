@@ -522,6 +522,7 @@ function copyColorPaint(paint: ColorPaint): ColorPaint {
 }
 
 function copyShapeFill(fill: ShapeFill): ShapeFill {
+  if (fill.type === 'transparent') return { type: 'transparent' }
   return fill.type === 'image'
     ? {
         type: 'image',
@@ -826,6 +827,7 @@ interface SceneValidationState {
 const SOLID_PAINT_KEYS = new Set(['type', 'color'])
 const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
 const GRADIENT_STOPS_PAINT_KEYS = new Set(['type', 'stops', 'angle'])
+const TRANSPARENT_PAINT_KEYS = new Set(['type'])
 const IMAGE_FILL_KEYS = new Set(['type', 'src', 'fit', 'framing'])
 const GROUP_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'rotation', 'scale', 'children',
@@ -941,6 +943,7 @@ export function isValidSceneShapeFill(value: unknown): boolean {
   if (isValidSceneColorPaint(value)) return true
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const fill = value as Record<string, unknown>
+  if (fill.type === 'transparent') return hasExactKeys(fill, TRANSPARENT_PAINT_KEYS)
   return (
     fill.type === 'image' &&
     hasExactKeys(fill, IMAGE_FILL_KEYS) &&
