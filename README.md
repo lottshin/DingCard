@@ -91,6 +91,19 @@ npm run mcp   # 以 stdio 启动 dingcard-mcp
 
 AI 生成的文档也可以一键回到编辑器精修：在「我的草稿」面板点击「导入 JSON 文档」或直接把 `.json` 文件拖进面板，文档会存为草稿并直接打开（自由画布 v1–v7 自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
 
+### MCP 作品示例：山月 · 藍染海報
+
+下面这幅蓝染木刻风海报就是用上面的闭环画出来的：文档全部由形状、线段和多段渐变拼成（105 个节点 = 54 个形状 + 46 条线段 + 文字，9 组多段渐变，**零图片素材**），经 `validate_document` 校验后由 `render_document` 无头渲染成图。右页是它的「构造解剖」——月晕是同心椭圆加模糊与透明度递减，山脊是远淡近浓的三层三角剪影，波纹是一条条两端可拖拽的线段（红点即控点）。
+
+<p align="center">
+  <img src="docs/assets/yamatsuki-poster.png" width="34%" alt="山月蓝染海报：渐变夜空、月晕、三层山脊与湖面波纹，纯形状与线段构成">
+  <img src="docs/assets/yamatsuki-anatomy.png" width="34%" alt="山月海报构造解剖页：月晕堆叠、山脊三层、波纹控点与多段渐变谱">
+</p>
+
+<p align="center"><sub>左：山月 · 藍染海報　右：构造解剖页（形狀 54 / 線段 46 / 漸變 9 / 節點 105）</sub></p>
+
+整份两页文档在 [docs/assets/yamatsuki-poster.json](docs/assets/yamatsuki-poster.json)（约 74KB），下载后拖进「我的草稿」面板即可在编辑器里打开，每个元素都可以拆开重编。
+
 ## 使用与部署
 
 ### 在线使用

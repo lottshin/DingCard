@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- README 新增 MCP 作品展示「山月 · 藍染海報」：一幅蓝染木刻风双页海报，全部由形状、线段与多段渐变拼成（105 个节点、9 组多段渐变、零图片素材），经 `validate_document` 校验、`render_document` 无头渲染；附构造解剖页与可拖进「我的草稿」直接编辑的完整 JSON 文档（`docs/assets/yamatsuki-poster.json`）。
+
 ## [0.20.0] - 2026-09-28
 
 ### Added
