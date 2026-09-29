@@ -25,6 +25,7 @@ import {
   type UserTemplate,
 } from '../templates/userTemplates'
 import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE } from './constants'
+import { collectTextAutoSize } from './textAutoSize'
 import {
   createFreeformDocument,
   createImageElement,
@@ -1629,6 +1630,62 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setSavedAt(null)
     return true
   }, [blockDocumentMutationDuringInteraction, updateHistory])
+
+  // 文字盒自动增高：内容超出盒子时把盒子长到实际需要的大小（横排增高、竖排
+  // 加宽），只增不减——手工调大的盒子保持不变。这是视图层的显示修正而不是
+  // 用户操作：静默替换当前文档，不进撤销历史（历史是绝对状态快照，撤销/重做
+  // 不受影响；撤销后若再次超出会重新长高）。拖拽/裁剪等交互进行中跳过，等
+  // 交互结束后的下一次提交再测。网页字体加载完成后重测一次（fallback 字体
+  // 与真实字体的度量不同）。
+  useLayoutEffect(() => {
+    if (!isActive) return
+
+    const runTextAutoSize = () => {
+      if (
+        activeInteractionRef.current
+        || marqueePointerIdRef.current !== null
+        || framingSessionRef.current
+        || imageCropSessionRef.current
+      ) return
+      const artboard = artboardRef.current
+      if (!artboard) return
+      const measure = (id: string, vertical: boolean): number | null => {
+        const host = artboard.querySelector(`[data-scene-node-id="${CSS.escape(id)}"]`)
+        const textbox = host?.querySelector('.freeform-textbox')
+        if (!(textbox instanceof HTMLElement)) return null
+        return vertical ? textbox.scrollWidth : textbox.scrollHeight
+      }
+      const updates = collectTextAutoSize(activeSlide.nodes, measure)
+      if (updates.length === 0) return
+      const action: FreeformAction = {
+        type: 'node/update-geometry',
+        slideId: activeSlide.id,
+        updates: updates.map((update) => ({
+          path: [...update.path],
+          patch: update.dimension === 'height'
+            ? { height: update.size }
+            : { width: update.size },
+        })),
+      }
+      const start = currentDocumentRef.current
+      const next = freeformReducer(start, action)
+      if (Object.is(next, start)) return
+      updateHistory((current) => {
+        const rebased = freeformReducer(current.current, action)
+        return Object.is(rebased, current.current)
+          ? current
+          : { ...current, current: rebased }
+      })
+      setSavedAt(null)
+    }
+
+    runTextAutoSize()
+    const onFontsLoaded = () => runTextAutoSize()
+    document.fonts.addEventListener('loadingdone', onFontsLoaded)
+    return () => {
+      document.fonts.removeEventListener('loadingdone', onFontsLoaded)
+    }
+  }, [isActive, activeSlide, updateHistory])
 
   function updateNodeContentAtPath(
     slideId: string,

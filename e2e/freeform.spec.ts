@@ -5884,12 +5884,19 @@ test('renders nested v3 scene with inherited visibility lock and root selection'
     'locked-text': { x: 350, y: 225, width: 125, height: 50 },
     'scaled-root': { x: 495, y: 380, width: 150, height: 120 },
   }
+  // 文字盒会按内容自动增高（grow-only）：x/y/width 与声明几何一致，
+  // height 只会大于等于声明值，不会小于。
+  const textLeafIds = new Set(['scope-text', 'locked-text'])
   for (const [id, expectedBox] of Object.entries(expectedBoxes)) {
     expect(logicalBoxes[id], id).toBeDefined()
     expect(logicalBoxes[id].x, `${id} x`).toBeCloseTo(expectedBox.x, 1)
     expect(logicalBoxes[id].y, `${id} y`).toBeCloseTo(expectedBox.y, 1)
     expect(logicalBoxes[id].width, `${id} width`).toBeCloseTo(expectedBox.width, 1)
-    expect(logicalBoxes[id].height, `${id} height`).toBeCloseTo(expectedBox.height, 1)
+    if (textLeafIds.has(id)) {
+      expect(logicalBoxes[id].height, `${id} height`).toBeGreaterThanOrEqual(expectedBox.height - 0.05)
+    } else {
+      expect(logicalBoxes[id].height, `${id} height`).toBeCloseTo(expectedBox.height, 1)
+    }
   }
 
   const lockedText = page.locator('[data-scene-node-id="locked-text"] [role="textbox"]')
@@ -11164,5 +11171,59 @@ test.describe('freeform reload restore', () => {
     await expect.poll(() =>
       page.evaluate(() => window.__cmView!.state.doc.toString()),
     ).toContain('刷新恢复的文稿')
+  })
+})
+
+test.describe('freeform text auto size', () => {
+  test('typing past the box grows it so text is never clipped', async ({ page }) => {
+    await openFreeform(page)
+    await insertText(page)
+    const element = page.getByTestId('freeform-element').last()
+    const initialHeight = await element.evaluate((el) => el.offsetHeight)
+    expect(initialHeight).toBe(150)
+
+    // 四行 48px 文字远超默认 150px 的盒子。
+    await page.getByLabel('文本内容').fill('一\n二\n三\n四')
+    await expect.poll(() => element.evaluate((el) => el.offsetHeight)).toBeGreaterThan(220)
+
+    // 内容不再被裁：盒子不小于文字实际需要的高度。
+    const overflow = await element.evaluate((el) => {
+      const box = el.querySelector('.freeform-textbox') as HTMLElement
+      return box.scrollHeight - box.clientHeight
+    })
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+
+  test('the text box never shrinks back when content is removed', async ({ page }) => {
+    await openFreeform(page)
+    await insertText(page)
+    const element = page.getByTestId('freeform-element').last()
+
+    await page.getByLabel('文本内容').fill('一\n二\n三\n四')
+    const grownHeight = await element.evaluate((el) => el.offsetHeight)
+    expect(grownHeight).toBeGreaterThan(220)
+
+    await page.getByLabel('文本内容').fill('短')
+    await expect(await element.evaluate((el) => el.offsetHeight)).toBe(grownHeight)
+  })
+
+  test('vertical text grows the box wider instead of clipping columns', async ({ page }) => {
+    await openFreeform(page)
+    await insertText(page)
+    const element = page.getByTestId('freeform-element').last()
+    const initialWidth = await element.evaluate((el) => el.offsetWidth)
+    expect(initialWidth).toBe(520)
+
+    await page.getByTestId('text-vertical-toggle').click()
+    await expect(page.getByTestId('text-vertical-toggle')).toHaveAttribute('aria-pressed', 'true')
+    // 二十个字在 150px 高的竖排盒里要排十列，远超默认 520px 宽。
+    await page.getByLabel('文本内容').fill('一二三四五六七八九十一二三四五六七八九十')
+    await expect.poll(() => element.evaluate((el) => el.offsetWidth)).toBeGreaterThan(560)
+
+    const overflow = await element.evaluate((el) => {
+      const box = el.querySelector('.freeform-textbox') as HTMLElement
+      return box.scrollWidth - box.clientWidth
+    })
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 })
