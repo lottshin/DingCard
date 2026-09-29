@@ -36,6 +36,10 @@ list_templates → create_document_from_template / create_document_from_outline 
 | `dingcard://examples/freeform` | 完整自由画布 v9 文档示例（编辑部模板实例）。 |
 | `dingcard://examples/markdown` | 完整 Markdown 文档信封示例（编辑档案模板实例）。 |
 
+## 线段与旋转几何
+
+所有节点的 `rotation` 都绕**节点盒中心**顺时针旋转（编辑器画布与导出渲染一致）。线段节点本身是「盒内的一条水平线段」：要画 A→B 的线段，设 `L=|AB|`、`rotation=atan2(By−Ay, Bx−Ax)`（度）、`width=L+2×strokeWidth`、`height` 取一个小正值（如 `strokeWidth×2.2`），再把盒子居中放到线段中点——`x=(Ax+Bx)/2−width/2`、`y=(Ay+By)/2−height/2`——圆头端点就恰好落在 A 与 B。把 `x/y` 当作端点、或按绕左上角旋转来推几何，都会让斜线整条错位。
+
 ## 回到编辑器精修
 
 AI 生成的文档 JSON 可以直接回到叮卡里精修：打开「我的草稿」面板，点击「导入 JSON 文档」或把 `.json` 文件拖进面板。自由画布文档（v1–v9，旧版自动迁移）会存为草稿并直接在自由画布打开；Markdown 文档同样支持，与当前工作台模式不符时会保存并提示到对应工作台打开。非法文件会给出可读的错误提示。由此形成完整闭环：
