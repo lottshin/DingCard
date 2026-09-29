@@ -122,7 +122,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 11,
+    documentVersion: 12,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -267,6 +267,9 @@ function paintEquals(left: unknown, right: unknown): boolean {
 
 function cloneColorPaint(paint: ColorPaint): ColorPaint {
   if (paint.type === 'solid') return { type: 'solid', color: paint.color }
+  if (paint.type === 'radial-gradient') {
+    return { type: 'radial-gradient', stops: paint.stops.map((stop) => ({ ...stop })) }
+  }
   if ('stops' in paint) {
     return {
       type: 'linear-gradient',

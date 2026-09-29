@@ -53,12 +53,14 @@ export function isStopsGradient(
 
 export function paintToCssBackground(paint: ColorPaint): string {
   if (paint.type === 'solid') return paint.color
+  const stops = (list: GradientStop[]) =>
+    list.map((stop) => `${stop.color} ${Math.round(stop.offset * 1000) / 10}%`).join(', ')
+  if (paint.type === 'radial-gradient') {
+    return `radial-gradient(circle farthest-corner at 50% 50%, ${stops(paint.stops)})`
+  }
   const angle = normalizeAngle(paint.angle)
   if (isStopsGradient(paint)) {
-    const stops = paint.stops
-      .map((stop) => `${stop.color} ${Math.round(stop.offset * 1000) / 10}%`)
-      .join(', ')
-    return `linear-gradient(${angle}deg, ${stops})`
+    return `linear-gradient(${angle}deg, ${stops(paint.stops)})`
   }
   return `linear-gradient(${angle}deg, ${paint.from}, ${paint.to})`
 }
@@ -76,7 +78,7 @@ export function shapeFillToStyle(fill: ShapeFill): CSSProperties {
 
 export function paintFallbackColor(fill: ColorPaint): string {
   if (fill.type === 'solid') return fill.color
-  return isStopsGradient(fill) ? fill.stops[0].color : fill.from
+  return isStopsGradient(fill) || fill.type === 'radial-gradient' ? fill.stops[0].color : fill.from
 }
 
 export function textFillToStyle(fill: ColorPaint): CSSProperties {
@@ -93,14 +95,33 @@ export function textFillToStyle(fill: ColorPaint): CSSProperties {
 }
 
 export function toGradientPaint(fill: ColorPaint): ColorPaint {
-  return fill.type === 'linear-gradient'
-    ? fill
-    : {
-        type: 'linear-gradient',
-        from: fill.color,
-        to: DEFAULT_GRADIENT_TO,
-        angle: DEFAULT_GRADIENT_ANGLE,
-      }
+  if (fill.type === 'linear-gradient') return fill
+  if (fill.type === 'radial-gradient') {
+    return { type: 'linear-gradient', stops: fill.stops.map((stop) => ({ ...stop })), angle: DEFAULT_GRADIENT_ANGLE }
+  }
+  return {
+    type: 'linear-gradient',
+    from: fill.color,
+    to: DEFAULT_GRADIENT_TO,
+    angle: DEFAULT_GRADIENT_ANGLE,
+  }
+}
+
+/** Enter the v12 radial form: keep any existing stops, fall back to a two-stop ramp. */
+export function toRadialPaint(fill: ColorPaint): ColorPaint {
+  if (fill.type === 'radial-gradient') return fill
+  if (fill.type === 'linear-gradient' && 'stops' in fill) {
+    return { type: 'radial-gradient', stops: fill.stops.map((stop) => ({ ...stop })) }
+  }
+  const from = fill.type === 'solid' ? fill.color : fill.from
+  const to = fill.type === 'solid' ? DEFAULT_GRADIENT_TO : fill.to
+  return {
+    type: 'radial-gradient',
+    stops: [
+      { offset: 0, color: from },
+      { offset: 1, color: to },
+    ],
+  }
 }
 
 export function toSolidPaint(fill: ColorPaint): ColorPaint {

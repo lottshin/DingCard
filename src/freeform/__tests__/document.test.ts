@@ -69,7 +69,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(11)
+    expect(doc.documentVersion).toBe(12)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -964,6 +964,32 @@ describe('v8 appearance patches', () => {
       type: 'solid',
       color: '#c2410c',
     })
+  })
+
+  it('applies the v12 radial gradient to shape and text fills', () => {
+    const radial = {
+      type: 'radial-gradient' as const,
+      stops: [
+        { offset: 0, color: '#fde68a' },
+        { offset: 1, color: '#c2410c' },
+      ],
+    }
+    const document = documentWith([
+      { ...createTextElement(createSlide()), id: 'text-1' },
+      { ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' },
+    ])
+
+    const styled = stylePatch(document, ['shape-1'], { fill: radial })
+    expect((styled.slides[0].nodes[1] as FreeformShapeElement).fill).toEqual(radial)
+
+    const noop = stylePatch(styled, ['shape-1'], {
+      fill: { type: 'radial-gradient', stops: radial.stops.map((stop) => ({ ...stop })) },
+    })
+    expect(noop).toBe(styled)
+
+    const textStyled = stylePatch(document, ['text-1'], { textFill: radial })
+    expect((textStyled.slides[0].nodes[0] as FreeformTextElement).textFill).toEqual(radial)
+    expect(stylePatch(textStyled, ['text-1'], { textFill: radial })).toBe(textStyled)
   })
 
   it('applies vertical text patches and clears them with false', () => {

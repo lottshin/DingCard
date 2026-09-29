@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 11,
+    documentVersion: 12,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(11)
+    expect(result.document.documentVersion).toBe(12)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -96,6 +96,33 @@ describe('validateDocument', () => {
     const malformed = structuredClone(noFill)
     const malformedShape = (((malformed.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>)[1].children as Array<Record<string, unknown>>)[0]
     malformedShape.fill = { type: 'transparent', color: '#ffffff' }
+    expect(validateDocument(malformed).ok).toBe(false)
+  })
+
+  test('accepts the v12 radial gradient everywhere and rejects it on v11 inputs', () => {
+    const radial = {
+      type: 'radial-gradient',
+      stops: [
+        { offset: 0, color: '#fde68a' },
+        { offset: 1, color: '#c2410c' },
+      ],
+    }
+    const radialDocument = seedDocument() as unknown as Record<string, unknown>
+    const slide = (radialDocument.slides as Array<Record<string, unknown>>)[0]
+    slide.background = radial
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    nodes[0].textFill = radial
+    const shape = (nodes[1].children as Array<Record<string, unknown>>)[0]
+    shape.fill = radial
+    expect(validateDocument(radialDocument).ok).toBe(true)
+
+    const legacy = structuredClone(radialDocument)
+    legacy.documentVersion = 11
+    expect(validateDocument(legacy).ok).toBe(false)
+
+    const malformed = structuredClone(radialDocument)
+    const malformedSlide = (malformed.slides as Array<Record<string, unknown>>)[0]
+    malformedSlide.background = { type: 'radial-gradient', stops: [{ offset: 0, color: '#fde68a' }] }
     expect(validateDocument(malformed).ok).toBe(false)
   })
 

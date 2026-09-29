@@ -12,7 +12,7 @@ import {
 
 function validFreeformDocument(): FreeformDocument {
   return {
-    documentVersion: 11,
+    documentVersion: 12,
     activeSlideId: 'slide-1',
     slides: [
       {

@@ -60,7 +60,7 @@ describe('createDocumentFromOutline', () => {
     // cover + one slide per section + the template ending page
     expect(result.document.slides).toHaveLength(5)
     expect(result.summary).toEqual({
-      documentVersion: 11,
+      documentVersion: 12,
       slideCount: 5,
       coverTitle: '三步搞定周报',
       sections: [

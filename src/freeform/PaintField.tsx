@@ -6,6 +6,7 @@ import {
   paintFallbackColor,
   paintToCssBackground,
   toGradientPaint,
+  toRadialPaint,
   toSolidPaint,
 } from './paint'
 import { GRADIENT_STOPS_MAX, GRADIENT_STOPS_MIN } from './appearance'
@@ -16,7 +17,7 @@ import {
 } from './recentColors'
 import type { ColorPaint, GradientStop, ShapeFill, SlideBackground } from './types'
 
-export type PaintMode = 'solid' | 'linear-gradient' | 'transparent' | 'image'
+export type PaintMode = 'solid' | 'linear-gradient' | 'radial-gradient' | 'transparent' | 'image'
 
 type PaintValue = SlideBackground | ShapeFill | ColorPaint
 type LegacyGradientPaint = { type: 'linear-gradient'; from: string; to: string; angle: number }
@@ -56,7 +57,7 @@ interface PaintFieldProps {
 }
 
 function isPaint(value: PaintValue): value is ColorPaint {
-  return value.type === 'solid' || value.type === 'linear-gradient'
+  return value.type === 'solid' || value.type === 'linear-gradient' || value.type === 'radial-gradient'
 }
 
 function currentPaint(value: PaintValue, fallbackPaint: ColorPaint): ColorPaint {
@@ -321,6 +322,8 @@ export function PaintField({
       onChange(isPaint(value) ? toSolidPaint(value) : fallbackPaint)
     } else if (mode === 'linear-gradient') {
       onChange(isPaint(value) ? toGradientPaint(value) : toGradientPaint(fallbackPaint))
+    } else if (mode === 'radial-gradient') {
+      onChange(isPaint(value) ? toRadialPaint(value) : toRadialPaint(fallbackPaint))
     } else if (mode === 'transparent') {
       onChange({ type: 'transparent' })
     } else if (mode === 'image') {
@@ -334,11 +337,21 @@ export function PaintField({
   }
 
   function updateGradient(patch: Partial<Omit<LegacyGradientPaint, 'type'>>) {
-    if (isStopsGradient(gradient)) return
+    if (activeMode === 'radial-gradient' || isStopsGradient(gradient)) return
     onChange({ ...gradient, ...patch, type: 'linear-gradient' })
   }
 
+  /** Emit a stops edit in whatever gradient form is active (linear carries the angle). */
+  function emitStops(stops: GradientStop[]) {
+    if (activeMode === 'radial-gradient') {
+      onChange({ type: 'radial-gradient', stops })
+      return
+    }
+    onChange({ type: 'linear-gradient', stops, angle: gradient.angle })
+  }
+
   function updateAngle(angle: number) {
+    if (activeMode === 'radial-gradient') return
     onChange(isStopsGradient(gradient)
       ? { type: 'linear-gradient', stops: gradient.stops, angle }
       : { ...gradient, angle, type: 'linear-gradient' })
@@ -365,7 +378,7 @@ export function PaintField({
         offset: (before.offset + after.offset) / 2,
         color: mixHex(before.color, after.color),
       })
-      onChange({ type: 'linear-gradient', stops: next, angle: gradient.angle })
+      emitStops(next)
       return
     }
     onChange({
@@ -381,11 +394,9 @@ export function PaintField({
 
   function updateStopColor(index: number, color: string) {
     if (!isStopsGradient(gradient)) return
-    onChange({
-      type: 'linear-gradient',
-      angle: gradient.angle,
-      stops: gradient.stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, color } : { ...stop }),
-    })
+    emitStops(
+      gradient.stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, color } : { ...stop }),
+    )
   }
 
   /** Offsets are edited in whole percent, clamped strictly between neighbors. */
@@ -395,20 +406,14 @@ export function PaintField({
     const minPercent = index === 0 ? 0 : Math.floor(stops[index - 1].offset * 100) + 1
     const maxPercent = index === stops.length - 1 ? 100 : Math.ceil(stops[index + 1].offset * 100) - 1
     const clamped = Math.max(minPercent, Math.min(maxPercent, Math.round(percent)))
-    onChange({
-      type: 'linear-gradient',
-      angle: gradient.angle,
-      stops: stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, offset: clamped / 100 } : { ...stop }),
-    })
+    emitStops(
+      stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, offset: clamped / 100 } : { ...stop }),
+    )
   }
 
   function removeStop(index: number) {
     if (!isStopsGradient(gradient) || gradient.stops.length <= GRADIENT_STOPS_MIN) return
-    onChange({
-      type: 'linear-gradient',
-      angle: gradient.angle,
-      stops: gradient.stops.filter((_, stopIndex) => stopIndex !== index),
-    })
+    emitStops(gradient.stops.filter((_, stopIndex) => stopIndex !== index))
   }
 
   return (
@@ -424,7 +429,15 @@ export function PaintField({
             aria-label={mode === 'image' ? '插入图片填充' : undefined}
             onClick={() => changeMode(mode)}
           >
-            {mode === 'solid' ? '纯色' : mode === 'linear-gradient' ? '渐变' : mode === 'transparent' ? '透明' : '图片'}
+            {mode === 'solid'
+              ? '纯色'
+              : mode === 'linear-gradient'
+                ? '渐变'
+                : mode === 'radial-gradient'
+                  ? '径向'
+                  : mode === 'transparent'
+                    ? '透明'
+                    : '图片'}
           </button>
         ))}
       </div>
@@ -441,7 +454,7 @@ export function PaintField({
         </div>
       )}
 
-      {activeMode === 'linear-gradient' && (
+      {(activeMode === 'linear-gradient' || activeMode === 'radial-gradient') && (
         <div className="paint-gradient">
           {isStopsGradient(gradient) ? (
             <div className="paint-stops" data-testid="paint-stops-list">
@@ -516,27 +529,29 @@ export function PaintField({
               </div>
             </>
           )}
-          <div className="paint-row">
-            <input
-              className="paint-range"
-              data-testid="paint-gradient-angle"
-              type="range"
-              min="0"
-              max="359"
-              value={gradient.angle}
-              onChange={(event) => updateAngle(Number(event.currentTarget.value))}
-              aria-label={`${label} 渐变角度`}
-            />
-            <input
-              className="paint-angle"
-              type="number"
-              min="0"
-              max="359"
-              value={gradient.angle}
-              onChange={(event) => updateAngle(Number(event.currentTarget.value))}
-              aria-label={`${label} 渐变角度数值`}
-            />
-          </div>
+          {activeMode === 'linear-gradient' && (
+            <div className="paint-row">
+              <input
+                className="paint-range"
+                data-testid="paint-gradient-angle"
+                type="range"
+                min="0"
+                max="359"
+                value={gradient.angle}
+                onChange={(event) => updateAngle(Number(event.currentTarget.value))}
+                aria-label={`${label} 渐变角度`}
+              />
+              <input
+                className="paint-angle"
+                type="number"
+                min="0"
+                max="359"
+                value={gradient.angle}
+                onChange={(event) => updateAngle(Number(event.currentTarget.value))}
+                aria-label={`${label} 渐变角度数值`}
+              />
+            </div>
+          )}
           <div className="paint-row">
             <button
               type="button"
@@ -552,7 +567,13 @@ export function PaintField({
           <div
             className="paint-preview"
             aria-hidden="true"
-            style={{ background: paintToCssBackground(gradient) }}
+            style={{
+              background: paintToCssBackground(
+                activeMode === 'radial-gradient' && isStopsGradient(gradient)
+                  ? { type: 'radial-gradient', stops: gradient.stops }
+                  : gradient,
+              ),
+            }}
           />
         </div>
       )}

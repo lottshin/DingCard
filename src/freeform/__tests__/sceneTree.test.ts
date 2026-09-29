@@ -194,7 +194,7 @@ function documentWith(
   slides: FreeformSlide[] = [slide('slide-1', nodes)],
 ): FreeformDocument {
   return {
-    documentVersion: 11,
+    documentVersion: 12,
     slides,
     activeSlideId: slides[0].id,
   }

@@ -73,7 +73,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -81,6 +81,7 @@ const SLIDE_GUIDE_OPTIONAL_KEYS = new Set(['guides'])
 const SOLID_PAINT_KEYS = new Set(['type', 'color'])
 const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
 const GRADIENT_STOPS_PAINT_KEYS = new Set(['type', 'stops', 'angle'])
+const RADIAL_STOPS_PAINT_KEYS = new Set(['type', 'stops'])
 const TRANSPARENT_PAINT_KEYS = new Set(['type'])
 const IMAGE_FILL_V3_KEYS = new Set(['type', 'src', 'fit'])
 const IMAGE_FILL_V4_KEYS = new Set(['type', 'src', 'fit', 'framing'])
@@ -166,6 +167,15 @@ function cloneStrictColorPaint(
         angle: value.angle,
       }
     }
+  }
+  // The centered radial variant is v12-only; older input versions must reject it.
+  if (
+    inputVersion >= 12 &&
+    value.type === 'radial-gradient' &&
+    hasExactKeys(value, RADIAL_STOPS_PAINT_KEYS)
+  ) {
+    const stops = cloneGradientStops(value.stops)
+    if (stops) return { type: 'radial-gradient', stops }
   }
   return null
 }
@@ -652,7 +662,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 11,
+    documentVersion: 12,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -701,6 +711,11 @@ export function normalizeFreeformDocumentV10(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v11 document. */
 export function normalizeFreeformDocumentV11(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 11)
+}
+
+/** Strictly validates and clones an already-v12 document. */
+export function normalizeFreeformDocumentV12(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 12)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -967,9 +982,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v11 object. */
+/** Normalize any supported freeform document version to a fresh v12 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 12) return normalizeFreeformDocumentV12(value)
   if (value.documentVersion === 11) return normalizeFreeformDocumentV11(value)
   if (value.documentVersion === 10) return normalizeFreeformDocumentV10(value)
   if (value.documentVersion === 9) return normalizeFreeformDocumentV9(value)
@@ -988,6 +1004,9 @@ export function normalizeFreeformDocument(value: unknown): FreeformDocument | nu
 function copySlideBackgroundValue(background: SlideBackground): SlideBackground {
   if (background.type === 'transparent') return { type: 'transparent' }
   if (background.type === 'solid') return { type: 'solid', color: background.color }
+  if (background.type === 'radial-gradient') {
+    return { type: 'radial-gradient', stops: background.stops.map((stop) => ({ ...stop })) }
+  }
   if ('stops' in background) {
     return {
       type: 'linear-gradient',
@@ -1009,7 +1028,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 11,
+    documentVersion: 12,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1042,7 +1061,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 11,
+    documentVersion: 12,
     activeSlideId: document.activeSlideId,
     slides,
   }

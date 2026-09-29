@@ -491,6 +491,9 @@ export function reorderNodesAboveAtPath(
 }
 
 function clonePaint(paint: ColorPaint): ColorPaint {
+  if (paint.type === 'radial-gradient') {
+    return { type: 'radial-gradient', stops: paint.stops.map((stop) => ({ ...stop })) }
+  }
   if ('stops' in paint) {
     return {
       type: 'linear-gradient',
@@ -827,6 +830,7 @@ interface SceneValidationState {
 const SOLID_PAINT_KEYS = new Set(['type', 'color'])
 const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
 const GRADIENT_STOPS_PAINT_KEYS = new Set(['type', 'stops', 'angle'])
+const RADIAL_STOPS_PAINT_KEYS = new Set(['type', 'stops'])
 const TRANSPARENT_PAINT_KEYS = new Set(['type'])
 const IMAGE_FILL_KEYS = new Set(['type', 'src', 'fit', 'framing'])
 const GROUP_NODE_KEYS = new Set([
@@ -921,6 +925,9 @@ export function isValidSceneColorPaint(value: unknown): boolean {
   const paint = value as Record<string, unknown>
   if (paint.type === 'solid') {
     return hasExactKeys(paint, SOLID_PAINT_KEYS) && isHexColor(paint.color)
+  }
+  if (paint.type === 'radial-gradient') {
+    return hasExactKeys(paint, RADIAL_STOPS_PAINT_KEYS) && cloneGradientStops(paint.stops) !== null
   }
   if (paint.type === 'linear-gradient' && hasExactKeys(paint, GRADIENT_STOPS_PAINT_KEYS)) {
     return (

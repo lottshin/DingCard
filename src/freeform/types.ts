@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 11
+  documentVersion: 12
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -40,6 +40,8 @@ export type ColorPaint =
   | { type: 'solid'; color: string }
   | { type: 'linear-gradient'; from: string; to: string; angle: number }
   | { type: 'linear-gradient'; stops: GradientStop[]; angle: number }
+  /** The v12 centered radial gradient; the radius is the box's farthest corner. */
+  | { type: 'radial-gradient'; stops: GradientStop[] }
 
 export type SlideBackground =
   | ColorPaint

@@ -11,6 +11,7 @@ import {
   slideBackgroundToCss,
   textFillToStyle,
   toGradientPaint,
+  toRadialPaint,
   toSolidPaint,
 } from '../paint'
 
@@ -72,5 +73,48 @@ describe('paint helpers', () => {
       type: 'solid',
       color: '#222222',
     })
+  })
+
+  it('renders the v12 radial gradient as a centered CSS background', () => {
+    const stops = [
+      { offset: 0, color: '#fde68a' },
+      { offset: 1, color: '#c2410c' },
+    ]
+    expect(paintToCssBackground({ type: 'radial-gradient', stops })).toBe(
+      'radial-gradient(circle farthest-corner at 50% 50%, #fde68a 0%, #c2410c 100%)',
+    )
+    expect(slideBackgroundToCss({ type: 'radial-gradient', stops })).toBe(
+      'radial-gradient(circle farthest-corner at 50% 50%, #fde68a 0%, #c2410c 100%)',
+    )
+    expect(paintFallbackColor({ type: 'radial-gradient', stops })).toBe('#fde68a')
+    expect(textFillToStyle({ type: 'radial-gradient', stops }).backgroundImage).toBe(
+      'radial-gradient(circle farthest-corner at 50% 50%, #fde68a 0%, #c2410c 100%)',
+    )
+  })
+
+  it('converts the radial form to and from the linear form without losing stops', () => {
+    const stops = [
+      { offset: 0, color: '#fde68a' },
+      { offset: 0.5, color: '#f97316' },
+      { offset: 1, color: '#c2410c' },
+    ]
+    const linear = toGradientPaint({ type: 'radial-gradient', stops })
+    expect(linear).toEqual({ type: 'linear-gradient', stops, angle: DEFAULT_GRADIENT_ANGLE })
+    expect(toRadialPaint(linear)).toEqual({ type: 'radial-gradient', stops })
+    expect(toRadialPaint({ type: 'solid', color: '#111111' })).toEqual({
+      type: 'radial-gradient',
+      stops: [
+        { offset: 0, color: '#111111' },
+        { offset: 1, color: '#f97316' },
+      ],
+    })
+    expect(toRadialPaint({ type: 'linear-gradient', from: '#111111', to: '#eeeeee', angle: 45 })).toEqual({
+      type: 'radial-gradient',
+      stops: [
+        { offset: 0, color: '#111111' },
+        { offset: 1, color: '#eeeeee' },
+      ],
+    })
+    expect(toSolidPaint({ type: 'radial-gradient', stops })).toEqual({ type: 'solid', color: '#fde68a' })
   })
 })

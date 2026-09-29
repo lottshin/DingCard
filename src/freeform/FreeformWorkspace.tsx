@@ -5677,7 +5677,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                   <PaintField
                     label="背景"
                     value={activeSlide.background}
-                    modes={['solid', 'linear-gradient', 'transparent']}
+                    modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent']}
                     fallbackPaint={DEFAULT_PAGE_PAINT}
                     onChange={(background) =>
                       applyAction({
@@ -6061,7 +6061,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                           <PaintField
                             label="文字颜色"
                             value={selectedElement.textFill}
-                            modes={['solid', 'linear-gradient']}
+                            modes={['solid', 'linear-gradient', 'radial-gradient']}
                             fallbackPaint={DEFAULT_TEXT_PAINT}
                             onChange={(textFill) =>
                               updateSelectedStyle({ textFill: textFill as ColorPaint })
@@ -6075,7 +6075,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                             <PaintField
                               label="填充"
                               value={selectedElement.fill}
-                              modes={['solid', 'linear-gradient', 'transparent', 'image']}
+                              modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent', 'image']}
                               fallbackPaint={DEFAULT_SHAPE_PAINT}
                               onChange={(fill) =>
                                 updateSelectedShapeFill(fill as ShapeFill)

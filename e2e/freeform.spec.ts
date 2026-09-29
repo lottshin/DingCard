@@ -1422,6 +1422,46 @@ test('shape fill transparent mode renders an outline-only shape and persists', a
   await expect(restoredShape).toHaveCSS('border-top-width', '6px')
 })
 
+test('shape fill radial gradient edits stops and persists through reload', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertShape(page)
+  const shapeView = page.locator('.freeform-shape')
+  const shapeFill = page.getByTestId('shape-fill-paint')
+
+  await shapeFill.getByTestId('paint-mode-radial-gradient').click()
+  await expect(shapeView).toHaveCSS('background-image', /radial-gradient\(/)
+  // Radial has no angle: the angle slider stays hidden.
+  await expect(shapeFill.getByTestId('paint-gradient-angle')).toHaveCount(0)
+
+  // The same stops editor as linear gradients, emitting radial edits.
+  await shapeFill.getByTestId('paint-stops-add').click()
+  await expect(shapeFill.getByTestId('paint-stops-list')).toBeVisible()
+  await expect(shapeFill.locator('[data-testid$="-offset"]')).toHaveCount(3)
+  await expect(shapeView).toHaveCSS('background-image', /radial-gradient\(/)
+
+  // Switching to linear keeps every stop and brings the angle back.
+  await shapeFill.getByTestId('paint-mode-linear-gradient').click()
+  await expect(shapeView).toHaveCSS('background-image', /linear-gradient\(/)
+  await expect(shapeFill.locator('[data-testid$="-offset"]')).toHaveCount(3)
+  await expect(shapeFill.getByTestId('paint-gradient-angle')).toBeVisible()
+
+  await shapeFill.getByTestId('paint-mode-radial-gradient').click()
+  await expect(shapeView).toHaveCSS('background-image', /radial-gradient\(/)
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await registerUser(page, `radial-${Date.now().toString(36)}`)
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+  await page.reload()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.locator('.freeform-shape')).toHaveCSS(
+    'background-image',
+    /radial-gradient\(/,
+  )
+})
+
 test('inspector appearance controls style leaves end to end', async ({ page }) => {
   await openFreeform(page)
 
@@ -5184,7 +5224,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(11)
+  expect(storedDocument.documentVersion).toBe(12)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
