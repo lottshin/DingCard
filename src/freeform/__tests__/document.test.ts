@@ -17,6 +17,7 @@ import type {
   FreeformDocument,
   FreeformGroupNode,
   FreeformImageElement,
+  FreeformLineElement,
   FreeformSceneNode,
   FreeformShapeElement,
   FreeformTextElement,
@@ -69,7 +70,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(12)
+    expect(doc.documentVersion).toBe(13)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -990,6 +991,29 @@ describe('v8 appearance patches', () => {
     const textStyled = stylePatch(document, ['text-1'], { textFill: radial })
     expect((textStyled.slides[0].nodes[0] as FreeformTextElement).textFill).toEqual(radial)
     expect(stylePatch(textStyled, ['text-1'], { textFill: radial })).toBe(textStyled)
+  })
+
+  it('applies the v13 endpoint caps to lines and clears them with null', () => {
+    const document = documentWith([{ ...createLineElement(createSlide(), 'line'), id: 'line-1' }])
+
+    const styled = stylePatch(document, ['line-1'], { startCap: 'arrow', endCap: 'dot' })
+    const node = styled.slides[0].nodes[0] as FreeformLineElement
+    expect(node.startCap).toBe('arrow')
+    expect(node.endCap).toBe('dot')
+
+    const noop = stylePatch(styled, ['line-1'], { startCap: 'arrow', endCap: 'dot' })
+    expect(noop).toBe(styled)
+
+    const overridden = stylePatch(styled, ['line-1'], { endCap: 'none' })
+    expect((overridden.slides[0].nodes[0] as FreeformLineElement).endCap).toBe('none')
+
+    const cleared = stylePatch(overridden, ['line-1'], { startCap: null, endCap: null })
+    const clearedNode = cleared.slides[0].nodes[0] as FreeformLineElement
+    expect('startCap' in clearedNode).toBe(false)
+    expect('endCap' in clearedNode).toBe(false)
+
+    const invalid = stylePatch(document, ['line-1'], { startCap: 'square' as never })
+    expect(invalid).toBe(document)
   })
 
   it('applies vertical text patches and clears them with false', () => {

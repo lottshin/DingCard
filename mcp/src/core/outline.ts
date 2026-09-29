@@ -26,7 +26,7 @@ export interface OutlineDocumentResult {
   ok: true
   document: FreeformDocument
   summary: {
-    documentVersion: 12
+    documentVersion: 13
     slideCount: number
     coverTitle: string
     sections: Array<{ slideId: string; title: string; pointCount: number }>
@@ -206,13 +206,13 @@ export function createDocumentFromOutline(
 
   const normalized = normalizeFreeformDocument(document)
   if (!normalized) {
-    return { ok: false, error: '生成的文档未通过 v12 校验。' }
+    return { ok: false, error: '生成的文档未通过 v13 校验。' }
   }
   return {
     ok: true,
     document: normalized,
     summary: {
-      documentVersion: 12,
+      documentVersion: 13,
       slideCount: normalized.slides.length,
       coverTitle,
       sections: summarySections,

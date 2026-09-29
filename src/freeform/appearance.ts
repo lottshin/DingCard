@@ -136,6 +136,10 @@ export function isValidLineCap(value: unknown): value is 'round' | 'butt' | 'squ
   return value === 'round' || value === 'butt' || value === 'square'
 }
 
+export function isValidLineEndpointCap(value: unknown): value is 'none' | 'arrow' | 'dot' {
+  return value === 'none' || value === 'arrow' || value === 'dot'
+}
+
 export function isValidShape(value: unknown): value is 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon' {
   return value === 'rect'
     || value === 'ellipse'

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 12
+  documentVersion: 13
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -164,6 +164,9 @@ export interface FreeformShapeElement extends FreeformElementBase {
   cornerRadius?: number
 }
 
+/** One endpoint decoration on a line; 'arrow' and 'dot' draw at the endpoint. */
+export type LineEndpointCap = 'none' | 'arrow' | 'dot'
+
 export interface FreeformLineElement extends FreeformElementBase {
   type: 'line'
   lineKind: 'line' | 'arrow'
@@ -173,6 +176,10 @@ export interface FreeformLineElement extends FreeformElementBase {
   dash?: number
   /** Stroke cap; absent means round. */
   cap?: 'round' | 'butt' | 'square'
+  /** Start endpoint decoration (v13); absent defers to lineKind. */
+  startCap?: LineEndpointCap
+  /** End endpoint decoration (v13); absent defers to lineKind. */
+  endCap?: LineEndpointCap
 }
 
 export type FreeformElement =
@@ -247,6 +254,10 @@ export interface FreeformNodeStylePatch {
   /** Unified dash length in px; `null` restores a solid stroke. */
   dash?: number | null
   cap?: 'round' | 'butt' | 'square'
+  /** Line start endpoint decoration (v13); `null` defers to lineKind. */
+  startCap?: LineEndpointCap | null
+  /** Line end endpoint decoration (v13); `null` defers to lineKind. */
+  endCap?: LineEndpointCap | null
 }
 
 export interface FreeformNodeGeometryPatch {

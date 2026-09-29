@@ -47,6 +47,7 @@ import {
   isValidCornerRadius,
   isValidDash,
   isValidLineCap,
+  isValidLineEndpointCap,
   isValidLineHeight,
   isValidLetterSpacing,
   isValidOpacity,
@@ -122,7 +123,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 12,
+    documentVersion: 13,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -372,6 +373,8 @@ const STYLE_KEYS = new Set([
   'blendMode',
   'dash',
   'cap',
+  'startCap',
+  'endCap',
   'fit',
   'framing',
   'shape',
@@ -390,7 +393,9 @@ const TEXT_APPEARANCE_KEYS = new Set([
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
-const LINE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap'])
+const LINE_APPEARANCE_KEYS = new Set([
+  'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
+])
 
 /** Validate every v6 appearance key present on a style patch; false rejects. */
 function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>): boolean {
@@ -419,6 +424,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidDash(value)) return false
     } else if (key === 'cap') {
       if (!isValidLineCap(value)) return false
+    } else if (key === 'startCap' || key === 'endCap') {
+      if (value !== null && !isValidLineEndpointCap(value)) return false
     } else if (key === 'stroke') {
       if (value !== null && !isHexColor(value)) return false
     } else if (key === 'strokeWidth') {
@@ -727,6 +734,7 @@ function applyStylePatch(
   if (node.type === 'line') {
     const allowed = new Set([
       'lineKind', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap',
+      'startCap', 'endCap',
     ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('lineKind' in patch && patch.lineKind !== 'line' && patch.lineKind !== 'arrow') {

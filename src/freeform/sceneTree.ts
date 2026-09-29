@@ -14,6 +14,7 @@ import {
   isValidCornerRadius,
   isValidDash,
   isValidLineCap,
+  isValidLineEndpointCap,
   isValidLineHeight,
   isValidLetterSpacing,
   isValidOpacity,
@@ -918,6 +919,8 @@ const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   blendMode: BLEND_FIELD_CHECK,
   dash: (record) => isValidDash(record.dash),
   cap: (record) => isValidLineCap(record.cap),
+  startCap: (record) => isValidLineEndpointCap(record.startCap),
+  endCap: (record) => isValidLineEndpointCap(record.endCap),
 }
 
 export function isValidSceneColorPaint(value: unknown): boolean {

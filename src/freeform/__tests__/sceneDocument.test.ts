@@ -22,6 +22,7 @@ import {
   normalizeFreeformDocumentV10,
   normalizeFreeformDocumentV11,
   normalizeFreeformDocumentV12,
+  normalizeFreeformDocumentV13,
 } from '../sceneDocument'
 import {
   countSceneNodes,
@@ -233,7 +234,7 @@ function nestedGroups(depth: number): unknown {
 
 describe('freeform scene types and limits', () => {
   it('uses the current recursive scene types', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<12>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<13>()
     expectTypeOf<FreeformSlide>().toHaveProperty('nodes')
     expectTypeOf<FreeformSceneLeaf>().toHaveProperty('scale')
     expectTypeOf<FreeformGroupNode>().toHaveProperty('children')
@@ -252,7 +253,7 @@ describe('freeform scene types and limits', () => {
 
 describe('strict v4/v5 freeform document contract', () => {
   it('uses versionless v4 runtime types with required image framing', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<12>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<13>()
     expectTypeOf<Extract<FreeformSceneLeaf, { type: 'image' }>>()
       .toHaveProperty('framing')
       .toEqualTypeOf<ImageFraming>()
@@ -282,7 +283,7 @@ describe('strict v4/v5 freeform document contract', () => {
     const deepGroup = hiddenGroup?.type === 'group' ? hiddenGroup.children[1] : undefined
     const deepFill = deepGroup?.type === 'group' ? deepGroup.children[0] : undefined
 
-    expect(migrated?.documentVersion).toBe(12)
+    expect(migrated?.documentVersion).toBe(13)
     expect(rootImage).toMatchObject({ type: 'image', framing: framing() })
     expect(hiddenImage).toMatchObject({ type: 'image', framing: framing() })
     expect(deepFill).toMatchObject({
@@ -323,7 +324,7 @@ describe('strict v4/v5 freeform document contract', () => {
 
     const normalized = normalizeFreeformDocumentV4(raw)
 
-    expect(normalized).toEqual({ ...raw, documentVersion: 12 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 13 })
     expect(normalized).not.toBe(raw)
     const sourceImage = (raw.slides[0] as { nodes: Array<{ framing: ImageFraming }> }).nodes[0]
     const outputImage = normalized?.slides[0].nodes[0]
@@ -374,11 +375,11 @@ describe('strict v4/v5 freeform document contract', () => {
     const v3 = v3Document([v3Slide('slide-1', [imageLeaf('photo')])])
     const v4 = v4Document([v3Slide('slide-1', [v4ImageLeaf('photo')])])
 
-    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(12)
-    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(12)
-    expect(normalizeFreeformDocument(v3)?.documentVersion).toBe(12)
-    expect(normalizeFreeformDocument(v4)).toEqual({ ...v4, documentVersion: 12 })
-    expect(normalizeFreeformDocument({ ...v4, documentVersion: 13 })).toBeNull()
+    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(13)
+    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(13)
+    expect(normalizeFreeformDocument(v3)?.documentVersion).toBe(13)
+    expect(normalizeFreeformDocument(v4)).toEqual({ ...v4, documentVersion: 13 })
+    expect(normalizeFreeformDocument({ ...v4, documentVersion: 14 })).toBeNull()
     expect(normalizeFreeformDocument(null)).toBeNull()
   })
 
@@ -461,7 +462,7 @@ describe('legacy freeform document migration', () => {
 
     expect(raw).toEqual(snapshot)
     expect(migrated).not.toBeNull()
-    expect(migrated?.documentVersion).toBe(12)
+    expect(migrated?.documentVersion).toBe(13)
     expect(migrated?.slides[0].nodes.map((node) => node.id)).toEqual([
       'text-1',
       'image-1',
@@ -727,7 +728,7 @@ describe('strict v3 freeform normalization', () => {
 
     const normalized = migrateFreeformDocumentV3ToV9(raw)
 
-    expect(normalized).toEqual({ ...raw, documentVersion: 12 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 13 })
     expect(normalized).not.toBe(raw)
     expect(normalized?.slides[1]).not.toBe(raw.slides[1])
     expect(raw).toEqual(snapshot)
@@ -738,10 +739,10 @@ describe('strict v3 freeform normalization', () => {
     const v2 = legacyDocument([legacySlide('slide-1')])
     const v3 = v3Document()
 
-    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(12)
-    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(12)
-    expect(normalizeFreeformDocument(v3)).toEqual({ ...v3, documentVersion: 12 })
-    expect(normalizeFreeformDocument({ ...v3, documentVersion: 13 })).toBeNull()
+    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(13)
+    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(13)
+    expect(normalizeFreeformDocument(v3)).toEqual({ ...v3, documentVersion: 13 })
+    expect(normalizeFreeformDocument({ ...v3, documentVersion: 14 })).toBeNull()
     expect(normalizeFreeformDocument(null)).toBeNull()
   })
 
@@ -758,7 +759,7 @@ describe('strict v3 freeform normalization', () => {
     expect(normalized).not.toBeNull()
     expect(normalized?.slides[0].nodes[0].name).toBe('')
     expect(normalized?.slides[0].nodes[1].name).toBe('   ')
-    expect(normalized).toEqual({ ...raw, documentVersion: 12 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 13 })
   })
 
   it.each([
@@ -1048,9 +1049,9 @@ describe('strict v5 freeform document contract', () => {
 
   it('normalizes any historical version to v9 while still accepting v6 through v8 documents', () => {
     const v4 = v4Document([v3Slide('slide-1', [textLeaf('text-1')])])
-    expect(normalizeFreeformDocument(v4)?.documentVersion).toBe(12)
+    expect(normalizeFreeformDocument(v4)?.documentVersion).toBe(13)
     const v6 = { ...v4, documentVersion: 6 }
-    expect(normalizeFreeformDocument(v6)?.documentVersion).toBe(12)
+    expect(normalizeFreeformDocument(v6)?.documentVersion).toBe(13)
   })
 
   it.each([
@@ -1696,7 +1697,7 @@ describe('strict v11 freeform document contract', () => {
     const v10 = shapeDocument({ type: 'linear-gradient', from: '#111111', to: '#f97316', angle: 45 }, 10)
     const normalized = normalizeFreeformDocumentV10(v10)
     if (!normalized) throw new Error('Expected valid v10 document')
-    expect(normalized.documentVersion).toBe(12)
+    expect(normalized.documentVersion).toBe(13)
     expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
     expect(normalizeFreeformDocument(v10)).toEqual(normalized)
 
@@ -1766,7 +1767,7 @@ describe('strict v12 freeform document contract', () => {
     const v11 = radialDocument({ type: 'linear-gradient', stops: radialStops, angle: 45 }, 11)
     const normalized = normalizeFreeformDocumentV11(v11)
     if (!normalized) throw new Error('Expected valid v11 document')
-    expect(normalized.documentVersion).toBe(12)
+    expect(normalized.documentVersion).toBe(13)
     expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
     expect(normalizeFreeformDocument(v11)).toEqual(normalized)
     const shape = normalized.slides[0].nodes[0]
@@ -1791,6 +1792,59 @@ describe('strict v12 freeform document contract', () => {
     for (const [label, paint] of invalid) {
       expect(normalizeFreeformDocumentV12(radialDocument(paint)), label).toBeNull()
       expect(normalizeFreeformDocument(radialDocument(paint)), label).toBeNull()
+    }
+  })
+})
+
+describe('strict v13 freeform document contract', () => {
+  function lineDocument(caps: Record<string, unknown>, documentVersion = 13) {
+    return {
+      ...v4Document([v3Slide('slide-1', [lineLeaf('line-1', caps)])]),
+      documentVersion,
+    }
+  }
+
+  it('accepts endpoint caps on v13 lines and rejects them on v12 inputs', () => {
+    const raw = lineDocument({ startCap: 'arrow', endCap: 'dot' })
+    const normalized = normalizeFreeformDocumentV13(raw)
+    expect(normalized).not.toBeNull()
+    const line = normalized?.slides[0].nodes[0]
+    if (line?.type !== 'line') throw new Error('Expected line node')
+    expect(line.startCap).toBe('arrow')
+    expect(line.endCap).toBe('dot')
+    expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
+
+    const plain = lineDocument({ startCap: 'none', endCap: 'none' })
+    expect(normalizeFreeformDocumentV13(plain)).not.toBeNull()
+
+    // The same payload is not a valid v12 document: endpoint caps are v13-only.
+    const legacy = lineDocument({ startCap: 'arrow', endCap: 'dot' }, 12)
+    expect(normalizeFreeformDocumentV12(legacy)).toBeNull()
+    expect(normalizeFreeformDocument(legacy)).toBeNull()
+  })
+
+  it('migrates v12 documents to v13 without touching their lines', () => {
+    const v12 = lineDocument({}, 12)
+    const normalized = normalizeFreeformDocumentV12(v12)
+    if (!normalized) throw new Error('Expected valid v12 document')
+    expect(normalized.documentVersion).toBe(13)
+    expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
+    expect(normalizeFreeformDocument(v12)).toEqual(normalized)
+    const line = normalized.slides[0].nodes[0]
+    if (line?.type !== 'line') throw new Error('Expected line node')
+    expect(line.startCap).toBeUndefined()
+    expect(line.endCap).toBeUndefined()
+  })
+
+  it('rejects malformed endpoint caps on v13 documents', () => {
+    const invalid: Array<[string, Record<string, unknown>]> = [
+      ['unknown cap', { startCap: 'square' }],
+      ['non-string cap', { endCap: 3 }],
+      ['extra key', { startCap: 'dot', extra: true }],
+    ]
+    for (const [label, caps] of invalid) {
+      expect(normalizeFreeformDocumentV13(lineDocument(caps)), label).toBeNull()
+      expect(normalizeFreeformDocument(lineDocument(caps)), label).toBeNull()
     }
   })
 })

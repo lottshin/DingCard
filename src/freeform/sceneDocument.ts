@@ -37,6 +37,7 @@ import type {
   FreeformSceneNode,
   FreeformSlide,
   ImageFraming,
+  LineEndpointCap,
   RichTextSpan,
   SceneFilter,
   ShadowPaint,
@@ -54,6 +55,7 @@ import {
   isValidDash,
   isValidLetterSpacing,
   isValidLineCap,
+  isValidLineEndpointCap,
   isValidLineHeight,
   isValidOpacity,
   isValidShape,
@@ -73,7 +75,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -268,6 +270,7 @@ const TEXT_OPTIONAL_V9_KEYS = new Set([
 ])
 const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
+const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
 
 /** Exact required keys plus an optional-key whitelist (null = exact only). */
 function hasKeysWithOptionals(
@@ -311,7 +314,7 @@ function optionalKeysFor(
   }
   if (type === 'text') return TEXT_OPTIONAL_V9_KEYS
   if (type === 'shape') return SHAPE_OPTIONAL_V9_KEYS
-  if (type === 'line') return LINE_OPTIONAL_V9_KEYS
+  if (type === 'line') return inputVersion >= 13 ? LINE_OPTIONAL_V13_KEYS : LINE_OPTIONAL_V9_KEYS
   if (type === 'image') return BASE_OPTIONAL_V9_KEYS
   return null
 }
@@ -570,6 +573,11 @@ function normalizeStrictSceneNode(
       if ('dash' in value && !isValidDash(value.dash)) return null
       if ('cap' in value && !isValidLineCap(value.cap)) return null
     }
+    // Endpoint decorations are v13-only; older input versions reject them.
+    if (inputVersion >= 13) {
+      if ('startCap' in value && !isValidLineEndpointCap(value.startCap)) return null
+      if ('endCap' in value && !isValidLineEndpointCap(value.endCap)) return null
+    }
     const lineAppearance = cloneStrictAppearance(value, inputVersion)
     if (!lineAppearance) return null
     return {
@@ -580,6 +588,8 @@ function normalizeStrictSceneNode(
       strokeWidth: value.strokeWidth,
       ...('dash' in value ? { dash: value.dash as number } : {}),
       ...('cap' in value ? { cap: value.cap as 'round' | 'butt' | 'square' } : {}),
+      ...('startCap' in value ? { startCap: value.startCap as LineEndpointCap } : {}),
+      ...('endCap' in value ? { endCap: value.endCap as LineEndpointCap } : {}),
       ...lineAppearance,
     }
   }
@@ -662,7 +672,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 12,
+    documentVersion: 13,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -716,6 +726,11 @@ export function normalizeFreeformDocumentV11(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v12 document. */
 export function normalizeFreeformDocumentV12(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 12)
+}
+
+/** Strictly validates and clones an already-v13 document. */
+export function normalizeFreeformDocumentV13(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 13)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -982,9 +997,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v12 object. */
+/** Normalize any supported freeform document version to a fresh v13 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 13) return normalizeFreeformDocumentV13(value)
   if (value.documentVersion === 12) return normalizeFreeformDocumentV12(value)
   if (value.documentVersion === 11) return normalizeFreeformDocumentV11(value)
   if (value.documentVersion === 10) return normalizeFreeformDocumentV10(value)
@@ -1028,7 +1044,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 12,
+    documentVersion: 13,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1061,7 +1077,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 12,
+    documentVersion: 13,
     activeSlideId: document.activeSlideId,
     slides,
   }

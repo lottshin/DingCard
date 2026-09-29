@@ -1462,6 +1462,43 @@ test('shape fill radial gradient edits stops and persists through reload', async
   )
 })
 
+test('line endpoint caps draw start arrows and end dots and persist', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertLine(page, '直线')
+  const stroke = page.getByTestId('inspector-stroke')
+  const svgLine = page.locator('.freeform-line').locator('line')
+
+  // A plain line starts with no endpoint decorations at all.
+  expect(await svgLine.getAttribute('marker-start')).toBeNull()
+  expect(await svgLine.getAttribute('marker-end')).toBeNull()
+
+  await stroke.getByTestId('line-endpoint-start-arrow').click()
+  await expect(svgLine).toHaveAttribute('marker-start', /url\(#.*arrow-start/)
+  await stroke.getByTestId('line-endpoint-end-dot').click()
+  await expect(svgLine).toHaveAttribute('marker-end', /url\(#.*dot/)
+
+  // The 箭头 lineKind lights up the end control by default; 无 explicitly removes that head.
+  await stroke.getByTestId('line-kind-seg').getByRole('button', { name: '箭头', exact: true }).click()
+  await expect(svgLine).toHaveAttribute('marker-end', /url\(#.*-(?!arrow-start)\w+\)/)
+  await stroke.getByTestId('line-endpoint-end-none').click()
+  await expect(svgLine).not.toHaveAttribute('marker-end')
+
+  await stroke.getByTestId('line-endpoint-end-dot').click()
+  await expect(svgLine).toHaveAttribute('marker-end', /url\(#.*dot/)
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await registerUser(page, `caps-${Date.now().toString(36)}`)
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+  await page.reload()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  const restoredLine = page.locator('.freeform-line').locator('line')
+  await expect(restoredLine).toHaveAttribute('marker-start', /url\(#.*arrow-start/)
+  await expect(restoredLine).toHaveAttribute('marker-end', /url\(#.*dot/)
+})
+
 test('inspector appearance controls style leaves end to end', async ({ page }) => {
   await openFreeform(page)
 
@@ -5224,7 +5261,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(12)
+  expect(storedDocument.documentVersion).toBe(13)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
@@ -8125,7 +8162,7 @@ test('nested scene paths update every leaf style family', async ({ page }) => {
   await selectLayer('Matrix line')
   const lineNode = page.locator('[data-scene-node-id="matrix-line"]')
   const lineStroke = page.getByTestId('inspector-stroke')
-  await lineStroke.getByRole('button', { name: '箭头', exact: true }).click()
+  await lineStroke.getByTestId('line-kind-seg').getByRole('button', { name: '箭头', exact: true }).click()
   await expect(lineNode.getByTestId('freeform-arrow')).toHaveCount(1)
 
   const lineStrokeButton = lineStroke.getByTestId('line-stroke-color').getByTestId('paint-color-button')

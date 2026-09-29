@@ -188,6 +188,7 @@ import type {
   FreeformSlide,
   BlendMode,
   FreeformTextElement,
+  LineEndpointCap,
   SceneFilter,
   ScenePath,
   ShadowPaint,
@@ -241,6 +242,17 @@ const LINE_CAPS: Array<{ id: 'round' | 'butt' | 'square'; label: string }> = [
   { id: 'round', label: '圆头' },
   { id: 'butt', label: '平头' },
   { id: 'square', label: '方头' },
+]
+
+const LINE_ENDPOINT_CAPS: Array<{ id: LineEndpointCap; label: string }> = [
+  { id: 'none', label: '无' },
+  { id: 'arrow', label: '箭头' },
+  { id: 'dot', label: '圆点' },
+]
+
+const LINE_ENDPOINT_SIDES: Array<{ id: 'start' | 'end'; label: string }> = [
+  { id: 'start', label: '起点' },
+  { id: 'end', label: '终点' },
 ]
 
 const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
@@ -6162,7 +6174,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       {isLineElement(selectedElement) && (
                         <>
                           <div className="field-label">线条</div>
-                          <div className="seg stretch">
+                          <div className="seg stretch" data-testid="line-kind-seg">
                             {(['line', 'arrow'] as const).map((lineKind) => (
                               <button
                                 key={lineKind}
@@ -6246,6 +6258,42 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                                 {cap.label}
                               </button>
                             ))}
+                          </div>
+                          <div className="field-label with-gap">端点</div>
+                          <div className="field-grid with-gap">
+                            {LINE_ENDPOINT_SIDES.map((side) => {
+                              const active = side.id === 'start'
+                                ? selectedElement.startCap ?? 'none'
+                                : selectedElement.endCap
+                                  ?? (selectedElement.lineKind === 'arrow' ? 'arrow' : 'none')
+                              return (
+                                <div key={side.id}>
+                                  <div className="field-label">{side.label}</div>
+                                  <div className="seg stretch">
+                                    {LINE_ENDPOINT_CAPS.map((cap) => {
+                                      const fallback = side.id === 'end' && selectedElement.lineKind === 'arrow'
+                                        ? 'arrow'
+                                        : 'none'
+                                      return (
+                                        <button
+                                          key={cap.id}
+                                          type="button"
+                                          className={active === cap.id ? 'seg-btn on' : 'seg-btn'}
+                                          data-testid={`line-endpoint-${side.id}-${cap.id}`}
+                                          onClick={() => updateSelectedStyle(
+                                            cap.id === fallback
+                                              ? (side.id === 'start' ? { startCap: null } : { endCap: null })
+                                              : (side.id === 'start' ? { startCap: cap.id } : { endCap: cap.id }),
+                                          )}
+                                        >
+                                          {cap.label}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )
+                            })}
                           </div>
                         </>
                       )}

@@ -188,6 +188,11 @@ function SceneLeafContent({
 
   if (leaf.type === 'line') {
     const markerId = `${markerIdPrefix}-arrow-${leaf.id}`
+    const dotMarkerId = `${markerIdPrefix}-dot-${leaf.id}`
+    const startArrowMarkerId = `${markerIdPrefix}-arrow-start-${leaf.id}`
+    // lineKind: 'arrow' stays the default end decoration; an explicit cap overrides it.
+    const startCap = leaf.startCap ?? 'none'
+    const endCap = leaf.endCap ?? (leaf.lineKind === 'arrow' ? 'arrow' : 'none')
     return (
       <svg
         className={presentationOnly ? 'freeform-preview-line' : 'freeform-line'}
@@ -197,18 +202,48 @@ function SceneLeafContent({
         aria-hidden="true"
         style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
       >
-        {leaf.lineKind === 'arrow' && (
+        {(endCap === 'arrow' || startCap === 'arrow') && (
+          <defs>
+            {endCap === 'arrow' && (
+              <marker
+                id={markerId}
+                markerWidth="12"
+                markerHeight="12"
+                refX="10"
+                refY="6"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M 0 0 L 12 6 L 0 12 z" fill={leaf.stroke} />
+              </marker>
+            )}
+            {startCap === 'arrow' && (
+              <marker
+                id={startArrowMarkerId}
+                markerWidth="12"
+                markerHeight="12"
+                refX="10"
+                refY="6"
+                orient="auto-start-reverse"
+                markerUnits="strokeWidth"
+              >
+                <path d="M 0 0 L 12 6 L 0 12 z" fill={leaf.stroke} />
+              </marker>
+            )}
+          </defs>
+        )}
+        {(startCap === 'dot' || endCap === 'dot') && (
           <defs>
             <marker
-              id={markerId}
-              markerWidth="12"
-              markerHeight="12"
-              refX="10"
-              refY="6"
+              id={dotMarkerId}
+              markerWidth="4"
+              markerHeight="4"
+              refX="2"
+              refY="2"
               orient="auto"
               markerUnits="strokeWidth"
             >
-              <path d="M 0 0 L 12 6 L 0 12 z" fill={leaf.stroke} />
+              <circle cx="2" cy="2" r="2" fill={leaf.stroke} />
             </marker>
           </defs>
         )}
@@ -221,7 +256,20 @@ function SceneLeafContent({
           strokeWidth={leaf.strokeWidth}
           strokeLinecap={leaf.cap ?? 'round'}
           strokeDasharray={leaf.dash !== undefined ? `${leaf.dash} ${leaf.dash}` : undefined}
-          markerEnd={leaf.lineKind === 'arrow' ? `url(#${markerId})` : undefined}
+          markerStart={
+            startCap === 'arrow'
+              ? `url(#${startArrowMarkerId})`
+              : startCap === 'dot'
+                ? `url(#${dotMarkerId})`
+                : undefined
+          }
+          markerEnd={
+            endCap === 'arrow'
+              ? `url(#${markerId})`
+              : endCap === 'dot'
+                ? `url(#${dotMarkerId})`
+                : undefined
+          }
         />
       </svg>
     )

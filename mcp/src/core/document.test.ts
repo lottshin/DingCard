@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 12,
+    documentVersion: 13,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(12)
+    expect(result.document.documentVersion).toBe(13)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -123,6 +123,40 @@ describe('validateDocument', () => {
     const malformed = structuredClone(radialDocument)
     const malformedSlide = (malformed.slides as Array<Record<string, unknown>>)[0]
     malformedSlide.background = { type: 'radial-gradient', stops: [{ offset: 0, color: '#fde68a' }] }
+    expect(validateDocument(malformed).ok).toBe(false)
+  })
+
+  test('accepts v13 line endpoint caps and rejects them on v12 inputs', () => {
+    const capped = seedDocument() as unknown as Record<string, unknown>
+    const slide = (capped.slides as Array<Record<string, unknown>>)[0]
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    nodes[1] = {
+      id: 'line-1',
+      name: '双向线',
+      locked: false,
+      hidden: false,
+      type: 'line',
+      x: 72,
+      y: 700,
+      width: 400,
+      height: 40,
+      rotation: 0,
+      scale: 1,
+      lineKind: 'line',
+      stroke: '#18181b',
+      strokeWidth: 6,
+      startCap: 'arrow',
+      endCap: 'dot',
+    }
+    expect(validateDocument(capped).ok).toBe(true)
+
+    const legacy = structuredClone(capped)
+    legacy.documentVersion = 12
+    expect(validateDocument(legacy).ok).toBe(false)
+
+    const malformed = structuredClone(capped)
+    const malformedNodes = (malformed.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>
+    malformedNodes[1].startCap = 'square'
     expect(validateDocument(malformed).ok).toBe(false)
   })
 
