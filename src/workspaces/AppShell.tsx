@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AuthModal } from '../AuthModal'
 import type { User } from '../auth'
+import { readLastSession, updateLastSession } from '../lastSession'
 import { store } from '../storage'
 import { FreeformWorkspace } from '../freeform/FreeformWorkspace'
 import { useAppTheme } from '../useAppTheme'
@@ -57,6 +58,14 @@ export function AppShell() {
   const authOpenRef = useRef(false)
   const pendingAuthInvokerRef = useRef<HTMLElement | null>(null)
   const pendingAuthInvokerGeneration = useRef(0)
+  // 刷新恢复：只在首屏会话确认时恢复一次工作区；用户在本页内手动切换过就不再抢。
+  const sessionModeRestoredRef = useRef(false)
+  const modeTouchedRef = useRef(false)
+
+  const changeWorkspaceMode = useCallback((next: WorkspaceMode) => {
+    modeTouchedRef.current = true
+    setWorkspaceMode(next)
+  }, [])
 
   const captureAuthInvoker = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target
@@ -182,6 +191,22 @@ export function AppShell() {
     }
   }, [checkCurrentSession])
 
+  // 刷新后恢复上一次使用的工作区。只在首屏会话确认（checking → ready）时
+  // 执行一次；页面内登录/退出不抢用户当前所在的工作区。
+  useEffect(() => {
+    if (sessionModeRestoredRef.current || authStatus !== 'ready') return
+    sessionModeRestoredRef.current = true
+    if (!user || modeTouchedRef.current) return
+    setWorkspaceMode(readLastSession(user.id).mode)
+  }, [authStatus, user])
+
+  // 登录状态下持续记录当前工作区：登录、切换工作区都会同步，刷新后即可回到原处。
+  // （modeTouchedRef 不参与此处——即使用户在登录前切过工作区，登录时也要把
+  // 当前所在的工作区记下来。）
+  useEffect(() => {
+    if (user) updateLastSession(user.id, { mode: workspaceMode })
+  }, [user, workspaceMode])
+
   async function handleLogout() {
     const generation = ++authCheckGeneration.current
     try {
@@ -212,7 +237,7 @@ export function AppShell() {
         theme={appTheme}
         user={user}
         authStatus={authStatus}
-        onModeChange={setWorkspaceMode}
+        onModeChange={changeWorkspaceMode}
         onToggleTheme={toggleAppTheme}
         onRequestAuth={requestAuth}
         onRetryAuth={() => void checkCurrentSession()}

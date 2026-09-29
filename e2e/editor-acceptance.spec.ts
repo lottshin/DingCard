@@ -257,7 +257,10 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
 
   await page.reload()
   await expect(page.getByTestId('account-logout')).toHaveAccessibleName(`退出登录（${username}）`)
-  await page.getByTestId('workspace-tab-freeform').click()
+  // 刷新后工作区与草稿自动恢复：无需手动切工作区或从抽屉重新打开。
+  await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('freeform-textbox').last()).toContainText(uniqueText)
   await page.getByRole('button', { name: '草稿 · 1', exact: true }).click()
   const draft = page.locator('.draft-item').filter({ hasText: 'Page 1' })
   await expect(draft).toContainText('自由编辑 · 1 页')
@@ -367,7 +370,9 @@ test('editor acceptance preserves nested layer state through save, reload, and e
   await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
 
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
+  // 刷新后工作区与草稿自动恢复：无需手动切工作区或从抽屉重新打开。
+  await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
   await page.getByRole('button', { name: '草稿 · 1', exact: true }).click()
   await page.locator('.draft-item', { hasText: 'Page 1' }).click()
   await page.getByRole('tab', { name: '图层', exact: true }).click()

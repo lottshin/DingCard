@@ -11080,3 +11080,89 @@ test.describe('freeform page rename', () => {
     await expect(page.getByTestId('freeform-thumb-title').nth(0)).toHaveText('Page 1')
   })
 })
+
+test.describe('freeform reload restore', () => {
+  test('reload restores the freeform workspace and its open draft', async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await page.getByTestId('workspace-tab-freeform').click()
+
+    await insertText(page)
+    await page.getByLabel('文本内容').fill('刷新恢复的内容')
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await registerUser(page, `restore-${Date.now().toString(36)}`)
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+    await page.reload()
+
+    // 刷新后：工作区和草稿都自动恢复，无需再点标签或从抽屉打开。
+    await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+    await expect(page.getByLabel('文本内容')).toContainText('刷新恢复的内容')
+    await expect(page.getByRole('button', { name: '草稿 · 1', exact: true })).toBeVisible()
+  })
+
+  test('reload falls back to a fresh document when the recorded draft was deleted', async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await page.getByTestId('workspace-tab-freeform').click()
+
+    await insertText(page)
+    await page.getByLabel('文本内容').fill('将被删除的内容')
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await registerUser(page, `restore-gone-${Date.now().toString(36)}`)
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+    // 删除这份草稿（恢复记录随之清空），再刷新。
+    await page.getByRole('button', { name: '草稿 · 1', exact: true }).click()
+    await page.locator('.draft-item').first().getByRole('button', { name: '删除草稿' }).click()
+    await expect(page.getByTestId('drafts-drawer')).toBeVisible()
+    await expect(page.locator('.draft-item')).toHaveCount(0)
+    await page.reload()
+
+    // 工作区恢复，但草稿已不存在：回到空白文档而不是报错。
+    await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
+    await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+    await expect(page.getByTestId('freeform-slide-meta')).not.toContainText('已保存')
+  })
+
+  test('reload restores the markdown workspace and its open draft', async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await page.waitForFunction(() => !!window.__cmView)
+    await page.evaluate(() => {
+      const view = window.__cmView!
+      view.dispatch({ changes: { from: 0, to: view.state.doc.toString().length, insert: '# 刷新恢复的文稿\n\n正文内容。' } })
+    })
+
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await registerUser(page, `restore-md-${Date.now().toString(36)}`)
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect(page.locator('.pane-sub')).toContainText('已保存')
+
+    // 切到自由画布保存一份（让「上次工作区」指向自由画布），再回到 Markdown 保存。
+    await page.getByTestId('workspace-tab-freeform').click()
+    await insertText(page)
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await page.getByTestId('workspace-tab-markdown').click()
+    await expect(page.locator('.pane-sub')).toContainText('已保存')
+
+    await page.reload()
+
+    // 回到 Markdown 工作台，且草稿内容自动恢复。
+    await expect(page.getByTestId('workspace-tab-markdown')).toHaveAttribute('aria-selected', 'true')
+    await page.waitForFunction(() => !!window.__cmView)
+    await expect(page.locator('.pane-sub')).toContainText('已保存')
+    await expect.poll(() =>
+      page.evaluate(() => window.__cmView!.state.doc.toString()),
+    ).toContain('刷新恢复的文稿')
+  })
+})

@@ -7,6 +7,7 @@ import { type Draft, importDraftFromJson } from '../drafts'
 import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
+import { readLastSession, updateLastSession } from '../lastSession'
 import { store } from '../storage'
 import { FONTS } from '../theme'
 import { OperationNotice } from '../workspaces/OperationNotice'
@@ -907,6 +908,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  // 刷新恢复：每账号只尝试一次；openDraftRef 让恢复 effect 不必依赖 openDraft 的函数身份。
+  const restoreAttemptedUserIdRef = useRef<string | null>(null)
+  const openDraftRef = useRef<(draft: Draft) => void>(() => {})
   const [operationNotice, setOperationNotice] = useState<string | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
@@ -1534,6 +1538,24 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       draftListGenerationRef.current += 1
     }
   }, [clearAllImageReadinessNow, loadDrafts, updateDraftId, user])
+
+  // 刷新恢复：账号确认后自动回到本工作台最近打开的草稿（每个账号只尝试
+  // 一次；草稿已被删除或读取失败则保持新文档，不提示）。
+  useEffect(() => {
+    if (!user || restoreAttemptedUserIdRef.current === user.id) return
+    restoreAttemptedUserIdRef.current = user.id
+    const draftId = readLastSession(user.id).freeformDraftId
+    if (!draftId) return
+    const uid = user.id
+    void store.drafts.list(uid).then(
+      (list) => {
+        if (currentUserIdRef.current !== uid) return
+        const target = list.find((draft) => draft.id === draftId && draft.mode === 'freeform-slide')
+        if (target) openDraftRef.current(target)
+      },
+      () => {},
+    )
+  }, [user])
 
   useEffect(() => {
     const session = imageCropSessionRef.current
@@ -4423,7 +4445,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         )
       )
       const snapshotIsCurrent = Object.is(currentDocumentRef.current, snapshot)
-      if (saveIsCurrent) updateDraftId(saved.id)
+      if (saveIsCurrent) {
+        updateDraftId(saved.id)
+        updateLastSession(user.id, { freeformDraftId: saved.id })
+      }
       if (saveIsCurrent && saved.mode === 'freeform-slide') {
         successfulSaveRef.current = {
           source: snapshot,
@@ -4509,7 +4534,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     updateDraftId(draft.id)
     setSavedAt(draft.updatedAt)
     setShowDrafts(false)
+    if (user) updateLastSession(user.id, { freeformDraftId: draft.id })
   }
+  openDraftRef.current = openDraft
 
   async function removeDraft(id: string) {
     if (!user) return
@@ -4528,6 +4555,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         successfulSaveRef.current = null
         updateDraftId(null)
         setSavedAt(null)
+      }
+      if (readLastSession(user.id).freeformDraftId === id) {
+        updateLastSession(user.id, { freeformDraftId: null })
       }
       void refreshDrafts()
     } catch (error) {

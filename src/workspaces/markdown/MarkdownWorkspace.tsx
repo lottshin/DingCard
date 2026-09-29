@@ -20,6 +20,7 @@ import { DraftsPanel } from '../../DraftsPanel'
 import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
 import { importDraftFromJson, type Draft } from '../../drafts'
+import { readLastSession, updateLastSession } from '../../lastSession'
 import { store } from '../../storage'
 import { OperationNotice } from '../OperationNotice'
 import { ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
@@ -108,6 +109,9 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [ctx, setCtx] = useState<Ctx | null>(null)
 
   const [drafts, setDrafts] = useState<Draft[]>([])
+  // 刷新恢复：每账号只尝试一次；openDraftRef 让恢复 effect 不必依赖 openDraft 的函数身份。
+  const restoreAttemptedUserIdRef = useRef<string | null>(null)
+  const openDraftRef = useRef<(draft: Draft) => void>(() => {})
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
@@ -243,6 +247,24 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       draftListGeneration.current += 1
     }
   }, [loadDrafts, updateDraftId, user])
+
+  // 刷新恢复：账号确认后自动回到本工作台最近打开的草稿（每个账号只尝试
+  // 一次；草稿已被删除或读取失败则保持新文档，不提示）。
+  useEffect(() => {
+    if (!user || restoreAttemptedUserIdRef.current === user.id) return
+    restoreAttemptedUserIdRef.current = user.id
+    const draftId = readLastSession(user.id).markdownDraftId
+    if (!draftId) return
+    const uid = user.id
+    void store.drafts.list(uid).then(
+      (list) => {
+        if (activeUserIdRef.current !== uid) return
+        const target = list.find((draft) => draft.id === draftId && draft.mode === 'markdown-card')
+        if (target) openDraftRef.current(target)
+      },
+      () => {},
+    )
+  }, [user])
 
   useEffect(() => {
     if (active > pages.length - 1) setActive(Math.max(0, pages.length - 1))
@@ -495,6 +517,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         return
       }
       updateDraftId(saved.id)
+      updateLastSession(uid, { markdownDraftId: saved.id })
       setSavedAt(draftRevisionRef.current === revisionSnapshot ? saved.updatedAt : null)
       setDrafts((current) => [saved, ...current.filter((draft) => draft.id !== saved.id)])
       refreshDrafts()
@@ -529,9 +552,12 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setProfile(document.profile)
     setRadius(document.radius)
     updateDraftId(d.id)
+    setSavedAt(d.updatedAt)
     setActive(0)
     setShowDrafts(false)
+    if (user) updateLastSession(user.id, { markdownDraftId: d.id })
   }
+  openDraftRef.current = openDraft
 
   /** Import a picked/dropped .json file as a draft; markdown drafts open right away. */
   async function importDraftFile(file: File) {
@@ -583,6 +609,9 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         saveGenerationRef.current += 1
         updateDraftId(null)
         setSavedAt(null)
+      }
+      if (readLastSession(uid).markdownDraftId === id) {
+        updateLastSession(uid, { markdownDraftId: null })
       }
       refreshDrafts()
     } catch (error) {
