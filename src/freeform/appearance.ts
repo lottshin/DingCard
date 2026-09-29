@@ -12,7 +12,7 @@
 // blending, solid round-cap strokes, no text outline).
 
 import { isHexColor } from './paint'
-import type { BlendMode, GradientStop, SceneFilter, ShadowPaint } from './types'
+import type { BlendMode, GradientStop, LinePoint, SceneFilter, ShadowPaint } from './types'
 
 const SHADOW_KEYS = new Set(['color', 'blur', 'offsetX', 'offsetY'])
 const FILTER_KEYS = new Set(['brightness', 'contrast', 'saturation', 'blur'])
@@ -138,6 +138,47 @@ export function isValidLineCap(value: unknown): value is 'round' | 'butt' | 'squ
 
 export function isValidLineEndpointCap(value: unknown): value is 'none' | 'arrow' | 'dot' {
   return value === 'none' || value === 'arrow' || value === 'dot'
+}
+
+export const LINE_POINTS_MIN = 2
+export const LINE_POINTS_MAX = 64
+const LINE_POINT_KEYS = new Set(['x', 'y'])
+
+/**
+ * Clone a polyline vertex list: 2–64 points, each exactly `{x, y}` with
+ * finite coordinates inside the node box (0 ≤ x ≤ width, 0 ≤ y ≤ height).
+ */
+export function cloneLinePoints(
+  value: unknown,
+  width: number,
+  height: number,
+): LinePoint[] | null {
+  if (
+    !Array.isArray(value)
+    || value.length < LINE_POINTS_MIN
+    || value.length > LINE_POINTS_MAX
+  ) {
+    return null
+  }
+  const points: LinePoint[] = []
+  for (const entry of value) {
+    if (!isRecord(entry)) return null
+    const keys = Object.keys(entry)
+    if (keys.length !== LINE_POINT_KEYS.size || !keys.every((key) => LINE_POINT_KEYS.has(key))) {
+      return null
+    }
+    const { x, y } = entry
+    if (
+      typeof x !== 'number' || !Number.isFinite(x)
+      || typeof y !== 'number' || !Number.isFinite(y)
+      || x < 0 || x > width
+      || y < 0 || y > height
+    ) {
+      return null
+    }
+    points.push({ x, y })
+  }
+  return points
 }
 
 export function isValidShape(value: unknown): value is 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon' {

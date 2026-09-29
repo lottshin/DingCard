@@ -38,6 +38,7 @@ import type {
   FreeformSlide,
   ImageFraming,
   LineEndpointCap,
+  LinePoint,
   RichTextSpan,
   SceneFilter,
   ShadowPaint,
@@ -47,6 +48,7 @@ import type {
 import { normalizeRichTextSpans } from './richText'
 import {
   cloneGradientStops,
+  cloneLinePoints,
   cloneSceneFilter,
   cloneShadowPaint,
   isV7Shape,
@@ -75,7 +77,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -271,6 +273,7 @@ const TEXT_OPTIONAL_V9_KEYS = new Set([
 const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
+const LINE_OPTIONAL_V14_KEYS = new Set([...LINE_OPTIONAL_V13_KEYS, 'points'])
 
 /** Exact required keys plus an optional-key whitelist (null = exact only). */
 function hasKeysWithOptionals(
@@ -314,7 +317,11 @@ function optionalKeysFor(
   }
   if (type === 'text') return TEXT_OPTIONAL_V9_KEYS
   if (type === 'shape') return SHAPE_OPTIONAL_V9_KEYS
-  if (type === 'line') return inputVersion >= 13 ? LINE_OPTIONAL_V13_KEYS : LINE_OPTIONAL_V9_KEYS
+  if (type === 'line') {
+    if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
+    if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
+    return LINE_OPTIONAL_V9_KEYS
+  }
   if (type === 'image') return BASE_OPTIONAL_V9_KEYS
   return null
 }
@@ -578,6 +585,13 @@ function normalizeStrictSceneNode(
       if ('startCap' in value && !isValidLineEndpointCap(value.startCap)) return null
       if ('endCap' in value && !isValidLineEndpointCap(value.endCap)) return null
     }
+    // Polyline vertices are v14-only; older input versions reject them.
+    let points: LinePoint[] | undefined
+    if (inputVersion >= 14 && 'points' in value) {
+      const cloned = cloneLinePoints(value.points, geometry.width, geometry.height)
+      if (!cloned) return null
+      points = cloned
+    }
     const lineAppearance = cloneStrictAppearance(value, inputVersion)
     if (!lineAppearance) return null
     return {
@@ -590,6 +604,7 @@ function normalizeStrictSceneNode(
       ...('cap' in value ? { cap: value.cap as 'round' | 'butt' | 'square' } : {}),
       ...('startCap' in value ? { startCap: value.startCap as LineEndpointCap } : {}),
       ...('endCap' in value ? { endCap: value.endCap as LineEndpointCap } : {}),
+      ...(points ? { points } : {}),
       ...lineAppearance,
     }
   }
@@ -672,7 +687,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 13,
+    documentVersion: 14,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -731,6 +746,11 @@ export function normalizeFreeformDocumentV12(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v13 document. */
 export function normalizeFreeformDocumentV13(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 13)
+}
+
+/** Strictly validates and clones an already-v14 document. */
+export function normalizeFreeformDocumentV14(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 14)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -997,9 +1017,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v13 object. */
+/** Normalize any supported freeform document version to a fresh v14 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 14) return normalizeFreeformDocumentV14(value)
   if (value.documentVersion === 13) return normalizeFreeformDocumentV13(value)
   if (value.documentVersion === 12) return normalizeFreeformDocumentV12(value)
   if (value.documentVersion === 11) return normalizeFreeformDocumentV11(value)
@@ -1044,7 +1065,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 13,
+    documentVersion: 14,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1077,7 +1098,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 13,
+    documentVersion: 14,
     activeSlideId: document.activeSlideId,
     slides,
   }

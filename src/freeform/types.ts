@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 13
+  documentVersion: 14
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -167,6 +167,12 @@ export interface FreeformShapeElement extends FreeformElementBase {
 /** One endpoint decoration on a line; 'arrow' and 'dot' draw at the endpoint. */
 export type LineEndpointCap = 'none' | 'arrow' | 'dot'
 
+/** One vertex of a polyline, in node-local (unrotated) box coordinates. */
+export interface LinePoint {
+  x: number
+  y: number
+}
+
 export interface FreeformLineElement extends FreeformElementBase {
   type: 'line'
   lineKind: 'line' | 'arrow'
@@ -180,6 +186,11 @@ export interface FreeformLineElement extends FreeformElementBase {
   startCap?: LineEndpointCap
   /** End endpoint decoration (v13); absent defers to lineKind. */
   endCap?: LineEndpointCap
+  /**
+   * Polyline vertices (v14), 2–64 points inside the node box; absent renders
+   * the classic horizontal segment. The first/last point carry the endpoint caps.
+   */
+  points?: LinePoint[]
 }
 
 export type FreeformElement =

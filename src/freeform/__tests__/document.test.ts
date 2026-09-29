@@ -70,7 +70,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(13)
+    expect(doc.documentVersion).toBe(14)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -1014,6 +1014,42 @@ describe('v8 appearance patches', () => {
 
     const invalid = stylePatch(document, ['line-1'], { startCap: 'square' as never })
     expect(invalid).toBe(document)
+  })
+
+  it('scales v14 polyline vertices with box resize patches', () => {
+    const base = {
+      ...createLineElement(createSlide(), 'line'),
+      id: 'line-1',
+      width: 300,
+      height: 80,
+      points: [
+        { x: 0, y: 70 },
+        { x: 150, y: 10 },
+        { x: 300, y: 70 },
+      ],
+    } as FreeformLineElement
+    const document = documentWith([base])
+
+    const geometry = (patch: Record<string, number>) => reduceFreeformDocument(document, {
+      type: 'node/update-geometry',
+      slideId: document.activeSlideId,
+      updates: [{ path: ['line-1'], patch: patch as never }],
+    })
+
+    const widened = geometry({ width: 600, height: 160 }) as FreeformDocument
+    const widenedLine = widened.slides[0].nodes[0] as FreeformLineElement
+    expect(widenedLine.width).toBe(600)
+    expect(widenedLine.height).toBe(160)
+    expect(widenedLine.points).toEqual([
+      { x: 0, y: 140 },
+      { x: 300, y: 20 },
+      { x: 600, y: 140 },
+    ])
+
+    // Moving the box never rescales the vertices.
+    const moved = geometry({ x: 40, y: 50 }) as FreeformDocument
+    const movedLine = moved.slides[0].nodes[0] as FreeformLineElement
+    expect(movedLine.points).toEqual(base.points)
   })
 
   it('applies vertical text patches and clears them with false', () => {

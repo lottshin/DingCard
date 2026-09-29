@@ -15,6 +15,7 @@ import {
   isValidDash,
   isValidLineCap,
   isValidLineEndpointCap,
+  cloneLinePoints,
   isValidLineHeight,
   isValidLetterSpacing,
   isValidOpacity,
@@ -560,6 +561,13 @@ function cloneSceneNode(
   if (node.type === 'image') {
     return ownLeafAppearance({ ...node, id, framing: cloneImageFraming(node.framing) })
   }
+  if (node.type === 'line' && node.points) {
+    return ownLeafAppearance({
+      ...node,
+      id,
+      points: node.points.map((point) => ({ ...point })),
+    })
+  }
   return ownLeafAppearance({ ...node, id })
 }
 
@@ -921,6 +929,11 @@ const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   cap: (record) => isValidLineCap(record.cap),
   startCap: (record) => isValidLineEndpointCap(record.startCap),
   endCap: (record) => isValidLineEndpointCap(record.endCap),
+  points: (record) => cloneLinePoints(
+    record.points,
+    record.width as number,
+    record.height as number,
+  ) !== null,
 }
 
 export function isValidSceneColorPaint(value: unknown): boolean {

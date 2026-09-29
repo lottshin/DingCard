@@ -48,6 +48,7 @@ import {
   isValidDash,
   isValidLineCap,
   isValidLineEndpointCap,
+  cloneLinePoints,
   isValidLineHeight,
   isValidLetterSpacing,
   isValidOpacity,
@@ -123,7 +124,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 13,
+    documentVersion: 14,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -797,6 +798,25 @@ function applyGeometryPatch(
     ...(node.type !== 'group' && 'width' in patch ? { width: patch.width as number } : {}),
     ...(node.type !== 'group' && 'height' in patch ? { height: patch.height as number } : {}),
   } as FreeformSceneNode
+  // Resizing a polyline stretches its vertices with the box (Figma semantics);
+  // a vertex list that no longer fits the new box rejects the whole patch.
+  if (
+    node.type === 'line'
+    && node.points
+    && ('width' in patch || 'height' in patch)
+  ) {
+    const line = next as FreeformLineElement
+    const scaled = cloneLinePoints(
+      node.points.map((point) => ({
+        x: 'width' in patch ? point.x * (line.width / node.width) : point.x,
+        y: 'height' in patch ? point.y * (line.height / node.height) : point.y,
+      })),
+      line.width,
+      line.height,
+    )
+    if (!scaled) return { ok: false, node }
+    return { ok: true, node: { ...line, points: scaled } }
+  }
   const same = keys.every(
     (key) => (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
   )

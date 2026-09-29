@@ -193,6 +193,21 @@ function SceneLeafContent({
     // lineKind: 'arrow' stays the default end decoration; an explicit cap overrides it.
     const startCap = leaf.startCap ?? 'none'
     const endCap = leaf.endCap ?? (leaf.lineKind === 'arrow' ? 'arrow' : 'none')
+    // A v14 vertex list renders an exact polyline; the endpoints carry the caps.
+    // overflow: visible keeps endpoint caps/markers from clipping at the box edge.
+    const points = leaf.points
+      ? leaf.points.map((point) => `${point.x},${point.y}`).join(' ')
+      : undefined
+    const markerStart = startCap === 'arrow'
+      ? `url(#${startArrowMarkerId})`
+      : startCap === 'dot'
+        ? `url(#${dotMarkerId})`
+        : undefined
+    const markerEnd = endCap === 'arrow'
+      ? `url(#${markerId})`
+      : endCap === 'dot'
+        ? `url(#${dotMarkerId})`
+        : undefined
     return (
       <svg
         className={presentationOnly ? 'freeform-preview-line' : 'freeform-line'}
@@ -200,7 +215,10 @@ function SceneLeafContent({
         viewBox={`0 0 ${leaf.width} ${leaf.height}`}
         preserveAspectRatio="none"
         aria-hidden="true"
-        style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
+        style={{
+          overflow: 'visible',
+          ...(leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : {}),
+        }}
       >
         {(endCap === 'arrow' || startCap === 'arrow') && (
           <defs>
@@ -247,30 +265,33 @@ function SceneLeafContent({
             </marker>
           </defs>
         )}
-        <line
-          x1={leaf.strokeWidth}
-          y1={leaf.height / 2}
-          x2={leaf.width - leaf.strokeWidth * 2}
-          y2={leaf.height / 2}
-          stroke={leaf.stroke}
-          strokeWidth={leaf.strokeWidth}
-          strokeLinecap={leaf.cap ?? 'round'}
-          strokeDasharray={leaf.dash !== undefined ? `${leaf.dash} ${leaf.dash}` : undefined}
-          markerStart={
-            startCap === 'arrow'
-              ? `url(#${startArrowMarkerId})`
-              : startCap === 'dot'
-                ? `url(#${dotMarkerId})`
-                : undefined
-          }
-          markerEnd={
-            endCap === 'arrow'
-              ? `url(#${markerId})`
-              : endCap === 'dot'
-                ? `url(#${dotMarkerId})`
-                : undefined
-          }
-        />
+        {points !== undefined ? (
+          <polyline
+            data-testid={presentationOnly ? undefined : 'freeform-polyline'}
+            points={points}
+            fill="none"
+            stroke={leaf.stroke}
+            strokeWidth={leaf.strokeWidth}
+            strokeLinecap={leaf.cap ?? 'round'}
+            strokeLinejoin="round"
+            strokeDasharray={leaf.dash !== undefined ? `${leaf.dash} ${leaf.dash}` : undefined}
+            markerStart={markerStart}
+            markerEnd={markerEnd}
+          />
+        ) : (
+          <line
+            x1={leaf.strokeWidth}
+            y1={leaf.height / 2}
+            x2={leaf.width - leaf.strokeWidth * 2}
+            y2={leaf.height / 2}
+            stroke={leaf.stroke}
+            strokeWidth={leaf.strokeWidth}
+            strokeLinecap={leaf.cap ?? 'round'}
+            strokeDasharray={leaf.dash !== undefined ? `${leaf.dash} ${leaf.dash}` : undefined}
+            markerStart={markerStart}
+            markerEnd={markerEnd}
+          />
+        )}
       </svg>
     )
   }

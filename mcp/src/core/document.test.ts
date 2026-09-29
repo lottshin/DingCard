@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 13,
+    documentVersion: 14,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(13)
+    expect(result.document.documentVersion).toBe(14)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -158,6 +158,45 @@ describe('validateDocument', () => {
     const malformedNodes = (malformed.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>
     malformedNodes[1].startCap = 'square'
     expect(validateDocument(malformed).ok).toBe(false)
+  })
+
+  test('accepts v14 polyline vertices and rejects them on v13 inputs', () => {
+    const poly = seedDocument() as unknown as Record<string, unknown>
+    const slide = (poly.slides as Array<Record<string, unknown>>)[0]
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    nodes[1] = {
+      id: 'ridge-1',
+      name: '山脊折线',
+      locked: false,
+      hidden: false,
+      type: 'line',
+      x: 72,
+      y: 700,
+      width: 400,
+      height: 120,
+      rotation: 0,
+      scale: 1,
+      lineKind: 'line',
+      stroke: '#17293c',
+      strokeWidth: 8,
+      endCap: 'dot',
+      points: [
+        { x: 0, y: 100 },
+        { x: 130, y: 20 },
+        { x: 260, y: 110 },
+        { x: 400, y: 30 },
+      ],
+    }
+    expect(validateDocument(poly).ok).toBe(true)
+
+    const legacy = structuredClone(poly)
+    legacy.documentVersion = 13
+    expect(validateDocument(legacy).ok).toBe(false)
+
+    const outOfBox = structuredClone(poly)
+    const outOfBoxNodes = (outOfBox.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>
+    ;(outOfBoxNodes[1].points as Array<{ x: number; y: number }>)[1].y = 121
+    expect(validateDocument(outOfBox).ok).toBe(false)
   })
 
   test('accepts v9 text features, rejects vertical text on v8 inputs', () => {

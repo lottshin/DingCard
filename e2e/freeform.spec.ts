@@ -2438,6 +2438,104 @@ test('drafts panel import rejects invalid JSON with an error notice', async ({ p
   await expect(page.getByText('文件不是有效的 JSON')).toBeVisible()
 })
 
+test('drafts panel imports a v14 polyline document and renders its vertices', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openFreeform(page)
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
+  await registerUser(page, `poly-${Date.now()}`)
+
+  const importedDocument = {
+    documentVersion: 14,
+    activeSlideId: 'poly-slide-1',
+    slides: [
+      {
+        id: 'poly-slide-1',
+        name: '折线页',
+        width: 1080,
+        height: 1440,
+        background: { type: 'solid', color: '#ffffff' },
+        nodes: [
+          {
+            id: 'poly-line-1',
+            name: '山脊',
+            locked: false,
+            hidden: false,
+            type: 'line',
+            x: 100,
+            y: 200,
+            width: 600,
+            height: 300,
+            rotation: 0,
+            scale: 1,
+            lineKind: 'line',
+            stroke: '#17293c',
+            strokeWidth: 10,
+            startCap: 'arrow',
+            endCap: 'dot',
+            points: [
+              { x: 0, y: 260 },
+              { x: 150, y: 40 },
+              { x: 300, y: 240 },
+              { x: 450, y: 20 },
+              { x: 600, y: 220 },
+            ],
+          },
+          {
+            id: 'poly-line-2',
+            name: '普通箭头',
+            locked: false,
+            hidden: false,
+            type: 'line',
+            x: 140,
+            y: 700,
+            width: 500,
+            height: 40,
+            rotation: 0,
+            scale: 1,
+            lineKind: 'arrow',
+            stroke: '#f97316',
+            strokeWidth: 8,
+          },
+        ],
+      },
+    ],
+  }
+
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
+  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
+  await page.getByLabel('导入 JSON 文档').setInputFiles({
+    name: 'polyline.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(importedDocument)),
+  })
+
+  await expect(page.getByTestId('drafts-drawer')).not.toBeVisible()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(2)
+  const polyline = page.getByTestId('freeform-polyline')
+  await expect(polyline).toHaveAttribute(
+    'points',
+    '0,260 150,40 300,240 450,20 600,220',
+  )
+  await expect(polyline).toHaveAttribute('marker-start', /arrow-start/)
+  await expect(polyline).toHaveAttribute('marker-end', /dot/)
+  // A vertex-less line keeps rendering the classic single <line> element.
+  await expect(page.locator('.freeform-line', { has: page.getByTestId('freeform-polyline') })).toHaveCount(1)
+  await expect(page.locator('.freeform-line line')).toHaveCount(1)
+
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+
+  await page.reload()
+  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('freeform-polyline')).toHaveAttribute(
+    'points',
+    '0,260 150,40 300,240 450,20 600,220',
+  )
+  await expect(page.getByTestId('freeform-polyline')).toHaveAttribute('marker-start', /arrow-start/)
+})
+
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await openFreeform(page)
 
@@ -5261,7 +5359,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(13)
+  expect(storedDocument.documentVersion).toBe(14)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
