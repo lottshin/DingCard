@@ -30,13 +30,40 @@ describe('freeform view prefs', () => {
     expect(loadViewPrefs()).toEqual(DEFAULT_VIEW_PREFS)
   })
 
+  it('fills the export-option defaults into pre-export stored payloads', () => {
+    localStorage.setItem(
+      'slicer.freeform.prefs.v1',
+      '{"guidesVisible":false,"snappingEnabled":true}',
+    )
+    expect(loadViewPrefs()).toEqual({ ...DEFAULT_VIEW_PREFS, guidesVisible: false })
+  })
+
   it('round-trips toggled preferences', () => {
-    const prefs = { guidesVisible: false, snappingEnabled: false }
+    const prefs = { ...DEFAULT_VIEW_PREFS, guidesVisible: false, snappingEnabled: false }
     saveViewPrefs(prefs)
     expect(loadViewPrefs()).toEqual(prefs)
 
-    saveViewPrefs({ guidesVisible: false, snappingEnabled: true })
-    expect(loadViewPrefs()).toEqual({ guidesVisible: false, snappingEnabled: true })
+    saveViewPrefs({ ...DEFAULT_VIEW_PREFS, guidesVisible: false, snappingEnabled: true })
+    expect(loadViewPrefs()).toEqual({ ...DEFAULT_VIEW_PREFS, guidesVisible: false })
+  })
+
+  it('round-trips export options', () => {
+    const prefs = {
+      ...DEFAULT_VIEW_PREFS,
+      exportFormat: 'jpeg' as const,
+      exportQuality: 0.8,
+      exportScale: 2 as const,
+    }
+    saveViewPrefs(prefs)
+    expect(loadViewPrefs()).toEqual(prefs)
+  })
+
+  it('rejects malformed export options back to the defaults', () => {
+    localStorage.setItem(
+      'slicer.freeform.prefs.v1',
+      '{"guidesVisible":true,"snappingEnabled":true,"exportFormat":"webp","exportQuality":3,"exportScale":4}',
+    )
+    expect(loadViewPrefs()).toEqual(DEFAULT_VIEW_PREFS)
   })
 
   it('strips unknown keys from stored payloads', () => {
@@ -44,6 +71,6 @@ describe('freeform view prefs', () => {
       'slicer.freeform.prefs.v1',
       '{"guidesVisible":true,"snappingEnabled":true,"extra":1}',
     )
-    expect(loadViewPrefs()).toEqual({ guidesVisible: true, snappingEnabled: true })
+    expect(loadViewPrefs()).toEqual(DEFAULT_VIEW_PREFS)
   })
 })

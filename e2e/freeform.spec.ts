@@ -1864,6 +1864,38 @@ for (const viewport of [
   })
 }
 
+test('freeform layout stacks the stage above the panels on narrow viewports', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openFreeform(page)
+
+  // No horizontal overflow: the toolbar scrolls on its own, nothing sticks out.
+  const documentOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(documentOverflow).toBeLessThanOrEqual(0)
+  const main = page.locator('.freeform-main')
+  const mainOverflow = await main.evaluate((element) => element.scrollWidth - element.clientWidth)
+  expect(mainOverflow).toBeLessThanOrEqual(0)
+
+  // The stage keeps a usable width instead of being crushed between the panels.
+  const stage = await page.locator('.freeform-stage-pane').boundingBox()
+  expect(stage?.width).toBeGreaterThanOrEqual(330)
+  expect(stage?.height).toBeGreaterThanOrEqual(300)
+
+  // The rail and inspector stack below the stage at full width.
+  const rail = await page.locator('.freeform-rail').boundingBox()
+  const inspector = await page.locator('.freeform-inspector').boundingBox()
+  expect(rail?.width).toBeGreaterThanOrEqual(330)
+  expect(rail?.y).toBeGreaterThan(stage!.y + stage!.height - 1)
+  expect(inspector?.width).toBeGreaterThanOrEqual(330)
+  expect(inspector?.y).toBeGreaterThan(rail!.y)
+
+  // Editing still works: insert a shape and see it selected in the inspector.
+  await insertShape(page)
+  await expect(page.getByTestId('inspector-geometry')).toBeVisible()
+  await expect(page.locator('.freeform-shape')).toBeVisible()
+})
+
 test.describe('fit-relative freeform zoom', () => {
   test('withholds the canvas until the first active fit measurement', async ({ page }) => {
     await page.goto('/')
@@ -6044,6 +6076,56 @@ test('exports the current slide as a PNG at slide dimensions', async ({ page }) 
   const size = readPngSize(await readFile(path!))
   expect(size).toEqual({ width: 1080, height: 1920 })
   await expect(page.getByRole('button', { name: '导出当前页' })).toBeEnabled()
+})
+
+test('export options switch format, quality, scale, and persist', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByTestId('page-size-trigger').click()
+  await page.getByRole('button', { name: '9:16', exact: true }).click()
+
+  await page.getByTestId('freeform-export-options-toggle').click()
+  const options = page.getByTestId('freeform-export-options')
+  await expect(options).toBeVisible()
+  // PNG by default: no quality slider.
+  await expect(options.getByTestId('export-quality-range')).toHaveCount(0)
+
+  await options.getByTestId('export-format-jpeg').click()
+  await expect(options.getByTestId('export-quality-range')).toBeVisible()
+  await options.getByTestId('export-quality-range').fill('80')
+  await options.getByTestId('export-scale-2x').click()
+
+  const jpegPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出当前页' }).click()
+  const jpeg = await jpegPromise
+  expect(jpeg.suggestedFilename()).toBe('slide-01.jpg')
+  const jpegPath = await jpeg.path()
+  expect(jpegPath).toBeTruthy()
+  // 2x of a 1080×1920 page: 2160×3840 JPEG.
+  const jpegBytes = await readFile(jpegPath!)
+  expect(jpegBytes[0]).toBe(0xff)
+  expect(jpegBytes[1]).toBe(0xd8)
+  const jpegBlob = new Blob([jpegBytes])
+
+  await page.reload()
+  await page.getByTestId('workspace-tab-freeform').click()
+  await page.getByTestId('freeform-export-options-toggle').click()
+  const restored = page.getByTestId('freeform-export-options')
+  await expect(restored.getByTestId('export-format-jpeg')).toHaveClass(/on/)
+  await expect(restored.getByTestId('export-scale-2x')).toHaveClass(/on/)
+  await expect(restored.getByTestId('export-quality-range')).toHaveValue('80')
+
+  await restored.getByTestId('export-format-png').click()
+  const pngPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出当前页' }).click()
+  const png = await pngPromise
+  expect(png.suggestedFilename()).toBe('slide-01.png')
+  const pngPath = await png.path()
+  expect(pngPath).toBeTruthy()
+  // The 2x scale setting applies to PNG as well; the reload reset the unsaved
+  // page back to the default 1080×1440, so 2x is 2160×2880.
+  expect(readPngSize(await readFile(pngPath!))).toEqual({ width: 2160, height: 2880 })
+  expect(jpegBlob.size).toBeGreaterThan(0)
 })
 
 test('framed image export waits for the current image decode', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, SetStateAction } from 'react'
-import { toBlob } from 'html-to-image'
+import { toCanvas } from 'html-to-image'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
 import { type Draft, importDraftFromJson } from '../drafts'
@@ -524,8 +524,8 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
-function slidePngName(index: number): string {
-  return `slide-${String(index + 1).padStart(2, '0')}.png`
+function slideExportName(index: number, format: 'png' | 'jpeg'): string {
+  return `slide-${String(index + 1).padStart(2, '0')}.${format === 'jpeg' ? 'jpg' : 'png'}`
 }
 
 function hasMixedSlideSizes(slides: FreeformSlide[]): boolean {
@@ -909,6 +909,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
+  const [exportOptionsOpen, setExportOptionsOpen] = useState(false)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
@@ -4587,16 +4588,28 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         : '图片加载失败，导出已取消')
     }
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    return toBlob(node, {
-      pixelRatio: 1,
+    // html-to-image's toBlob drops the type/quality options, so render to a
+    // canvas and encode it here. JPEG has no alpha channel: composite on
+    // white instead of letting transparent areas turn black.
+    const canvas = await toCanvas(node, {
+      pixelRatio: viewPrefs.exportScale,
       width: slide.width,
       height: slide.height,
+      ...(viewPrefs.exportFormat === 'jpeg' ? { backgroundColor: '#ffffff' } : {}),
       style: {
         transform: 'none',
       },
       fontEmbedCSS,
       filter: (element) =>
         !(element instanceof HTMLElement && element.classList.contains('freeform-ui-only')),
+    })
+    if (viewPrefs.exportFormat === 'jpeg') {
+      return new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', viewPrefs.exportQuality)
+      })
+    }
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/png')
     })
   }
 
@@ -4622,7 +4635,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           0,
           doc.slides.findIndex((slide) => slide.id === activeSlide.id),
         )
-        downloadBlob(blob, slidePngName(activeIndex))
+        downloadBlob(blob, slideExportName(activeIndex, viewPrefs.exportFormat))
       }
     } catch (error) {
       showOperationError(error, '导出失败，请稍后重试')
@@ -4647,7 +4660,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         replaceCurrent({ type: 'slide/select', slideId: slide.id })
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
         const blob = await renderSlideBlob(slide, fontCSS)
-        if (blob) entries.push({ name: slidePngName(index), blob })
+        if (blob) entries.push({ name: slideExportName(index, viewPrefs.exportFormat), blob })
       }
       if (entries.length > 0) {
         const stamp = new Date().toISOString().slice(0, 10)
@@ -5062,6 +5075,94 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           >
             我的草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
           </button>
+          <div className="export-options-trigger">
+            <button
+              className="bar-btn export-options-btn"
+              type="button"
+              data-testid="freeform-export-options-toggle"
+              aria-label="导出选项"
+              title="导出选项"
+              aria-expanded={exportOptionsOpen}
+              onClick={() => setExportOptionsOpen((open) => !open)}
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M3.5 6.5h13M3.5 13.5h13" />
+                <circle cx="8" cy="6.5" r="2.1" />
+                <circle cx="12.5" cy="13.5" r="2.1" />
+              </svg>
+              <span className="toolbar-collapsible-label">导出选项</span>
+            </button>
+            {exportOptionsOpen && (
+              <div
+                className="export-options-panel"
+                data-testid="freeform-export-options"
+                role="group"
+                aria-label="导出选项"
+              >
+                <div className="field-label">格式</div>
+                <div className="seg stretch">
+                  {(['png', 'jpeg'] as const).map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      className={viewPrefs.exportFormat === format ? 'seg-btn on' : 'seg-btn'}
+                      data-testid={`export-format-${format}`}
+                      onClick={() => updateViewPrefs({ exportFormat: format })}
+                    >
+                      {format === 'png' ? 'PNG' : 'JPG'}
+                    </button>
+                  ))}
+                </div>
+                <div className="field-label">倍率</div>
+                <div className="seg stretch">
+                  {([1, 2] as const).map((scale) => (
+                    <button
+                      key={scale}
+                      type="button"
+                      className={viewPrefs.exportScale === scale ? 'seg-btn on' : 'seg-btn'}
+                      data-testid={`export-scale-${scale}x`}
+                      onClick={() => updateViewPrefs({ exportScale: scale })}
+                    >
+                      {scale}x
+                    </button>
+                  ))}
+                </div>
+                {viewPrefs.exportFormat === 'jpeg' && (
+                  <>
+                    <div className="field-label">质量</div>
+                    <div className="paint-row">
+                      <input
+                        className="paint-range"
+                        data-testid="export-quality-range"
+                        type="range"
+                        min={50}
+                        max={100}
+                        value={Math.round(viewPrefs.exportQuality * 100)}
+                        onChange={(event) =>
+                          updateViewPrefs({ exportQuality: Number(event.currentTarget.value) / 100 })}
+                        aria-label="导出质量"
+                      />
+                      <span className="export-quality-value">
+                        {Math.round(viewPrefs.exportQuality * 100)}%
+                      </span>
+                    </div>
+                  </>
+                )}
+                <p className="export-options-hint">
+                  {viewPrefs.exportFormat === 'jpeg'
+                    ? 'JPG 不支持透明，导出自动衬白底。'
+                    : 'PNG 保留透明背景。'}
+                </p>
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => setExportOptionsOpen(false)}
+                >
+                  完成
+                </button>
+              </div>
+            )}
+          </div>
           <button
             className="bar-btn"
             type="button"
