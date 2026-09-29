@@ -1016,6 +1016,51 @@ describe('v8 appearance patches', () => {
     expect(invalid).toBe(document)
   })
 
+  it('applies v14 vertex patches through the style action and rejects out-of-box lists', () => {
+    const base = {
+      ...createLineElement(createSlide(), 'line'),
+      id: 'line-1',
+      width: 300,
+      height: 80,
+      points: [
+        { x: 0, y: 70 },
+        { x: 150, y: 10 },
+        { x: 300, y: 70 },
+      ],
+    } as FreeformLineElement
+    const document = documentWith([base])
+
+    const moved = stylePatch(document, ['line-1'], {
+      points: [
+        { x: 0, y: 70 },
+        { x: 150, y: 10 },
+        { x: 300, y: 40 },
+      ],
+    })
+    expect((moved.slides[0].nodes[0] as FreeformLineElement).points).toEqual([
+      { x: 0, y: 70 },
+      { x: 150, y: 10 },
+      { x: 300, y: 40 },
+    ])
+
+    const noop = stylePatch(moved, ['line-1'], {
+      points: [
+        { x: 0, y: 70 },
+        { x: 150, y: 10 },
+        { x: 300, y: 40 },
+      ],
+    })
+    expect(noop).toBe(moved)
+
+    const outOfBox = stylePatch(document, ['line-1'], {
+      points: [
+        { x: 0, y: 70 },
+        { x: 150, y: 99 },
+      ],
+    })
+    expect(outOfBox).toBe(document)
+  })
+
   it('scales v14 polyline vertices with box resize patches', () => {
     const base = {
       ...createLineElement(createSlide(), 'line'),

@@ -74,6 +74,7 @@ import type {
   FreeformSlide,
   FreeformTextElement,
   ImageFraming,
+  LinePoint,
   RichTextSpan,
   SceneFilter,
   ScenePath,
@@ -282,6 +283,16 @@ function cloneColorPaint(paint: ColorPaint): ColorPaint {
   return { type: 'linear-gradient', from: paint.from, to: paint.to, angle: paint.angle }
 }
 
+/** Deep vertex-list equality for line style patches (arrays never compare by reference). */
+function linePointsEqual(
+  left: LinePoint[] | undefined,
+  right: LinePoint[] | undefined,
+): boolean {
+  if (left === right) return true
+  if (!left || !right || left.length !== right.length) return false
+  return left.every((point, index) => point.x === right[index].x && point.y === right[index].y)
+}
+
 function cloneShapeFill(fill: ShapeFill): ShapeFill {
   if (fill.type === 'transparent') return { type: 'transparent' }
   return fill.type === 'image'
@@ -383,6 +394,7 @@ const STYLE_KEYS = new Set([
   'stroke',
   'strokeWidth',
   'lineKind',
+  'points',
 ])
 const GEOMETRY_KEYS = new Set(['x', 'y', 'width', 'height', 'rotation', 'scale'])
 const IMAGE_CROP_ACTION_KEYS = new Set(['type', 'slideId', 'path', 'patch'])
@@ -735,7 +747,7 @@ function applyStylePatch(
   if (node.type === 'line') {
     const allowed = new Set([
       'lineKind', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap',
-      'startCap', 'endCap',
+      'startCap', 'endCap', 'points',
     ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('lineKind' in patch && patch.lineKind !== 'line' && patch.lineKind !== 'arrow') {
@@ -749,17 +761,27 @@ function applyStylePatch(
     ) {
       return { ok: false, node }
     }
+    // Vertex lists must stay inside the node box; a bad list rejects the patch.
+    let points: LinePoint[] | undefined
+    if ('points' in patch) {
+      const cloned = cloneLinePoints(patch.points, node.width, node.height)
+      if (!cloned) return { ok: false, node }
+      points = cloned
+    }
     if (!validAppearancePatch(patch, LINE_APPEARANCE_KEYS)) return { ok: false, node }
     const next = withAppearancePatch({
       ...node,
       ...('lineKind' in patch ? { lineKind: patch.lineKind as typeof node.lineKind } : {}),
       ...('stroke' in patch ? { stroke: patch.stroke as string } : {}),
       ...('strokeWidth' in patch ? { strokeWidth: patch.strokeWidth as number } : {}),
+      ...(points ? { points } : {}),
     }, patch, LINE_APPEARANCE_KEYS)
     const same = keys.every(
       (key) =>
         LINE_APPEARANCE_KEYS.has(key)
-          || (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+          || (key === 'points'
+            ? linePointsEqual(node.points, points)
+            : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key]),
     ) && appearanceKeysSame(node, next, patch, LINE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }

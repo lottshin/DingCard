@@ -18,7 +18,16 @@ export function describeFreeformAction(action: FreeformAction): string {
     case 'node/set-hidden': return action.hidden ? '隐藏对象' : '显示对象'
     case 'node/rename': return '重命名对象'
     case 'node/update-content': return '编辑内容'
-    case 'node/update-style': return '更改样式'
+    case 'node/update-style':
+      if (
+        action.updates.length > 0
+        && action.updates.every((update) => (
+          Object.keys(update.patch).length === 1 && 'points' in update.patch
+        ))
+      ) {
+        return '调整顶点'
+      }
+      return '更改样式'
     case 'node/update-geometry': return '移动对象'
     case 'node/update-image-crop': return '调整裁切'
     case 'node/delete': return '删除对象'

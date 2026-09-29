@@ -1841,6 +1841,36 @@ html.theme-anim * {
   pointer-events: auto;
 }
 
+.freeform-vertex-handle {
+  position: absolute;
+  width: calc(28px * var(--freeform-inverse-scale, 1));
+  height: calc(28px * var(--freeform-inverse-scale, 1));
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: move;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.freeform-vertex-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: calc(12px * var(--freeform-inverse-scale, 1));
+  height: calc(12px * var(--freeform-inverse-scale, 1));
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  box-shadow: var(--shadow-sm);
+  transform: translate(-50%, -50%) scale(var(--freeform-inverse-scale, 1));
+  pointer-events: none;
+}
+
 .freeform-selection-move::before,
 .freeform-selection-resize::before,
 .freeform-selection-rotate::before {

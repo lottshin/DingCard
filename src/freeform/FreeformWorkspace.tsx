@@ -36,7 +36,7 @@ import {
 } from './document'
 import { materializeLocalFreeformImages } from './imageAssets'
 import { insertRichTextSpan } from './richText'
-import { BLEND_MODES } from './appearance'
+import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorNumberInput } from './InspectorNumberInput'
 import { FreeformLayersPanel } from './FreeformLayersPanel'
@@ -148,6 +148,7 @@ import {
   sceneNodeWithLocalMatrix,
   sceneParentWorldMatrix,
   sceneWorldMatrixAtPath,
+  transformPoint,
   transformVector,
   translation,
   uniformScale,
@@ -175,6 +176,7 @@ import {
 import type {
   FreeformAction,
   ColorPaint,
+  LinePoint,
   FreeformDocument,
   FreeformElement,
   FreeformImageElement,
@@ -3483,6 +3485,81 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       else startImageFraming(directPath)
       return
     }
+    // Double-clicking a polyline edits its vertices: near a vertex removes it,
+    // near a segment inserts one at the projected point.
+    if (directNode.type === 'line' && directNode.points && renderScale !== null) {
+      const pagePoint = rawArtboardPointFromClient(event.clientX, event.clientY)
+      const world = sceneWorldMatrixAtPath(activeSlide.nodes, directPath)
+      const inverseWorld = world ? invert(world) : null
+      if (!pagePoint || !world || !inverseWorld) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (state.locked || state.hidden) {
+        showLockedOperationNotice()
+        return
+      }
+      setSelection([directNode.id])
+      const threshold = 8 / renderScale
+      let nearestVertex = -1
+      let nearestVertexDistance = threshold
+      directNode.points.forEach((point, index) => {
+        const vertexPage = transformPoint(world, point)
+        const distance = Math.hypot(vertexPage.x - pagePoint.x, vertexPage.y - pagePoint.y)
+        if (distance < nearestVertexDistance) {
+          nearestVertexDistance = distance
+          nearestVertex = index
+        }
+      })
+      if (nearestVertex >= 0) {
+        if (directNode.points.length <= LINE_POINTS_MIN) return
+        applyAction({
+          type: 'node/update-style',
+          slideId: activeSlide.id,
+          updates: [{
+            path: directPath,
+            patch: { points: directNode.points.filter((_, index) => index !== nearestVertex) },
+          }],
+        }, '删除顶点')
+        return
+      }
+      let insertIndex = -1
+      let insertPoint: LinePoint | null = null
+      let nearestSegmentDistance = threshold
+      for (let index = 0; index < directNode.points.length - 1; index += 1) {
+        const a = transformPoint(world, directNode.points[index])
+        const b = transformPoint(world, directNode.points[index + 1])
+        const ab = { x: b.x - a.x, y: b.y - a.y }
+        const lengthSquared = ab.x * ab.x + ab.y * ab.y
+        const t = lengthSquared > 0
+          ? clamp(
+            ((pagePoint.x - a.x) * ab.x + (pagePoint.y - a.y) * ab.y) / lengthSquared,
+            0,
+            1,
+          )
+          : 0
+        const projected = { x: a.x + ab.x * t, y: a.y + ab.y * t }
+        const distance = Math.hypot(projected.x - pagePoint.x, projected.y - pagePoint.y)
+        if (distance < nearestSegmentDistance) {
+          nearestSegmentDistance = distance
+          insertIndex = index + 1
+          const local = transformPoint(inverseWorld, projected)
+          insertPoint = {
+            x: clamp(local.x, 0, directNode.width),
+            y: clamp(local.y, 0, directNode.height),
+          }
+        }
+      }
+      if (insertIndex >= 0 && insertPoint) {
+        const points = [...directNode.points]
+        points.splice(insertIndex, 0, insertPoint)
+        applyAction({
+          type: 'node/update-style',
+          slideId: activeSlide.id,
+          updates: [{ path: directPath, patch: { points } }],
+        }, '添加顶点')
+      }
+      return
+    }
     if (directNode.type !== 'group') return
     event.preventDefault()
     event.stopPropagation()
@@ -4129,6 +4206,122 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onCancel)
     window.addEventListener('blur', onBlur)
+  }
+
+  /** Drag one polyline vertex; the vertex stays clamped inside the node box. */
+  function onVertexPointerDown(
+    event: React.PointerEvent<HTMLButtonElement>,
+    target: SelectionOverlayTarget,
+    vertexIndex: number,
+  ) {
+    if (renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    blurActiveTypingTarget()
+    const interactionScale = renderScale
+    const pointerId = event.pointerId
+    const startDocument = currentDocumentRef.current
+    const startSlide = startDocument.slides.find((slide) => slide.id === activeSlide.id)
+    if (!startSlide) return
+    const path = [...activeGroupPath, target.nodeIds[0]]
+    const node = findNodeAtPath(startSlide.nodes, path)
+    if (!node || node.type !== 'line' || !node.points) return
+    if (node.points[vertexIndex] === undefined) return
+    const world = sceneWorldMatrixAtPath(startSlide.nodes, path)
+    const inverseWorld = world ? invert(world) : null
+    if (!world || !inverseWorld) return
+    const startPoints = node.points
+    const startVertex = node.points[vertexIndex]
+    const startX = event.clientX
+    const startY = event.clientY
+    activeInteractionRef.current = 'move'
+    setActiveInteraction('move')
+
+    const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
+      const worldDelta = {
+        x: (moveEvent.clientX - startX) / interactionScale,
+        y: (moveEvent.clientY - startY) / interactionScale,
+      }
+      const localDelta = transformVector(inverseWorld, worldDelta)
+      const nextVertex = {
+        x: clamp(startVertex.x + localDelta.x, 0, node.width),
+        y: clamp(startVertex.y + localDelta.y, 0, node.height),
+      }
+      replaceCurrent({
+        type: 'node/update-style',
+        slideId: startSlide.id,
+        updates: [{
+          path,
+          patch: {
+            points: startPoints.map((point, index) => index === vertexIndex ? nextVertex : point),
+          },
+        }],
+      })
+    }
+
+    const cleanupVertexDrag = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onBlur)
+      activeInteractionRef.current = null
+      setActiveInteraction(null)
+    }
+
+    const finishVertexDrag = () => {
+      cleanupVertexDrag()
+      commitLiveEdit(startDocument, '拖动顶点')
+    }
+
+    const cancelVertexDrag = () => {
+      cleanupVertexDrag()
+      cancelLiveEdit(startDocument)
+    }
+
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId === pointerId) finishVertexDrag()
+    }
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId === pointerId) cancelVertexDrag()
+    }
+    const onBlur = () => cancelVertexDrag()
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onBlur)
+  }
+
+  /** Double-clicking a vertex handle removes that vertex (the overlay only shows unlocked lines). */
+  function onVertexDoubleClick(
+    event: React.MouseEvent<HTMLButtonElement>,
+    target: SelectionOverlayTarget,
+    vertexIndex: number,
+  ) {
+    event.preventDefault()
+    event.stopPropagation()
+    const startSlide = currentDocumentRef.current.slides.find(
+      (slide) => slide.id === activeSlide.id,
+    )
+    if (!startSlide) return
+    const path = [...activeGroupPath, target.nodeIds[0]]
+    const node = findNodeAtPath(startSlide.nodes, path)
+    if (!node || node.type !== 'line' || !node.points) return
+    if (node.points.length <= LINE_POINTS_MIN) return
+    applyAction({
+      type: 'node/update-style',
+      slideId: startSlide.id,
+      updates: [{
+        path,
+        patch: { points: node.points.filter((_, index) => index !== vertexIndex) },
+      }],
+    }, '删除顶点')
   }
 
   function onResizePointerDown(event: React.PointerEvent, target: SelectionOverlayTarget) {
@@ -5427,6 +5620,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                       )}
                       onResizePointerDown={onResizePointerDown}
                       onRotatePointerDown={onRotatePointerDown}
+                      onVertexPointerDown={onVertexPointerDown}
+                      onVertexDoubleClick={onVertexDoubleClick}
                     />
                   )}
                 </div>

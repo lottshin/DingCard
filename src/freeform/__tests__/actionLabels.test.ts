@@ -40,6 +40,11 @@ describe('freeform action labels', () => {
       type: 'node/update-style', slideId: 'a', updates: [],
     }))).toBe('更改样式')
     expect(describeFreeformAction(action({
+      type: 'node/update-style', slideId: 'a', updates: [{
+        path: ['line-1'], patch: { points: [{ x: 0, y: 0 }, { x: 10, y: 10 }] },
+      }],
+    }))).toBe('调整顶点')
+    expect(describeFreeformAction(action({
       type: 'node/update-geometry', slideId: 'a', updates: [],
     }))).toBe('移动对象')
     expect(describeFreeformAction(action({

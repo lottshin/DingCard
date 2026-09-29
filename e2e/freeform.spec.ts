@@ -2536,6 +2536,127 @@ test('drafts panel imports a v14 polyline document and renders its vertices', as
   await expect(page.getByTestId('freeform-polyline')).toHaveAttribute('marker-start', /arrow-start/)
 })
 
+test('polyline vertex handles drag vertices and double-click edits them', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openFreeform(page)
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
+  await registerUser(page, `vertex-${Date.now()}`)
+
+  const importedDocument = {
+    documentVersion: 14,
+    activeSlideId: 'vertex-slide-1',
+    slides: [
+      {
+        id: 'vertex-slide-1',
+        name: '顶点页',
+        width: 1080,
+        height: 1440,
+        background: { type: 'solid', color: '#ffffff' },
+        nodes: [
+          {
+            id: 'vertex-line-1',
+            name: '山脊',
+            locked: false,
+            hidden: false,
+            type: 'line',
+            x: 200,
+            y: 300,
+            width: 600,
+            height: 300,
+            rotation: 0,
+            scale: 1,
+            lineKind: 'line',
+            stroke: '#17293c',
+            strokeWidth: 10,
+            points: [
+              { x: 0, y: 260 },
+              { x: 200, y: 40 },
+              { x: 400, y: 260 },
+              { x: 600, y: 40 },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+
+  await page.getByRole('button', { name: /^我的草稿/ }).click()
+  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
+  await page.getByLabel('导入 JSON 文档').setInputFiles({
+    name: 'vertex.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(importedDocument)),
+  })
+  await expect(page.getByTestId('drafts-drawer')).not.toBeVisible()
+
+  const polyline = page.getByTestId('freeform-polyline')
+  const readPoints = async () => {
+    const raw = await polyline.getAttribute('points')
+    return (raw ?? '').split(' ').map((pair) => pair.split(',').map(Number))
+  }
+
+  // Selecting the polyline reveals one handle per vertex.
+  await page.locator('[data-scene-node-id="vertex-line-1"]').click()
+  const handle = (index: number) => page.getByTestId(`freeform-vertex-handle-${index}`)
+  await expect(handle(0)).toBeVisible()
+  await expect(handle(3)).toBeVisible()
+  await expect(page.getByTestId('freeform-vertex-handle-4')).toHaveCount(0)
+
+  // Drag vertex 1 toward the bottom right; only that vertex moves.
+  const box = await handle(1).boundingBox()
+  expect(box).toBeTruthy()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + box!.width / 2 + 80, box!.y + box!.height / 2 + 60, { steps: 4 })
+  await page.mouse.up()
+  const afterDrag = await readPoints()
+  expect(afterDrag).toHaveLength(4)
+  expect(afterDrag[0]).toEqual([0, 260])
+  expect(afterDrag[1][0]).toBeGreaterThan(200)
+  expect(afterDrag[1][1]).toBeGreaterThan(40)
+  expect(afterDrag[2]).toEqual([400, 260])
+  expect(afterDrag[3]).toEqual([600, 40])
+
+  // Double-click near the midpoint of the first segment inserts a vertex there.
+  const first = await handle(0).boundingBox()
+  const second = await handle(1).boundingBox()
+  expect(first).toBeTruthy()
+  expect(second).toBeTruthy()
+  await page.mouse.dblclick(
+    (first!.x + first!.width / 2 + second!.x + second!.width / 2) / 2,
+    (first!.y + first!.height / 2 + second!.y + second!.height / 2) / 2,
+  )
+  const afterAdd = await readPoints()
+  expect(afterAdd).toHaveLength(5)
+  expect(afterAdd[0]).toEqual([0, 260])
+  expect(afterAdd[1][0]).toBeGreaterThan(0)
+  expect(afterAdd[1][0]).toBeLessThan(afterAdd[2][0])
+
+  // Double-clicking a vertex handle removes that vertex.
+  await handle(2).dblclick()
+  const afterRemove = await readPoints()
+  expect(afterRemove).toHaveLength(4)
+
+  // The history panel recorded each vertex edit with its own label.
+  await page.getByRole('tab', { name: '历史', exact: true }).click()
+  await expect(page.getByTestId('freeform-history-panel')).toBeVisible()
+  for (const label of ['拖动顶点', '添加顶点', '删除顶点']) {
+    await expect(
+      page.locator('[data-testid="freeform-history-item"]').filter({
+        has: page.locator('.freeform-history-label', { hasText: label }),
+      }),
+    ).toHaveCount(1)
+  }
+
+  // Undo walks the three vertex edits back to the imported shape.
+  for (let step = 0; step < 3; step += 1) {
+    await page.keyboard.press('ControlOrMeta+z')
+  }
+  await expect(polyline).toHaveAttribute('points', '0,260 200,40 400,260 600,40')
+})
+
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await openFreeform(page)
 

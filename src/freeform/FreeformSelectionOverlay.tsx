@@ -1,4 +1,4 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { effectiveSceneState } from './sceneSelection'
 import { findNodeAtPath, scenePathKey } from './sceneTree'
 import {
@@ -11,7 +11,7 @@ import {
   translation,
 } from './sceneTransform'
 import type { Matrix2D, SceneBounds } from './sceneTransform'
-import type { FreeformSceneNode, ScenePath } from './types'
+import type { FreeformSceneNode, LinePoint, ScenePath } from './types'
 
 export type SelectionOverlayInteraction = 'move' | 'resize' | 'rotate' | null
 
@@ -45,6 +45,18 @@ export interface FreeformSelectionOverlayProps {
     event: ReactPointerEvent<HTMLButtonElement>,
     target: SelectionOverlayTarget,
   ) => void
+  /** Vertex handles appear only for a selected single polyline; index is the vertex order. */
+  onVertexPointerDown?: (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    target: SelectionOverlayTarget,
+    vertexIndex: number,
+  ) => void
+  /** Double-clicking a vertex handle removes that vertex (kept >= 2 by the handler). */
+  onVertexDoubleClick?: (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    target: SelectionOverlayTarget,
+    vertexIndex: number,
+  ) => void
 }
 
 type SelectionOverlayStyle = CSSProperties & {
@@ -61,6 +73,8 @@ interface OverlayFrame {
   matrix: Matrix2D
   width: number
   height: number
+  /** Polyline vertices in the frame's local coordinates (single line leaf only). */
+  vertices?: LinePoint[]
 }
 
 function unionBounds(bounds: readonly SceneBounds[]): SceneBounds | null {
@@ -116,6 +130,9 @@ function buildOverlayFrames(
     : { x: 0, y: 0, width: node.width, height: node.height }
   if (!localBounds) return []
   const frameMatrix = multiply(world, translation(localBounds.x, localBounds.y))
+  const vertices = node.type === 'line' && node.points
+    ? node.points.map((point) => ({ x: point.x + localBounds.x, y: point.y + localBounds.y }))
+    : undefined
   return [{
     target: {
       key: scenePathKey(path),
@@ -132,6 +149,7 @@ function buildOverlayFrames(
     matrix: frameMatrix,
     width: localBounds.width,
     height: localBounds.height,
+    vertices,
   }]
 }
 
@@ -153,6 +171,8 @@ export function FreeformSelectionOverlay({
   onMovePointerDown,
   onResizePointerDown,
   onRotatePointerDown,
+  onVertexPointerDown,
+  onVertexDoubleClick,
 }: FreeformSelectionOverlayProps) {
   const frames = buildOverlayFrames(nodes, selectedPaths)
   const inverseRenderScale = renderScale > 0 ? 1 / renderScale : 1
@@ -165,7 +185,7 @@ export function FreeformSelectionOverlay({
       role="presentation"
       style={{ '--freeform-inverse-scale': inverseRenderScale } as SelectionOverlayStyle}
     >
-      {frames.map(({ target, matrix, width, height }) => {
+      {frames.map(({ target, matrix, width, height, vertices }) => {
           const frameScale = decomposeSimilarity(matrix)?.scale ?? 1
           const itemStyle: SelectionOverlayStyle = {
             left: 0,
@@ -214,7 +234,23 @@ export function FreeformSelectionOverlay({
                   />
                 </>
               )}
-              {badge && (
+                  {interactive && vertices && onVertexPointerDown && vertices.length > 0 && (
+                    <>
+                      {vertices.map((vertex, index) => (
+                        <button
+                          key={`vertex-${index}`}
+                          className="freeform-ui-only freeform-vertex-handle"
+                          data-testid={`freeform-vertex-handle-${index}`}
+                          type="button"
+                          aria-label={`拖动顶点 ${index + 1}`}
+                          style={{ left: vertex.x, top: vertex.y }}
+                          onPointerDown={(event) => onVertexPointerDown(event, target, index)}
+                          onDoubleClick={(event) => onVertexDoubleClick?.(event, target, index)}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {badge && (
                 <span
                   className="freeform-ui-only freeform-selection-badge"
                   data-testid="freeform-selection-badge"

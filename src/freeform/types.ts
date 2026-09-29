@@ -269,6 +269,8 @@ export interface FreeformNodeStylePatch {
   startCap?: LineEndpointCap | null
   /** Line end endpoint decoration (v13); `null` defers to lineKind. */
   endCap?: LineEndpointCap | null
+  /** Replace the line's polyline vertices (v14) wholesale. */
+  points?: LinePoint[]
 }
 
 export interface FreeformNodeGeometryPatch {
