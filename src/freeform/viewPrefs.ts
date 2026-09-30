@@ -1,11 +1,13 @@
-// Per-user editor view preferences for the freeform canvas (guide visibility,
-// object snapping, and PNG/JPEG export options), persisted so the toggles
-// survive reloads. Storage failures degrade to the defaults — blocked storage
-// must never break the app.
+// Per-user editor view preferences for the freeform canvas (rulers, guide
+// visibility, object snapping, and PNG/JPEG export options), persisted so the
+// toggles survive reloads. Storage failures degrade to the defaults — blocked
+// storage must never break the app.
 
 export type ExportFormat = 'png' | 'jpeg'
 
 export interface FreeformViewPrefs {
+  /** Rulers along the stage's top and left edges; off keeps the canvas quiet. */
+  rulersVisible: boolean
   guidesVisible: boolean
   snappingEnabled: boolean
   exportFormat: ExportFormat
@@ -18,6 +20,7 @@ export interface FreeformViewPrefs {
 const KEY = 'slicer.freeform.prefs.v1'
 
 export const DEFAULT_VIEW_PREFS: FreeformViewPrefs = {
+  rulersVisible: false,
   guidesVisible: true,
   snappingEnabled: true,
   exportFormat: 'png',
@@ -39,6 +42,9 @@ export function loadViewPrefs(): FreeformViewPrefs {
     // Project only the known fields so stale payloads with extra keys (or the
     // pre-export-options shape) never leak into component state.
     return {
+      rulersVisible: typeof record.rulersVisible === 'boolean'
+        ? record.rulersVisible
+        : DEFAULT_VIEW_PREFS.rulersVisible,
       guidesVisible: typeof record.guidesVisible === 'boolean'
         ? record.guidesVisible
         : DEFAULT_VIEW_PREFS.guidesVisible,

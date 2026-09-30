@@ -245,7 +245,7 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
               <p>
                 {currentIsSaved
                   ? t('模板会作为一个新项目打开，当前项目留在「我的项目」里。')
-                  : t('访客模式下不会保存，打开模板后当前内容就找不回来了。')}
+                  : t('最近的修改还没保存，打开模板后就找不回来了。')}
               </p>
               <div className='template-confirm-actions'>
                 <button className='template-cancel' type='button' onClick={closePending}>{t('继续编辑')}</button>

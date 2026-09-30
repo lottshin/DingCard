@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sortAssets, type Asset } from '../assets'
-import type { User } from '../auth'
-import { store } from '../storage'
+import { storeFor } from '../storage'
 import { prepareAssetFile } from './assetFiles'
 import { errorText } from './errors'
 import { t } from '../i18n'
@@ -28,9 +27,9 @@ export interface AssetsState {
   remove: (asset: Asset) => Promise<void>
 }
 
-/** The signed-in user's asset library. Guests have none. */
-export function useAssets(user: User | null): AssetsState {
-  const userId = user?.id ?? null
+/** An owner's asset library: an account's, or this device's guest's. */
+export function useAssets(ownerId: string | null): AssetsState {
+  const userId = ownerId
   const [assets, setAssets] = useState<Asset[]>([])
   const [status, setStatus] = useState<AssetsState['status']>(userId ? 'loading' : 'idle')
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +47,7 @@ export function useAssets(user: User | null): AssetsState {
       return
     }
     setStatus((current) => (current === 'ready' ? current : 'loading'))
-    store.assets.list(userId).then(
+    storeFor(userId).assets.list(userId).then(
       (list) => {
         if (generation !== generationRef.current) return
         setAssets(sortAssets(list))
@@ -81,7 +80,7 @@ export function useAssets(user: User | null): AssetsState {
     // One at a time: each upload may run server-side GC under the user's asset lock.
     for (const [index, file] of files.entries()) {
       try {
-        const asset = await store.assets.add(uid, await prepareAssetFile(file))
+        const asset = await storeFor(uid).assets.add(uid, await prepareAssetFile(file))
         if (userIdRef.current !== uid) break
         outcome.added.push(asset)
         setAssets((current) => sortAssets([asset, ...current]))
@@ -98,7 +97,7 @@ export function useAssets(user: User | null): AssetsState {
   const rename = useCallback(async (asset: Asset, name: string) => {
     const uid = userIdRef.current
     if (!uid) return
-    const next = await store.assets.rename(uid, asset.id, name)
+    const next = await storeFor(uid).assets.rename(uid, asset.id, name)
     if (userIdRef.current !== uid) return
     setAssets((current) => current.map((item) => (item.id === next.id ? next : item)))
   }, [])
@@ -106,7 +105,7 @@ export function useAssets(user: User | null): AssetsState {
   const remove = useCallback(async (asset: Asset) => {
     const uid = userIdRef.current
     if (!uid) return
-    await store.assets.remove(uid, asset.id)
+    await storeFor(uid).assets.remove(uid, asset.id)
     if (userIdRef.current !== uid) return
     setAssets((current) => current.filter((item) => item.id !== asset.id))
   }, [])

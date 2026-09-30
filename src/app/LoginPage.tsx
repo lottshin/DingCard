@@ -111,13 +111,13 @@ export function LoginPage({ onAuthed, onGuest }: LoginPageProps) {
             {busy ? t('请稍候…') : registering ? t('创建账号并进入') : t('登录')}
           </button>
           <div className="login-or">{t('或')}</div>
-          <button className="ghost login-guest" type="button" onClick={onGuest} data-testid="login-guest">{t('先逛逛，暂不登录')}</button>
+          <button className="ghost login-guest" type="button" onClick={onGuest} data-testid="login-guest">{t('不注册，直接开始')}</button>
           <p className="login-note">
             <LockIcon />
             <span>
               {store.remote
-                ? t('账号保存在你部署的服务器上，登录后可在多台设备间同步项目。')
-                : t('账号和项目只保存在这台设备的浏览器里，不会上传。部署服务端后可在多台设备间同步。')}
+                ? t('账号保存在你部署的服务器上，登录后可在多台设备间同步项目。不注册也能用，项目会自动保存在这台设备上。')
+                : t('账号和项目只保存在这台设备的浏览器里，不会上传。不注册也会自动保存；部署服务端后可在多台设备间同步。')}
             </span>
           </p>
         </form>

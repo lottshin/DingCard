@@ -217,7 +217,8 @@ export function listDrafts(userId: string): Draft[] {
 }
 
 function writeAll(userId: string, drafts: Draft[]) {
-  localStorage.setItem(keyFor(userId), JSON.stringify(drafts))
+  if (drafts.length === 0) localStorage.removeItem(keyFor(userId))
+  else localStorage.setItem(keyFor(userId), JSON.stringify(drafts))
 }
 
 /** Derive a human title from the first non-empty line of the source. */

@@ -22,7 +22,7 @@ import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
 import { deriveMarkdownTitle, type Draft, type MarkdownCardDocument } from '../../drafts'
 import { readLastSession, updateLastSession } from '../../lastSession'
-import { store } from '../../storage'
+import { GUEST_OWNER_ID, isGuestOwner, storeFor } from '../../storage'
 import type { Asset } from '../../assets'
 import { assetDocumentSource, markdownImageAlt } from '../assetSource'
 import { EditorTopBar, type SaveState } from '../EditorTopBar'
@@ -107,7 +107,16 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? t(error.message) : fallback
 }
 
-export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request = null, onMetaChange }: WorkspaceShellProps) {
+export function MarkdownWorkspace({
+  isActive,
+  user,
+  ownerId,
+  transfer = null,
+  requestAuth,
+  chrome,
+  request = null,
+  onMetaChange,
+}: WorkspaceShellProps) {
   const [source, setSource] = useState(SAMPLE)
   const [platformId, setPlatformId] = useState(PLATFORMS[0].id)
   const [themeId, setThemeId] = useState(THEMES[0].id)
@@ -126,8 +135,6 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
   const [active, setActive] = useState(0)
   const [ctx, setCtx] = useState<Ctx | null>(null)
 
-  // 刷新恢复：每账号只尝试一次；openDraftRef 让恢复 effect 不必依赖 openDraft 的函数身份。
-  const restoreAttemptedUserIdRef = useRef<string | null>(null)
   // Bumped whenever the document is replaced, so a slow session restore can't overwrite it.
   const restoreGenerationRef = useRef(0)
   const handledRequestRef = useRef(0)
@@ -139,14 +146,21 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
   const [operationNotice, setOperationNotice] = useState<WorkspaceNotice | null>(null)
 
   const cardRef = useRef<HTMLDivElement>(null)
-  const previousUserId = useRef<string | null>(user?.id ?? null)
-  // The project a signed-out account left unsaved text in (see the account effect).
+  // Starts unknown, so an editor opened with a known owner reopens their last project.
+  const previousOwnerId = useRef<string | null>(null)
+  // The project an account's expired session left unsaved text in (see the owner effect).
   const parkedProjectRef = useRef<{ userId: string; draftId: string | null } | null>(null)
-  const activeUserIdRef = useRef<string | null>(user?.id ?? null)
+  const [parkedFor, setParkedFor] = useState<string | null>(null)
+  const activeOwnerIdRef = useRef<string | null>(ownerId)
+  const transferRef = useRef(transfer)
+  // What is on screen was asked for (new, a template, a project): don't swap the last session in.
+  const explicitDocumentRef = useRef(false)
   const currentDraftIdRef = useRef<string | null>(draftId)
   const draftRevisionRef = useRef(0)
-  activeUserIdRef.current = user?.id ?? null
+  activeOwnerIdRef.current = ownerId
+  transferRef.current = transfer
   currentDraftIdRef.current = draftId
+  const ownerStore = storeFor(ownerId ?? GUEST_OWNER_ID)
 
   const updateDraftId = useCallback((nextDraftId: string | null) => {
     currentDraftIdRef.current = nextDraftId
@@ -193,8 +207,13 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
   )
   const retainNow = useImageLease(
     imageSources,
-    store.remote && Boolean(user),
+    ownerId !== null && ownerStore.remote,
     handleLeaseError,
+  )
+  // Pasted pictures go to whoever owns the document (a guest's stay in this browser).
+  const putImage = useCallback(
+    (dataUrl: string) => storeFor(activeOwnerIdRef.current ?? GUEST_OWNER_ID).images.put(dataUrl),
+    [],
   )
 
   // paginate() measures real DOM nodes. Running it inside render/useMemo mutates
@@ -257,11 +276,11 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
     }
   }, [markDraftDirty])
 
-  // Autosave: every edit by a signed-in user lands in their project a moment later.
+  // Autosave: every edit lands in the owner's project a moment later.
   const autosave = useProjectAutosave<number>((saved, _content, revision) => {
     updateDraftId(saved.id)
-    const uid = activeUserIdRef.current
-    if (uid) updateLastSession(uid, { mode: 'markdown-card', markdownDraftId: saved.id })
+    const owner = activeOwnerIdRef.current
+    if (owner) updateLastSession(owner, { mode: 'markdown-card', markdownDraftId: saved.id })
     if (draftRevisionRef.current === revision) {
       setDirty(false)
       setSavedAt(saved.updatedAt)
@@ -275,60 +294,70 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
     if (!isActive) void flushSave()
   }, [flushSave, isActive])
 
-  // A different account: the open project belongs to the old one. A guest who
-  // signs in keeps the document, and autosave files its edits under the new account.
+  // A different owner (signing in or out, or the session check settling): the
+  // open project belongs to the previous one.
   useEffect(() => {
-    const nextUserId = user?.id ?? null
-    const previous = previousUserId.current
-    if (previous === nextUserId) return
-    previousUserId.current = nextUserId
+    const next = ownerId
+    const previous = previousOwnerId.current
+    if (previous === next) return
+    previousOwnerId.current = next
+    // Queued edits still save to the previous owner's project.
     releaseSave()
-    // Unsaved text kept on screen after a session ended goes back into the same
-    // project when that account signs in again, instead of a copy.
-    if (previous !== null && nextUserId === null && dirty) {
-      parkedProjectRef.current = { userId: previous, draftId: currentDraftIdRef.current }
-    }
-    const parked = parkedProjectRef.current
-    const resumed = parked !== null && parked.userId === nextUserId
-    if (nextUserId !== null) parkedProjectRef.current = null
-    updateDraftId(resumed ? parked.draftId : null)
     setSavedAt(null)
-    // Signing back in reopens the last project.
-    if (nextUserId === null) restoreAttemptedUserIdRef.current = null
-    if (previous !== null && !dirty) resetDocument(NEW_DOCUMENT_SOURCE, null)
-  }, [user])
+    const parked = parkedProjectRef.current
+    if (previous !== null && !isGuestOwner(previous) && isGuestOwner(next) && dirty) {
+      // The session ended before these edits were saved: keep them on screen
+      // for that account instead of filing them under the guest.
+      parkedProjectRef.current = { userId: previous, draftId: currentDraftIdRef.current }
+      setParkedFor(previous)
+      updateDraftId(null)
+      return
+    }
+    parkedProjectRef.current = null
+    setParkedFor(null)
+    if (next === null) return
+    if (parked) {
+      if (parked.userId === next) {
+        // Signed back in: the kept edits go into the same project.
+        updateDraftId(parked.draftId)
+        return
+      }
+      // Someone else signed in: keep the edits on this device rather than drop them.
+      scheduleSave(GUEST_OWNER_ID, null, {
+        mode: 'markdown-card',
+        ...(customTitle ? { title: customTitle } : {}),
+        document: { source, platformId, themeId, fontFamily, profile, radius },
+      }, draftRevisionRef.current)
+      releaseSave()
+    }
+    const moved = currentDraftIdRef.current ? transferRef.current?.get(currentDraftIdRef.current) : undefined
+    if (moved?.mode === 'markdown-card') {
+      // The guest project on screen just moved into this account: keep editing it there.
+      openDraft(moved)
+      return
+    }
+    if (previous === null && !parked) {
+      // The session check settled: anything typed meanwhile is saved for the
+      // owner; otherwise pick up where they left off.
+      if (!dirty && !explicitDocumentRef.current) restoreLastProject(next)
+      return
+    }
+    explicitDocumentRef.current = false
+    resetDocument(NEW_DOCUMENT_SOURCE, null)
+    restoreLastProject(next)
+  }, [ownerId])
 
-  // Declared after the account effect above, so a guest's edits are scheduled
-  // under the new account only once the old account's saver is gone.
+  // Declared after the owner effect above, so edits are scheduled for the new
+  // owner only once the previous owner's saver is gone. The parked check reads
+  // the ref: the owner effect may have parked the edits in this same commit.
   useEffect(() => {
-    if (!user || !dirty) return
-    scheduleSave(user.id, currentDraftIdRef.current, {
+    if (!ownerId || !dirty || parkedProjectRef.current) return
+    scheduleSave(ownerId, currentDraftIdRef.current, {
       mode: 'markdown-card',
       ...(customTitle ? { title: customTitle } : {}),
       document: { source, platformId, themeId, fontFamily, profile, radius },
     }, draftRevisionRef.current)
-  }, [customTitle, dirty, fontFamily, platformId, profile, radius, scheduleSave, source, themeId, user])
-
-  // 刷新恢复：账号确认后自动回到本工作台最近打开的草稿（每个账号只尝试
-  // 一次；草稿已被删除或读取失败则保持新文档，不提示）。
-  useEffect(() => {
-    if (!user || restoreAttemptedUserIdRef.current === user.id) return
-    restoreAttemptedUserIdRef.current = user.id
-    // Text already written (a guest who just signed in) stays; autosave files it.
-    if (dirty) return
-    const draftId = readLastSession(user.id).markdownDraftId
-    if (!draftId) return
-    const uid = user.id
-    const generation = ++restoreGenerationRef.current
-    void store.drafts.list(uid).then(
-      (list) => {
-        if (activeUserIdRef.current !== uid || restoreGenerationRef.current !== generation) return
-        const target = list.find((draft) => draft.id === draftId && draft.mode === 'markdown-card')
-        if (target) openDraftRef.current(target)
-      },
-      () => {},
-    )
-  }, [user])
+  }, [customTitle, dirty, fontFamily, ownerId, parkedFor, platformId, profile, radius, scheduleSave, source, themeId])
 
   useEffect(() => {
     if (active > pages.length - 1) setActive(Math.max(0, pages.length - 1))
@@ -550,9 +579,11 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
     releaseSave()
     draftRevisionRef.current += 1
     restoreGenerationRef.current += 1
+    parkedProjectRef.current = null
+    setParkedFor(null)
     if (document) {
       // Re-register the draft's embedded images so `img:` refs resolve again.
-      if (document.images) for (const [ref, url] of Object.entries(document.images)) store.images.register(ref, url)
+      if (document.images) for (const [ref, url] of Object.entries(document.images)) ownerStore.images.register(ref, url)
       setSource(document.source)
       setPlatformId(document.platformId)
       setThemeId(resolveTheme(document.themeId).id)
@@ -578,9 +609,25 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
   function openDraft(d: Draft) {
     if (d.mode !== 'markdown-card') return
     loadDocument(d.document, d)
-    if (user) updateLastSession(user.id, { mode: 'markdown-card', markdownDraftId: d.id })
+    const owner = activeOwnerIdRef.current
+    if (owner) updateLastSession(owner, { mode: 'markdown-card', markdownDraftId: d.id })
   }
   openDraftRef.current = openDraft
+
+  /** Reopen the owner's last project, unless something else goes on screen first. */
+  function restoreLastProject(owner: string) {
+    const lastId = readLastSession(owner).markdownDraftId
+    if (!lastId) return
+    const generation = ++restoreGenerationRef.current
+    void storeFor(owner).drafts.list(owner).then(
+      (list) => {
+        if (activeOwnerIdRef.current !== owner || restoreGenerationRef.current !== generation) return
+        const target = list.find((draft) => draft.id === lastId && draft.mode === 'markdown-card')
+        if (target) openDraftRef.current(target)
+      },
+      () => {},
+    )
+  }
 
   function renameProject(title: string) {
     setCustomTitle(title)
@@ -596,26 +643,29 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
 
   const derivedTitle = deriveMarkdownTitle(source)
   const documentTitle = customTitle ?? (derivedTitle === '未命名草稿' ? t('未命名') : derivedTitle)
-  const unsaved = dirty && (!user || autosave.status === 'error')
+  const unsaved = dirty && (ownerId === null || parkedFor !== null || autosave.status === 'error')
   useEffect(() => {
     onMetaChange?.({ title: documentTitle, draftId, unsaved })
   }, [documentTitle, draftId, unsaved, onMetaChange])
 
-  const saveState: SaveState = !user
-    ? chrome.authStatus === 'checking' ? { kind: 'none' } : { kind: 'guest' }
-    : autosave.status === 'error'
-      ? { kind: 'error', message: autosave.error ?? '' }
-      : dirty || autosave.status === 'saving'
-        ? { kind: 'saving' }
-        : draftId
-          ? { kind: 'saved', at: savedAt ?? Date.now() }
-          : { kind: 'none' }
+  const saveState: SaveState = parkedFor
+    ? { kind: 'signed-out' }
+    : ownerId === null
+      ? { kind: 'none' }
+      : autosave.status === 'error'
+        ? { kind: 'error', message: autosave.error ?? '' }
+        : dirty || autosave.status === 'saving'
+          ? { kind: 'saving' }
+          : draftId
+            ? { kind: 'saved', at: savedAt ?? Date.now(), onDevice: isGuestOwner(ownerId) }
+            : { kind: 'none' }
 
   async function insertAsset(asset: Asset) {
+    if (!ownerId) return
     // The user is editing this document now; a late last-session restore must not replace it.
     restoreGenerationRef.current += 1
     try {
-      const snippet = `![${markdownImageAlt(asset.name)}](${await assetDocumentSource(asset)})`
+      const snippet = `![${markdownImageAlt(asset.name)}](${await assetDocumentSource(asset, ownerId)})`
       const view = editorViewRef.current
       if (view) {
         const { from, to } = view.state.selection.main
@@ -639,7 +689,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
   // One-shot instructions from the workbench (open / new / template / removed / renamed).
   useEffect(() => {
     if (!request || handledRequestRef.current === request.nonce) return
-    if (request.kind === 'open' && !user) return
+    if (request.kind === 'open' && !ownerId) return
     handledRequestRef.current = request.nonce
     if (request.kind === 'removed' || request.kind === 'renamed') {
       if (currentDraftIdRef.current !== request.draftId) return
@@ -653,18 +703,18 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
       return
     }
     restoreGenerationRef.current += 1
-    if (user) restoreAttemptedUserIdRef.current = user.id
+    explicitDocumentRef.current = true
     if (request.kind === 'new') {
       resetDocument(NEW_DOCUMENT_SOURCE, request.platformId)
     } else if (request.kind === 'template') {
       applyMarkdownTemplate(request.template)
-    } else if (user && currentDraftIdRef.current !== request.draftId) {
-      const uid = user.id
+    } else if (ownerId && currentDraftIdRef.current !== request.draftId) {
+      const owner = ownerId
       const id = request.draftId
       const generation = restoreGenerationRef.current
-      void store.drafts.list(uid).then(
+      void storeFor(owner).drafts.list(owner).then(
         (list) => {
-          if (activeUserIdRef.current !== uid || restoreGenerationRef.current !== generation) return
+          if (activeOwnerIdRef.current !== owner || restoreGenerationRef.current !== generation) return
           const target = list.find((draft) => draft.id === id && draft.mode === 'markdown-card')
           if (target) openDraft(target)
           else setOperationNotice({ title: t('没有找到这个项目'), detail: t('它可能已经被删除了'), tone: 'error' })
@@ -672,7 +722,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
         (error: unknown) => showOperationError(t('项目打开失败'), error, t('暂时无法读取项目，请稍后重试')),
       )
     }
-  }, [request, user])
+  }, [request, ownerId])
 
   return (
     <div className="app">
@@ -867,7 +917,8 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
                 value={source}
                 onChange={handleEditorChange}
                 fontFamily={config.fontFamily}
-                beforeImageUpload={store.remote ? retainNow : undefined}
+                putImage={putImage}
+                beforeImageUpload={ownerStore.remote ? retainNow : undefined}
                 onImageError={handleImageError}
                 onViewReady={(v) => {
                   editorViewRef.current = v
@@ -1047,10 +1098,9 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
 
       {assetsOpen && isActive && (
         <AssetDrawer
-          user={user}
+          ownerId={ownerId}
           system="markdown-card"
           onInsert={(asset) => void insertAsset(asset)}
-          onRequestAuth={requestAuth}
           onManage={() => navigate(routes.assets)}
           onClose={() => setAssetsOpen(false)}
         />
@@ -1060,7 +1110,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request
         open={showTemplates}
         workspace='markdown'
         hasCurrentContent={draftId !== null || draftRevisionRef.current > 0}
-        currentIsSaved={Boolean(user) && !unsaved}
+        currentIsSaved={ownerId !== null && !unsaved}
         onClose={() => setShowTemplates(false)}
         onApply={applyMarkdownTemplate}
       />

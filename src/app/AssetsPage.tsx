@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { formatBytes, sortAssets, type Asset, type AssetOrder } from '../assets'
-import type { User } from '../auth'
 import { Select } from '../Select'
 import { SearchIcon, UploadIcon } from '../ui/icons'
 import { AssetCard, AssetPreview } from './AssetCard'
 import { ASSET_ACCEPT, imageFiles } from './assetFiles'
 import { ConfirmDialog } from './ConfirmDialog'
-import { navigate, routes } from './router'
 import type { AssetsState } from './useAssets'
 import { t } from '../i18n'
 
 interface AssetsPageProps {
-  user: User | null
+  /** Whose library this is; null while the session is being checked. */
+  ownerId: string | null
   assets: AssetsState
   /** Saved projects per asset id. */
   usage: ReadonlyMap<string, number>
@@ -28,7 +27,7 @@ function isTextTarget(target: EventTarget | null) {
   return target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]') !== null
 }
 
-export function AssetsPage({ user, assets, usage, onUpload, onRename, onDelete }: AssetsPageProps) {
+export function AssetsPage({ ownerId, assets, usage, onUpload, onRename, onDelete }: AssetsPageProps) {
   const [query, setQuery] = useState('')
   const [order, setOrder] = useState<AssetOrder>('recent')
   const [previewId, setPreviewId] = useState<string | null>(null)
@@ -50,7 +49,7 @@ export function AssetsPage({ user, assets, usage, onUpload, onRename, onDelete }
 
   // Paste a screenshot anywhere on the page, except into a text field.
   useEffect(() => {
-    if (!user) return
+    if (!ownerId) return
     const onPaste = (event: ClipboardEvent) => {
       if (isTextTarget(event.target)) return
       const files = imageFiles(event.clipboardData?.files)
@@ -60,9 +59,9 @@ export function AssetsPage({ user, assets, usage, onUpload, onRename, onDelete }
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [user])
+  }, [ownerId])
 
-  const dropHandlers = user
+  const dropHandlers = ownerId
     ? {
         onDragEnter: (event: DragEvent) => {
           if (!carriesFiles(event)) return
@@ -98,13 +97,9 @@ export function AssetsPage({ user, assets, usage, onUpload, onRename, onDelete }
       <div className="page-head">
         <div>
           <h1>{t('素材库')}</h1>
-          <p>
-            {user
-              ? t('上传一次，Markdown 卡片和自由编辑的项目都能用。删掉素材不会影响已经用上它的项目。')
-              : t('登录后，常用的图片可以存进素材库，在所有项目里取用。')}
-          </p>
+          <p>{t('上传一次，Markdown 卡片和自由编辑的项目都能用。删掉素材不会影响已经用上它的项目。')}</p>
         </div>
-        {user && (
+        {ownerId && (
           <div className="page-actions">
             <button className="accent" type="button" onClick={pick} data-testid="asset-upload">
               <UploadIcon />{t('上传图片')}
@@ -126,13 +121,7 @@ export function AssetsPage({ user, assets, usage, onUpload, onRename, onDelete }
         }}
       />
 
-      {!user ? (
-        <div className="empty">
-          <b>{t('还没有登录')}</b>
-          <span>{t('登录后可以上传图片，在 Markdown 卡片和自由编辑里随时取用。')}</span>
-          <button className="ghost" type="button" onClick={() => navigate(routes.login)}>{t('登录或注册')}</button>
-        </div>
-      ) : (
+      {!ownerId ? null : (
         <>
           <div className="toolbar-row">
             <label className="search-field">

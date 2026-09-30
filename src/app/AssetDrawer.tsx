@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { Asset } from '../assets'
-import type { User } from '../auth'
 import { t } from '../i18n'
 import { AssetsIcon, CloseIcon, SearchIcon, UploadIcon } from '../ui/icons'
 import type { WorkspaceMode } from '../workspaces/types'
@@ -8,9 +7,9 @@ import { ASSET_ACCEPT } from './assetFiles'
 import { uploadNotice, useAssets } from './useAssets'
 
 interface AssetPanelProps {
-  user: User | null
+  /** The library's owner (an account or this device's guest); null while the session is checked. */
+  ownerId: string | null
   onInsert: (asset: Asset) => void
-  onRequestAuth: () => void
   onManage: () => void
 }
 
@@ -20,8 +19,8 @@ interface PanelMessage {
 }
 
 /** The asset library as a pick list: search, upload into the library, click to insert. */
-export function AssetPanel({ user, onInsert, onRequestAuth, onManage }: AssetPanelProps) {
-  const assets = useAssets(user)
+export function AssetPanel({ ownerId, onInsert, onManage }: AssetPanelProps) {
+  const assets = useAssets(ownerId)
   const [query, setQuery] = useState('')
   const [message, setMessage] = useState<PanelMessage | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -35,7 +34,7 @@ export function AssetPanel({ user, onInsert, onRequestAuth, onManage }: AssetPan
   )
 
   function upload(files: File[]) {
-    if (!user || files.length === 0) return
+    if (!ownerId || files.length === 0) return
     setMessage(null)
     void assets.upload(files).then((outcome) => {
       const notice = uploadNotice(outcome)
@@ -43,16 +42,14 @@ export function AssetPanel({ user, onInsert, onRequestAuth, onManage }: AssetPan
     })
   }
 
-  const carriesFiles = (event: DragEvent) => Boolean(user) && Array.from(event.dataTransfer.types).includes('Files')
+  const carriesFiles = (event: DragEvent) => Boolean(ownerId) && Array.from(event.dataTransfer.types).includes('Files')
 
-  if (!user) {
+  if (!ownerId) {
     return (
       <div className="asset-panel">
-        <div className="asset-drawer-empty">
+        <div className="asset-drawer-empty" role="status">
           <span className="asset-drop-icon"><AssetsIcon /></span>
-          <b>{t('登录后使用素材库')}</b>
-          <span>{t('常用的图片存一次，Markdown 卡片和自由编辑的项目都能用。')}</span>
-          <button className="accent" type="button" onClick={onRequestAuth}>{t('登录或注册')}</button>
+          <span>{t('正在读取素材库…')}</span>
         </div>
       </div>
     )
@@ -177,7 +174,7 @@ interface AssetDrawerProps extends AssetPanelProps {
 }
 
 /** The asset library beside an editor. */
-export function AssetDrawer({ user, system, onInsert, onRequestAuth, onManage, onClose }: AssetDrawerProps) {
+export function AssetDrawer({ ownerId, system, onInsert, onManage, onClose }: AssetDrawerProps) {
   return (
     <aside
       className="asset-drawer"
@@ -199,7 +196,7 @@ export function AssetDrawer({ user, system, onInsert, onRequestAuth, onManage, o
           <CloseIcon />
         </button>
       </div>
-      <AssetPanel user={user} onInsert={onInsert} onRequestAuth={onRequestAuth} onManage={onManage} />
+      <AssetPanel ownerId={ownerId} onInsert={onInsert} onManage={onManage} />
     </aside>
   )
 }

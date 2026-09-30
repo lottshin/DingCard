@@ -476,3 +476,12 @@ export function SlidersIcon(props: IconProps) {
     </Icon>
   )
 }
+
+export function DeviceCheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 10.75V4.5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v6.25M1.75 12.5h12.5" />
+      <path d="m6.4 7.1 1.1 1.1 2.1-2.1" />
+    </Icon>
+  )
+}

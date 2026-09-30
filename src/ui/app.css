@@ -1657,6 +1657,59 @@ kbd {
   background: color-mix(in srgb, var(--danger) 88%, #000);
 }
 
+/* ---------- Moving guest work into an account ---------- */
+.guest-move-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.guest-move-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.guest-move-modal .form-error {
+  margin: 14px 0 0;
+}
+
+.guest-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.guest-left svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--text-3);
+}
+
+.guest-left span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.guest-left .ghost {
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
 /* ---------- Asset library ---------- */
 .search-field {
   display: flex;
@@ -2095,8 +2148,14 @@ kbd {
 }
 
 .asset-drawer-tools .search-field {
-  flex: 1;
+  flex: 1 1 auto;
   width: auto;
+  min-width: 0;
+}
+
+.asset-drawer-tools .search-field input {
+  width: 100%;
+  min-width: 0;
 }
 
 .asset-drawer-tools .ghost {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { User } from '../auth'
 import type { Draft } from '../drafts'
-import { store } from '../storage'
+import { isGuestOwner, storeFor } from '../storage'
 import { migrateLegacyUserTemplates } from '../templates/legacyUserTemplates'
 import { onAutosaved } from '../workspaces/autosave'
 import { t } from '../i18n'
@@ -36,9 +35,11 @@ const templateMoves = new Map<string, Promise<void>>()
 const unannouncedMoves = new Map<string, number>()
 
 function moveLegacyTemplates(userId: string): Promise<void> {
+  // Only accounts ever saved templates.
+  if (isGuestOwner(userId)) return Promise.resolve()
   let move = templateMoves.get(userId)
   if (!move) {
-    move = migrateLegacyUserTemplates(userId, (input) => store.drafts.save(userId, input)).then(
+    move = migrateLegacyUserTemplates(userId, (input) => storeFor(userId).drafts.save(userId, input)).then(
       (moved) => {
         if (moved > 0) unannouncedMoves.set(userId, moved)
       },
@@ -52,21 +53,22 @@ function moveLegacyTemplates(userId: string): Promise<void> {
   return move
 }
 
-/** The signed-in user's saved projects, newest first. Guests have none. */
-export function useProjects(user: User | null): ProjectsState {
+/** An owner's projects (an account's, or this device's guest's), newest first. */
+export function useProjects(ownerId: string | null): ProjectsState {
   const [projects, setProjects] = useState<Draft[]>([])
-  const [status, setStatus] = useState<ProjectsState['status']>(user ? 'loading' : 'idle')
+  const [status, setStatus] = useState<ProjectsState['status']>(ownerId ? 'loading' : 'idle')
   const [error, setError] = useState<string | null>(null)
   const [movedTemplates, setMovedTemplates] = useState(0)
   const generationRef = useRef(0)
   // Autosaves that may be newer than the last list read (a save racing the fetch).
   const recentSavesRef = useRef(new Map<string, Draft>())
-  const userId = user?.id ?? null
+  const userId = ownerId
 
   useEffect(() => {
     recentSavesRef.current = new Map()
     if (!userId) return
-    return onAutosaved((draft) => {
+    return onAutosaved((draft, owner) => {
+      if (owner !== userId) return
       recentSavesRef.current.set(draft.id, draft)
       setProjects((current) => withRecentSaves(current, new Map([[draft.id, draft]])))
     })
@@ -93,7 +95,7 @@ export function useProjects(user: User | null): ProjectsState {
           unannouncedMoves.delete(userId)
           setMovedTemplates(moved)
         }
-        return store.drafts.list(userId)
+        return storeFor(userId).drafts.list(userId)
       })
       .then(
         (list) => {

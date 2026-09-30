@@ -63,8 +63,12 @@
   --bar-bg: var(--surface);
   --bar-blur: none;
 
-  --freeform-stage-sink: #eceae5;
-  --freeform-stage-dot: rgba(26, 25, 23, 0.11);
+  --freeform-stage-sink: #edece8;
+  --freeform-stage-dot: rgba(26, 25, 23, 0.085);
+  /* Canvas selection: a cool blue that reads as tool chrome over warm artwork. */
+  --canvas-select: #2563eb;
+  --canvas-select-weak: rgba(37, 99, 235, 0.08);
+  --canvas-select-soft: rgba(37, 99, 235, 0.18);
   --freeform-ruler-bg: #ffffff;
   --freeform-ruler-tick: rgba(26, 25, 23, 0.2);
   --freeform-ruler-label: #9a978f;
@@ -137,7 +141,10 @@
   --bar-blur: none;
 
   --freeform-stage-sink: #0f0e0c;
-  --freeform-stage-dot: rgba(255, 255, 255, 0.07);
+  --freeform-stage-dot: rgba(255, 255, 255, 0.06);
+  --canvas-select: #5b8cff;
+  --canvas-select-weak: rgba(91, 140, 255, 0.12);
+  --canvas-select-soft: rgba(91, 140, 255, 0.24);
   --freeform-ruler-bg: #191918;
   --freeform-ruler-tick: rgba(255, 255, 255, 0.18);
   --freeform-ruler-label: #6f6c66;

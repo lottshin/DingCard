@@ -20,8 +20,8 @@ export const editor: Record<string, Translation> = {
   '用这套模板新建项目？': 'Start a new project from this template?',
   '模板会作为一个新项目打开，当前项目留在「我的项目」里。':
     'The template opens as a new project. This one stays in My projects.',
-  '访客模式下不会保存，打开模板后当前内容就找不回来了。':
-    'Guest mode does not save, so what is here now will be gone once the template opens.',
+  '最近的修改还没保存，打开模板后就找不回来了。':
+    'The latest changes are not saved yet, so they will be gone once the template opens.',
   '用模板新建': 'Use template',
 
   // Markdown editor
@@ -86,6 +86,18 @@ export const editor: Record<string, Translation> = {
   '插入': 'Insert',
   '从模板开始': 'Start from a template',
   '添加文本框': 'Add a text box',
+  '添加标题': 'Add a heading',
+  '添加副标题': 'Add a subheading',
+  '添加一段正文': 'Add a little body text',
+  '在这里写一段正文，说说你想分享的内容。': 'Write a few lines here about what you want to share.',
+  '双击编辑文本': 'Double-click to edit',
+  '文字左对齐': 'Align text left',
+  '文字居中': 'Center text',
+  '文字右对齐': 'Align text right',
+  '对齐与字型': 'Alignment and style',
+  '显示标尺': 'Show rulers',
+  '清除描边': 'Remove outline',
+  '拖动旋转，按住 Shift 以 15° 为步长': 'Drag to rotate; hold Shift for 15° steps',
   '文字': 'Text',
   '上传图片或从素材库选择': 'Upload a picture or pick one from Assets',
   '线条': 'Line',
@@ -158,10 +170,6 @@ export const editor: Record<string, Translation> = {
   '字号': 'Size',
   '行高': 'Line height',
   '字距': 'Letter spacing',
-  '左': 'Left',
-  '中': 'Center',
-  '右': 'Right',
-  '字型': 'Style',
   '粗体': 'Bold',
   '斜体': 'Italic',
   '竖排': 'Vertical',
@@ -169,7 +177,6 @@ export const editor: Record<string, Translation> = {
   '描边颜色': 'Stroke color',
   '描边 hex': 'Stroke hex',
   '描边宽度': 'Stroke width',
-  '清除': 'Clear',
   '文字片段': 'Text span',
   '已选 {n} 字': plural('{n} character selected', '{n} characters selected'),
   '双击文本后选中一段文字': 'Double-click the text, then select part of it',
@@ -213,9 +220,7 @@ export const editor: Record<string, Translation> = {
   '添加阴影': 'Add shadow',
   '阴影颜色': 'Shadow color',
   '阴影模糊': 'Shadow blur',
-  '水平偏移': 'X offset',
   '阴影水平偏移': 'Shadow X offset',
-  '垂直偏移': 'Y offset',
   '阴影垂直偏移': 'Shadow Y offset',
   '清除阴影': 'Clear shadow',
 

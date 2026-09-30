@@ -225,9 +225,8 @@ test('auth request remembers a click invoker without DOM focus and ignores repea
 
   const dialog = page.getByRole('dialog', { name: '账户登录与注册' })
   await expect(dialog.getByLabel('用户名')).toBeFocused()
-  // The guest save hint asks for an account too; a second request while the dialog is open is ignored.
-  const repeatedRequest = page.locator('#workspace-panel-markdown [data-testid="editor-save-state"]')
-  await repeatedRequest.evaluate((button) => {
+  // A second request while the dialog is open is ignored.
+  await trigger.evaluate((button) => {
     button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
   })
 
@@ -373,13 +372,13 @@ test('auth dialog includes visible control types and skips hidden or inert senti
   await expect(username).toBeFocused()
 })
 
-test('the guest save hint restores its own button after cancel, Escape, and backdrop close', async ({ page }) => {
+test('the editor login button gets focus back after cancel, Escape, and backdrop close', async ({ page }) => {
   await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  const saveButton = page.getByTestId('editor-save-state')
-  await expect(saveButton).toHaveText('登录后自动保存')
+  const saveButton = page.getByTestId('account-login')
+  await expect(saveButton).toHaveText('登录')
   const dialog = page.getByRole('dialog', { name: '账户登录与注册' })
 
   await saveButton.focus()
@@ -408,8 +407,8 @@ test('the guest save hint restores its own button after cancel, Escape, and back
   await dialog.getByLabel('密码').fill('1234')
   await dialog.getByRole('button', { name: '创建账号', exact: true }).click()
   await expect(dialog).toBeHidden()
-  // Signed in, the hint is gone; focus lands on the account menu that replaced 登录.
-  await expect(page.getByTestId('editor-save-state')).toHaveCount(0)
+  // Signed in, 登录 is gone; focus lands on the account menu that replaced it.
+  await expect(page.getByTestId('account-login')).toHaveCount(0)
   await expect(page.getByTestId('account-menu')).toBeFocused()
 })
 

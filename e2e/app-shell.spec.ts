@@ -33,23 +33,113 @@ async function typeInMarkdown(page: Page, text: string) {
   await page.keyboard.type(text)
 }
 
-test('a first visit lands on the login page and guests can look around', async ({ page }) => {
+test('a first visit lands on the login page; starting without an account is remembered', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByTestId('login-page')).toBeVisible()
   await expect(page.getByTestId('login-page').locator('.login-fan-card')).toHaveCount(5)
 
+  await expect(page.getByTestId('login-guest')).toHaveText('不注册，直接开始')
   await page.getByTestId('login-guest').click()
   const workbench = page.getByTestId('workbench')
   await expect(workbench).toBeVisible()
   await expect(page.getByTestId('system-markdown')).toContainText('Markdown 卡片')
   await expect(page.getByTestId('system-freeform')).toContainText('自由编辑')
-  await expect(workbench).toContainText('登录后，你的项目会出现在这里')
+  await expect(workbench).toContainText('还没有项目')
 
-  await page.reload()
-  await expect(page.getByTestId('workbench')).toBeVisible()
+  // The choice outlives the tab: a new visit goes straight to the workbench.
+  const again = await page.context().newPage()
+  await again.goto('/')
+  await expect(again.getByTestId('workbench')).toBeVisible()
+  await again.close()
 
   await page.getByTestId('workbench-login').click()
   await expect(page.getByTestId('login-page')).toBeVisible()
+})
+
+test('a guest\'s projects save on this device and show up in 我的项目', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('login-guest').click()
+  await page.getByTestId('system-markdown').getByRole('button', { name: '小红书', exact: true }).click()
+  await typeInMarkdown(page, '访客写下的一句话')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存到本机')
+
+  await page.reload()
+  await expect(page.getByTestId('workbench')).toHaveCount(0)
+  await expect(page.locator('.cm-content')).toContainText('访客写下的一句话')
+  await backToWorkbench(page)
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  await expect(page.getByTestId('project-card')).toHaveCount(1)
+  await expect(page.getByTestId('guest-left')).toHaveCount(0)
+})
+
+test('signing up offers to move the guest\'s work into the account', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('login-guest').click()
+  await page.getByTestId('system-freeform').getByRole('button', { name: '3:4', exact: true }).click()
+  await page.getByTestId('freeform-text-tool').click()
+  await page.getByTestId('insert-text').click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存到本机')
+
+  const username = uniqueName('mover')
+  await page.getByTestId('account-login').click()
+  const auth = page.getByRole('dialog', { name: '账户登录与注册' })
+  await auth.getByRole('button', { name: '注册', exact: true }).click()
+  await auth.getByLabel('用户名').fill(username)
+  await auth.getByLabel('密码').fill('1234')
+  await auth.getByRole('button', { name: '创建账号', exact: true }).click()
+
+  const offer = page.getByTestId('guest-move-dialog')
+  await expect(offer).toContainText('你没登录时做了 1 个项目')
+  await expect(offer).toContainText(`放进「${username}」后`)
+  await expect(offer.getByTestId('guest-move-confirm')).toBeFocused()
+  await offer.getByTestId('guest-move-confirm').click()
+  await expect(offer).toHaveCount(0)
+
+  // The project on screen is the account's now, still open.
+  await expect(page.getByTestId('account-menu')).toHaveAccessibleName(`账号菜单（${username}）`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+  await backToWorkbench(page)
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  await expect(page.getByTestId('project-card')).toHaveCount(1)
+  await expect(page.getByTestId('guest-left')).toHaveCount(0)
+
+  // Nothing stayed behind for the guest.
+  await page.getByTestId('workbench').getByRole('button', { name: `账号菜单（${username}）` }).click()
+  await page.getByTestId('workbench-logout').click()
+  await page.getByTestId('login-guest').click()
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  await expect(page.getByTestId('project-card')).toHaveCount(0)
+})
+
+test('keeping the guest\'s work on the device leaves a way to move it later', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('login-guest').click()
+  await page.getByTestId('system-markdown').getByRole('button', { name: '小红书', exact: true }).click()
+  await typeInMarkdown(page, '先留在这台设备')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存到本机')
+  await backToWorkbench(page)
+
+  const username = uniqueName('keeper')
+  await page.getByTestId('workbench-login').click()
+  const login = page.getByTestId('login-page')
+  await login.getByRole('button', { name: '注册', exact: true }).click()
+  await login.getByLabel('用户名').fill(username)
+  await login.getByLabel('密码').fill('1234')
+  await page.getByTestId('login-submit').click()
+  const offer = page.getByTestId('guest-move-dialog')
+  await offer.getByTestId('guest-move-keep').click()
+  await expect(offer).toHaveCount(0)
+  await expect(page.getByTestId('workbench')).toBeVisible()
+
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  await expect(page.getByTestId('project-card')).toHaveCount(0)
+  const left = page.getByTestId('guest-left')
+  await expect(left).toContainText('这台设备上还有 1 个没登录时做的项目')
+  await left.getByTestId('guest-left-move').click()
+  await page.getByTestId('guest-move-confirm').click()
+  await expect(page.getByTestId('project-card')).toHaveCount(1)
+  await expect(left).toHaveCount(0)
 })
 
 test('each editor is its own entry, opened straight from a link without an account', async ({ page }) => {
@@ -60,7 +150,8 @@ test('each editor is its own entry, opened straight from a link without an accou
   await expect(page.getByRole('tab', { name: /Markdown 卡片/ })).toHaveCount(0)
   await expect(page.getByTestId('app-header')).toHaveCount(1)
   await expect(page.getByTestId('editor-title')).toHaveText('未命名设计')
-  await expect(page.getByTestId('editor-save-state')).toHaveText('登录后自动保存')
+  // Nothing to save until the first edit.
+  await expect(page.getByTestId('editor-save-state')).toHaveCount(0)
 
   await page.goto('/#/edit/md')
   await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
@@ -93,6 +184,7 @@ test('new projects carry their platform and page size and save themselves once e
   await page.getByTestId('system-freeform').getByRole('button', { name: '9:16', exact: true }).click()
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
   await expect(page.getByTestId('freeform-slide-size')).toHaveText('9:16 · 1080×1920px')
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
@@ -116,7 +208,9 @@ test('new projects carry their platform and page size and save themselves once e
 test('edits made right before leaving the editor still reach the project', async ({ page }) => {
   await registerOnLoginPage(page)
   await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   // Leave before the autosave pause runs out.
   await backToWorkbench(page)
@@ -157,6 +251,7 @@ test('projects are renamed from the editor title or the project card', async ({ 
   // The open editor follows the rename instead of writing the old name back.
   await card.getByRole('button', { name: /^打开/ }).click()
   await expect(page.getByTestId('editor-title')).toHaveText('春季海报 · 终稿')
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await backToWorkbench(page)
@@ -179,13 +274,19 @@ test('templates start a new project in the matching editor', async ({ page }) =>
   await expect(page.getByTestId('editor-title')).toHaveText('夜航')
 })
 
-test('guests are asked before a new project replaces work that was never saved', async ({ page }) => {
+test('a new project asks first when the open one could not be saved', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('login-guest').click()
   await page.getByTestId('system-markdown').getByRole('button', { name: '小红书', exact: true }).click()
+  // This browser refuses to store anything more.
+  await page.evaluate(() => {
+    Storage.prototype.setItem = function setItem() {
+      throw new DOMException('full', 'QuotaExceededError')
+    }
+  })
   const editor = page.locator('.cm-content')
-  await typeInMarkdown(page, '还没保存的一句话')
-  await expect(page.getByTestId('editor-save-state')).toHaveText('登录后自动保存')
+  await typeInMarkdown(page, '存不下的一句话')
+  await expect(page.getByTestId('editor-save-state')).toContainText('保存失败')
 
   await backToWorkbench(page)
   await page.getByTestId('system-markdown').getByRole('button', { name: '推特', exact: true }).click()
@@ -193,13 +294,13 @@ test('guests are asked before a new project replaces work that was never saved',
   await expect(confirm).toContainText('没保存的修改')
   await confirm.getByRole('button', { name: '回去看看' }).click()
   await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
-  await expect(editor).toContainText('还没保存的一句话')
+  await expect(editor).toContainText('存不下的一句话')
 
   await backToWorkbench(page)
   await page.getByTestId('system-markdown').getByRole('button', { name: '推特', exact: true }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: '丢掉改动，继续' }).click()
   await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
-  await expect(editor).not.toContainText('还没保存的一句话')
+  await expect(editor).not.toContainText('存不下的一句话')
 })
 
 test('signed-in edits are already saved, so a new project opens without asking', async ({ page }) => {
@@ -216,25 +317,10 @@ test('signed-in edits are already saved, so a new project opens without asking',
   await expect(page.getByTestId('project-card')).toHaveCount(1)
 })
 
-test('a guest who logs in keeps the canvas, and it saves to the new account', async ({ page }) => {
-  await page.goto('/#/edit/canvas')
-  await page.getByTestId('insert-text').click()
-  await page.getByTestId('editor-save-state').click()
-  await page.getByRole('button', { name: '注册' }).click()
-  await page.getByLabel('用户名').fill(uniqueName('guest-save'))
-  await page.getByLabel('密码').fill('1234')
-  await page.getByRole('button', { name: '创建账号' }).click()
-  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
-  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
-
-  await page.reload()
-  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
-  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
-})
-
 test('projects can be duplicated and deleted from the workbench', async ({ page }) => {
   await registerOnLoginPage(page)
   await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await backToWorkbench(page)
@@ -255,6 +341,7 @@ test('projects can be duplicated and deleted from the workbench', async ({ page 
 test('deleting the open project clears the editor instead of saving it back', async ({ page }) => {
   await registerOnLoginPage(page)
   await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await backToWorkbench(page)
@@ -407,10 +494,10 @@ test('the interface language is picked from a list at the top right and remember
   await chooseLanguage(page, 'English')
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(login.getByRole('heading', { level: 1 })).toHaveText('Welcome back')
-  await expect(page.getByTestId('login-guest')).toHaveText('Look around without an account')
+  await expect(page.getByTestId('login-guest')).toHaveText('Start without an account')
 
   await page.reload()
-  await expect(page.getByTestId('login-guest')).toHaveText('Look around without an account')
+  await expect(page.getByTestId('login-guest')).toHaveText('Start without an account')
   await page.getByTestId('login-guest').click()
   await expect(page.getByRole('link', { name: 'My projects' })).toBeVisible()
   await expect(page.getByTestId('system-markdown')).toContainText('Markdown Cards')
@@ -420,7 +507,7 @@ test('the interface language is picked from a list at the top right and remember
   await expect(page.getByRole('complementary', { name: 'Main navigation' }).getByTestId('language-menu')).toHaveCount(0)
 
   await page.getByTestId('system-freeform').getByRole('button', { name: '3:4', exact: true }).click()
-  await expect(page.getByTestId('insert-text')).toHaveText('Text')
+  await expect(page.getByTestId('freeform-text-tool')).toHaveText('Text')
   await expect(page.getByTestId('editor-title')).toHaveText('Untitled design')
   await expect(page.getByTestId('freeform-export')).toHaveText(/Export/)
 
@@ -428,6 +515,6 @@ test('the interface language is picked from a list at the top right and remember
   await header.getByTestId('language-menu').click()
   await page.getByRole('menu', { name: 'Language' }).getByRole('menuitemradio', { name: '中文' }).click()
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
-  await expect(page.getByTestId('insert-text')).toHaveText('文字')
+  await expect(page.getByTestId('freeform-text-tool')).toHaveText('文字')
   await expect(page.getByTestId('freeform-export')).toHaveText(/导出/)
 })

@@ -282,6 +282,7 @@ async function registerUser(page: import('@playwright/test').Page, username: str
 test('templates come from the repository only; the editors offer no way to save one', async ({ page }) => {
   await page.goto('/#/edit/canvas')
   await expect(page.getByRole('button', { name: '存为模板' })).toHaveCount(0)
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await page.getByTestId('freeform-template-button').click()
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
@@ -289,9 +290,9 @@ test('templates come from the repository only; the editors offer no way to save 
   await expect(gallery.getByText('我的模板')).toHaveCount(0)
   await expect(gallery.getByRole('button', { name: '删除此模板' })).toHaveCount(0)
   await gallery.getByRole('button', { name: '使用这套模板', exact: true }).click()
-  // A guest's canvas is not saved anywhere, and the confirmation says so.
+  // A guest's canvas is saved on this device, and the confirmation says so.
   const confirm = page.getByRole('alertdialog', { name: '用这套模板新建项目？' })
-  await expect(confirm).toContainText('访客模式下不会保存')
+  await expect(confirm).toContainText('当前项目已自动保存')
   await confirm.getByRole('button', { name: '继续编辑', exact: true }).click()
   await gallery.getByRole('button', { name: '关闭模板中心' }).click()
   await expect(page.getByTestId('freeform-element')).toHaveCount(1)
@@ -307,6 +308,7 @@ test('a signed-in template swap keeps the saved project and opens the template a
   await page.goto('/#/edit/canvas')
   await page.getByTestId('account-login').click()
   await registerUser(page, `tpl-swap-${Date.now()}`)
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
@@ -320,6 +322,7 @@ test('a signed-in template swap keeps the saved project and opens the template a
   await expect(page.getByTestId('editor-title')).toHaveText('编辑部')
   // The template is not a project until it is edited.
   await expect(page.getByTestId('editor-save-state')).toHaveCount(0)
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 

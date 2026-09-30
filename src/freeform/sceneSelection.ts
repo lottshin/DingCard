@@ -214,9 +214,11 @@ export function reconcileSceneUiState(
   state: SceneUiState,
   identity: SceneUiIdentity,
 ): SceneUiState {
+  // A new project's first save hands it an id: still the same document on screen.
+  const firstSave = state.identity.draftId === null && identity.draftId !== null
   const identityChanged =
     state.identity.activeSlideId !== identity.activeSlideId ||
-    state.identity.draftId !== identity.draftId ||
+    (state.identity.draftId !== identity.draftId && !firstSave) ||
     state.identity.userId !== identity.userId
   if (identityChanged) {
     return {
@@ -234,7 +236,7 @@ export function reconcileSceneUiState(
     selectionPaths.every(
       (path, index) => scenePathKey(path) === scenePathKey(state.selectionPaths[index]),
     )
-  if (activePathUnchanged && selectionUnchanged) return state
+  if (activePathUnchanged && selectionUnchanged && !firstSave) return state
   return {
     activeGroupPath: [...activeGroupPath],
     selectionPaths: selectionPaths.map((path) => [...path]),

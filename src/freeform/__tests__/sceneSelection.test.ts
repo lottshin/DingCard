@@ -99,6 +99,21 @@ describe('scene selection', () => {
     })
   })
 
+  it('keeps the selection when a new project is saved for the first time', () => {
+    const previous = {
+      activeGroupPath: ['outer'],
+      selectionPaths: [['outer', 'leaf']],
+      identity: { activeSlideId: 'slide-1', draftId: null, userId: 'user-1' },
+    } as const
+    const saved = { activeSlideId: 'slide-1', draftId: 'draft-1', userId: 'user-1' }
+
+    expect(reconcileSceneUiState([group('outer', [textLeaf('leaf')])], previous, saved)).toEqual({
+      activeGroupPath: ['outer'],
+      selectionPaths: [['outer', 'leaf']],
+      identity: saved,
+    })
+  })
+
   it('keeps valid paths and filters selection atomically for an unchanged identity', () => {
     const state = {
       activeGroupPath: ['outer'],

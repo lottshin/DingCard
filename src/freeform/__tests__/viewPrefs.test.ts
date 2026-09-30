@@ -38,6 +38,12 @@ describe('freeform view prefs', () => {
     expect(loadViewPrefs()).toEqual({ ...DEFAULT_VIEW_PREFS, guidesVisible: false })
   })
 
+  it('keeps rulers off until they are turned on', () => {
+    expect(DEFAULT_VIEW_PREFS.rulersVisible).toBe(false)
+    saveViewPrefs({ ...DEFAULT_VIEW_PREFS, rulersVisible: true })
+    expect(loadViewPrefs().rulersVisible).toBe(true)
+  })
+
   it('round-trips toggled preferences', () => {
     const prefs = { ...DEFAULT_VIEW_PREFS, guidesVisible: false, snappingEnabled: false }
     saveViewPrefs(prefs)

@@ -35,11 +35,11 @@ export const app: Record<string, Translation> = {
   '创建账号并进入': 'Create account',
   '创建账号': 'Create account',
   '或': 'or',
-  '先逛逛，暂不登录': 'Look around without an account',
-  '账号保存在你部署的服务器上，登录后可在多台设备间同步项目。':
-    'Your account lives on the server you deployed, so projects sync across devices.',
-  '账号和项目只保存在这台设备的浏览器里，不会上传。部署服务端后可在多台设备间同步。':
-    'Your account and projects stay in this browser and are never uploaded. Deploy the server to sync across devices.',
+  '不注册，直接开始': 'Start without an account',
+  '账号保存在你部署的服务器上，登录后可在多台设备间同步项目。不注册也能用，项目会自动保存在这台设备上。':
+    'Your account lives on the server you deployed, so projects sync across devices. Without an account, projects still save automatically on this device.',
+  '账号和项目只保存在这台设备的浏览器里，不会上传。不注册也会自动保存；部署服务端后可在多台设备间同步。':
+    'Your account and projects stay in this browser and are never uploaded. Projects save automatically even without an account; deploy the server to sync across devices.',
   '出错了，请重试': 'Something went wrong. Please try again.',
   '账户登录与注册': 'Log in or sign up',
   '账号会安全保存到你的服务器，可在登录后跨设备同步草稿。':
@@ -149,7 +149,6 @@ export const app: Record<string, Translation> = {
   '共 {n} 个项目，最近一次保存在 {time}。': plural('{n} project, last saved {time}.', '{n} projects, last saved {time}.'),
   '项目读取失败': 'Could not load projects',
   '这一类还没有项目': 'No projects of this kind yet',
-  '还没有登录': 'Not logged in',
   '暂时无法读取项目，请稍后重试': 'Could not load projects right now. Please try again later.',
   '刚刚': 'just now',
   '{n} 分钟前': plural('{n} minute ago', '{n} minutes ago'),
@@ -193,9 +192,7 @@ export const app: Record<string, Translation> = {
   '用在': 'Used in',
   '{n} 个项目里': plural('{n} project', '{n} projects'),
   '还没有项目用到': 'Not used yet',
-  '登录后使用素材库': 'Log in to use Assets',
-  '常用的图片存一次，Markdown 卡片和自由编辑的项目都能用。':
-    'Save a picture once, then use it in any Markdown Cards or Freeform project.',
+  '正在读取素材库…': 'Loading Assets…',
   '搜索素材': 'Search assets',
   '上传到素材库': 'Upload to Assets',
   '上传': 'Upload',
@@ -214,9 +211,6 @@ export const app: Record<string, Translation> = {
   '关闭素材库': 'Close Assets',
   '上传一次，Markdown 卡片和自由编辑的项目都能用。删掉素材不会影响已经用上它的项目。':
     'Upload once, use it in Markdown Cards and Freeform. Deleting an asset never affects projects that already use it.',
-  '登录后，常用的图片可以存进素材库，在所有项目里取用。': 'Log in to keep your usual pictures in Assets for every project.',
-  '登录后可以上传图片，在 Markdown 卡片和自由编辑里随时取用。':
-    'Log in to upload pictures and use them in Markdown Cards and Freeform.',
   '按名称搜索': 'Search by name',
   '{n} 张 · {size}': plural('{n} picture · {size}', '{n} pictures · {size}'),
   '排序': 'Sort',
@@ -277,24 +271,18 @@ export const app: Record<string, Translation> = {
   // Projects: autosave, rename, import
   '项目名称': 'Project name',
   '编辑过的项目都会自动保存在这里。': 'Everything you edit is saved here automatically.',
-  '登录后，编辑的项目会自动保存在这里。': 'Log in and everything you edit is saved here automatically.',
   '导入 .json 文档，比如 MCP 工具生成的结果': 'Import a .json document, such as one made by the MCP tools',
   '导入 JSON': 'Import JSON',
   '松开，导入为项目': 'Drop to import as a project',
   '新建一个，开始编辑就会自动保存到这里；也可以把 .json 文档拖进来导入。':
     'Start one and it saves here as you edit. You can also drop a .json document here to import it.',
-  '登录后编辑的项目会自动保存，并在这里继续编辑。': 'Log in and your projects save as you edit, ready to pick up here.',
   '导入失败': 'Could not import',
   '暂时无法导入，请稍后重试': 'Could not import right now. Please try again later.',
   '还没有项目': 'No projects yet',
-  '登录后，你的项目会出现在这里': 'Log in and your projects show up here',
   '从上面选一种方式新建，开始编辑就会自动保存到这里。': 'Start one above. It saves here as you edit.',
-  '现在也可以先新建一个试试；登录后，编辑的内容会自动保存。': 'You can try one now. Once you log in, your edits save automatically.',
   '{system}里还有没保存的修改': 'Unsaved changes in {system}',
   '「{title}」最近的修改没能保存。继续的话，这些改动会被丢掉。':
     'The latest changes to “{title}” could not be saved. Continuing throws them away.',
-  '访客模式不会保存「{title}」。继续的话，这些改动会被丢掉；登录后编辑的内容会自动保存。':
-    'Guest mode does not save “{title}”. Continuing throws these changes away. Once you log in, your edits save automatically.',
   '回去看看': 'Go back',
 
   // Templates are curated
@@ -314,9 +302,44 @@ export const app: Record<string, Translation> = {
   '未命名设计': 'Untitled design',
   '重命名项目': 'Rename project',
   '项目名称：{title}，点击重命名': 'Project name: {title}. Click to rename',
-  '登录后自动保存': 'Log in to autosave',
-  '访客模式下不会保存。登录后，修改会自动保存到你的项目里。':
-    'Nothing is saved in guest mode. Log in and your changes save to your projects automatically.',
+  '登录后继续保存': 'Log in to keep saving',
+  '登录已过期。重新登录后，这些修改会存回原来的项目。':
+    'Your session expired. Log in again and these changes go back into the same project.',
+  '已保存到本机': 'Saved on this device',
+  '只保存在这台设备上。登录后可以放进账号，换一台设备也能继续编辑。':
+    'Saved on this device only. Log in to move it into your account and keep editing on any device.',
+  '保存在这台设备的浏览器里。': 'Saved in this browser.',
+
+  // Work made without an account
+  '把这台设备上的项目放进账号？': 'Move the projects on this device into your account?',
+  '把这台设备上的素材放进账号？': 'Move the assets on this device into your account?',
+  '你没登录时做了 {projects} 个项目、存了 {assets} 张素材，都保存在这台设备上。': (params) =>
+    `Before logging in you made ${params.projects} ${Number(params.projects) === 1 ? 'project' : 'projects'} and saved ${params.assets} ${Number(params.assets) === 1 ? 'asset' : 'assets'}, all kept on this device. `,
+  '你没登录时做了 {n} 个项目，都保存在这台设备上。': plural(
+    'Before logging in you made {n} project, kept on this device. ',
+    'Before logging in you made {n} projects, all kept on this device. ',
+  ),
+  '你没登录时存了 {n} 张素材，都保存在这台设备上。': plural(
+    'Before logging in you saved {n} asset, kept on this device. ',
+    'Before logging in you saved {n} assets, all kept on this device. ',
+  ),
+  '放进「{name}」后，换一台设备登录也能继续编辑。': 'Moving it all to “{name}” lets you keep editing on any device you log in on.',
+  '放进「{name}」后，它们会出现在这个账号的「我的项目」里。': 'Moving it all to “{name}” puts it in that account’s My projects.',
+  '还有 {n} 项没能放进账号：{error}': plural(
+    '{n} item could not be moved: {error}',
+    '{n} items could not be moved: {error}',
+  ),
+  '先留在本机': 'Keep on this device',
+  '放进账号': 'Move into account',
+  '正在放进账号… {done}/{total}': 'Moving… {done}/{total}',
+  '这台设备上还有 {n} 个没登录时做的项目。': plural(
+    'There is {n} project on this device from before you logged in.',
+    'There are {n} projects on this device from before you logged in.',
+  ),
+  '这台设备上还有 {n} 张没登录时存的素材。': plural(
+    'There is {n} asset on this device from before you logged in.',
+    'There are {n} assets on this device from before you logged in.',
+  ),
   '已自动保存 · {time}': 'Saved automatically · {time}',
   '保存失败': 'Could not save',
   '暂时无法保存，请稍后重试': 'Could not save right now. Please try again later.',

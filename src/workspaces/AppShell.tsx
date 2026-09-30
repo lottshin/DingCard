@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import logoUrl from '../logo.svg'
 import { AuthModal } from '../AuthModal'
-import { readGuest, writeGuest } from '../app/guest'
+import { readGuest, readGuestMoveDeclined, writeGuest, writeGuestMoveDeclined } from '../app/guest'
+import { GuestMoveDialog, type GuestMovePhase } from '../app/GuestMoveDialog'
 import { LoginPage } from '../app/LoginPage'
 import { navigate, routes, useRoute, type EditIntent } from '../app/router'
 import { findTemplate } from '../app/templates'
 import { t, useLang } from '../i18n'
 import { Workbench } from '../app/Workbench'
 import type { User } from '../auth'
+import type { Draft } from '../drafts'
 import { readLastSession, updateLastSession } from '../lastSession'
-import { store } from '../storage'
+import { GUEST_OWNER_ID, store, storeFor } from '../storage'
+import { guestWorkCount, moveGuestWork, newestGuestChange, readGuestWork, type GuestMoveResult } from '../storage/guestWork'
 import { FreeformWorkspace } from '../freeform/FreeformWorkspace'
 import { useAppTheme } from '../useAppTheme'
 import { flushAllAutosaves } from './autosave'
@@ -22,6 +25,20 @@ interface AuthNotice {
   detail?: string
   retry: boolean
 }
+
+/** Asking a signed-in account whether to take this device's guest work. */
+interface GuestMoveOffer {
+  user: User
+  projects: number
+  assets: number
+  /** Signing in waits for the answer; an offer from 我的项目 doesn't. */
+  signingIn: boolean
+  phase: GuestMovePhase
+  /** Moved so far (a retry after a partial failure keeps adding to it). */
+  moved: ReadonlyMap<string, Draft>
+}
+
+const GUEST_STORE = storeFor(GUEST_OWNER_ID)
 
 const INTERACTION_CONTROL_SELECTOR = 'button,a,input,select,textarea,[tabindex]'
 
@@ -69,8 +86,16 @@ export function AppShell() {
   )
   const [appTheme, toggleAppTheme] = useAppTheme()
   const [user, setUser] = useState<User | null>(null)
+  // Once the first session check settles, work without an account belongs to this device's guest.
+  const [sessionKnown, setSessionKnown] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [authStatus, setAuthStatus] = useState<'checking' | 'ready' | 'error'>('checking')
+  const [transfer, setTransfer] = useState<ReadonlyMap<string, Draft> | null>(null)
+  const [guestMove, setGuestMove] = useState<GuestMoveOffer | null>(null)
+  const guestMoveRef = useRef(guestMove)
+  guestMoveRef.current = guestMove
+  const [guestLeft, setGuestLeft] = useState({ projects: 0, assets: 0 })
+  const [workbenchVersion, setWorkbenchVersion] = useState(0)
   const [authNotice, setAuthNotice] = useState<AuthNotice | null>(null)
   const authCheckGeneration = useRef(0)
   const shellRef = useRef<HTMLDivElement>(null)
@@ -98,6 +123,11 @@ export function AppShell() {
   }))
   const userRef = useRef(user)
   userRef.current = user
+  const ownerId = user ? user.id : sessionKnown ? GUEST_OWNER_ID : null
+  const ownerIdRef = useRef(ownerId)
+  ownerIdRef.current = ownerId
+  const routeRef = useRef(route)
+  routeRef.current = route
   const workspaceModeRef = useRef(workspaceMode)
   workspaceModeRef.current = workspaceMode
   // The editor to show follows the URL in the same render: an effect would leave
@@ -131,17 +161,16 @@ export function AppShell() {
       return
     }
     if (route.name !== 'edit') return
-    if (!userRef.current && !readGuest()) setGuest(true)
     const system = route.system
     if (!system) {
       // Bare #/edit: the editor used last.
-      const last = userRef.current ? readLastSession(userRef.current.id).mode : workspaceModeRef.current
+      const last = ownerIdRef.current ? readLastSession(ownerIdRef.current).mode : workspaceModeRef.current
       navigate(routes.editor(last), { replace: true })
       return
     }
     setWorkspaceMode(system)
     setMounted((current) => (current[system] ? current : { ...current, [system]: true }))
-    if (userRef.current) updateLastSession(userRef.current.id, { mode: system })
+    if (ownerIdRef.current) updateLastSession(ownerIdRef.current, { mode: system })
     const intent: EditIntent | null = route.intent
     if (!intent) return
     if (intent.kind === 'open') sendRequest(system, { kind: 'open', draftId: intent.draftId })
@@ -152,7 +181,18 @@ export function AppShell() {
       if (template) sendRequest(system, { kind: 'template', template })
     }
     navigate(routes.editor(system), { replace: true })
-  }, [route, sendRequest, setGuest])
+  }, [route, sendRequest])
+
+  // Working in an editor without an account makes this device's guest the
+  // owner; remember it, so the workbench opens for them too.
+  useEffect(() => {
+    if (sessionKnown && !user && route.name === 'edit' && !guest) setGuest(true)
+  }, [guest, route.name, sessionKnown, setGuest, user])
+
+  // An account is in: signing out later returns to the login page.
+  useEffect(() => {
+    if (user) setGuest(false)
+  }, [setGuest, user])
 
   // Leaving the page: send what the editors still have queued.
   useEffect(() => {
@@ -244,6 +284,21 @@ export function AppShell() {
     )
   }, [showAuth])
 
+  // The move offer closed after signing in: whatever opened it may be gone (登录 became the avatar).
+  const guestMoveWasOpenRef = useRef(false)
+  useLayoutEffect(() => {
+    const wasOpen = guestMoveWasOpenRef.current
+    guestMoveWasOpenRef.current = guestMove !== null
+    if (!wasOpen || guestMove) return
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active !== document.body && active.isConnected) return
+    const shell = shellRef.current
+    if (focusRestorableTarget(shell?.querySelector<HTMLElement>('[data-testid="account-menu"]') ?? null)) return
+    focusRestorableTarget(
+      shell?.querySelector<HTMLElement>('[data-testid="editor-home"], [data-testid="open-palette"]') ?? null,
+    )
+  }, [guestMove])
+
   const checkCurrentSession = useCallback(async () => {
     const generation = ++authCheckGeneration.current
     setAuthStatus('checking')
@@ -251,10 +306,12 @@ export function AppShell() {
       const nextUser = await store.auth.current()
       if (generation !== authCheckGeneration.current) return
       setUser(nextUser)
+      setSessionKnown(true)
       setAuthStatus('ready')
       setAuthNotice(null)
     } catch (error) {
       if (generation !== authCheckGeneration.current) return
+      setSessionKnown(true)
       setAuthStatus('error')
       setAuthNotice({
         title: t('登录状态尚未确认'),
@@ -270,6 +327,8 @@ export function AppShell() {
     const unsubscribe = store.auth.onInvalidated(() => {
       authCheckGeneration.current += 1
       setUser(null)
+      setSessionKnown(true)
+      setTransfer(null)
       setAuthStatus('ready')
       setShowAuth(false)
       setAuthNotice({
@@ -285,10 +344,28 @@ export function AppShell() {
     }
   }, [checkCurrentSession])
 
-  // Remember the editor in use once the account is known, so a bare #/edit returns to it.
+  // Remember the editor in use once the owner is known, so a bare #/edit returns to it.
   useEffect(() => {
-    if (user && editorRoute) updateLastSession(user.id, { mode: activeSystem })
-  }, [activeSystem, editorRoute, user])
+    if (ownerId && editorRoute) updateLastSession(ownerId, { mode: activeSystem })
+  }, [activeSystem, editorRoute, ownerId])
+
+  // What this device's guest left behind, offered from 我的项目 while an account is signed in.
+  useEffect(() => {
+    if (!user) {
+      setGuestLeft({ projects: 0, assets: 0 })
+      return
+    }
+    let cancelled = false
+    readGuestWork(GUEST_STORE, GUEST_OWNER_ID).then(
+      (work) => {
+        if (!cancelled) setGuestLeft({ projects: work.projects.length, assets: work.assets.length })
+      },
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [user, workbenchVersion])
 
   async function handleLogout(): Promise<boolean> {
     const generation = ++authCheckGeneration.current
@@ -298,6 +375,7 @@ export function AppShell() {
       await store.auth.logout()
       if (generation !== authCheckGeneration.current) return false
       setUser(null)
+      setTransfer(null)
       setAuthStatus('ready')
       setAuthNotice(null)
       return true
@@ -315,13 +393,105 @@ export function AppShell() {
   const logoutRef = useRef(handleLogout)
   logoutRef.current = handleLogout
 
-  function completeLogin(nextUser: User) {
+  function finishLogin(nextUser: User, moved: ReadonlyMap<string, Draft> | null) {
     authCheckGeneration.current += 1
+    setTransfer(moved && moved.size > 0 ? moved : null)
     setUser(nextUser)
+    setSessionKnown(true)
     setAuthStatus('ready')
     setAuthNotice(null)
     setGuest(false)
-    if (route.name === 'login') navigate(routes.home, { replace: true })
+    if (routeRef.current.name === 'login') navigate(routes.home, { replace: true })
+  }
+
+  /** Signed in or registered: first offer to bring along what was made here without an account. */
+  async function handleAuthed(nextUser: User) {
+    const generation = ++authCheckGeneration.current
+    let offer: GuestMoveOffer | null = null
+    try {
+      // The guest's last edits land before anything is counted or moved.
+      await flushAllAutosaves()
+      const work = await readGuestWork(GUEST_STORE, GUEST_OWNER_ID)
+      if (guestWorkCount(work) > 0 && newestGuestChange(work) > readGuestMoveDeclined(nextUser.id)) {
+        offer = {
+          user: nextUser,
+          projects: work.projects.length,
+          assets: work.assets.length,
+          signingIn: true,
+          phase: { kind: 'ask' },
+          moved: new Map(),
+        }
+      }
+    } catch {
+      // Unreadable guest storage: sign in without the offer.
+    }
+    if (generation !== authCheckGeneration.current) return
+    // The sign-in dialog closes in the same update, so focus moves on from a settled screen.
+    setShowAuth(false)
+    if (offer) setGuestMove(offer)
+    else finishLogin(nextUser, null)
+  }
+
+  async function runGuestMove() {
+    const offer = guestMoveRef.current
+    if (!offer || offer.phase.kind === 'moving') return
+    const target = offer.user.id
+    setGuestMove({ ...offer, phase: { kind: 'moving', done: 0, total: offer.projects + offer.assets } })
+    let result: GuestMoveResult
+    try {
+      await flushAllAutosaves()
+      result = await moveGuestWork({
+        from: GUEST_STORE,
+        fromId: GUEST_OWNER_ID,
+        to: store,
+        toId: target,
+        onProgress: (done, total) => setGuestMove((current) => (
+          current?.user.id === target ? { ...current, phase: { kind: 'moving', done, total } } : current
+        )),
+      })
+    } catch (error) {
+      result = { moved: new Map(), movedAssets: 0, failed: offer.projects + offer.assets, error }
+    }
+    const moved = new Map([...offer.moved, ...result.moved])
+    setWorkbenchVersion((version) => version + 1)
+    if (result.failed > 0) {
+      const left = await readGuestWork(GUEST_STORE, GUEST_OWNER_ID).catch(() => null)
+      setGuestMove({
+        ...offer,
+        moved,
+        projects: left?.projects.length ?? offer.projects,
+        assets: left?.assets.length ?? offer.assets,
+        phase: { kind: 'failed', failed: result.failed, message: errorMessage(result.error, t('请稍后重试')) },
+      })
+      return
+    }
+    setGuestMove(null)
+    if (offer.signingIn) finishLogin(offer.user, moved)
+  }
+
+  function keepGuestWork() {
+    const offer = guestMoveRef.current
+    if (!offer || offer.phase.kind === 'moving') return
+    writeGuestMoveDeclined(offer.user.id, Date.now())
+    setGuestMove(null)
+    if (offer.signingIn) finishLogin(offer.user, offer.moved)
+  }
+
+  /** From 我的项目: the signed-in account takes the guest work after all. */
+  function offerGuestMove() {
+    const account = userRef.current
+    if (!account || guestMoveRef.current) return
+    void readGuestWork(GUEST_STORE, GUEST_OWNER_ID).then((work) => {
+      if (guestWorkCount(work) === 0 || userRef.current?.id !== account.id) return
+      setGuestMove({
+        user: account,
+        projects: work.projects.length,
+        assets: work.assets.length,
+        signingIn: false,
+        phase: { kind: 'ask' },
+        moved: new Map(),
+      })
+    }, () => {})
   }
 
   const chrome = useMemo<EditorChrome>(() => ({
@@ -358,13 +528,17 @@ export function AppShell() {
       )}
 
       {view === 'login' && (
-        <LoginPage onAuthed={completeLogin} onGuest={() => setGuest(true)} />
+        <LoginPage onAuthed={(nextUser) => void handleAuthed(nextUser)} onGuest={() => setGuest(true)} />
       )}
 
       {view === 'workbench' && route.name !== 'edit' && route.name !== 'login' && (
         <Workbench
           route={route}
           user={user}
+          ownerId={ownerId}
+          guestLeft={guestLeft}
+          dataVersion={workbenchVersion}
+          onMoveGuestWork={offerGuestMove}
           theme={appTheme}
           onToggleTheme={toggleAppTheme}
           onLogout={() => {
@@ -390,6 +564,8 @@ export function AppShell() {
               <MarkdownWorkspace
                 isActive={view === 'editor' && activeSystem === 'markdown-card'}
                 user={user}
+                ownerId={ownerId}
+                transfer={transfer}
                 requestAuth={requestAuth}
                 chrome={chrome}
                 request={requests['markdown-card']}
@@ -407,6 +583,8 @@ export function AppShell() {
               <FreeformWorkspace
                 isActive={view === 'editor' && activeSystem === 'freeform-slide'}
                 user={user}
+                ownerId={ownerId}
+                transfer={transfer}
                 requestAuth={requestAuth}
                 chrome={chrome}
                 request={requests['freeform-slide']}
@@ -431,13 +609,18 @@ export function AppShell() {
       {showAuth && (
         <AuthModal
           onClose={() => setShowAuth(false)}
-          onAuthed={(nextUser) => {
-            authCheckGeneration.current += 1
-            setUser(nextUser)
-            setAuthStatus('ready')
-            setAuthNotice(null)
-            setShowAuth(false)
-          }}
+          onAuthed={(nextUser) => void handleAuthed(nextUser)}
+        />
+      )}
+
+      {guestMove && (
+        <GuestMoveDialog
+          username={guestMove.user.username}
+          projects={guestMove.projects}
+          assets={guestMove.assets}
+          phase={guestMove.phase}
+          onMove={() => void runGuestMove()}
+          onKeep={keepGuestWork}
         />
       )}
     </div>

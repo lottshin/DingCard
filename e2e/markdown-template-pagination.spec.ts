@@ -43,6 +43,12 @@ async function applyTemplate(page: import('@playwright/test').Page, name: string
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
   await dialog.getByRole('button', { name: `预览${name}`, exact: true }).click()
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
+  // With a project already open (a guest's saves come back after a reload), confirm starting a new one.
+  const confirm = page.getByRole('alertdialog', { name: '用这套模板新建项目？' })
+  if (await confirm.isVisible().catch(() => false)) {
+    await confirm.getByRole('button', { name: '用模板新建', exact: true }).click()
+  }
+  await expect(dialog).toHaveCount(0)
 }
 
 test('template pagination assigns roles from real markdown blocks', async ({ page }) => {

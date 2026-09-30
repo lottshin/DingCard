@@ -1,5 +1,5 @@
 import type { Asset } from '../assets'
-import { store } from '../storage'
+import { storeFor } from '../storage'
 
 /**
  * The image source a document embeds for a library asset. Local documents get
@@ -7,7 +7,8 @@ import { store } from '../storage'
  * cannot break them; remote documents point at the upload, which the server
  * keeps while any draft or asset still references it.
  */
-export async function assetDocumentSource(asset: Asset): Promise<string> {
+export async function assetDocumentSource(asset: Asset, ownerId: string): Promise<string> {
+  const store = storeFor(ownerId)
   return store.remote ? asset.src : store.images.put(asset.src)
 }
 

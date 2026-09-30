@@ -1,4 +1,5 @@
 import type { User } from '../auth'
+import type { Draft } from '../drafts'
 import type { TemplateDefinition } from '../templates/types'
 import type { Mode } from '../useAppTheme'
 
@@ -16,7 +17,7 @@ export interface WorkspaceMeta {
   title: string
   /** Saved project currently open, if any. */
   draftId: string | null
-  /** Edits that leaving would lose: a guest's work, or a save that failed. */
+  /** Edits that leaving would lose: a save that failed, or edits waiting for their account to sign back in. */
   unsaved: boolean
 }
 
@@ -32,7 +33,15 @@ export interface EditorChrome {
 
 export interface WorkspaceShellProps {
   isActive: boolean
+  /** The signed-in account, if any. */
   user: User | null
+  /**
+   * Whose projects the editor opens and saves: the account, this device's
+   * guest, or null while the session is still being checked.
+   */
+  ownerId: string | null
+  /** Guest projects just moved into the account (guest id -> moved project). */
+  transfer?: ReadonlyMap<string, Draft> | null
   requestAuth: () => void
   chrome: EditorChrome
   request?: WorkspaceRequest | null

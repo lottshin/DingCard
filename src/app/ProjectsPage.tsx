@@ -1,8 +1,7 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react'
-import type { User } from '../auth'
 import type { Draft } from '../drafts'
 import { Select } from '../Select'
-import { FileImportIcon, FreeformMarkIcon, MarkdownMarkIcon } from '../ui/icons'
+import { DeviceCheckIcon, FileImportIcon, FreeformMarkIcon, MarkdownMarkIcon } from '../ui/icons'
 import type { WorkspaceMode } from '../workspaces/types'
 import { ProjectCard } from './ProjectCard'
 import { navigate, routes } from './router'
@@ -12,7 +11,11 @@ import { locale, t } from '../i18n'
 type SortKey = 'updated' | 'title'
 
 interface ProjectsPageProps {
-  user: User | null
+  /** Whose projects these are; null while the session is being checked. */
+  ownerId: string | null
+  /** What this device's guest left behind, when an account is signed in. */
+  guestLeft: { projects: number; assets: number } | null
+  onMoveGuestWork: () => void
   system: WorkspaceMode | null
   projects: ProjectsState
   onNewMarkdown: () => void
@@ -30,7 +33,9 @@ function carriesJson(event: DragEvent) {
 }
 
 export function ProjectsPage({
-  user,
+  ownerId,
+  guestLeft,
+  onMoveGuestWork,
   system,
   projects,
   onNewMarkdown,
@@ -61,7 +66,7 @@ export function ProjectsPage({
       className={dropping ? 'page page-projects is-dropping' : 'page page-projects'}
       aria-label={t('我的项目')}
       onDragOver={(event) => {
-        if (!user || !carriesJson(event)) return
+        if (!ownerId || !carriesJson(event)) return
         event.preventDefault()
         event.dataTransfer.dropEffect = 'copy'
         setDropping(true)
@@ -70,7 +75,7 @@ export function ProjectsPage({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false)
       }}
       onDrop={(event) => {
-        if (!user || !carriesJson(event)) return
+        if (!ownerId || !carriesJson(event)) return
         event.preventDefault()
         setDropping(false)
         const file = event.dataTransfer.files[0]
@@ -81,15 +86,13 @@ export function ProjectsPage({
         <div>
           <h1>{t('我的项目')}</h1>
           <p>
-            {user
-              ? all.length > 0
-                ? t('共 {n} 个项目，最近一次保存在 {time}。', { n: all.length, time: new Date(all[0].updatedAt).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) })
-                : t('编辑过的项目都会自动保存在这里。')
-              : t('登录后，编辑的项目会自动保存在这里。')}
+            {all.length > 0
+              ? t('共 {n} 个项目，最近一次保存在 {time}。', { n: all.length, time: new Date(all[0].updatedAt).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) })
+              : t('编辑过的项目都会自动保存在这里。')}
           </p>
         </div>
         <div className="page-actions">
-          {user && (
+          {ownerId && (
             <button
               className="ghost"
               type="button"
@@ -117,6 +120,20 @@ export function ProjectsPage({
           />
         </div>
       </div>
+
+      {guestLeft && guestLeft.projects + guestLeft.assets > 0 && (
+        <div className="guest-left" data-testid="guest-left">
+          <DeviceCheckIcon />
+          <span>
+            {guestLeft.projects > 0
+              ? t('这台设备上还有 {n} 个没登录时做的项目。', { n: guestLeft.projects })
+              : t('这台设备上还有 {n} 张没登录时存的素材。', { n: guestLeft.assets })}
+          </span>
+          <button className="ghost" type="button" onClick={onMoveGuestWork} data-testid="guest-left-move">
+            {t('放进账号')}
+          </button>
+        </div>
+      )}
 
       <div className="toolbar-row">
         <div className="tabs" role="group" aria-label={t('按系统筛选')}>
@@ -159,9 +176,8 @@ export function ProjectsPage({
         </div>
       ) : projects.status !== 'error' && (
         <div className="empty">
-          <b>{user ? (system ? t('这一类还没有项目') : t('还没有保存的项目')) : t('还没有登录')}</b>
-          <span>{user ? t('新建一个，开始编辑就会自动保存到这里；也可以把 .json 文档拖进来导入。') : t('登录后编辑的项目会自动保存，并在这里继续编辑。')}</span>
-          {!user && <button className="ghost" type="button" onClick={() => navigate(routes.login)}>{t('登录或注册')}</button>}
+          <b>{system ? t('这一类还没有项目') : t('还没有保存的项目')}</b>
+          <span>{t('新建一个，开始编辑就会自动保存到这里；也可以把 .json 文档拖进来导入。')}</span>
         </div>
       )}
     </section>

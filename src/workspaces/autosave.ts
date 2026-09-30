@@ -27,8 +27,10 @@ interface Queued<Tag> {
   tag: Tag
 }
 
+type SavedListener = (draft: Draft, ownerId: string | null) => void
+
 const active = new Set<ProjectAutosaver<unknown>>()
-const savedListeners = new Set<(draft: Draft) => void>()
+const savedListeners = new Set<SavedListener>()
 
 /** Save everything every editor still has queued (before logging out, or when the page hides). */
 export function flushAllAutosaves(): Promise<void> {
@@ -36,7 +38,7 @@ export function flushAllAutosaves(): Promise<void> {
 }
 
 /** Hear about every project an autosaver writes, detached ones included (the workbench list). */
-export function onAutosaved(listener: (draft: Draft) => void): () => void {
+export function onAutosaved(listener: SavedListener): () => void {
   savedListeners.add(listener)
   return () => {
     savedListeners.delete(listener)
@@ -56,6 +58,8 @@ export class ProjectAutosaver<Tag = undefined> {
     draftId: string | null,
     private readonly listener: AutosaveListener<Tag>,
     private readonly delay = AUTOSAVE_DELAY_MS,
+    /** Whose project this is, for `onAutosaved` listeners. */
+    private readonly ownerId: string | null = null,
   ) {
     this.draftId = draftId
   }
@@ -123,7 +127,7 @@ export class ProjectAutosaver<Tag = undefined> {
       const saved = await this.save(input)
       this.draftId = saved.id
       if (this.listening) this.listener.onSaved(saved, queued.content, queued.tag)
-      for (const listener of [...savedListeners]) listener(saved)
+      for (const listener of [...savedListeners]) listener(saved, this.ownerId)
     } catch (error) {
       // Keep the content for the retry, unless newer edits already replaced it.
       if (!this.queued && this.listening) this.queued = queued

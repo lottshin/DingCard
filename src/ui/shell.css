@@ -208,14 +208,14 @@
   color: var(--text-3);
 }
 
-.save-chip.is-guest {
+.save-chip.is-signed-out {
   background: var(--surface-3);
   color: var(--text-2);
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
-.save-chip.is-guest:hover {
+.save-chip.is-signed-out:hover {
   background: var(--accent-weak);
   color: var(--accent-text);
 }

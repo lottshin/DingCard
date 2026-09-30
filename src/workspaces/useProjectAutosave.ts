@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Draft } from '../drafts'
 import { t } from '../i18n'
-import { store } from '../storage'
+import { storeFor } from '../storage'
 import { ProjectAutosaver, type AutosaveContent } from './autosave'
 
 export type AutosaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -10,8 +10,8 @@ export interface ProjectAutosave<Tag> {
   status: AutosaveStatus
   /** Why the last save failed. */
   error: string | null
-  /** Queue the open project's latest content under `userId`. */
-  schedule: (userId: string, draftId: string | null, content: AutosaveContent, tag: Tag) => void
+  /** Queue the open project's latest content for its owner (an account or this device's guest). */
+  schedule: (ownerId: string, draftId: string | null, content: AutosaveContent, tag: Tag) => void
   /** Save what is queued now (the retry button). */
   flush: () => Promise<void>
   /** Moving to another project: queued edits still save to this one, quietly. */
@@ -28,18 +28,18 @@ function errorText(error: unknown): string {
 export function useProjectAutosave<Tag>(
   onSaved: (draft: Draft, content: AutosaveContent, tag: Tag) => void,
 ): ProjectAutosave<Tag> {
-  const saverRef = useRef<{ saver: ProjectAutosaver<Tag>; userId: string } | null>(null)
+  const saverRef = useRef<{ saver: ProjectAutosaver<Tag>; ownerId: string } | null>(null)
   const onSavedRef = useRef(onSaved)
   onSavedRef.current = onSaved
   const [status, setStatus] = useState<AutosaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  const schedule = useCallback((userId: string, draftId: string | null, content: AutosaveContent, tag: Tag) => {
+  const schedule = useCallback((ownerId: string, draftId: string | null, content: AutosaveContent, tag: Tag) => {
     let current = saverRef.current
-    if (!current || current.userId !== userId) {
+    if (!current || current.ownerId !== ownerId) {
       void current?.saver.detach()
       const saver: ProjectAutosaver<Tag> = new ProjectAutosaver<Tag>(
-        (input) => store.drafts.save(userId, input),
+        (input) => storeFor(ownerId).drafts.save(ownerId, input),
         draftId,
         {
           onSaved: (draft, saved, savedTag) => {
@@ -54,8 +54,10 @@ export function useProjectAutosave<Tag>(
             setStatus('error')
           },
         },
+        undefined,
+        ownerId,
       )
-      current = { saver, userId }
+      current = { saver, ownerId }
       saverRef.current = current
     }
     current.saver.schedule(content, tag)

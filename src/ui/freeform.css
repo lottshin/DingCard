@@ -209,23 +209,24 @@
   background: var(--surface);
 }
 
-/* Tool rail: icon over label, like the insert rails of Canva and Keynote. */
+/* Tool rail: icon over label, like the insert rails of Canva and Keynote.
+   The highlight is a rounded chip behind the icon; an open tool turns ink. */
 .freeform-tools {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   min-height: 0;
-  padding: 8px 4px;
+  padding: 10px 4px;
   border-right: 1px solid var(--line);
   background: var(--surface);
 }
 
 .freeform-tools-sep {
   flex: none;
-  width: 28px;
+  width: 24px;
   height: 1px;
-  margin: 6px 0;
+  margin: 4px 0;
   background: var(--line-2);
 }
 
@@ -236,27 +237,30 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
   height: 58px;
   padding: 0 1px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 12px;
   background: transparent;
   color: var(--text-2);
   font: 500 11px/1.1 var(--ui-font);
   letter-spacing: 0;
   cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out);
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .freeform-tools .freeform-tool svg,
 .freeform-tools .freeform-insert-trigger svg {
   flex: none;
-  width: 21px;
-  height: 21px;
-  stroke-width: 1.35;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 11px;
+  stroke-width: 1.4;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .freeform-tools .freeform-tool > span,
@@ -270,15 +274,26 @@
 .freeform-tools .freeform-tool:hover,
 .freeform-tools .freeform-insert-trigger:hover {
   border-color: transparent;
-  background: var(--hover);
+  background: transparent;
   color: var(--text);
+}
+
+.freeform-tools .freeform-tool:hover svg,
+.freeform-tools .freeform-insert-trigger:hover svg {
+  background: var(--hover);
 }
 
 .freeform-tools .freeform-tool[aria-expanded='true'],
 .freeform-tools .freeform-insert-trigger[aria-expanded='true'] {
-  border-color: var(--accent);
-  background: var(--accent-weak);
-  color: var(--accent-text);
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+}
+
+.freeform-tools .freeform-tool[aria-expanded='true'] svg,
+.freeform-tools .freeform-insert-trigger[aria-expanded='true'] svg {
+  background: var(--btn);
+  color: var(--on-btn);
 }
 
 .freeform-tools .freeform-tool:active,
@@ -297,15 +312,13 @@
   width: 100%;
 }
 
-/* Shape and line menus open beside the rail as a tile grid. */
-.freeform-tools .freeform-insert-menu.is-tiles {
+/* Rail menus open beside the rail and name themselves. */
+.freeform-tools .freeform-insert-menu.is-tiles,
+.freeform-tools .freeform-insert-menu.is-list {
   position: absolute;
-  top: 0;
+  top: -6px;
   left: calc(100% + 10px);
   z-index: 60;
-  display: grid;
-  grid-template-columns: repeat(3, 76px);
-  gap: 6px;
   width: auto;
   min-width: 0;
   padding: 10px;
@@ -316,38 +329,117 @@
   animation: ui-pop 160ms var(--ease-out);
 }
 
+.freeform-tools .freeform-insert-menu.is-tiles::before,
+.freeform-tools .freeform-insert-menu.is-list::before {
+  content: attr(aria-label);
+  display: block;
+  padding: 2px 4px 10px;
+  color: var(--text);
+  font: 600 13px/1.2 var(--ui-font);
+}
+
+.freeform-tools .freeform-insert-menu.is-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 6px;
+}
+
+.freeform-tools .freeform-insert-menu.is-tiles::before {
+  grid-column: 1 / -1;
+}
+
 .freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item {
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 6px;
-  width: 76px;
+  gap: 7px;
+  width: 72px;
   height: 72px;
   padding: 0;
   border: 0;
   border-radius: 10px;
-  background: var(--surface-3);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
   color: var(--text-2);
   font: 500 11.5px/1 var(--ui-font);
   cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item svg {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   color: var(--text);
 }
 
 .freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:hover,
 .freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:focus-visible {
   outline: none;
-  background: var(--accent-weak);
-  color: var(--accent-text);
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  color: var(--text);
 }
 
-.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:hover svg,
-.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:focus-visible svg {
-  color: var(--accent);
+.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* Text presets: each row is set the way the text it inserts will look. */
+.freeform-tools .freeform-insert-menu.is-list {
+  display: grid;
+  gap: 4px;
+  width: 248px;
+}
+
+.freeform-tools .freeform-insert-menu.is-list .freeform-insert-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: 400 13px/1.25 var(--ui-font);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.freeform-tools .freeform-insert-menu.is-list .freeform-insert-menu-item:first-child {
+  justify-content: center;
+  min-height: 38px;
+  margin-bottom: 6px;
+  background: var(--btn);
+  color: var(--on-btn);
+  font-weight: 600;
+  box-shadow: var(--btn-shadow);
+}
+
+.freeform-tools .freeform-insert-menu.is-list .freeform-insert-menu-item:first-child svg {
+  width: 15px;
+  height: 15px;
+}
+
+.freeform-tools .freeform-insert-menu.is-list .freeform-insert-menu-item:not(:first-child) {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.freeform-tools .freeform-insert-menu.is-list .freeform-insert-menu-item:not(:first-child):hover,
+.freeform-tools .freeform-insert-menu.is-list .freeform-insert-menu-item:not(:first-child):focus-visible {
+  outline: none;
+  background: var(--surface-3);
+}
+
+.freeform-tools .freeform-insert-menu.is-list .freeform-insert-menu-item:first-child:hover {
+  background: var(--btn-hover);
+}
+
+.freeform-tools .freeform-insert-menu.is-list .freeform-insert-menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .freeform-tools .freeform-file {
@@ -475,8 +567,8 @@
 }
 
 .freeform-thumb.on .freeform-thumb-art {
-  filter: drop-shadow(2px 0 0 var(--accent)) drop-shadow(-2px 0 0 var(--accent))
-    drop-shadow(0 2px 0 var(--accent)) drop-shadow(0 -2px 0 var(--accent));
+  filter: drop-shadow(2px 0 0 var(--canvas-select)) drop-shadow(-2px 0 0 var(--canvas-select))
+    drop-shadow(0 2px 0 var(--canvas-select)) drop-shadow(0 -2px 0 var(--canvas-select));
 }
 
 .freeform-slide-preview-artboard {
@@ -497,7 +589,7 @@
 }
 
 .freeform-thumb.on .freeform-thumb-number {
-  color: var(--accent-text);
+  color: var(--canvas-select);
 }
 
 .freeform-thumb-title {
@@ -531,11 +623,11 @@
 }
 
 .freeform-rail .freeform-thumb.drop-before {
-  box-shadow: -2px 0 0 0 var(--accent);
+  box-shadow: -2px 0 0 0 var(--canvas-select);
 }
 
 .freeform-rail .freeform-thumb.drop-after {
-  box-shadow: 2px 0 0 0 var(--accent);
+  box-shadow: 2px 0 0 0 var(--canvas-select);
 }
 
 .freeform-rail .freeform-thumb-caption {
@@ -571,18 +663,20 @@
   width: 32px;
   height: 40px;
   margin: 0 4px;
-  border: 1.5px dashed var(--line-2);
+  border: 0;
   border-radius: 8px;
-  background: transparent;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line-2);
   color: var(--text-2);
   cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+  transition: box-shadow var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
 .freeform-rail .freeform-add-page:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent-weak);
-  color: var(--accent-text);
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--text);
 }
 
 .freeform-rail .freeform-add-page svg {
@@ -668,11 +762,49 @@
   background: var(--surface);
 }
 
+/* The canvas fills the stage; rulers, when shown, lie over its top and left edges. */
 .freeform-stage-pane .freeform-stage-scroll {
+  top: 0;
+  left: 0;
   background-color: var(--freeform-stage-sink);
   background-image: radial-gradient(circle, var(--freeform-stage-dot) 1px, transparent 1.3px);
-  background-size: 20px 20px;
-  background-position: 10px 10px;
+  background-size: 22px 22px;
+  background-position: 11px 11px;
+}
+
+.freeform-stage-pane .freeform-stage-box {
+  position: relative;
+}
+
+/* The page's name sits just above its top-left corner, like a frame title. */
+.freeform-stage-pane .freeform-stage-box .freeform-page-label {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-3);
+  font: 500 12px/1 var(--ui-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+.freeform-stage-viewport .freeform-ruler {
+  background: color-mix(in srgb, var(--freeform-ruler-bg) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.freeform-stage-viewport .freeform-ruler-label {
+  font-size: 9px;
+}
+
+/* The left ruler reads bottom-to-top, so four-digit labels fit its width. */
+.freeform-stage-viewport .freeform-ruler-y .freeform-ruler-label {
+  left: 10px;
+  transform: translate(-50%, -50%) rotate(-90deg);
 }
 
 /* Image framing and cropping float their session bar over the top of the stage. */
@@ -689,14 +821,6 @@
   background: var(--surface-pop);
   box-shadow: var(--shadow-pop);
   transform: translateX(-50%);
-}
-
-/* The contextual align bar floats at the bottom of the stage. */
-.freeform-stage-pane .freeform-align-bar {
-  border: 0;
-  border-radius: 12px;
-  background: var(--surface-pop);
-  box-shadow: var(--shadow-pop);
 }
 
 .freeform-stage-pane .freeform-stage-head .zoom-controls,
@@ -850,24 +974,214 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Canvas handles sit on the artwork, which is usually light: ring them in
-   white regardless of the app theme. */
-.freeform-selection-move::before,
-.freeform-selection-resize::before,
-.freeform-selection-rotate::before {
-  border-color: #ffffff;
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.25);
+/* ---------- Selection chrome ----------
+   A crisp blue frame with small white handles, sized in screen pixels
+   through --freeform-inverse-scale; rotate and move ride in a pill beside
+   the frame. Handles sit on the artwork, which is usually light, so they are
+   white in both themes. */
+.freeform-selection-item {
+  --s: var(--freeform-inverse-scale, 1);
 }
 
-.freeform-selection-rotate::before {
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.25), 0 -7px 0 -4px var(--accent);
+.freeform-selection-item .element-outline {
+  inset: calc(-0.75px * var(--s));
+  border: calc(1.5px * var(--s)) solid var(--canvas-select);
+  border-radius: 0;
+}
+
+.freeform-selection-item .freeform-resize-handle,
+.freeform-selection-item .element-resize {
+  position: absolute;
+  z-index: 2;
+  right: auto;
+  bottom: auto;
+  width: calc(22px * var(--s));
+  height: calc(22px * var(--s));
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  pointer-events: auto;
+}
+
+/* The focusable corner keeps the 32px target the keyboard and e2e rely on. */
+.freeform-selection-item .element-resize {
+  width: calc(32px * var(--s));
+  height: calc(32px * var(--s));
+}
+
+.freeform-selection-item [data-handle='nw'] { top: 0; left: 0; cursor: nwse-resize; }
+.freeform-selection-item [data-handle='n'] { top: 0; left: 50%; cursor: ns-resize; }
+.freeform-selection-item [data-handle='ne'] { top: 0; left: 100%; cursor: nesw-resize; }
+.freeform-selection-item [data-handle='e'] { top: 50%; left: 100%; cursor: ew-resize; }
+.freeform-selection-item [data-handle='se'] { top: 100%; left: 100%; cursor: nwse-resize; }
+.freeform-selection-item [data-handle='s'] { top: 100%; left: 50%; cursor: ns-resize; }
+.freeform-selection-item [data-handle='sw'] { top: 100%; left: 0; cursor: nesw-resize; }
+.freeform-selection-item [data-handle='w'] { top: 50%; left: 0; cursor: ew-resize; }
+
+.freeform-selection-item .freeform-resize-handle.is-edge[data-handle='n'],
+.freeform-selection-item .freeform-resize-handle.is-edge[data-handle='s'] {
+  width: calc(28px * var(--s));
+  height: calc(14px * var(--s));
+}
+
+.freeform-selection-item .freeform-resize-handle.is-edge[data-handle='e'],
+.freeform-selection-item .freeform-resize-handle.is-edge[data-handle='w'] {
+  width: calc(14px * var(--s));
+  height: calc(28px * var(--s));
+}
+
+.freeform-selection-item .freeform-resize-handle::before,
+.freeform-selection-item .element-resize::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: calc(9px * var(--s));
+  height: calc(9px * var(--s));
+  border: calc(1.5px * var(--s)) solid var(--canvas-select);
+  border-radius: calc(2.5px * var(--s));
+  background: #ffffff;
+  box-shadow: 0 calc(1px * var(--s)) calc(2.5px * var(--s)) rgba(15, 23, 42, 0.22);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.freeform-selection-item .freeform-resize-handle.is-edge[data-handle='n']::before,
+.freeform-selection-item .freeform-resize-handle.is-edge[data-handle='s']::before {
+  width: calc(16px * var(--s));
+  height: calc(6px * var(--s));
+  border-radius: calc(3px * var(--s));
+}
+
+.freeform-selection-item .freeform-resize-handle.is-edge[data-handle='e']::before,
+.freeform-selection-item .freeform-resize-handle.is-edge[data-handle='w']::before {
+  width: calc(6px * var(--s));
+  height: calc(16px * var(--s));
+  border-radius: calc(3px * var(--s));
+}
+
+.freeform-selection-item .element-resize:hover::before,
+.freeform-selection-item .freeform-resize-handle:hover::before {
+  background: var(--canvas-select);
+  border-color: #ffffff;
+}
+
+/* Rotate and move: two round buttons in a white pill. */
+.freeform-selection-tools {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px * var(--s));
+  z-index: 3;
+  display: flex;
+  gap: calc(2px * var(--s));
+  padding: calc(3px * var(--s));
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 calc(0.5px * var(--s)) rgba(15, 23, 42, 0.14),
+    0 calc(2px * var(--s)) calc(10px * var(--s)) rgba(15, 23, 42, 0.16);
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.freeform-selection-tools[data-placement='below'] {
+  top: calc(100% + 12px * var(--s));
+  bottom: auto;
+}
+
+.freeform-selection-tools .element-rotate,
+.freeform-selection-tools .element-drag {
+  position: relative;
+  top: auto;
+  left: auto;
+  display: grid;
+  place-items: center;
+  width: calc(32px * var(--s));
+  height: calc(32px * var(--s));
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #334155;
+  transform: none;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.freeform-selection-tools .element-rotate {
+  cursor: grab;
+}
+
+.freeform-selection-tools .element-drag {
+  cursor: move;
+}
+
+.freeform-selection-tools .element-rotate::before,
+.freeform-selection-tools .element-drag::before {
+  content: none;
+}
+
+.freeform-selection-tools .element-rotate:hover,
+.freeform-selection-tools .element-drag:hover {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--canvas-select);
+}
+
+.freeform-selection-tools svg {
+  width: calc(16px * var(--s));
+  height: calc(16px * var(--s));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* Handles only take focus from the keyboard or a script, so any focus shows the ring. */
+.freeform-selection-item button:focus,
+.freeform-selection-item button:focus-visible {
+  outline: calc(2px * var(--s)) solid var(--canvas-select);
+  outline-offset: calc(2px * var(--s));
+  box-shadow: none;
+}
+
+/* While a gesture runs only the frame and its live readout stay. */
+.freeform-selection-overlay[data-live-interaction] .freeform-resize-handle,
+.freeform-selection-overlay[data-live-interaction] .element-resize::before,
+.freeform-selection-overlay[data-live-interaction] .freeform-selection-tools {
+  visibility: hidden;
 }
 
 .freeform-selection-badge {
-  background: var(--accent);
-  color: var(--on-accent);
-  font-family: var(--ui-font);
+  top: calc(100% + 10px * var(--s));
+  padding: calc(3px * var(--s)) calc(7px * var(--s));
+  border-radius: calc(6px * var(--s));
+  background: var(--canvas-select);
+  color: #ffffff;
+  font: 600 calc(11px * var(--s)) / 1.2 var(--ui-font);
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 calc(1px * var(--s)) calc(3px * var(--s)) rgba(15, 23, 42, 0.2);
+}
+
+.freeform-vertex-handle::before {
+  border-color: var(--canvas-select);
+  background: #ffffff;
+}
+
+/* Pointing at an object on the page traces its box, before it is selected. */
+.freeform-artboard[data-active-group-path=''] .freeform-element[data-scene-root-node='true'][data-selected='false']:hover {
+  outline: calc(1.5px * var(--freeform-artboard-inverse-scale, 1)) solid var(--canvas-select);
+  outline-offset: 0;
+}
+
+.freeform-marquee {
+  border: 2px solid var(--canvas-select);
+  border-radius: 2px;
+  background: var(--canvas-select-weak);
 }
 
 .freeform-measurement-label {
@@ -875,8 +1189,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Floating bars over the stage */
-.freeform-align-bar,
+/* The image zoom bar floats over the stage while framing. */
 .freeform-framing-zoom {
   border: 0;
   border-radius: 12px;
@@ -886,28 +1199,8 @@
   backdrop-filter: none;
 }
 
-.freeform-align-bar {
-  padding: 4px;
-}
-
 .align-bar-btn {
-  border-radius: 8px;
-  color: var(--text-2);
   transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
-}
-
-.align-bar-btn svg {
-  stroke-width: 1.5;
-}
-
-.align-bar-btn:hover:not(:disabled),
-.align-bar-btn:focus-visible {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.align-bar-separator {
-  background: var(--line-2);
 }
 
 .freeform-framing-zoom button {
@@ -927,62 +1220,77 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Right panel ---------- */
+/* ---------- Right panel ----------
+   Dense and quiet, like a pro inspector: pill tabs, small section titles,
+   filled 32px fields whose label sits inside the field. */
+.freeform-inspector {
+  --field-fill: #f4f3f0;
+  --field-fill-hover: #efeeea;
+}
+
+:root[data-theme='dark'] .freeform-inspector {
+  --field-fill: #222220;
+  --field-fill-hover: #292927;
+}
+
 .freeform-right-tabs {
   position: relative;
-  flex: 0 0 44px;
+  flex: 0 0 auto;
   align-items: stretch;
-  gap: 20px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  gap: 2px;
+  margin: 10px 12px 2px;
+  padding: 3px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--track);
 }
 
 .freeform-right-tab {
-  flex: 0 0 auto;
-  height: auto;
-  padding: 0 1px;
-  border-radius: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
   background: transparent;
-  color: var(--text-3);
-  font: 600 12.5px/1 var(--ui-font);
+  color: var(--text-2);
+  font: 500 12.5px/1 var(--ui-font);
   white-space: nowrap;
-  transition: color var(--dur-fast) var(--ease-out);
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
-.freeform-right-tab:hover,
-.freeform-right-tab:focus-visible {
+.freeform-right-tab:hover {
   background: transparent;
   color: var(--text);
-}
-
-.freeform-right-tab:focus-visible {
-  box-shadow: none;
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  border-radius: 4px;
 }
 
 .freeform-right-tab.is-active {
-  background: transparent;
+  background: var(--thumb-on);
   color: var(--text);
-  box-shadow: none;
+  box-shadow: var(--thumb-on-shadow);
 }
 
 .freeform-right-tab.is-active::after {
-  display: block;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: var(--text);
+  display: none;
+}
+
+.freeform-right-tab:focus {
+  outline: none;
+}
+
+.freeform-right-tab:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.freeform-right-tab.is-active:focus-visible {
+  box-shadow: var(--thumb-on-shadow), inset 0 0 0 2px var(--accent);
 }
 
 .freeform-inspector .freeform-panel-head {
-  min-height: 40px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--line);
+  min-height: 0;
+  padding: 12px 16px 4px;
+  border-bottom: 0;
   background: var(--surface);
   color: var(--text);
   font: 600 12px/1 var(--ui-font);
@@ -991,20 +1299,78 @@
 
 .freeform-inspector-breadcrumb {
   color: var(--text-3);
-  font: 400 11.5px/1 var(--ui-font);
+  font: 500 12px/1.3 var(--ui-font);
 }
 
 .freeform-inspector-breadcrumb > .freeform-inspector-breadcrumb-current {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Alignment: one row of icons at the top, above the object's sections. */
+.freeform-inspector .freeform-align-bar {
+  position: static;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0;
+  margin: 8px 16px 4px;
+  padding: 2px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--field-fill);
+  box-shadow: none;
+  transform: none;
+}
+
+.freeform-inspector .align-bar-btn {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border-radius: 7px;
   color: var(--text-2);
 }
 
+.freeform-inspector .align-bar-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.5;
+}
+
+.freeform-inspector .align-bar-btn:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--thumb-on-shadow);
+}
+
+.freeform-inspector .align-bar-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.freeform-inspector .align-bar-separator {
+  flex: none;
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--line-2);
+}
+
 .freeform-inspector .inspector-section {
-  padding: 0 14px 16px;
+  padding: 4px 16px 16px;
   border-bottom: 1px solid var(--line);
 }
 
+.freeform-inspector .inspector-section:last-child {
+  border-bottom: 0;
+}
+
 .freeform-inspector .inspector-section-title {
-  padding: 16px 0 12px;
+  padding: 12px 0 10px;
   color: var(--text);
   font: 600 12px/1.2 var(--ui-font);
   letter-spacing: 0;
@@ -1012,74 +1378,264 @@
 }
 
 .freeform-inspector .inspector-empty {
+  padding: 14px 16px;
   color: var(--text-3);
   font-size: 12px;
 }
 
-.freeform-inspector .field-label,
-.freeform-inspector .field-grid label,
-.freeform-inspector .stroke-color-field {
-  color: var(--text-2);
+.freeform-inspector .field-label {
+  color: var(--text-3);
   font: 500 11.5px/1.2 var(--ui-font);
 }
 
-/* Inspector fields: 32px tall, 8px radius (pinned by e2e). */
+.freeform-inspector .field-label.with-gap {
+  margin-top: 14px;
+  margin-bottom: 7px;
+}
+
+.freeform-inspector .field > .field-label {
+  display: block;
+  margin-bottom: 7px;
+}
+
+.freeform-inspector .field-grid {
+  gap: 8px;
+}
+
+.freeform-inspector .field-grid.with-gap {
+  margin-top: 8px;
+}
+
+.freeform-inspector .field-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* A number field is one filled box: the label (a glyph or a word) inside, left of the value. */
+.freeform-inspector .field-grid label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 6px;
+  height: 32px;
+  padding-left: 10px;
+  border-radius: 8px;
+  background: var(--field-fill);
+  box-shadow: inset 0 0 0 1px transparent;
+  color: var(--text-3);
+  font: 500 11.5px/1 var(--ui-font);
+  white-space: nowrap;
+  cursor: text;
+  transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.freeform-inspector .field-grid label:hover {
+  background: var(--field-fill-hover);
+}
+
+.freeform-inspector .field-grid label:focus-within {
+  background: var(--field-bg);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+
+.freeform-inspector .field-suffix {
+  padding-right: 9px;
+  color: var(--text-3);
+  font: 500 12px/1 var(--ui-font);
+}
+
+.freeform-inspector .field-grid.three label {
+  column-gap: 4px;
+  padding-left: 8px;
+}
+
+.freeform-inspector .field-glyph {
+  display: block;
+  min-width: 10px;
+  color: var(--text-3);
+  font: 500 11.5px/1 var(--ui-font);
+  text-align: center;
+}
+
+.freeform-inspector svg.field-glyph {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.freeform-inspector .field-grid label input,
+.freeform-inspector .field-grid label input:hover:not(:focus) {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px 0 0;
+  border: 0;
+  border-radius: 8px;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font: 500 12.5px/1 var(--ui-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.freeform-inspector .field-grid label input:focus,
+.freeform-inspector .field-grid label input:focus-visible {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+/* The field box carries the focus ring every inspector control shares. */
+.freeform-inspector .field-grid label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .freeform-inspector .text-input {
   height: 32px;
   padding: 0 10px;
+  border-color: transparent;
+  background: var(--field-fill);
   font-size: 13px;
 }
 
-.freeform-inspector .field-grid input,
+.freeform-inspector .text-input:hover:not(:focus) {
+  border-color: transparent;
+  background: var(--field-fill-hover);
+}
+
 .freeform-inspector .paint-hex,
 .freeform-inspector .paint-angle,
 .freeform-inspector .paint-popover-hex,
 .freeform-inspector .paint-channel-number {
-  border-color: var(--line-2);
+  border-color: transparent;
   border-radius: 8px;
-  background: var(--field-bg);
+  background: var(--field-fill);
   color: var(--text);
-  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+  font-family: var(--ui-font);
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
 }
 
-.freeform-inspector .field-grid input,
+.freeform-inspector .paint-hex {
+  font-size: 12.5px;
+}
+
+.freeform-inspector .paint-hex:not(:placeholder-shown) {
+  text-transform: uppercase;
+}
+
 .freeform-inspector .paint-angle,
 .freeform-inspector .paint-channel-number {
-  font-family: var(--ui-font);
   font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
 }
 
-.freeform-inspector .field-grid input:hover:not(:focus),
 .freeform-inspector .paint-hex:hover:not(:focus),
 .freeform-inspector .paint-angle:hover:not(:focus),
 .freeform-inspector .paint-popover-hex:hover:not(:focus),
-.freeform-inspector .paint-channel-number:hover:not(:focus),
-.freeform-inspector .freeform-inspector-text:hover:not(:focus) {
-  border-color: var(--line-strong);
+.freeform-inspector .paint-channel-number:hover:not(:focus) {
+  border-color: transparent;
+  background: var(--field-fill-hover);
+}
+
+.freeform-inspector .paint-hex:focus,
+.freeform-inspector .paint-angle:focus,
+.freeform-inspector .text-input:focus {
+  background: var(--field-bg);
 }
 
 .freeform-inspector .freeform-inspector-text {
-  border-color: var(--line-2);
-  background: var(--field-bg);
+  border-color: transparent;
+  background: var(--field-fill);
   font-family: var(--ui-font);
 }
 
+.freeform-inspector .freeform-inspector-text:hover:not(:focus) {
+  border-color: transparent;
+  background: var(--field-fill-hover);
+}
+
+/* The colour box needs room for "#RRGGBB" beside its swatch; the width field is short. */
+.freeform-inspector [data-testid='inspector-stroke'] .field-grid:has(.stroke-color-field),
+.freeform-inspector .field-grid:has([data-testid='shadow-color']) {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+}
+
+/* Their colour popover spans the whole row, so it stays inside the inspector. */
+.freeform-inspector .field-grid:has(.stroke-color-field) {
+  position: relative;
+}
+
+.freeform-inspector .stroke-color-field .color-field {
+  position: static;
+}
+
+.freeform-inspector .field-grid .stroke-color-field .paint-popover {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: none;
+}
+
+/* Stroke and shadow colours: swatch then hex in one filled box (the word 颜色 stays for screen readers). */
+.freeform-inspector .stroke-color-field {
+  display: block;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--field-fill);
+}
+
+.freeform-inspector .stroke-color-field .stroke-color-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.freeform-inspector .stroke-color-field .color-field {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  gap: 7px;
+  height: 32px;
+  padding: 0 6px 0 4px;
+  border: 0;
+  background: transparent;
+}
+
+.freeform-inspector .stroke-color-field .color-field-value {
+  color: var(--text);
+  font: 500 12px/1 var(--ui-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.freeform-inspector .stroke-color-field .paint-color-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
 .freeform-inspector .color-field {
-  border-color: var(--line-2);
-  background: var(--field-bg);
+  border-color: transparent;
+  background: var(--field-fill);
 }
 
 .freeform-inspector .sel-trigger {
   justify-content: space-between;
   width: 100%;
-  border-color: var(--line-2);
-  background: var(--field-bg);
+  border-color: transparent;
+  background: var(--field-fill);
 }
 
 .freeform-inspector .sel-trigger:hover {
-  border-color: var(--line-strong);
-  background: var(--field-bg);
+  border-color: transparent;
+  background: var(--field-fill-hover);
 }
 
 .freeform-inspector .sel-trigger.open {
@@ -1093,7 +1649,7 @@
   gap: 0;
   padding: 0;
   border-radius: 8px;
-  background: var(--track);
+  background: var(--field-fill);
   box-shadow: none;
 }
 
@@ -1103,37 +1659,162 @@
   height: 32px;
   padding: 0 4px;
   border-radius: 8px;
+  color: var(--text-2);
   font-size: 12px;
 }
 
+.freeform-inspector .seg.stretch .seg-btn:hover:not(.on) {
+  color: var(--text);
+}
+
 .freeform-inspector .seg.stretch .seg-btn.on {
-  box-shadow: inset 0 0 0 1px var(--line-2), 0 1px 2px rgba(26, 25, 23, 0.06);
+  background: var(--thumb-on);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line), 0 1px 2px rgba(26, 25, 23, 0.08);
 }
 
 :root[data-theme='dark'] .freeform-inspector .seg.stretch .seg-btn.on {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
+.freeform-inspector .seg-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.freeform-inspector .seg-glyph {
+  font: 700 14px/1 Georgia, 'Times New Roman', serif;
+}
+
+.freeform-inspector i.seg-glyph {
+  font-weight: 500;
+  font-style: italic;
+}
+
+/* Text outline: swatch, hex, width and clear on one row. */
+.freeform-inspector [data-testid='text-stroke-field'] {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 52px 32px;
+  align-items: center;
+  gap: 6px;
+}
+
+.freeform-inspector [data-testid='text-stroke-field'] input[type='number'] {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  outline: none;
+  background: var(--field-fill);
+  color: var(--text);
+  font: 500 12.5px/1 var(--ui-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.freeform-inspector [data-testid='text-stroke-field'] input[type='number']:focus {
+  border-color: var(--accent);
+  background: var(--field-bg);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.freeform-inspector [data-testid='text-stroke-field'] .ghost {
+  width: 32px;
+  padding: 0;
+}
+
+.freeform-inspector [data-testid='text-stroke-field'] .ghost svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Text alignment and style share a row: three alignments, then B / I / vertical. */
+.freeform-inspector .text-style-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.freeform-inspector .text-style-row .seg.stretch {
+  margin-top: 0;
+}
+
 .freeform-inspector .ghost {
   height: 32px;
   padding: 0 10px;
+  border-color: transparent;
+  background: var(--field-fill);
   font-size: 12px;
 }
 
+.freeform-inspector .ghost:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--field-fill-hover);
+}
+
+.freeform-inspector .inspector-icon-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.freeform-inspector .inspector-icon-btn {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-2);
+}
+
+.freeform-inspector .inspector-icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.freeform-inspector .inspector-icon-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+/* Deleting is a quiet full-width row at the end, not a red block. */
+.freeform-inspector .inspector-section-danger .inspector-section-title {
+  display: none;
+}
+
+.freeform-inspector .inspector-section-danger {
+  padding-top: 14px;
+}
+
 .freeform-inspector .inspector-delete {
-  border-color: color-mix(in srgb, var(--danger) 30%, var(--line-2));
+  width: 100%;
+  border-color: transparent;
   background: transparent;
   color: var(--danger);
 }
 
 .freeform-inspector .inspector-delete:hover:not(:disabled) {
-  border-color: var(--danger);
+  border-color: transparent;
   background: var(--danger-weak);
 }
 
 .freeform-inspector .paint-color-button {
-  border-color: var(--line-2);
-  box-shadow: none;
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+/* A colour button is a flex item with its own z-index; while its popover is
+   open it rises above the swatches of the sections below. */
+.freeform-inspector .paint-color:has(> .paint-popover) {
+  z-index: 60;
 }
 
 .freeform-inspector .paint-popover {
@@ -1150,14 +1831,15 @@
 }
 
 .freeform-inspector .paint-eyedropper {
-  border-color: var(--line-2);
+  border-color: transparent;
   border-radius: 8px;
-  background: transparent;
+  background: var(--field-fill);
   color: var(--text-2);
 }
 
 .freeform-inspector .paint-eyedropper:hover {
-  border-color: var(--line-strong);
+  border-color: transparent;
+  background: var(--field-fill-hover);
   color: var(--text);
 }
 
@@ -1228,7 +1910,7 @@
 
 .freeform-layer-row.is-selected {
   border-left-color: transparent;
-  background: var(--selected);
+  background: var(--canvas-select-weak);
   color: var(--text);
 }
 
@@ -1283,8 +1965,12 @@
 }
 
 .freeform-history-item.is-current {
-  background: var(--selected);
+  background: var(--surface-3);
   color: var(--text);
+}
+
+.freeform-history-item.is-current .freeform-history-state {
+  color: var(--text-3);
 }
 
 .freeform-history-item .freeform-history-state {
@@ -1308,6 +1994,11 @@
 @media (max-width: 1279px) {
   .freeform-main {
     grid-template-columns: 64px auto minmax(0, 1fr) 224px;
+  }
+
+  /* The narrower inspector can't fit three number fields in a row. */
+  .freeform-inspector .field-grid.three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .freeform-tools {

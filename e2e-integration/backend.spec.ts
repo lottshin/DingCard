@@ -768,6 +768,7 @@ test.describe('remote backend integration', () => {
     await page.locator('[data-scene-node-id="authority-a-leaf"]').dblclick()
     await expect(page.getByTestId('freeform-canvas'))
       .toHaveAttribute('data-active-group-path', 'authority-a-outer')
+    await page.getByTestId('freeform-text-tool').click()
     await page.getByTestId('insert-text').click()
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
@@ -816,6 +817,7 @@ test.describe('remote backend integration', () => {
     await page.locator('[data-scene-node-id="history-authority-leaf"]').dblclick()
     await expect(page.getByTestId('freeform-canvas'))
       .toHaveAttribute('data-active-group-path', 'history-authority-outer')
+    await page.getByTestId('freeform-text-tool').click()
     await page.getByTestId('insert-text').click()
 
     const heldSaveRoutes: import('@playwright/test').Route[] = []
@@ -1133,6 +1135,7 @@ test.describe('remote backend integration', () => {
     await page.reload()
     await register(page, uniqueName())
     await page.goto('/#/edit/canvas')
+    await page.getByTestId('freeform-text-tool').click()
     await page.getByTestId('insert-text').click()
     await expectSaved(page)
 
@@ -1173,6 +1176,7 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
+    await page.getByTestId('freeform-text-tool').click()
     await page.getByTestId('insert-text').click()
     await saveCaptured
     await openServerDraft(page, '另一个自由编辑草稿 B')
@@ -1191,6 +1195,7 @@ test.describe('remote backend integration', () => {
     await page.reload()
     await register(page, uniqueName())
     await page.goto('/#/edit/canvas')
+    await page.getByTestId('freeform-text-tool').click()
     await page.getByTestId('insert-text').click()
     await expectSaved(page)
 
@@ -1269,6 +1274,7 @@ test.describe('remote backend integration', () => {
     await register(page, uniqueName())
     await page.goto('/#/edit/canvas')
 
+    await page.getByTestId('freeform-text-tool').click()
     await page.getByTestId('insert-text').click()
     await expectSaved(page)
     await openProjectsPage(page)
@@ -1489,7 +1495,7 @@ test.describe('remote backend integration', () => {
     await expect(page.getByTestId('account-login')).toBeVisible()
     // The unsaved text stays on screen for the next sign-in.
     await expect.poll(() => page.evaluate(() => window.__cmView?.state.doc.toString())).toBe(`# ${unsavedLine}`)
-    await expect(page.getByTestId('editor-save-state')).toHaveText('登录后自动保存')
+    await expect(page.getByTestId('editor-save-state')).toHaveText('登录后继续保存')
     await expect(page.getByRole('alert')).toHaveCount(1)
     await expect(page.getByRole('alert')).toContainText('登录已过期')
     expect(await page.evaluate(() => localStorage.getItem('slicer.token.v1'))).toBeNull()
@@ -1543,6 +1549,53 @@ test.describe('remote backend integration', () => {
     await expect(cards).toHaveCount(1)
     // Deleting the asset runs GC: the upload is past its lease and no draft uses it.
     await expect.poll(async () => (await page.request.get(coverSrc!)).status()).toBe(404)
+    expect(pageErrors).toEqual([])
+  })
+
+  test('a guest works on this device, then moves the project and its pictures into a new account', async ({ page }) => {
+    const pageErrors = collectPageErrors(page)
+    await page.goto('/#/edit')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await page.goto('/#/edit/md')
+    await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
+
+    // Without an account, the library and the project stay in this browser.
+    const title = `访客的长文 ${Date.now()}`
+    await setEditorDoc(page, `# ${title}\n\n`)
+    await page.getByTestId('editor-assets').click()
+    await page.getByTestId('asset-drawer-file-input').setInputFiles({ name: '题图.png', mimeType: 'image/png', buffer: TEST_PNG })
+    await page.getByTestId('asset-pick').first().click()
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存到本机')
+    expect(await page.evaluate(() => window.__cmView?.state.doc.toString())).toMatch(/\(img:[a-z0-9]+\)/)
+
+    await page.getByTestId('account-login').click()
+    await page.getByRole('button', { name: '注册' }).click()
+    await page.getByLabel('用户名').fill(uniqueName())
+    await page.getByLabel('密码').fill('1234')
+    await page.getByRole('button', { name: '创建账号' }).click()
+    const offer = page.getByTestId('guest-move-dialog')
+    await expect(offer).toContainText('换一台设备登录也能继续编辑')
+    await offer.getByTestId('guest-move-confirm').click()
+    await expect(offer).toHaveCount(0)
+    await expectSaved(page)
+
+    // The server has the project, pointing at its own copy of the picture.
+    const drafts = await serverDrafts(page)
+    expect(drafts).toHaveLength(1)
+    const document = drafts[0].document as { source: string; images?: Record<string, string> }
+    expect(document.source).toContain(title)
+    expect(document.source).not.toMatch(/img:/)
+    const upload = /\((https?:[^)]+\/uploads\/[^)]+)\)/.exec(document.source)?.[1]
+    expect(upload).toBeTruthy()
+    expect((await page.request.get(upload!)).status()).toBe(200)
+    await expect.poll(() => page.evaluate(() => window.__cmView?.state.doc.toString() ?? '')).toContain('/uploads/')
+
+    // And the library came along; nothing is left on the device.
+    const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
+    const assets = await page.request.get(`${API_BASE}/api/assets`, { headers: { authorization: `Bearer ${token}` } })
+    expect(await assets.json()).toHaveLength(1)
+    expect(await page.evaluate(() => localStorage.getItem('slicer.drafts.local-guest'))).toBeNull()
     expect(pageErrors).toEqual([])
   })
 })

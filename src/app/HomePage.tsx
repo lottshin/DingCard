@@ -34,6 +34,8 @@ function nodeLabel(node: FreeformSceneNode): string {
 
 interface HomePageProps {
   user: User | null
+  /** Whose projects these are; null while the session is being checked. */
+  ownerId: string | null
   projects: ProjectsState
   assets: AssetsState
   onUploadAssets: (files: File[]) => void
@@ -49,6 +51,7 @@ interface HomePageProps {
 
 export function HomePage({
   user,
+  ownerId,
   projects,
   assets,
   onUploadAssets,
@@ -178,14 +181,13 @@ export function HomePage({
           </div>
         ) : (
           <div className="empty">
-            <b>{user ? t('还没有项目') : t('登录后，你的项目会出现在这里')}</b>
-            <span>{user ? t('从上面选一种方式新建，开始编辑就会自动保存到这里。') : t('现在也可以先新建一个试试；登录后，编辑的内容会自动保存。')}</span>
-            {!user && <button className="ghost" type="button" onClick={() => navigate(routes.login)}>{t('登录或注册')}</button>}
+            <b>{t('还没有项目')}</b>
+            <span>{t('从上面选一种方式新建，开始编辑就会自动保存到这里。')}</span>
           </div>
         )}
       </section>
 
-      {user && (
+      {ownerId && (
         <section className="section" aria-labelledby="home-assets">
           <div className="section-head">
             <div>

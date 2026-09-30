@@ -845,10 +845,12 @@ async function registerUser(page: import('@playwright/test').Page, username: str
   await page.getByRole('button', { name: '创建账号' }).click()
 }
 
-/** Sign up from the guest save hint; the canvas then saves itself to the new account. */
+/** Sign up from the editor and move the guest's canvas (saved on this device) into the new account. */
 async function signUpToSave(page: import('@playwright/test').Page, username: string) {
-  await page.getByTestId('editor-save-state').click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存到本机')
+  await page.getByTestId('account-login').click()
   await registerUser(page, username)
+  await page.getByTestId('guest-move-confirm').click()
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 }
 
@@ -1077,6 +1079,7 @@ async function openNestedV3Draft(
 }
 
 async function insertText(page: import('@playwright/test').Page) {
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
 }
 
@@ -1655,7 +1658,15 @@ test('shared inspector controls expose a visible accent focus ring', async ({ pa
   const geometry = page.getByTestId('inspector-geometry')
   const shapeFill = page.getByTestId('shape-fill-paint')
   await expectAccentFocus(geometry.getByRole('button', { name: '矩形', exact: true }))
-  await expectAccentFocus(geometry.locator('input[type="number"]').first())
+  // A number field's box (label and value together) carries the ring for its input.
+  const geometryNumber = geometry.locator('input[type="number"]').first()
+  await page.keyboard.press('Tab')
+  await geometryNumber.focus()
+  const geometryField = geometry.locator('label').filter({ has: page.locator('input[type="number"]') }).first()
+  await expect(geometryField).toHaveCSS('outline-color', accentColor)
+  await expect(geometryField).toHaveCSS('outline-style', 'solid')
+  await expect(geometryField).toHaveCSS('outline-width', '2px')
+  await expect(geometryField).toHaveCSS('outline-offset', '2px')
   await expectAccentFocus(page.getByTestId('inspector-arrange').getByRole('button', { name: '后移', exact: true }))
   await expectAccentFocus(page.getByTestId('inspector-danger').getByRole('button', { name: '删除', exact: true }))
 
@@ -1840,13 +1851,13 @@ test('only the open editor exposes its toolbar, with one primary action in the t
   await expect(page.getByTestId('freeform-export')).toBeVisible()
   await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
   const tools = page.getByRole('navigation', { name: '插入' })
-  for (const testId of ['freeform-template-button', 'insert-text', 'freeform-images-tool', 'insert-shape', 'insert-line']) {
+  for (const testId of ['freeform-template-button', 'freeform-text-tool', 'freeform-images-tool', 'insert-shape', 'insert-line']) {
     await expect(tools.getByTestId(testId)).toBeVisible()
     const box = await tools.getByTestId(testId).boundingBox()
     expect(box!.width).toBeGreaterThanOrEqual(44)
     expect(box!.height).toBeGreaterThanOrEqual(44)
   }
-  await expect(freeformToolbar.getByTestId('insert-text')).toHaveCount(0)
+  await expect(freeformToolbar.getByTestId('freeform-text-tool')).toHaveCount(0)
   await expect(page.getByTestId('freeform-export')).toHaveCSS('height', '32px')
   await expect(page.locator('.freeform-thumb.on')).toHaveAttribute('aria-current', 'page')
 })
@@ -2366,7 +2377,8 @@ test('account changes reset the open project', async ({ page }) => {
   // Signing out leaves nothing of account A on screen: its work is saved, the canvas starts over.
   await page.getByTestId('account-menu').click()
   await page.getByTestId('account-logout').click()
-  await expect(slideStatus).toHaveText('登录后自动保存')
+  await expect(page.getByTestId('account-login')).toBeVisible()
+  await expect(slideStatus).toHaveCount(0)
   await expect(page.getByTestId('freeform-element')).toHaveCount(0)
   await expect(page.getByTestId('editor-title')).toHaveText('未命名设计')
 
@@ -2735,21 +2747,21 @@ test('inserts shapes and lines through accessible toolbar menus', async ({ page 
   await expect(lineTrigger).toBeFocused()
 })
 
-test('keeps dark insert menu triggers in the accent expanded state', async ({ page }) => {
+test('an open insert menu turns its rail icon ink in the dark theme', async ({ page }) => {
   await openFreeform(page)
   if ((await page.locator('html').getAttribute('data-theme')) !== 'dark') {
     await page.getByTestId('theme-toggle').click()
   }
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 
-  const expandedColors = await page.evaluate(() => {
+  const inkColors = await page.evaluate(() => {
     const probe = document.createElement('div')
-    probe.style.borderColor = 'var(--accent)'
-    probe.style.backgroundColor = 'var(--accent-weak)'
+    probe.style.color = 'var(--on-btn)'
+    probe.style.backgroundColor = 'var(--btn)'
     document.body.append(probe)
     const style = getComputedStyle(probe)
     const colors = {
-      border: style.borderColor,
+      color: style.color,
       background: style.backgroundColor,
     }
     probe.remove()
@@ -2757,9 +2769,11 @@ test('keeps dark insert menu triggers in the accent expanded state', async ({ pa
   })
 
   const shapeTrigger = page.getByTestId('insert-shape')
+  const icon = shapeTrigger.locator('svg')
   await shapeTrigger.click()
-  await expect(shapeTrigger).toHaveCSS('border-color', expandedColors.border)
-  await expect(shapeTrigger).toHaveCSS('background-color', expandedColors.background)
+  await expect(shapeTrigger).toHaveAttribute('aria-expanded', 'true')
+  await expect(icon).toHaveCSS('background-color', inkColors.background)
+  await expect(icon).toHaveCSS('color', inkColors.color)
 })
 
 test('switches insert menus without returning focus to the previous trigger', async ({ page }) => {
@@ -2782,23 +2796,28 @@ test('switches insert menus without returning focus to the previous trigger', as
   await expect(lineMenu.getByRole('menuitem', { name: '直线' })).toBeFocused()
 })
 
-test('keeps focus on an outside toolbar button when closing an insert menu', async ({ page }) => {
+test('hands focus to the next rail tool when an open insert menu closes', async ({ page }) => {
   await openFreeform(page)
 
   const shapeTrigger = page.getByTestId('insert-shape')
-  const textButton = page.getByTestId('insert-text')
+  const textTool = page.getByTestId('freeform-text-tool')
   const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const textMenu = page.getByRole('menu', { name: '文字' })
 
   await shapeTrigger.click()
   await expect(shapeMenu).toBeVisible()
-  await textButton.click()
+  await textTool.click()
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
 
   await expect(shapeMenu).toBeHidden()
-  await expect(textButton).toBeFocused()
+  await expect(textMenu.getByTestId('insert-text')).toBeFocused()
+  await textMenu.getByTestId('insert-text-heading').click()
+  await expect(textMenu).toBeHidden()
+  await expect(textTool).toBeFocused()
   await expect(page.getByTestId('freeform-textbox')).toHaveCount(1)
+  await expect(page.getByTestId('freeform-textbox')).toContainText('添加标题')
 })
 
 test('keeps focus on an outside toolbar button when closing the page size popover', async ({ page }) => {
@@ -2806,18 +2825,19 @@ test('keeps focus on an outside toolbar button when closing the page size popove
 
   const pageSizeTrigger = page.getByTestId('page-size-trigger')
   const pageSizePopover = page.getByTestId('page-size-popover')
-  const textButton = page.getByTestId('insert-text')
+  const templateButton = page.getByTestId('freeform-template-button')
 
   await pageSizeTrigger.click()
   await expect(pageSizePopover).toBeVisible()
-  await textButton.click()
+  await page.getByTestId('freeform-rulers-toggle').click()
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
 
   await expect(pageSizePopover).toBeHidden()
-  await expect(textButton).toBeFocused()
-  await expect(page.getByTestId('freeform-textbox')).toHaveCount(1)
+  await expect(page.getByTestId('freeform-rulers-toggle')).toBeFocused()
+  await expect(page.getByTestId('freeform-rulers-toggle')).toHaveAttribute('aria-pressed', 'true')
+  await expect(templateButton).toBeVisible()
 })
 
 test('hands focus from the page size popover to an insert menu', async ({ page }) => {
@@ -4869,8 +4889,19 @@ test('PowerPoint crop pans the picture and crops from every handle', async ({ pa
     const beforeMarkerPoints = Object.values(beforeVisual.markers)
     const beforeMarkerPixels = await sampleViewportPixels(page, beforeMarkerPoints)
     const beforeMarkerColors = cropMarkerColorSignatures(beforeMarkerPixels)
-    expect(beforeMarkerColors, `${item.handle} distinct marker colors`)
-      .toEqual(['rbg', 'gbr', 'bgr', 'brg'])
+    // A marker a crop edge runs through samples the edge's anti-aliasing, not
+    // the picture; only markers clear of the frame's edges are compared.
+    const clearOf = (frame: { left: number; right: number; top: number; bottom: number }) => (
+      (point: { x: number; y: number }) => (
+        [frame.left, frame.right].every((x) => Math.abs(point.x - x) > 3)
+        && [frame.top, frame.bottom].every((y) => Math.abs(point.y - y) > 3)
+      )
+    )
+    const clearBefore = beforeMarkerPoints.map(clearOf(beforeVisual.frame))
+    expect(
+      beforeMarkerColors.filter((_, markerIndex) => clearBefore[markerIndex]),
+      `${item.handle} distinct marker colors`,
+    ).toEqual(['rbg', 'gbr', 'bgr', 'brg'].filter((_, markerIndex) => clearBefore[markerIndex]))
     await dispatchCropPointerGesture(
       page,
       overlay.locator(`[data-crop-handle="${item.handle}"]`),
@@ -4902,8 +4933,14 @@ test('PowerPoint crop pans the picture and crops from every handle', async ({ pa
         .toBeCloseTo(beforeVisual.markers[marker].y, 3)
     }
     const afterMarkerPixels = await sampleViewportPixels(page, beforeMarkerPoints)
-    expect(cropMarkerColorSignatures(afterMarkerPixels), `${item.handle} stable marker colors`)
-      .toEqual(beforeMarkerColors)
+    const afterMarkerColors = cropMarkerColorSignatures(afterMarkerPixels)
+    const clearAfter = clearOf(afterVisual.frame)
+    const comparable = beforeMarkerPoints.flatMap((point, markerIndex) => (
+      clearBefore[markerIndex] && clearAfter(point) ? [markerIndex] : []
+    ))
+    expect(comparable.length, `${item.handle} comparable markers`).toBeGreaterThanOrEqual(1)
+    expect(comparable.map((markerIndex) => afterMarkerColors[markerIndex]), `${item.handle} stable marker colors`)
+      .toEqual(comparable.map((markerIndex) => beforeMarkerColors[markerIndex]))
   }
   await page.getByTestId('freeform-image-crop-done').click()
 })
@@ -6149,9 +6186,9 @@ test('export options switch format, quality, scale, and persist', async ({ page 
   expect(png.suggestedFilename()).toBe('slide-01.png')
   const pngPath = await png.path()
   expect(pngPath).toBeTruthy()
-  // The 2x scale setting applies to PNG as well; the reload reset the unsaved
-  // page back to the default 1080×1440, so 2x is 2160×2880.
-  expect(readPngSize(await readFile(pngPath!))).toEqual({ width: 2160, height: 2880 })
+  // The 2x scale setting applies to PNG as well; the guest's 9:16 page came
+  // back after the reload (it saves on this device), so 2x is 2160×3840.
+  expect(readPngSize(await readFile(pngPath!))).toEqual({ width: 2160, height: 3840 })
   expect(jpegBlob.size).toBeGreaterThan(0)
 })
 
@@ -6504,9 +6541,10 @@ test('renders nested v3 scene with inherited visibility lock and root selection'
   const canvasBox = await canvas.boundingBox()
   expect(canvasBox).toBeTruthy()
   const canvasScale = await freeformCanvasScale(page)
+  // Marquee from a point clear of the frame's corner handles (they resize).
   await page.mouse.move(
-    canvasBox!.x + 490 * canvasScale,
-    canvasBox!.y + 370 * canvasScale,
+    canvasBox!.x + 465 * canvasScale,
+    canvasBox!.y + 372 * canvasScale,
   )
   await page.mouse.down()
   await page.mouse.move(
@@ -8721,8 +8759,11 @@ test('nested multi-selection exposes logical alignment controls', async ({ page 
 
   const arrange = page.getByTestId('inspector-arrange')
   await expect(arrange).toBeVisible()
-  await expect(arrange).toContainText('对齐与分布')
   await expect(arrange).toContainText('层级')
+  // Alignment sits above the object's sections, as one row of icons.
+  const align = page.locator('.freeform-inspector').getByRole('toolbar', { name: '对齐与分布' })
+  await expect(align.getByRole('button', { name: '左对齐', exact: true })).toBeEnabled()
+  await expect(align.getByRole('button', { name: '水平均分', exact: true })).toBeDisabled()
 })
 
 test('multi-selection with a locked descendant is visibly read only', async ({ page }) => {
@@ -9246,6 +9287,7 @@ test('grouping rejects locked selections and locked parent insertion without dir
   await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
   await expect(page.getByRole('alert')).toContainText('锁定')
 
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
   await expect(page.getByRole('alert')).toContainText('锁定')
@@ -9453,6 +9495,7 @@ test('panel structure commands reject while a live pointer interaction is active
   await expect(tree.getByRole('treeitem', { name: 'Blocked rename' })).toHaveCount(0)
 
   await page.getByRole('button', { name: '关闭提示' }).click()
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
   await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
@@ -10822,13 +10865,13 @@ interface StageGeometry {
 async function stageGeometry(
   page: import('@playwright/test').Page,
 ): Promise<StageGeometry> {
-  // The rulers mount asynchronously after the canvas is ready; wait for both.
-  await page.getByTestId('freeform-ruler-x').waitFor({ state: 'attached' })
   await page.getByTestId('freeform-canvas').waitFor({ state: 'attached' })
   return page.evaluate(() => {
+    // Rulers are off by default; without them the stage's own corner stands in.
     const rulerX = document.querySelector('[data-testid="freeform-ruler-x"]')
+      ?? document.querySelector('.freeform-stage-viewport')
     const artboard = document.querySelector('[data-testid="freeform-canvas"]')
-    if (!rulerX || !artboard) throw new Error('stage rulers or artboard missing')
+    if (!rulerX || !artboard) throw new Error('stage or artboard missing')
     const ruler = rulerX.getBoundingClientRect()
     const board = artboard.getBoundingClientRect()
     return {
@@ -10848,6 +10891,10 @@ async function dragGuideFromRuler(
   axis: 'x' | 'y',
   worldPosition: number,
 ) {
+  if (await page.getByTestId('freeform-ruler-x').count() === 0) {
+    await page.getByTestId('freeform-rulers-toggle').click()
+  }
+  await page.getByTestId('freeform-ruler-x').waitFor({ state: 'attached' })
   const geometry = await stageGeometry(page)
   const scale = await freeformCanvasScale(page)
   const dropX = axis === 'x'
@@ -10866,6 +10913,33 @@ async function dragGuideFromRuler(
 }
 
 test.describe('freeform rulers and guides', () => {
+  // Rulers start hidden; these tests begin with them turned on.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      const key = 'slicer.freeform.prefs.v1'
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ rulersVisible: true }))
+    })
+  })
+
+  test('rulers stay hidden until the view toggle turns them on, and the choice sticks', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem('rulers-reset')) {
+        sessionStorage.setItem('rulers-reset', '1')
+        localStorage.setItem('slicer.freeform.prefs.v1', JSON.stringify({ rulersVisible: false }))
+      }
+    })
+    await openFreeform(page)
+    const toggle = page.getByTestId('freeform-rulers-toggle')
+    await expect(page.getByTestId('freeform-canvas')).toBeVisible()
+    await expect(page.getByTestId('freeform-ruler-x')).toHaveCount(0)
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
+    await page.reload()
+    await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
+  })
+
   test('renders zoom-adaptive ruler ticks that track scrolling', async ({ page }) => {
     await openFreeform(page)
     await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
@@ -11122,8 +11196,8 @@ test.describe('freeform selection completion', () => {
     await expect(toggle).toHaveAttribute('aria-pressed', 'false')
     await expect(guide).toHaveCount(0)
 
-    // The preference survives a reload (the unsaved document does not, so a
-    // fresh empty page starts with zero guides but the toggle stays off).
+    // The preference survives a reload, and so does the guest's page (saved on
+    // this device) with its guide, still hidden.
     await page.reload()
     await page.goto('/#/edit/canvas')
     await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
@@ -11133,7 +11207,7 @@ test.describe('freeform selection completion', () => {
     // Dragging a fresh guide from the ruler re-enables visibility.
     await dragGuideFromRuler(page, 'x', 500)
     await expect(page.getByTestId('freeform-guides-toggle')).toHaveAttribute('aria-pressed', 'true')
-    await expect(guide).toHaveCount(1)
+    await expect(guide).toHaveCount(2)
   })
 
   test('the snap toggle disables snapping but keeps page clamping', async ({ page }) => {

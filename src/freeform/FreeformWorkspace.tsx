@@ -10,7 +10,7 @@ import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
 import { readLastSession, updateLastSession } from '../lastSession'
-import { store } from '../storage'
+import { GUEST_OWNER_ID, isGuestOwner, store, storeFor } from '../storage'
 import { FONTS } from '../theme'
 import { assetDocumentSource } from '../workspaces/assetSource'
 import {
@@ -50,7 +50,8 @@ import {
 import { insertRichTextSpan } from './richText'
 import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
 import { FreeformExportMenu } from './FreeformExportMenu'
-import { FreeformInsertMenu } from './FreeformInsertMenu'
+import { FreeformInsertMenu, type FreeformInsertMenuOption } from './FreeformInsertMenu'
+import { InspectorGlyph } from './InspectorGlyph'
 import { InspectorNumberInput } from './InspectorNumberInput'
 import { FreeformLayersPanel, layerLabel } from './FreeformLayersPanel'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
@@ -68,6 +69,8 @@ import {
 import { FreeformSlidePreview } from './FreeformSlidePreview'
 import {
   FreeformSelectionOverlay,
+  RESIZE_HANDLE_AXES,
+  type ResizeHandle,
   type SelectionOverlayTarget,
   type SelectionOverlayInteraction,
 } from './FreeformSelectionOverlay'
@@ -399,12 +402,13 @@ function imageDecodeIdentityForTarget(
   }
 }
 
-function imageFramingScopeKey(
-  scopeGeneration: number,
-  userId: string | null,
-  draftId: string | null,
-): string {
-  return JSON.stringify([scopeGeneration, userId, draftId])
+/**
+ * Crop and framing sessions belong to the document on screen and its owner.
+ * Every document switch bumps the generation; the draft id stays out, because
+ * a new project's first save hands it an id without changing the document.
+ */
+function imageFramingScopeKey(scopeGeneration: number, userId: string | null): string {
+  return JSON.stringify([scopeGeneration, userId])
 }
 
 function shapeFillOperationKey(
@@ -841,7 +845,9 @@ function ShadowField({
         <div className="stroke-color-field" data-testid="shadow-color">
           <span className="stroke-color-label">{t('颜色')}</span>
           <div className="color-field">
-            <span className="color-field-value">{shadow.color.toUpperCase()}</span>
+            <span className="color-field-value">
+              {shadow.color === 'transparent' ? t('透明') : shadow.color.toUpperCase()}
+            </span>
             <ColorPickerButton
               label={t('阴影颜色')}
               color={shadow.color}
@@ -849,8 +855,8 @@ function ShadowField({
             />
           </div>
         </div>
-        <label>
-          {t('模糊')}
+        <label title={t('阴影模糊')}>
+          <InspectorGlyph name="blur" />
           <InspectorNumberInput
             ariaLabel={t('阴影模糊')}
             min={0}
@@ -862,8 +868,8 @@ function ShadowField({
         </label>
       </div>
       <div className="field-grid">
-        <label>
-          {t('水平偏移')}
+        <label title={t('阴影水平偏移')}>
+          <span className="field-glyph" aria-hidden="true">X</span>
           <InspectorNumberInput
             ariaLabel={t('阴影水平偏移')}
             min={-1000}
@@ -873,8 +879,8 @@ function ShadowField({
             onCommit={(value) => onChange({ ...shadow, offsetX: value })}
           />
         </label>
-        <label>
-          {t('垂直偏移')}
+        <label title={t('阴影垂直偏移')}>
+          <span className="field-glyph" aria-hidden="true">Y</span>
           <InspectorNumberInput
             ariaLabel={t('阴影垂直偏移')}
             min={-1000}
@@ -899,7 +905,78 @@ function ShadowField({
   )
 }
 
-export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request = null, onMetaChange }: WorkspaceShellProps) {
+const ALIGN_ACTIONS = [
+  { id: 'left', testId: 'left', label: '左对齐', icon: 'M4 3v14M7 6.5h9M7 13.5h5.5' },
+  { id: 'h-center', testId: 'hcenter', label: '水平居中', icon: 'M10 3v14M5 6.5h10M6.75 13.5h6.5' },
+  { id: 'right', testId: 'right', label: '右对齐', icon: 'M16 3v14M4 6.5h9M7.5 13.5H13' },
+  { id: 'top', testId: 'top', label: '顶对齐', icon: 'M3 4h14M6.5 7v9M13.5 7v5.5' },
+  { id: 'v-center', testId: 'vcenter', label: '垂直居中', icon: 'M3 10h14M6.5 5v10M13.5 6.75v6.5' },
+  { id: 'bottom', testId: 'bottom', label: '底对齐', icon: 'M3 16h14M6.5 4v9M13.5 7.5V13' },
+] as const
+
+type TextPresetId = 'box' | 'heading' | 'subheading' | 'body'
+
+const TEXT_PRESETS: Array<FreeformInsertMenuOption<TextPresetId>> = [
+  { id: 'box', testId: 'insert-text', label: '添加文本框', icon: <PlusIcon /> },
+  { id: 'heading', testId: 'insert-text-heading', label: '添加标题', labelStyle: { fontSize: 22, fontWeight: 700 } },
+  { id: 'subheading', testId: 'insert-text-subheading', label: '添加副标题', labelStyle: { fontSize: 16.5, fontWeight: 600 } },
+  { id: 'body', testId: 'insert-text-body', label: '添加一段正文', labelStyle: { fontSize: 13.5, fontWeight: 400 } },
+]
+
+const TEXT_PRESET_STYLES: Record<Exclude<TextPresetId, 'box'>, {
+  text: string
+  fontSize: number
+  fontWeight: 'bold' | 'normal'
+  lineHeight: number
+  height: number
+  maxWidth: number
+  widthRatio: number
+}> = {
+  heading: { text: '添加标题', fontSize: 88, fontWeight: 'bold', lineHeight: 1.15, height: 110, maxWidth: 860, widthRatio: 0.8 },
+  subheading: { text: '添加副标题', fontSize: 52, fontWeight: 'bold', lineHeight: 1.2, height: 70, maxWidth: 720, widthRatio: 0.68 },
+  body: {
+    text: '在这里写一段正文，说说你想分享的内容。',
+    fontSize: 30,
+    fontWeight: 'normal',
+    lineHeight: 1.55,
+    height: 104,
+    maxWidth: 640,
+    widthRatio: 0.6,
+  },
+}
+
+const TEXT_ALIGN_OPTIONS = [
+  { id: 'left', label: '文字左对齐', icon: 'M2.5 4h11M2.5 8h7M2.5 12h9' },
+  { id: 'center', label: '文字居中', icon: 'M2.5 4h11M4.5 8h7M3.5 12h9' },
+  { id: 'right', label: '文字右对齐', icon: 'M2.5 4h11M6.5 8h7M4.5 12h9' },
+] as const
+
+const LAYER_ORDER_ACTIONS = [
+  { id: 'front', label: '置顶', icon: 'M10 16V7M6.5 10.5 10 7l3.5 3.5M5 3.5h10' },
+  { id: 'forward', label: '前移', icon: 'M10 15.5V5.5M6.5 9 10 5.5 13.5 9' },
+  { id: 'backward', label: '后移', icon: 'M10 4.5v10M6.5 11 10 14.5l3.5-3.5' },
+  { id: 'back', label: '置底', icon: 'M10 4v9M6.5 9.5 10 13l3.5-3.5M5 16.5h10' },
+] as const
+
+const DEFAULT_PAGE_NAME = /^Page \d+$/
+
+/** "第 2 页", plus the page's own name when someone gave it one. */
+function pageLabel(index: number, name: string): string {
+  const number = t('第 {n} 页', { n: index + 1 })
+  const trimmed = name.trim()
+  return trimmed && !DEFAULT_PAGE_NAME.test(trimmed) ? `${number} · ${trimmed}` : number
+}
+
+export function FreeformWorkspace({
+  isActive,
+  user,
+  ownerId,
+  transfer = null,
+  requestAuth,
+  chrome,
+  request = null,
+  onMetaChange,
+}: WorkspaceShellProps) {
   const [history, setHistory] = useState<HistoryState<FreeformDocument>>(() =>
     createHistory(createFreeformDocument()),
   )
@@ -909,7 +986,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   const initialSceneIdentity: SceneUiIdentity = {
     activeSlideId: activeSlide.id,
     draftId: null,
-    userId: user?.id ?? null,
+    userId: ownerId,
   }
   const [sceneUiState, setSceneUiState] = useState<SceneUiState>(() => ({
     activeGroupPath: [],
@@ -969,8 +1046,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   const [projectTitle, setProjectTitle] = useState(() => t('未命名设计'))
   /** Renamed since the last save. */
   const [titleDirty, setTitleDirty] = useState(false)
-  // 刷新恢复：每账号只尝试一次；openDraftRef 让恢复 effect 不必依赖 openDraft 的函数身份。
-  const restoreAttemptedUserIdRef = useRef<string | null>(null)
+  // What is on screen was asked for (new, a template, a project): don't swap the last session in.
+  const explicitDocumentRef = useRef(false)
   // Bumped whenever the document is replaced, so a slow session restore can't overwrite it.
   const restoreGenerationRef = useRef(0)
   const handledRequestRef = useRef(0)
@@ -1091,13 +1168,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
   const shapeFillOperationTokensRef = useRef(new Map<string, symbol>())
-  const previousUserId = useRef<string | null>(user?.id ?? null)
+  // Starts unknown, so an editor opened with a known owner reopens their last project.
+  const previousOwnerId = useRef<string | null>(null)
   const documentIdentityGenerationRef = useRef(0)
   const inspectorNumberResetGenerationRef = useRef(0)
   const historyRef = useRef(history)
   const currentDocumentRef = useRef(doc)
   const currentDraftIdRef = useRef(draftId)
-  const currentUserIdRef = useRef<string | null>(user?.id ?? null)
+  // The owner (an account or this device's guest) the open project belongs to.
+  const currentOwnerIdRef = useRef<string | null>(ownerId)
+  const transferRef = useRef(transfer)
   const successfulSaveRef = useRef<{
     source: FreeformDocument
     document: FreeformDocument
@@ -1109,8 +1189,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   const titleDirtyRef = useRef(titleDirty)
   // The document as stored (or as opened); a different current document still needs saving.
   const persistedDocRef = useRef(doc)
-  // The project a signed-out account left unsaved work in (see the account effect).
+  // The project an account's expired session left unsaved work in (see the owner effect).
   const parkedProjectRef = useRef<{ userId: string; draftId: string | null } | null>(null)
+  const [parkedFor, setParkedFor] = useState<string | null>(null)
   // What autosave was last handed, so leaving a project doesn't queue it twice.
   const scheduledDocRef = useRef<FreeformDocument | null>(null)
   const scheduledTitleRef = useRef<string | null>(null)
@@ -1121,7 +1202,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   historyRef.current = history
   currentDocumentRef.current = doc
   currentDraftIdRef.current = draftId
-  currentUserIdRef.current = user?.id ?? null
+  currentOwnerIdRef.current = ownerId
+  transferRef.current = transfer
+  const ownerStore = storeFor(ownerId ?? GUEST_OWNER_ID)
   imageReadinessRef.current = imageReadiness
   framingSessionRef.current = framingSession
   imageCropSessionRef.current = imageCropSession
@@ -1300,7 +1383,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   }, [showOperationError])
   const retainImagesNow = useImageLease(
     imageSources,
-    store.remote && Boolean(user),
+    ownerId !== null && ownerStore.remote,
     handleImageLeaseError,
   )
   const clearAllImageReadinessNow = useCallback(() => {
@@ -1553,13 +1636,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
     return () => window.removeEventListener('pointerdown', onPointerDown, true)
   }, [contextMenu, slideContextMenu])
 
-  // Autosave: a signed-in user's edits land in their project a moment later.
+  // Autosave: every edit lands in the owner's project a moment later.
   const autosave = useProjectAutosave<{ title: string }>((saved, content, tag) => {
     if (saved.mode !== 'freeform-slide' || content.mode !== 'freeform-slide') return
     const snapshot = content.document
     updateDraftId(saved.id)
-    const uid = currentUserIdRef.current
-    if (uid) updateLastSession(uid, { mode: 'freeform-slide', freeformDraftId: saved.id })
+    const owner = currentOwnerIdRef.current
+    if (owner) updateLastSession(owner, { mode: 'freeform-slide', freeformDraftId: saved.id })
     successfulSaveRef.current = { source: snapshot, document: saved.document, updatedAt: saved.updatedAt }
     const interacting = Boolean(
       activeInteractionRef.current
@@ -1568,7 +1651,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       || imageCropSessionRef.current,
     )
     // Remote saves upload inline images; adopt the uploaded copy if nothing changed since.
-    if (store.remote && !interacting) {
+    if (storeFor(owner ?? GUEST_OWNER_ID).remote && !interacting) {
       updateHistory((current) => (
         Object.is(current.current, snapshot) ? { ...current, current: saved.document } : current
       ))
@@ -1589,61 +1672,69 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
     if (!isActive) void flushSave()
   }, [flushSave, isActive])
 
-  // A different account: the open project belongs to the old one. A guest who
-  // signs in keeps the canvas, and autosave files its edits under the new account.
+  // A different owner (signing in or out, or the session check settling): the
+  // open project belongs to the previous one.
   useEffect(() => {
-    const nextUserId = user?.id ?? null
-    const previous = previousUserId.current
-    if (previous === nextUserId) return
-    // Edits that never reached the old account (its saves were failing, say an expired session).
+    const next = ownerId
+    const previous = previousOwnerId.current
+    if (previous === next) return
+    // Edits that never reached the previous owner (its saves were failing, say an expired session).
     const hadUnsavedEdits = titleDirtyRef.current
       || (savedAtRef.current === null && historyRef.current.past.length > 0)
-    cancelFramingBeforeTransition(previous, currentDraftIdRef.current)
-    previousUserId.current = nextUserId
-    // A crop that just committed still belongs to the old account.
-    if (previous !== null) leaveDocument(previous)
+    cancelFramingBeforeTransition(previous)
+    previousOwnerId.current = next
+    const parked = parkedProjectRef.current
+    const sessionEnded = previous !== null && !isGuestOwner(previous) && isGuestOwner(next) && hadUnsavedEdits
+    // A crop that just committed still belongs to the previous owner.
+    if (previous !== null && !sessionEnded && !parked) leaveDocument(previous)
     else releaseSave()
     documentIdentityGenerationRef.current += 1
     shapeFillOperationTokensRef.current.clear()
     setPendingShapeFillKeys(new Set())
     clearAllImageReadinessNow()
     successfulSaveRef.current = null
-    // Unsaved edits kept on screen after a session ended go back into the same
-    // project when that account signs in again, instead of a copy.
-    if (previous !== null && nextUserId === null && hadUnsavedEdits) {
-      parkedProjectRef.current = { userId: previous, draftId: currentDraftIdRef.current }
-    }
-    const parked = parkedProjectRef.current
-    const resumed = parked !== null && parked.userId === nextUserId
-    if (nextUserId !== null) parkedProjectRef.current = null
-    updateDraftId(resumed ? parked.draftId : null)
     setSavedAt(null)
     setOperationNotice(null)
-    // Signing back in reopens the last project.
-    if (nextUserId === null) restoreAttemptedUserIdRef.current = null
-    if (previous !== null && !hadUnsavedEdits) startFreshDocument(createFreeformDocument(), undefined, false)
-  }, [clearAllImageReadinessNow, releaseSave, updateDraftId, user])
-
-  // 刷新恢复：账号确认后自动回到本工作台最近打开的草稿（每个账号只尝试
-  // 一次；草稿已被删除或读取失败则保持新文档，不提示）。
-  useEffect(() => {
-    if (!user || restoreAttemptedUserIdRef.current === user.id) return
-    restoreAttemptedUserIdRef.current = user.id
-    // Work already on the canvas (a guest who just signed in) stays; autosave files it.
-    if (titleDirtyRef.current || (savedAtRef.current === null && historyRef.current.past.length > 0)) return
-    const draftId = readLastSession(user.id).freeformDraftId
-    if (!draftId) return
-    const uid = user.id
-    const generation = ++restoreGenerationRef.current
-    void store.drafts.list(uid).then(
-      (list) => {
-        if (currentUserIdRef.current !== uid || restoreGenerationRef.current !== generation) return
-        const target = list.find((draft) => draft.id === draftId && draft.mode === 'freeform-slide')
-        if (target) openDraftRef.current(target)
-      },
-      () => {},
-    )
-  }, [user])
+    if (sessionEnded) {
+      // The session ended before these edits were saved: keep them on screen
+      // for that account instead of filing them under the guest.
+      parkedProjectRef.current = { userId: previous, draftId: currentDraftIdRef.current }
+      setParkedFor(previous)
+      updateDraftId(null)
+      return
+    }
+    parkedProjectRef.current = null
+    setParkedFor(null)
+    if (next === null) return
+    if (parked) {
+      if (parked.userId === next) {
+        // Signed back in: the kept edits go into the same project.
+        updateDraftId(parked.draftId)
+        return
+      }
+      // Someone else signed in: keep the edits on this device rather than drop them.
+      leaveDocument(GUEST_OWNER_ID)
+    }
+    const moved = currentDraftIdRef.current ? transferRef.current?.get(currentDraftIdRef.current) : undefined
+    if (moved?.mode === 'freeform-slide') {
+      // The guest project on screen just moved into this account: keep editing
+      // it there. Whatever it still had queued went to the guest copy above.
+      persistedDocRef.current = currentDocumentRef.current
+      titleDirtyRef.current = false
+      openDraft(moved)
+      return
+    }
+    if (previous === null && !parked) {
+      // The session check settled: anything made meanwhile is saved for the
+      // owner; otherwise pick up where they left off.
+      updateDraftId(null)
+      if (!hadUnsavedEdits && !explicitDocumentRef.current) restoreLastProject(next)
+      return
+    }
+    explicitDocumentRef.current = false
+    startFreshDocument(createFreeformDocument(), undefined, false)
+    restoreLastProject(next)
+  }, [clearAllImageReadinessNow, ownerId, releaseSave, updateDraftId])
 
   useEffect(() => {
     const session = imageCropSessionRef.current
@@ -1673,17 +1764,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
     draftId,
     imageCropSession,
     imageReadiness,
-    user?.id,
+    ownerId,
   ])
 
   useEffect(() => {
     const identity: SceneUiIdentity = {
       activeSlideId: activeSlide.id,
       draftId,
-      userId: user?.id ?? null,
+      userId: ownerId,
     }
     setSceneUiState((current) => reconcileSceneUiState(activeSlide.nodes, current, identity))
-  }, [activeSlide.id, activeSlide.nodes, draftId, user?.id])
+  }, [activeSlide.id, activeSlide.nodes, draftId, ownerId])
 
   useEffect(() => {
     if (activeFontRequests.length === 0) return
@@ -1977,10 +2068,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
 
   function currentTargetForFramingSession(
     session: ImageFramingSession,
-    scopeUserId = currentUserIdRef.current,
-    scopeDraftId = currentDraftIdRef.current,
+    scopeUserId = currentOwnerIdRef.current,
   ): { slide: FreeformSlide; target: ImageFramingTarget } | null {
-    if (!framingSessionBelongsToScope(session, scopeUserId, scopeDraftId)) return null
+    if (!framingSessionBelongsToScope(session, scopeUserId)) return null
     const slide = currentDocumentRef.current.slides.find(
       (candidate) => candidate.id === session.slideId,
     )
@@ -1996,49 +2086,40 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   }
 
   function framingSessionBelongsToCurrentScope(session: ImageFramingSession): boolean {
-    return framingSessionBelongsToScope(
-      session,
-      currentUserIdRef.current,
-      currentDraftIdRef.current,
-    )
+    return framingSessionBelongsToScope(session, currentOwnerIdRef.current)
   }
 
   function framingSessionBelongsToScope(
     session: ImageFramingSession,
     scopeUserId: string | null,
-    scopeDraftId: string | null,
   ): boolean {
     return session.scopeGeneration === documentIdentityGenerationRef.current
       && session.draftScopeKey === imageFramingScopeKey(
         documentIdentityGenerationRef.current,
         scopeUserId,
-        scopeDraftId,
       )
   }
 
   function imageCropSessionBelongsToScope(
     session: ImageCropDisplaySession,
     scopeUserId: string | null,
-    scopeDraftId: string | null,
   ): boolean {
     return session.scopeGeneration === documentIdentityGenerationRef.current
       && session.draftScopeKey === imageFramingScopeKey(
         documentIdentityGenerationRef.current,
         scopeUserId,
-        scopeDraftId,
       )
   }
 
   function currentImageCropAuthorityForSession(
     session: ImageCropDisplaySession,
-    scopeUserId = currentUserIdRef.current,
-    scopeDraftId = currentDraftIdRef.current,
+    scopeUserId = currentOwnerIdRef.current,
   ): {
     slide: FreeformSlide
     node: FreeformImageElement
     identity: ImageDecodeIdentity
   } | null {
-    if (!imageCropSessionBelongsToScope(session, scopeUserId, scopeDraftId)) return null
+    if (!imageCropSessionBelongsToScope(session, scopeUserId)) return null
     const document = currentDocumentRef.current
     if (document.activeSlideId !== session.slideId) return null
     const slide = document.slides.find((candidate) => candidate.id === session.slideId)
@@ -2070,10 +2151,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
 
   function currentTargetForImageCropSession(
     session: ImageCropDisplaySession,
-    scopeUserId = currentUserIdRef.current,
-    scopeDraftId = currentDraftIdRef.current,
+    scopeUserId = currentOwnerIdRef.current,
   ): { slide: FreeformSlide; node: FreeformImageElement } | null {
-    const current = currentImageCropAuthorityForSession(session, scopeUserId, scopeDraftId)
+    const current = currentImageCropAuthorityForSession(session, scopeUserId)
     if (!current) return null
     if (!imageDecodeIdentityEquals(
       current.identity,
@@ -2139,8 +2219,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       scopeGeneration: documentIdentityGenerationRef.current,
       draftScopeKey: imageFramingScopeKey(
         documentIdentityGenerationRef.current,
-        currentUserIdRef.current,
-        currentDraftIdRef.current,
+        currentOwnerIdRef.current,
       ),
       slideId: slide.id,
       path: [...path],
@@ -2167,8 +2246,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
 
   function finishImageCrop(
     reason: ImageCropFinishReason = 'done',
-    scopeUserId = currentUserIdRef.current,
-    scopeDraftId = currentDraftIdRef.current,
+    scopeUserId = currentOwnerIdRef.current,
   ): LiveEditCommitResult | null {
     const finished = imageCropSessionApi.finish(reason)
     if (!finished) {
@@ -2178,7 +2256,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
     }
 
     const { session, draft } = finished
-    const current = currentTargetForImageCropSession(session, scopeUserId, scopeDraftId)
+    const current = currentTargetForImageCropSession(session, scopeUserId)
     if (!current) {
       imageCropSessionRef.current = null
       invalidatedCropDecodeIdentityRef.current = null
@@ -2271,8 +2349,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       scopeGeneration: documentIdentityGenerationRef.current,
       draftScopeKey: imageFramingScopeKey(
         documentIdentityGenerationRef.current,
-        currentUserIdRef.current,
-        currentDraftIdRef.current,
+        currentOwnerIdRef.current,
       ),
       slideId: slide.id,
       path: [...path],
@@ -2318,20 +2395,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   }
 
   function cancelFramingBeforeTransition(
-    scopeUserId = currentUserIdRef.current,
-    scopeDraftId = currentDraftIdRef.current,
+    scopeUserId = currentOwnerIdRef.current,
   ) {
     const cropSession = imageCropSessionRef.current
     if (cropSession) {
-      if (currentTargetForImageCropSession(cropSession, scopeUserId, scopeDraftId)) {
-        finishImageCrop('transition', scopeUserId, scopeDraftId)
+      if (currentTargetForImageCropSession(cropSession, scopeUserId)) {
+        finishImageCrop('transition', scopeUserId)
       } else {
         clearImageCropSession()
       }
     }
     const session = framingSessionRef.current
     if (session) {
-      if (currentTargetForFramingSession(session, scopeUserId, scopeDraftId)) {
+      if (currentTargetForFramingSession(session, scopeUserId)) {
         cancelLiveEdit(session.startDocument)
       }
       clearImageFramingSession()
@@ -2587,8 +2663,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
     return false
   }
 
-  function addText() {
-    insertNewElement(createTextElement(activeSlide))
+  function addTextPreset(preset: TextPresetId) {
+    const base = createTextElement(activeSlide)
+    if (preset === 'box') {
+      insertNewElement({ ...base, text: t(base.text) })
+      return
+    }
+    const style = TEXT_PRESET_STYLES[preset]
+    const width = Math.min(style.maxWidth, Math.round(activeSlide.width * style.widthRatio))
+    insertNewElement({
+      ...base,
+      x: Math.round((activeSlide.width - width) / 2),
+      y: Math.round((activeSlide.height - style.height) / 2),
+      width,
+      height: style.height,
+      text: t(style.text),
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      lineHeight: style.lineHeight,
+    })
   }
 
   function addShape(shape: FreeformShapeElement['shape']) {
@@ -2606,13 +2699,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   ) {
     if (blockDocumentMutationDuringInteraction()) return
     const targetIdentityGeneration = documentIdentityGenerationRef.current
-    const targetUserId = currentUserIdRef.current
+    const targetUserId = currentOwnerIdRef.current
     const targetSlideId = activeSlide.id
     const targetParentPath = [...activeGroupPath]
     const src = await loadSource()
     if (
       targetIdentityGeneration !== documentIdentityGenerationRef.current ||
-      targetUserId !== currentUserIdRef.current
+      targetUserId !== currentOwnerIdRef.current
     ) return
     if (blockDocumentMutationDuringInteraction()) return
     const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
@@ -2640,19 +2733,22 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   }
 
   async function addImageFromFile(file: File) {
+    const images = ownerStore
     await insertImageElement(async () => {
-      if (store.remote) await retainImagesNow()
+      if (images.remote) await retainImagesNow()
       const raw = await readFileAsDataUrl(file)
       const downscaled = await downscaleDataUrl(raw, 1800)
-      return store.images.put(downscaled)
+      return images.images.put(downscaled)
     }, file.name)
   }
 
   async function addImageFromAsset(asset: Asset) {
+    const owner = ownerId
+    if (!owner) return
     // The user is editing this document now; a late last-session restore must not replace it.
     restoreGenerationRef.current += 1
     try {
-      await insertImageElement(() => assetDocumentSource(asset), asset.name, asset)
+      await insertImageElement(() => assetDocumentSource(asset, owner), asset.name, asset)
     } catch (error) {
       showOperationError(error, t('图片插入失败，请稍后重试'))
     }
@@ -2674,7 +2770,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
     const targetPath = selectedPath ? [...selectedPath] : null
     const targetSlideId = activeSlide.id
     const targetIdentityGeneration = documentIdentityGenerationRef.current
-    const targetUserId = currentUserIdRef.current
+    const targetUserId = currentOwnerIdRef.current
     const targetNode = targetPath
       ? findNodeAtPath(
           currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)?.nodes ?? [],
@@ -2683,15 +2779,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       : undefined
     if (targetNode?.type !== 'shape' || !targetPath) return
     const operation = beginShapeFillOperation(targetSlideId, targetPath)
+    const images = ownerStore
     try {
-      if (store.remote) await retainImagesNow()
+      if (images.remote) await retainImagesNow()
       const raw = await readFileAsDataUrl(file)
       const downscaled = await downscaleDataUrl(raw, 1800)
-      const src = await store.images.put(downscaled)
+      const src = await images.images.put(downscaled)
       if (
         shapeFillOperationTokensRef.current.get(operation.key) !== operation.token ||
         targetIdentityGeneration !== documentIdentityGenerationRef.current ||
-        targetUserId !== currentUserIdRef.current
+        targetUserId !== currentOwnerIdRef.current
       ) return
       if (blockDocumentMutationDuringInteraction()) return
       const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
@@ -3243,6 +3340,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   useEffect(() => {
     if (!isActive) return
     const onKey = (event: KeyboardEvent) => {
+      // Keys pressed inside a dialog (signing in, moving guest work) never reach the canvas.
+      if (event.target instanceof Element && event.target.closest('[aria-modal="true"]')) return
       const key = event.key.toLowerCase()
       const activeCropSession = imageCropSessionRef.current
       if (activeCropSession) {
@@ -4418,7 +4517,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
     }, t('删除顶点'))
   }
 
-  function onResizePointerDown(event: React.PointerEvent, target: SelectionOverlayTarget) {
+  function onResizePointerDown(
+    event: React.PointerEvent,
+    target: SelectionOverlayTarget,
+    handle: ResizeHandle = 'se',
+  ) {
     if (renderScale === null) return
     if (blockDocumentMutationDuringInteraction()) {
       event.preventDefault()
@@ -4446,6 +4549,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       ? findNodeAtPath(startSlide.nodes, startPaths[0])
       : null
     const startLeaf = singleLeaf?.type === 'group' ? null : singleLeaf
+    const axes = RESIZE_HANDLE_AXES[handle]
+    const cornerHandle = axes.x !== 0 && axes.y !== 0
+    // Groups and multi-selections scale from a corner; only a single box stretches along an edge.
+    if (!startLeaf && !cornerHandle) return
     const startLeafWorld = startLeaf
       ? sceneWorldMatrixAtPath(startSlide.nodes, startPaths[0])
       : null
@@ -4456,9 +4563,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       resizeParentPath,
       target.nodeIds,
     )
-    const pivot = target.kind === 'multi'
-      ? { x: startBounds.x, y: startBounds.y }
-      : target.resizePivot
+    // The corner opposite the handle stays where it is.
+    const pivot = target.corners[
+      axes.x < 0 ? (axes.y < 0 ? 'se' : 'ne') : (axes.y < 0 ? 'sw' : 'nw')
+    ]
     const startVector = {
       x: startPagePoint.x - pivot.x,
       y: startPagePoint.y - pivot.y,
@@ -4484,25 +4592,38 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       if (startLeaf && startLeafWorld && inverseLeafWorld && startLeafLocal) {
         const localDelta = transformVector(inverseLeafWorld, worldDelta)
         const worldScale = decomposeSimilarity(startLeafWorld)?.scale ?? 1
-        let width: number
-        let height: number
-        if (moveEvent.shiftKey && startLengthSquared > Number.EPSILON) {
+        const minSize = 40 / worldScale
+        let width = startLeaf.width
+        let height = startLeaf.height
+        if (moveEvent.shiftKey && cornerHandle && startLengthSquared > Number.EPSILON) {
           // Shift keeps the leaf's aspect ratio: scale both edges by the
-          // pointer's distance change from the resize pivot.
+          // pointer's distance change from the opposite corner.
           const currentLength = Math.hypot(
             startVector.x + worldDelta.x,
             startVector.y + worldDelta.y,
           )
           const factor = currentLength / Math.sqrt(startLengthSquared)
-          width = Math.max(40 / worldScale, startLeaf.width * factor)
-          height = Math.max(40 / worldScale, startLeaf.height * factor)
+          width = Math.max(minSize, startLeaf.width * factor)
+          height = Math.max(minSize, startLeaf.height * factor)
+        } else if (moveEvent.shiftKey && !cornerHandle) {
+          // An edge with Shift scales the whole box, centred on that edge.
+          const factor = axes.x !== 0
+            ? Math.max(minSize, startLeaf.width + axes.x * localDelta.x) / startLeaf.width
+            : Math.max(minSize, startLeaf.height + axes.y * localDelta.y) / startLeaf.height
+          width = Math.max(minSize, startLeaf.width * factor)
+          height = Math.max(minSize, startLeaf.height * factor)
         } else {
-          width = Math.max(40 / worldScale, startLeaf.width + localDelta.x)
-          height = Math.max(40 / worldScale, startLeaf.height + localDelta.y)
+          if (axes.x !== 0) width = Math.max(minSize, startLeaf.width + axes.x * localDelta.x)
+          if (axes.y !== 0) height = Math.max(minSize, startLeaf.height + axes.y * localDelta.y)
         }
+        // Keep the edges opposite the handle in place (the middle, along an untouched axis).
+        const anchorShift = translation(
+          axes.x < 0 ? startLeaf.width - width : axes.x === 0 ? (startLeaf.width - width) / 2 : 0,
+          axes.y < 0 ? startLeaf.height - height : axes.y === 0 ? (startLeaf.height - height) / 2 : 0,
+        )
         const resized = sceneNodeWithLocalMatrix(
           { ...startLeaf, width, height },
-          startLeafLocal,
+          multiply(startLeafLocal, anchorShift),
         )
         if (!resized || resized.type === 'group') return
         replaceCurrent({
@@ -4786,14 +4907,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   }
 
   /** Moving off this document: queue anything not stored yet (an edit a transition just committed), then let go. */
-  function leaveDocument(userId = currentUserIdRef.current) {
+  function leaveDocument(owner = currentOwnerIdRef.current) {
     const current = currentDocumentRef.current
     const hasProject = currentDraftIdRef.current !== null || historyRef.current.past.length > 0
     const changed = !Object.is(current, persistedDocRef.current) || titleDirtyRef.current
     const alreadyQueued = Object.is(current, scheduledDocRef.current) && scheduledTitleRef.current === projectTitleRef.current
-    if (userId && hasProject && changed && !alreadyQueued) {
+    if (owner && !parkedProjectRef.current && hasProject && changed && !alreadyQueued) {
       const title = projectTitleRef.current
-      scheduleSave(userId, currentDraftIdRef.current, { mode: 'freeform-slide', title, document: current }, { title })
+      scheduleSave(owner, currentDraftIdRef.current, { mode: 'freeform-slide', title, document: current }, { title })
     }
     scheduledDocRef.current = null
     scheduledTitleRef.current = null
@@ -4821,9 +4942,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
     setProjectTitle(draft.title)
     titleDirtyRef.current = false
     setTitleDirty(false)
-    if (user) updateLastSession(user.id, { mode: 'freeform-slide', freeformDraftId: draft.id })
+    const owner = currentOwnerIdRef.current
+    if (owner) updateLastSession(owner, { mode: 'freeform-slide', freeformDraftId: draft.id })
   }
   openDraftRef.current = openDraft
+
+  /** Reopen the owner's last project, unless something else goes on screen first. */
+  function restoreLastProject(owner: string) {
+    const lastId = readLastSession(owner).freeformDraftId
+    if (!lastId) return
+    const generation = ++restoreGenerationRef.current
+    void storeFor(owner).drafts.list(owner).then(
+      (list) => {
+        if (currentOwnerIdRef.current !== owner || restoreGenerationRef.current !== generation) return
+        const target = list.find((draft) => draft.id === lastId && draft.mode === 'freeform-slide')
+        if (target) openDraftRef.current(target)
+      },
+      () => {},
+    )
+  }
 
   function renameProject(title: string) {
     setProjectTitle(title)
@@ -4857,7 +4994,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       identity: {
         activeSlideId: document.activeSlideId,
         draftId: null,
-        userId: currentUserIdRef.current,
+        userId: currentOwnerIdRef.current,
       },
     })
     setClipboard(null)
@@ -4874,36 +5011,40 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
   const documentDirty = savedAt === null && history.past.length > 0
   const interactionIdle = !activeInteraction && marquee === null && !framingSession && !imageCropSession
   useEffect(() => {
-    if (!user || !(documentDirty || titleDirty) || !interactionIdle) return
+    // The ref, not state: the owner effect may have parked the edits in this same commit.
+    if (!ownerId || parkedProjectRef.current || !(documentDirty || titleDirty) || !interactionIdle) return
     scheduledDocRef.current = doc
     scheduledTitleRef.current = projectTitle
     scheduleSave(
-      user.id,
+      ownerId,
       currentDraftIdRef.current,
       { mode: 'freeform-slide', title: projectTitle, document: doc },
       { title: projectTitle },
     )
-  }, [doc, documentDirty, interactionIdle, projectTitle, scheduleSave, titleDirty, user])
+  }, [doc, documentDirty, interactionIdle, ownerId, parkedFor, projectTitle, scheduleSave, titleDirty])
 
-  const unsaved = (documentDirty || titleDirty) && (!user || autosave.status === 'error')
+  const unsaved = (documentDirty || titleDirty)
+    && (ownerId === null || parkedFor !== null || autosave.status === 'error')
   useEffect(() => {
     onMetaChange?.({ title: projectTitle, draftId, unsaved })
   }, [projectTitle, draftId, unsaved, onMetaChange])
 
-  const saveState: SaveState = !user
-    ? chrome.authStatus === 'checking' ? { kind: 'none' } : { kind: 'guest' }
-    : autosave.status === 'error'
-      ? { kind: 'error', message: autosave.error ?? '' }
-      : documentDirty || titleDirty || autosave.status === 'saving'
-        ? { kind: 'saving' }
-        : draftId
-          ? { kind: 'saved', at: savedAt ?? Date.now() }
-          : { kind: 'none' }
+  const saveState: SaveState = parkedFor
+    ? { kind: 'signed-out' }
+    : ownerId === null
+      ? { kind: 'none' }
+      : autosave.status === 'error'
+        ? { kind: 'error', message: autosave.error ?? '' }
+        : documentDirty || titleDirty || autosave.status === 'saving'
+          ? { kind: 'saving' }
+          : draftId
+            ? { kind: 'saved', at: savedAt ?? Date.now(), onDevice: isGuestOwner(ownerId) }
+            : { kind: 'none' }
 
   // One-shot instructions from the workbench (open / new / template / removed / renamed).
   useEffect(() => {
     if (!request || handledRequestRef.current === request.nonce) return
-    if (request.kind === 'open' && !user) return
+    if (request.kind === 'open' && !ownerId) return
     handledRequestRef.current = request.nonce
     if (request.kind === 'removed' || request.kind === 'renamed') {
       if (currentDraftIdRef.current !== request.draftId) return
@@ -4917,7 +5058,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       return
     }
     restoreGenerationRef.current += 1
-    if (user) restoreAttemptedUserIdRef.current = user.id
+    explicitDocumentRef.current = true
     if (request.kind === 'new') {
       const clamp = (value: number | null) =>
         value === null ? undefined : Math.min(PAGE_SIZE_MAX, Math.max(PAGE_SIZE_MIN, value))
@@ -4925,13 +5066,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
       startFreshDocument({ ...createFreeformDocument(), activeSlideId: slide.id, slides: [slide] })
     } else if (request.kind === 'template') {
       applyFreeformTemplate(request.template)
-    } else if (user && currentDraftIdRef.current !== request.draftId) {
-      const uid = user.id
+    } else if (ownerId && currentDraftIdRef.current !== request.draftId) {
+      const owner = ownerId
       const id = request.draftId
       const generation = restoreGenerationRef.current
-      void store.drafts.list(uid).then(
+      void storeFor(owner).drafts.list(owner).then(
         (list) => {
-          if (currentUserIdRef.current !== uid || restoreGenerationRef.current !== generation) return
+          if (currentOwnerIdRef.current !== owner || restoreGenerationRef.current !== generation) return
           const target = list.find((draft) => draft.id === id && draft.mode === 'freeform-slide')
           if (target) openDraft(target)
           else setOperationNotice(t('没有找到这个项目，它可能已经被删除了'))
@@ -4939,7 +5080,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
         (error: unknown) => showOperationError(error, t('暂时无法读取项目，请稍后重试')),
       )
     }
-  }, [request, user])
+  }, [request, ownerId])
 
   const framingRenderTarget = framingSession
     ? currentTargetForFramingSession(framingSession)
@@ -5104,10 +5245,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
             <span>{t('模板')}</span>
           </button>
           <span className="freeform-tools-sep" aria-hidden="true" />
-          <button className="freeform-tool" type="button" data-testid="insert-text" title={t('添加文本框')} onClick={addText}>
-            <TextIcon />
-            <span>{t('文字')}</span>
-          </button>
+          <FreeformInsertMenu
+            isActive={isActive}
+            testId="freeform-text-tool"
+            label={t('文字')}
+            variant="rail"
+            layout="list"
+            icon={<TextIcon />}
+            options={TEXT_PRESETS}
+            onSelect={addTextPreset}
+          />
           <button
             className="freeform-tool"
             type="button"
@@ -5178,9 +5325,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
             <p className="freeform-drawer-hint">{t('直接放进当前页。常用的图片存进素材库，所有项目都能用。')}</p>
             <div className="freeform-drawer-section">{t('素材库')}</div>
             <AssetPanel
-              user={user}
+              ownerId={ownerId}
               onInsert={(asset) => void addImageFromAsset(asset)}
-              onRequestAuth={requestAuth}
               onManage={() => navigate(routes.assets)}
             />
           </aside>
@@ -5245,9 +5391,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
 
           <div
             ref={stageViewportRef}
-            className={`freeform-stage-viewport${guideDrag ? ` guide-dragging-${guideDrag.axis}` : ''}`}
+            className={`freeform-stage-viewport${viewPrefs.rulersVisible ? ' has-rulers' : ''}${guideDrag ? ` guide-dragging-${guideDrag.axis}` : ''}`}
           >
-            {rulerView && (
+            {rulerView && viewPrefs.rulersVisible && (
               <>
                 <div
                   className="freeform-ruler freeform-ruler-x"
@@ -5314,6 +5460,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                   height: activeSlide.height * renderScale,
                 }}
               >
+                <span className="freeform-ui-only freeform-page-label" data-testid="freeform-page-label" aria-hidden="true">
+                  {pageLabel(doc.slides.indexOf(activeSlide), activeSlide.name)}
+                </span>
                 <div
                   ref={artboardRef}
                   className="freeform-artboard"
@@ -5325,7 +5474,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                     height: activeSlide.height,
                     transform: `scale(${renderScale})`,
                     background: slideBackgroundToCss(activeSlide.background),
-                  }}
+                    '--freeform-artboard-inverse-scale': 1 / renderScale,
+                  } as CSSProperties}
                 >
                   <div
                     className="freeform-artwork-clip"
@@ -5554,98 +5704,6 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
             </div>
           )}
 
-          {canUseLogicalAlignment && !activeInteraction && !framingSession && !imageCropSession && (
-            <div
-              className="freeform-align-bar"
-              data-testid="freeform-align-bar"
-              role="toolbar"
-              aria-label={t('对齐与分布')}
-            >
-              <button
-                type="button"
-                className="align-bar-btn"
-                data-testid="freeform-align-left"
-                aria-label={t('左对齐')}
-                title={t('左对齐')}
-                onClick={() => alignSelection('left')}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3v14M5 6h10M5 12h7" /></svg>
-              </button>
-              <button
-                type="button"
-                className="align-bar-btn"
-                data-testid="freeform-align-hcenter"
-                aria-label={t('水平居中')}
-                title={t('水平居中')}
-                onClick={() => alignSelection('h-center')}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M5 6h10M7 12h6" /></svg>
-              </button>
-              <button
-                type="button"
-                className="align-bar-btn"
-                data-testid="freeform-align-right"
-                aria-label={t('右对齐')}
-                title={t('右对齐')}
-                onClick={() => alignSelection('right')}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15 3v14M5 6h10M8 12h7" /></svg>
-              </button>
-              <button
-                type="button"
-                className="align-bar-btn"
-                data-testid="freeform-align-top"
-                aria-label={t('顶对齐')}
-                title={t('顶对齐')}
-                onClick={() => alignSelection('top')}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 5v10M12 5v7" /></svg>
-              </button>
-              <button
-                type="button"
-                className="align-bar-btn"
-                data-testid="freeform-align-vcenter"
-                aria-label={t('垂直居中')}
-                title={t('垂直居中')}
-                onClick={() => alignSelection('v-center')}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h14M6 5v10M12 7v6" /></svg>
-              </button>
-              <button
-                type="button"
-                className="align-bar-btn"
-                data-testid="freeform-align-bottom"
-                aria-label={t('底对齐')}
-                title={t('底对齐')}
-                onClick={() => alignSelection('bottom')}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15h14M6 5v10M12 8v7" /></svg>
-              </button>
-              <span className="align-bar-separator" aria-hidden="true" />
-              <button
-                type="button"
-                className="align-bar-btn"
-                data-testid="freeform-distribute-h"
-                aria-label={t('水平均分')}
-                title={t('水平均分')}
-                disabled={selectionPaths.length < 3}
-                onClick={() => distributeSelection('horizontal')}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5v10M10 5v10M15 5v10" /></svg>
-              </button>
-              <button
-                type="button"
-                className="align-bar-btn"
-                data-testid="freeform-distribute-v"
-                aria-label={t('垂直均分')}
-                title={t('垂直均分')}
-                disabled={selectionPaths.length < 3}
-                onClick={() => distributeSelection('vertical')}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5h10M5 10h10M5 15h10" /></svg>
-              </button>
-            </div>
-          )}
         </section>
 
         <aside className="freeform-rail" aria-label={t('页面列表')} data-testid="freeform-page-strip">
@@ -5807,6 +5865,20 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
           {!imageCropSession && !framingSession && (
             <div className="freeform-zoom-controls">
               <div className="zoom-controls" aria-label={t('画布设置')}>
+                <button
+                  className="zoom-btn"
+                  type="button"
+                  data-testid="freeform-rulers-toggle"
+                  aria-label={t('显示标尺')}
+                  title={t('显示标尺')}
+                  aria-pressed={viewPrefs.rulersVisible}
+                  onClick={() => updateViewPrefs({ rulersVisible: !viewPrefs.rulersVisible })}
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M3.5 7.5h13v5h-13z" />
+                    <path d="M6.5 7.5v2M9.5 7.5v2.75M12.5 7.5v2M15.5 7.5v2.75" />
+                  </svg>
+                </button>
                 <button
                   className="zoom-btn"
                   type="button"
@@ -6064,12 +6136,58 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                 </div>
               )}
 
+              {!propertySelectionReadOnly && canUseLogicalAlignment && (
+                <div
+                  className="freeform-align-bar"
+                  data-testid="freeform-align-bar"
+                  role="toolbar"
+                  aria-label={t('对齐与分布')}
+                >
+                  {ALIGN_ACTIONS.map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      className="align-bar-btn"
+                      data-testid={`freeform-align-${action.testId}`}
+                      aria-label={t(action.label)}
+                      title={t(action.label)}
+                      onClick={() => alignSelection(action.id)}
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true"><path d={action.icon} /></svg>
+                    </button>
+                  ))}
+                  <span className="align-bar-separator" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className="align-bar-btn"
+                    data-testid="freeform-distribute-h"
+                    aria-label={t('水平均分')}
+                    title={t('水平均分')}
+                    disabled={selectionPaths.length < 3}
+                    onClick={() => distributeSelection('horizontal')}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4v12M16 4v12M8.5 7h3v6h-3z" /></svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="align-bar-btn"
+                    data-testid="freeform-distribute-v"
+                    aria-label={t('垂直均分')}
+                    title={t('垂直均分')}
+                    disabled={selectionPaths.length < 3}
+                    onClick={() => distributeSelection('vertical')}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h12M4 16h12M7 8.5h6v3H7z" /></svg>
+                  </button>
+                </div>
+              )}
+
               {!propertySelectionReadOnly && liveSelection.length === 1 && selectedProperties && (
                 <>
                   <InspectorSection title={t('位置与尺寸')} testId="inspector-geometry">
                     <div className="field-grid">
                       <label>
-                        {selectedProperties.kind === 'group' ? t('中心 X') : 'X'}
+                        <span className="field-glyph" aria-hidden="true">{selectedProperties.kind === 'group' ? t('中心 X') : 'X'}</span>
                         <InspectorNumberInput
                           ariaLabel={selectedProperties.kind === 'group' ? t('中心 X') : 'X'}
                           resetKey={inspectorNumberResetKey}
@@ -6078,7 +6196,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                         />
                       </label>
                       <label>
-                        {selectedProperties.kind === 'group' ? t('中心 Y') : 'Y'}
+                        <span className="field-glyph" aria-hidden="true">{selectedProperties.kind === 'group' ? t('中心 Y') : 'Y'}</span>
                         <InspectorNumberInput
                           ariaLabel={selectedProperties.kind === 'group' ? t('中心 Y') : 'Y'}
                           resetKey={inspectorNumberResetKey}
@@ -6086,8 +6204,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                           onCommit={(value) => commitSceneProperty({ property: 'y', value })}
                         />
                       </label>
-                      <label>
-                        {t('宽')}
+                      <label title={t('宽')}>
+                        <span className="field-glyph" aria-hidden="true">W</span>
                         <InspectorNumberInput
                           ariaLabel={t('宽')}
                           min={Number.MIN_VALUE}
@@ -6096,8 +6214,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                           onCommit={(value) => commitSceneProperty({ property: 'width', value })}
                         />
                       </label>
-                      <label>
-                        {t('高')}
+                      <label title={t('高')}>
+                        <span className="field-glyph" aria-hidden="true">H</span>
                         <InspectorNumberInput
                           ariaLabel={t('高')}
                           min={Number.MIN_VALUE}
@@ -6106,18 +6224,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                           onCommit={(value) => commitSceneProperty({ property: 'height', value })}
                         />
                       </label>
-                      <label>
-                        {t('旋转')}
+                      <label title={t('旋转')}>
+                        <InspectorGlyph name="rotate" />
                         <InspectorNumberInput
                           ariaLabel={t('旋转')}
                           resetKey={inspectorNumberResetKey}
                           value={selectedProperties.rotation}
                           onCommit={(value) => commitSceneProperty({ property: 'rotation', value })}
                         />
+                        <span className="field-suffix" aria-hidden="true">°</span>
                       </label>
                       {selectedProperties.kind === 'group' && (
-                        <label>
-                          {t('缩放 %')}
+                        <label title={t('缩放 %')}>
+                          <span className="field-glyph" aria-hidden="true">%</span>
                           <InspectorNumberInput
                             ariaLabel={t('缩放 %')}
                             min={Number.MIN_VALUE}
@@ -6182,9 +6301,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                           options={FONTS.map((font) => ({ id: font.id, label: t(font.label) }))}
                         />
                       </label>
-                      <div className="field-grid">
-                        <label>
-                          {t('字号')}
+                      <div className="field-grid three">
+                        <label title={t('字号')}>
+                          <InspectorGlyph name="font-size" />
                           <InspectorNumberInput
                             ariaLabel={t('字号')}
                             min={Number.MIN_VALUE}
@@ -6196,8 +6315,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                             onCommit={(value) => commitSceneProperty({ property: 'fontSize', value })}
                           />
                         </label>
-                        <label>
-                          {t('行高')}
+                        <label title={t('行高')}>
+                          <InspectorGlyph name="line-height" />
                           <InspectorNumberInput
                             ariaLabel={t('行高')}
                             min={0.5}
@@ -6207,8 +6326,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                             onCommit={(value) => updateSelectedStyle({ lineHeight: value })}
                           />
                         </label>
-                        <label>
-                          {t('字距')}
+                        <label title={t('字距')}>
+                          <InspectorGlyph name="letter-spacing" />
                           <InspectorNumberInput
                             ariaLabel={t('字距')}
                             min={-50}
@@ -6219,50 +6338,62 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                           />
                         </label>
                       </div>
-                      <div className="field-label with-gap">{t('对齐')}</div>
+                      <div className="field-label with-gap">{t('对齐与字型')}</div>
+                      <div className="text-style-row">
                       <div className="seg stretch">
-                        {(['left', 'center', 'right'] as const).map((align) => (
+                        {TEXT_ALIGN_OPTIONS.map((option) => (
                           <button
-                            key={align}
+                            key={option.id}
                             type="button"
-                            className={selectedElement.align === align ? 'seg-btn on' : 'seg-btn'}
-                            onClick={() => updateSelectedStyle({ align })}
+                            className={selectedElement.align === option.id ? 'seg-btn on' : 'seg-btn'}
+                            aria-label={t(option.label)}
+                            title={t(option.label)}
+                            aria-pressed={selectedElement.align === option.id}
+                            onClick={() => updateSelectedStyle({ align: option.id })}
                           >
-                            {align === 'left' ? t('左') : align === 'center' ? t('中') : t('右')}
+                            <svg className="seg-icon" viewBox="0 0 16 16" aria-hidden="true"><path d={option.icon} /></svg>
                           </button>
                         ))}
                       </div>
-                      <div className="field-label with-gap">{t('字型')}</div>
                       <div className="seg stretch">
                         <button
                           type="button"
                           className={selectedElement.fontWeight === 'bold' ? 'seg-btn on' : 'seg-btn'}
                           data-testid="text-weight-toggle"
                           aria-pressed={selectedElement.fontWeight === 'bold' ? 'true' : 'false'}
+                          aria-label={t('粗体')}
+                          title={t('粗体')}
                           onClick={() => updateSelectedStyle({
                             fontWeight: selectedElement.fontWeight === 'bold' ? 'normal' : 'bold',
                           })}
                         >
-                          {t('粗体')}
+                          <b className="seg-glyph" aria-hidden="true">B</b>
                         </button>
                         <button
                           type="button"
                           className={selectedElement.italic ? 'seg-btn on' : 'seg-btn'}
                           data-testid="text-italic-toggle"
                           aria-pressed={selectedElement.italic ? 'true' : 'false'}
+                          aria-label={t('斜体')}
+                          title={t('斜体')}
                           onClick={() => updateSelectedStyle({ italic: !selectedElement.italic })}
                         >
-                          {t('斜体')}
+                          <i className="seg-glyph" aria-hidden="true">I</i>
                         </button>
                         <button
                           type="button"
                           className={selectedElement.vertical ? 'seg-btn on' : 'seg-btn'}
                           data-testid="text-vertical-toggle"
                           aria-pressed={selectedElement.vertical ? 'true' : 'false'}
+                          aria-label={t('竖排')}
+                          title={t('竖排')}
                           onClick={() => updateSelectedStyle({ vertical: !selectedElement.vertical })}
                         >
-                          {t('竖排')}
+                          <svg className="seg-icon" viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M10.5 2.5v11M8 11l2.5 2.5L13 11M3 3.5h4M5 3.5v6.5" />
+                          </svg>
                         </button>
+                      </div>
                       </div>
                       <div className="field-label with-gap">{t('描边')}</div>
                       <div className="paint-row" data-testid="text-stroke-field">
@@ -6300,11 +6431,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                         />
                         <button
                           type="button"
-                          className="ghost"
+                          className="ghost inspector-icon-btn"
                           data-testid="text-stroke-clear"
+                          aria-label={t('清除描边')}
+                          title={t('清除描边')}
                           onClick={() => updateSelectedStyle({ stroke: null, strokeWidth: null })}
                         >
-                          {t('清除')}
+                          <CloseIcon />
                         </button>
                       </div>
                     </InspectorSection>
@@ -6503,7 +6636,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                         >
                           <span className="stroke-color-label">{t('颜色')}</span>
                           <div className="color-field">
-                            <span className="color-field-value">{selectedElement.stroke.toUpperCase()}</span>
+                            <span className="color-field-value">
+                              {selectedElement.stroke === 'transparent' ? t('透明') : selectedElement.stroke.toUpperCase()}
+                            </span>
                             <ColorPickerButton
                               label={isShapeElement(selectedElement) ? t('形状描边颜色') : t('线条颜色')}
                               color={selectedElement.stroke}
@@ -6511,8 +6646,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                             />
                           </div>
                         </div>
-                        <label>
-                          {isShapeElement(selectedElement) ? t('描边宽') : t('粗细')}
+                        <label title={isShapeElement(selectedElement) ? t('描边宽') : t('粗细')}>
+                          <InspectorGlyph name="stroke" />
                           <InspectorNumberInput
                             ariaLabel={isShapeElement(selectedElement) ? t('描边宽') : t('粗细')}
                             min={isShapeElement(selectedElement) ? 0 : Number.MIN_VALUE}
@@ -6528,8 +6663,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                       {isLineElement(selectedElement) && (
                         <>
                           <div className="field-grid with-gap">
-                            <label>
-                              {t('虚线')}
+                            <label title={t('虚线')}>
+                              <InspectorGlyph name="dash" />
                               <InspectorNumberInput
                                 ariaLabel={t('虚线')}
                                 min={1}
@@ -6609,8 +6744,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                   {selectedElement && (
                   <InspectorSection title={t('外观')} testId="inspector-appearance">
                     <div className="field-grid with-gap">
-                      <label>
-                        {t('不透明度 %')}
+                      <label title={t('不透明度 %')}>
+                        <InspectorGlyph name="opacity" />
                         <InspectorNumberInput
                           ariaLabel={t('不透明度 %')}
                           min={0}
@@ -6620,10 +6755,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
                           onCommit={(value) =>
                             updateSelectedStyle({ opacity: Math.round(value) / 100 })}
                         />
+                        <span className="field-suffix" aria-hidden="true">%</span>
                       </label>
                       {isShapeElement(selectedElement) && selectedElement.shape === 'rect' && (
-                        <label>
-                          {t('圆角')}
+                        <label title={t('圆角')}>
+                          <InspectorGlyph name="radius" />
                           <InspectorNumberInput
                             ariaLabel={t('圆角')}
                             min={0}
@@ -6664,60 +6800,21 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
 
               {!propertySelectionReadOnly && (
                 <InspectorSection title={t('排列')} testId="inspector-arrange">
-                  {canUseLogicalAlignment && (
-                    <>
-                      <div className="field-label">{t('对齐与分布')}</div>
-                      <div className="inspector-actions">
-                        <button className="ghost" type="button" onClick={() => alignSelection('left')}>
-                          {t('左对齐')}
-                        </button>
-                        <button className="ghost" type="button" onClick={() => alignSelection('h-center')}>
-                          {t('水平居中')}
-                        </button>
-                        <button className="ghost" type="button" onClick={() => alignSelection('right')}>
-                          {t('右对齐')}
-                        </button>
-                        <button className="ghost" type="button" onClick={() => alignSelection('top')}>
-                          {t('顶对齐')}
-                        </button>
-                        <button className="ghost" type="button" onClick={() => alignSelection('v-center')}>
-                          {t('垂直居中')}
-                        </button>
-                        <button className="ghost" type="button" onClick={() => alignSelection('bottom')}>
-                          {t('底对齐')}
-                        </button>
-                        <button
-                          className="ghost"
-                          type="button"
-                          onClick={() => distributeSelection('horizontal')}
-                        >
-                          {t('水平均分')}
-                        </button>
-                        <button
-                          className="ghost"
-                          type="button"
-                          onClick={() => distributeSelection('vertical')}
-                        >
-                          {t('垂直均分')}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                  <div className="field-label with-gap">{t('层级')}</div>
-                  <div className="inspector-actions">
-                    <button className="ghost" type="button" onClick={() => reorderSelection('backward')}>
-                      {t('后移')}
-                    </button>
-                    <button className="ghost" type="button" onClick={() => reorderSelection('forward')}>
-                      {t('前移')}
-                    </button>
-                    <button className="ghost" type="button" onClick={() => reorderSelection('back')}>
-                      {t('置底')}
-                    </button>
-                    <button className="ghost" type="button" onClick={() => reorderSelection('front')}>
-                      {t('置顶')}
-                    </button>
-                    </div>
+                  <div className="field-label">{t('层级')}</div>
+                  <div className="inspector-icon-row">
+                    {LAYER_ORDER_ACTIONS.map((action) => (
+                      <button
+                        key={action.id}
+                        className="ghost inspector-icon-btn"
+                        type="button"
+                        aria-label={t(action.label)}
+                        title={t(action.label)}
+                        onClick={() => reorderSelection(action.id)}
+                      >
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d={action.icon} /></svg>
+                      </button>
+                    ))}
+                  </div>
                 </InspectorSection>
               )}
 
@@ -6738,7 +6835,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request
         open={showTemplates}
         workspace='freeform'
         hasCurrentContent={draftId !== null || history.past.length > 0 || doc.slides.length > 1 || doc.slides.some((slide) => slide.nodes.length > 0)}
-        currentIsSaved={Boolean(user) && !unsaved}
+        currentIsSaved={ownerId !== null && !unsaved}
         onClose={() => setShowTemplates(false)}
         onApply={applyFreeformTemplate}
       />

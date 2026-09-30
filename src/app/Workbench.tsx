@@ -5,7 +5,7 @@ import type { User } from '../auth'
 import { importDraftFromJson, type Draft, type SaveDraftInput } from '../drafts'
 import { setLang, useLang, useT } from '../i18n'
 import { readLastSession, updateLastSession } from '../lastSession'
-import { store } from '../storage'
+import { store, storeFor } from '../storage'
 import type { TemplateDefinition } from '../templates/types'
 import type { Mode } from '../useAppTheme'
 import {
@@ -47,6 +47,13 @@ type WorkbenchRoute = Extract<AppRoute, { name: 'home' | 'projects' | 'templates
 interface WorkbenchProps {
   route: WorkbenchRoute
   user: User | null
+  /** Whose projects and assets show: the account, or this device's guest. */
+  ownerId: string | null
+  /** Work this device's guest left behind while an account is signed in. */
+  guestLeft: { projects: number; assets: number }
+  /** Bumped when projects or assets changed outside the workbench (guest work moved in). */
+  dataVersion: number
+  onMoveGuestWork: () => void
   theme: Mode
   onToggleTheme: () => void
   onLogout: () => void
@@ -90,11 +97,24 @@ function writeCollapsed(collapsed: boolean) {
   }
 }
 
-export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorMeta, onProjectRemoved, onProjectRenamed }: WorkbenchProps) {
+export function Workbench({
+  route,
+  user,
+  ownerId,
+  guestLeft,
+  dataVersion,
+  onMoveGuestWork,
+  theme,
+  onToggleTheme,
+  onLogout,
+  editorMeta,
+  onProjectRemoved,
+  onProjectRenamed,
+}: WorkbenchProps) {
   const t = useT()
   const lang = useLang()
-  const projects = useProjects(user)
-  const assets = useAssets(user)
+  const projects = useProjects(ownerId)
+  const assets = useAssets(ownerId)
   const usage = useMemo(() => assetUsage(assets.assets, projects.projects), [assets.assets, projects.projects])
   const [pending, setPending] = useState<PendingNavigation | null>(null)
   const [deleting, setDeleting] = useState<Draft | null>(null)
@@ -149,6 +169,14 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
 
   useEffect(() => setSideOpen(false), [route])
 
+  const { reload: reloadProjects } = projects
+  const { reload: reloadAssets } = assets
+  useEffect(() => {
+    if (dataVersion === 0) return
+    reloadProjects()
+    reloadAssets()
+  }, [dataVersion, reloadAssets, reloadProjects])
+
   useEffect(() => {
     if (projects.movedTemplates === 0) return
     setNotice({
@@ -193,12 +221,12 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
   }
 
   async function duplicate(draft: Draft) {
-    if (!user) return
+    if (!ownerId) return
     const input: SaveDraftInput = draft.mode === 'markdown-card'
       ? { mode: draft.mode, title: t('{title} 副本', { title: draft.title }), document: draft.document }
       : { mode: draft.mode, title: t('{title} 副本', { title: draft.title }), document: draft.document }
     try {
-      await store.drafts.save(user.id, input)
+      await storeFor(ownerId).drafts.save(ownerId, input)
       projects.reload()
       setNotice({ title: t('已复制「{title}」', { title: draft.title }), tone: 'info' })
     } catch (error) {
@@ -207,12 +235,12 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
   }
 
   async function rename(draft: Draft, title: string) {
-    if (!user) return
+    if (!ownerId) return
     const input: SaveDraftInput = draft.mode === 'markdown-card'
       ? { id: draft.id, mode: draft.mode, title, document: draft.document }
       : { id: draft.id, mode: draft.mode, title, document: draft.document }
     try {
-      await store.drafts.save(user.id, input)
+      await storeFor(ownerId).drafts.save(ownerId, input)
       onProjectRenamed(draft.mode, draft.id, title)
       projects.reload()
     } catch (error) {
@@ -222,10 +250,7 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
 
   /** A .json document (from the MCP tools, or exported elsewhere) becomes a project and opens. */
   async function importProject(file: File) {
-    if (!user) {
-      navigate(routes.login)
-      return
-    }
+    if (!ownerId) return
     let text: string
     try {
       text = await file.text()
@@ -239,7 +264,7 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
       return
     }
     try {
-      const saved = await store.drafts.save(user.id, outcome.data)
+      const saved = await storeFor(ownerId).drafts.save(ownerId, outcome.data)
       projects.reload()
       enterEditor(saved.mode, routes.openProject(saved.mode, saved.id), saved.id)
     } catch (error) {
@@ -249,12 +274,12 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
 
   async function confirmDelete(draft: Draft) {
     setDeleting(null)
-    if (!user) return
+    if (!ownerId) return
     try {
-      await store.drafts.remove(user.id, draft.id)
-      const session = readLastSession(user.id)
-      if (session.markdownDraftId === draft.id) updateLastSession(user.id, { markdownDraftId: null })
-      if (session.freeformDraftId === draft.id) updateLastSession(user.id, { freeformDraftId: null })
+      await storeFor(ownerId).drafts.remove(ownerId, draft.id)
+      const session = readLastSession(ownerId)
+      if (session.markdownDraftId === draft.id) updateLastSession(ownerId, { markdownDraftId: null })
+      if (session.freeformDraftId === draft.id) updateLastSession(ownerId, { freeformDraftId: null })
       onProjectRemoved(draft.mode, draft.id)
       projects.forget(draft.id)
       projects.reload()
@@ -265,7 +290,7 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
   }
 
   function uploadAssets(files: File[]) {
-    if (!user) return
+    if (!ownerId) return
     void assets.upload(files).then((outcome) => {
       const next = uploadNotice(outcome)
       if (next) setNotice(next)
@@ -451,6 +476,7 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
           {route.name === 'home' && (
             <HomePage
               user={user}
+              ownerId={ownerId}
               projects={projects}
               assets={assets}
               onUploadAssets={uploadAssets}
@@ -466,7 +492,9 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
           )}
           {route.name === 'projects' && (
             <ProjectsPage
-              user={user}
+              ownerId={ownerId}
+              guestLeft={user ? guestLeft : null}
+              onMoveGuestWork={onMoveGuestWork}
               system={route.system}
               projects={projects}
               onNewMarkdown={() => newMarkdown()}
@@ -482,7 +510,7 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
             <TemplatesPage system={route.system} onUseTemplate={useTemplate} />
           )}
           {route.name === 'assets' && (
-            <AssetsPage user={user} assets={assets} usage={usage} onUpload={uploadAssets} onRename={renameAsset} onDelete={deleteAsset} />
+            <AssetsPage ownerId={ownerId} assets={assets} usage={usage} onUpload={uploadAssets} onRename={renameAsset} onDelete={deleteAsset} />
           )}
         </div>
       </div>
@@ -501,9 +529,7 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
       {pending && (
         <ConfirmDialog
           title={t('{system}里还有没保存的修改', { system: t(SYSTEM_NAME[pending.system]) })}
-          body={user
-            ? t('「{title}」最近的修改没能保存。继续的话，这些改动会被丢掉。', { title: editorMeta[pending.system].title || t('未命名') })
-            : t('访客模式不会保存「{title}」。继续的话，这些改动会被丢掉；登录后编辑的内容会自动保存。', { title: editorMeta[pending.system].title || t('未命名') })}
+          body={t('「{title}」最近的修改没能保存。继续的话，这些改动会被丢掉。', { title: editorMeta[pending.system].title || t('未命名') })}
           confirmLabel={t('丢掉改动，继续')}
           cancelLabel={t('回去看看')}
           danger

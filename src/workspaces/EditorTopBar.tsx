@@ -10,6 +10,7 @@ import {
   ChevronLeftIcon,
   CloudCheckIcon,
   CloudOffIcon,
+  DeviceCheckIcon,
   LogoutIcon,
   MoonIcon,
   PencilIcon,
@@ -20,10 +21,12 @@ import type { EditorChrome, WorkspaceMode } from './types'
 /** What the bar says about saving the open project. */
 export type SaveState =
   | { kind: 'none' }
-  | { kind: 'guest' }
   | { kind: 'saving' }
-  | { kind: 'saved'; at: number }
+  /** `onDevice`: a guest's project, kept in this browser. */
+  | { kind: 'saved'; at: number; onDevice: boolean }
   | { kind: 'error'; message: string }
+  /** The session ended with edits it couldn't save; they wait for that account to sign back in. */
+  | { kind: 'signed-out' }
 
 interface EditorTopBarProps {
   chrome: EditorChrome
@@ -112,17 +115,17 @@ function SaveChip({ save, onRequestAuth, onRetry }: { save: SaveState; onRequest
   switch (save.kind) {
     case 'none':
       return null
-    case 'guest':
+    case 'signed-out':
       return (
         <button
-          className="save-chip is-guest"
+          className="save-chip is-signed-out"
           type="button"
           data-testid="editor-save-state"
-          title={t('访客模式下不会保存。登录后，修改会自动保存到你的项目里。')}
+          title={t('登录已过期。重新登录后，这些修改会存回原来的项目。')}
           onClick={onRequestAuth}
         >
           <CloudOffIcon />
-          <span>{t('登录后自动保存')}</span>
+          <span>{t('登录后继续保存')}</span>
         </button>
       )
     case 'saving':
@@ -133,7 +136,19 @@ function SaveChip({ save, onRequestAuth, onRetry }: { save: SaveState; onRequest
         </span>
       )
     case 'saved':
-      return (
+      return save.onDevice ? (
+        <span
+          className="save-chip is-saved is-on-device"
+          data-testid="editor-save-state"
+          role="status"
+          title={`${t('已自动保存 · {time}', { time: savedAtLabel(save.at) })}\n${store.remote
+            ? t('只保存在这台设备上。登录后可以放进账号，换一台设备也能继续编辑。')
+            : t('保存在这台设备的浏览器里。')}`}
+        >
+          <DeviceCheckIcon />
+          <span>{t('已保存到本机')}</span>
+        </span>
+      ) : (
         <span
           className="save-chip is-saved"
           data-testid="editor-save-state"

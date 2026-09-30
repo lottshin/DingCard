@@ -223,6 +223,7 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
   await expect(page.getByTestId('freeform-canvas')).toHaveCSS('background-image', /linear-gradient/)
 
+  await page.getByTestId('freeform-text-tool').click()
   await page.getByTestId('insert-text').click()
   const textElement = page.getByTestId('freeform-element').last()
   const textBox = page.getByTestId('freeform-textbox').last()
@@ -246,10 +247,9 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await expectNoDocumentOverflow(page)
   await expectEditorLayout(page)
 
-  // A guest's work is not saved; the hint in the top bar opens the account dialog.
-  const saveHint = page.getByTestId('editor-save-state')
-  await expect(saveHint).toHaveText('登录后自动保存')
-  await saveHint.click()
+  // A guest's work saves on this device; signing up offers to move it into the account.
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存到本机')
+  await page.getByTestId('account-login').click()
   const authDialog = page.getByRole('dialog', { name: '账户登录与注册' })
   await expect(authDialog).toBeVisible()
   await expect(authDialog).toContainText('账号仅保存在此浏览器本地')
@@ -258,9 +258,10 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await authDialog.getByLabel('密码').fill('1234')
   await authDialog.getByRole('button', { name: '创建账号', exact: true }).click()
   await expect(authDialog).toBeHidden()
+  await page.getByTestId('guest-move-dialog').getByRole('button', { name: '放进账号', exact: true }).click()
   await expect(page.getByTestId('account-menu')).toHaveAccessibleName(`账号菜单（${username}）`)
 
-  // The canvas made before signing in saves to the new account by itself.
+  // The canvas made before signing in is the new account's project now.
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.reload()
@@ -369,6 +370,8 @@ test('editor acceptance preserves nested layer state through save, reload, and e
   await authDialog.getByLabel('密码').fill('1234')
   await authDialog.getByRole('button', { name: '创建账号', exact: true }).click()
   await expect(authDialog).toBeHidden()
+  // The layers were saved on this device; the new account takes them along.
+  await page.getByTestId('guest-move-dialog').getByRole('button', { name: '放进账号', exact: true }).click()
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.reload()

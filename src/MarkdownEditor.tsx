@@ -324,6 +324,7 @@ function notifyImageError(onImageError: Props['onImageError'], error: unknown) {
 
 // Paste a screenshot straight in as a markdown image (downscaled + stored).
 function createPasteHandler(
+  putImage: (dataUrl: string) => Promise<string>,
   beforeImageUpload: Props['beforeImageUpload'],
   onImageError: Props['onImageError'],
 ) {
@@ -341,7 +342,7 @@ function createPasteHandler(
         await beforeImageUpload?.()
         const dataUrl = await readFileAsDataUrl(file)
         const url = await downscaleDataUrl(dataUrl)
-        const imgRef = await store.images.put(url)
+        const imgRef = await putImage(url)
         const { from, to } = cmView.state.selection.main
         const pre = from > 0 && cmView.state.doc.sliceString(from - 1, from) !== '\n' ? '\n' : ''
         const snippet = `${pre}![](${imgRef})\n`
@@ -355,10 +356,16 @@ function createPasteHandler(
   })
 }
 
+function defaultPutImage(dataUrl: string): Promise<string> {
+  return store.images.put(dataUrl)
+}
+
 interface Props {
   value: string
   onChange: (next: string) => void
   fontFamily: string
+  /** Stores a pasted picture for whoever owns the document; returns what to embed. */
+  putImage?: (dataUrl: string) => Promise<string>
   beforeImageUpload?: () => Promise<void>
   onImageError?: (error: unknown) => void
   onViewReady?: (view: EditorView) => void
@@ -375,6 +382,7 @@ export function MarkdownEditor({
   value,
   onChange,
   fontFamily,
+  putImage = defaultPutImage,
   beforeImageUpload,
   onImageError,
   onViewReady,
@@ -392,9 +400,9 @@ export function MarkdownEditor({
       livePreview,
       baseTheme,
       EditorView.contentAttributes.of({ style: `--editor-font:${fontFamily}` }),
-      createPasteHandler(beforeImageUpload, onImageError),
+      createPasteHandler(putImage, beforeImageUpload, onImageError),
     ],
-    [beforeImageUpload, fontFamily, onImageError],
+    [beforeImageUpload, fontFamily, onImageError, putImage],
   )
 
   return (
