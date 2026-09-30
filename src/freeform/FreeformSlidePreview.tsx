@@ -66,7 +66,8 @@ export const FreeformSlidePreview = memo(function FreeformSlidePreview({
       setRenderScene(entry.isIntersecting)
     }, {
       root: frame.closest('.freeform-slide-list'),
-      rootMargin: '192px 0px',
+      // The page strip scrolls sideways.
+      rootMargin: '0px 192px',
     })
     observer.observe(frame)
     return () => observer.disconnect()

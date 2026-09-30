@@ -1,5 +1,4 @@
-/* ---------- Freeform workspace (CSS-only: its TSX is under active development
-   on master, so the markup is left untouched) ---------- */
+/* ---------- Freeform workspace ---------- */
 
 /* Toolbar controls that aren't plain .bar-btn */
 .freeform-toolbar .freeform-insert-trigger,
@@ -62,17 +61,6 @@
 
 .freeform-page-context {
   gap: 2px;
-}
-
-/* Group dividers around the page-size cluster (markup has no ToolbarDivider). */
-.freeform-page-context::before,
-.freeform-page-context::after {
-  content: '';
-  flex: 0 0 1px;
-  width: 1px;
-  height: 16px;
-  margin: 0 6px;
-  background: var(--line-2);
 }
 
 @media (max-width: 1100px) {
@@ -172,10 +160,48 @@
   font-weight: 600;
 }
 
-/* ---------- Columns ---------- */
-.freeform-rail {
-  border-right: 1px solid var(--line);
-  background: var(--surface);
+/* The freeform tools ride in the editor bar (not the column flex the toolbar row had). */
+.editor-bar .workspace-toolbar.freeform-toolbar {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.editor-bar .freeform-toolbar .toolbar-divider {
+  margin: 0 8px;
+}
+
+/* ---------- Layout ----------
+   A tool rail on the left (with an optional drawer), the stage above a page
+   strip, and the inspector on the right. */
+.freeform-main {
+  grid-template-columns: 72px auto minmax(0, 1fr) 248px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'tools drawer stage inspector'
+    'tools drawer pages inspector';
+}
+
+.freeform-main > .freeform-tools {
+  grid-area: tools;
+}
+
+.freeform-main > .freeform-drawer {
+  grid-area: drawer;
+}
+
+.freeform-main > .freeform-stage-pane {
+  grid-area: stage;
+}
+
+.freeform-main > .freeform-rail {
+  grid-area: pages;
+}
+
+.freeform-main > .freeform-inspector {
+  grid-area: inspector;
 }
 
 .freeform-inspector {
@@ -183,53 +209,232 @@
   background: var(--surface);
 }
 
-.freeform-rail .freeform-panel-head {
-  min-height: 52px;
-  padding: 0 4px 0 14px;
-  color: var(--text-2);
-  font: 600 12px/1 var(--ui-font);
-  letter-spacing: 0;
+/* Tool rail: icon over label, like the insert rails of Canva and Keynote. */
+.freeform-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 0;
+  padding: 8px 4px;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
 }
 
-/* 44px hit area, quiet 28px visual. */
-.freeform-rail .freeform-add-page {
+.freeform-tools-sep {
+  flex: none;
+  width: 28px;
+  height: 1px;
+  margin: 6px 0;
+  background: var(--line-2);
+}
+
+.freeform-tools .freeform-tool,
+.freeform-tools .freeform-insert-trigger {
   position: relative;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 58px;
+  padding: 0 1px;
+  border: 1px solid transparent;
+  border-radius: 12px;
   background: transparent;
   color: var(--text-2);
-  isolation: isolate;
+  font: 500 11px/1.1 var(--ui-font);
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
 }
 
-.freeform-rail .freeform-add-page::before {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  inset: 8px;
-  border-radius: 8px;
-  transition: background-color var(--dur-fast) var(--ease-out);
+.freeform-tools .freeform-tool svg,
+.freeform-tools .freeform-insert-trigger svg {
+  flex: none;
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.35;
 }
 
-.freeform-rail .freeform-add-page:hover:not(:disabled) {
-  border: 0;
-  background: transparent;
+.freeform-tools .freeform-tool > span,
+.freeform-tools .freeform-insert-trigger > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-tools .freeform-tool:hover,
+.freeform-tools .freeform-insert-trigger:hover {
+  border-color: transparent;
+  background: var(--hover);
   color: var(--text);
 }
 
-.freeform-rail .freeform-add-page:hover:not(:disabled)::before {
-  background: var(--hover);
+.freeform-tools .freeform-tool[aria-expanded='true'],
+.freeform-tools .freeform-insert-trigger[aria-expanded='true'] {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent-text);
 }
 
-.freeform-rail .freeform-add-page svg {
+.freeform-tools .freeform-tool:active,
+.freeform-tools .freeform-insert-trigger:active {
+  transform: scale(0.96);
+}
+
+.freeform-tools .freeform-tool:focus-visible,
+.freeform-tools .freeform-insert-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.freeform-tools .freeform-insert-menu-control {
+  position: relative;
+  width: 100%;
+}
+
+/* Shape and line menus open beside the rail as a tile grid. */
+.freeform-tools .freeform-insert-menu.is-tiles {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 10px);
+  z-index: 60;
+  display: grid;
+  grid-template-columns: repeat(3, 76px);
+  gap: 6px;
+  width: auto;
+  min-width: 0;
+  padding: 10px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+  animation: ui-pop 160ms var(--ease-out);
+}
+
+.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  width: 76px;
+  height: 72px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font: 500 11.5px/1 var(--ui-font);
+  cursor: pointer;
+}
+
+.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item svg {
+  width: 30px;
+  height: 30px;
+  color: var(--text);
+}
+
+.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:hover,
+.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:focus-visible {
+  outline: none;
+  background: var(--accent-weak);
+  color: var(--accent-text);
+}
+
+.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:hover svg,
+.freeform-tools .freeform-insert-menu.is-tiles .freeform-insert-menu-item:focus-visible svg {
+  color: var(--accent);
+}
+
+.freeform-tools .freeform-file {
+  display: none;
+}
+
+/* Drawer beside the rail (images: upload + library). */
+.freeform-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 288px;
+  min-height: 0;
+  padding: 14px 0 0;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  animation: freeform-drawer-in 180ms var(--ease-out);
+}
+
+@keyframes freeform-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+.freeform-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 16px;
+}
+
+.freeform-drawer-head h2 {
+  margin: 0;
+  font: 600 15px/1.3 var(--ui-font);
+}
+
+.freeform-drawer .freeform-drawer-upload {
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  margin: 0 16px;
+  font-size: 13.5px;
+}
+
+.freeform-drawer .freeform-drawer-upload svg {
   width: 16px;
   height: 16px;
-  stroke-width: 1.5;
 }
 
-.freeform-slide-list {
-  padding: 6px 8px 8px;
+.freeform-drawer-hint {
+  margin: -2px 16px 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.freeform-drawer-section {
+  margin: 8px 16px 0;
+  color: var(--text-2);
+  font: 600 12px/1 var(--ui-font);
+}
+
+/* Page strip under the stage: one compact row, thumbnail beside its caption. */
+.freeform-rail {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 5px 10px 5px 6px;
+  border-top: 1px solid var(--line);
+  border-right: 0;
+  background: var(--surface);
+}
+
+.freeform-rail .freeform-slide-list {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .freeform-thumb {
@@ -258,14 +463,6 @@
   background: var(--hover);
 }
 
-.freeform-thumb.drop-before {
-  box-shadow: 0 -2px 0 0 var(--accent);
-}
-
-.freeform-thumb.drop-after {
-  box-shadow: 0 2px 0 0 var(--accent);
-}
-
 /* The scaled artboard can't carry a visible border, so outline the painted
    page itself: drop-shadow hugs whatever aspect ratio the slide has. The
    selected page chains four offset shadows into a solid 2px accent outline. */
@@ -289,7 +486,7 @@
 }
 
 .freeform-rail .freeform-thumb-caption {
-  gap: 6px;
+  gap: 5px;
   padding: 0 2px;
 }
 
@@ -314,41 +511,196 @@
   font-family: var(--ui-font);
 }
 
-.freeform-rail-actions {
-  gap: 2px;
-  padding: 6px 8px 8px;
-  border-top: 1px solid var(--line);
+.freeform-rail .freeform-thumb-wrap {
+  position: relative;
+  flex: none;
 }
 
-.freeform-rail-actions .ghost {
-  height: 32px;
-  padding: 0 8px;
-  border-color: transparent;
+.freeform-rail .freeform-thumb {
+  width: auto;
+  height: 44px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 2px;
+  border-radius: 9px;
+}
+
+.freeform-rail .freeform-thumb-art {
+  margin: 0;
+}
+
+.freeform-rail .freeform-thumb.drop-before {
+  box-shadow: -2px 0 0 0 var(--accent);
+}
+
+.freeform-rail .freeform-thumb.drop-after {
+  box-shadow: 2px 0 0 0 var(--accent);
+}
+
+.freeform-rail .freeform-thumb-caption {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 84px;
+}
+
+.freeform-rail .freeform-thumb-title {
+  max-width: 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-rail .freeform-thumb-rename {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  left: auto;
+  width: 104px;
+  transform: translateY(-50%);
+}
+
+.freeform-rail .freeform-add-page {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 40px;
+  margin: 0 4px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: 8px;
   background: transparent;
   color: var(--text-2);
-  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
-.freeform-rail-actions .ghost:hover:not(:disabled) {
-  border-color: transparent;
-  background: var(--hover);
+.freeform-rail .freeform-add-page:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent-text);
+}
+
+.freeform-rail .freeform-add-page svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.5;
+}
+
+.freeform-rail-actions {
+  flex: none;
+  display: flex;
+  gap: 0;
+  padding: 0 0 0 8px;
+  border-top: 0;
+  border-left: 1px solid var(--line);
+}
+
+/* 44px targets, quiet 28px chips. */
+.freeform-rail .freeform-page-action {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  isolation: isolate;
+  cursor: pointer;
+}
+
+.freeform-rail .freeform-page-action::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 8px;
+  border-radius: 8px;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.freeform-rail .freeform-page-action:hover:not(:disabled) {
   color: var(--text);
+}
+
+.freeform-rail .freeform-page-action:hover:not(:disabled)::before {
+  background: var(--hover);
+}
+
+.freeform-rail .freeform-page-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.freeform-rail .freeform-page-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.freeform-rail .freeform-add-page:focus-visible,
+.freeform-rail .freeform-page-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+
+/* Toolbar icon buttons (undo / redo). */
+.freeform-toolbar .bar-btn.bar-icon {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-height);
+  padding: 0;
+}
+
+.freeform-toolbar .bar-btn.bar-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ---------- Stage ---------- */
 .freeform-stage-pane {
+  position: relative;
   background: var(--surface);
 }
 
+.freeform-stage-pane .freeform-stage-scroll {
+  background-color: var(--freeform-stage-sink);
+  background-image: radial-gradient(circle, var(--freeform-stage-dot) 1px, transparent 1.3px);
+  background-size: 20px 20px;
+  background-position: 10px 10px;
+}
+
+/* Image framing and cropping float their session bar over the top of the stage. */
 .freeform-stage-pane .freeform-stage-head {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  z-index: 45;
   gap: 0;
-  min-height: 52px;
-  padding: 0 4px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  min-height: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+  transform: translateX(-50%);
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-controls {
+/* The contextual align bar floats at the bottom of the stage. */
+.freeform-stage-pane .freeform-align-bar {
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+}
+
+.freeform-stage-pane .freeform-stage-head .zoom-controls,
+.freeform-rail .freeform-zoom-controls .zoom-controls {
   gap: 0;
   padding: 0;
   border: 0;
@@ -356,11 +708,13 @@
   background: transparent;
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-controls + .zoom-controls {
+.freeform-stage-pane .freeform-stage-head .zoom-controls + .zoom-controls,
+.freeform-rail .freeform-zoom-controls .zoom-controls + .zoom-controls {
   margin-left: 0;
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-controls + .zoom-controls::before {
+.freeform-stage-pane .freeform-stage-head .zoom-controls + .zoom-controls::before,
+.freeform-rail .freeform-zoom-controls .zoom-controls + .zoom-controls::before {
   content: '';
   align-self: center;
   width: 1px;
@@ -372,7 +726,9 @@
 /* Zoom buttons keep the 44px targets e2e requires; the visible state is an
    inset 28px chip drawn beneath the content. */
 .freeform-stage-pane .freeform-stage-head .zoom-btn,
-.freeform-stage-pane .freeform-stage-head .zoom-value {
+.freeform-stage-pane .freeform-stage-head .zoom-value,
+.freeform-rail .freeform-zoom-controls .zoom-value,
+.freeform-rail .freeform-zoom-controls .zoom-btn {
   position: relative;
   height: 44px;
   border: 0;
@@ -383,11 +739,13 @@
   transition: color var(--dur-fast) var(--ease-out);
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-btn {
+.freeform-stage-pane .freeform-stage-head .zoom-btn,
+.freeform-rail .freeform-zoom-controls .zoom-btn {
   width: 44px;
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-value {
+.freeform-stage-pane .freeform-stage-head .zoom-value,
+.freeform-rail .freeform-zoom-controls .zoom-value {
   min-width: 52px;
   padding: 0 4px;
   color: var(--text);
@@ -396,7 +754,9 @@
 }
 
 .freeform-stage-pane .freeform-stage-head .zoom-btn::before,
-.freeform-stage-pane .freeform-stage-head .zoom-value::before {
+.freeform-stage-pane .freeform-stage-head .zoom-value::before,
+.freeform-rail .freeform-zoom-controls .zoom-btn::before,
+.freeform-rail .freeform-zoom-controls .zoom-value::before {
   content: '';
   position: absolute;
   z-index: -1;
@@ -405,37 +765,47 @@
   transition: background-color var(--dur-fast) var(--ease-out);
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-value::before {
+.freeform-stage-pane .freeform-stage-head .zoom-value::before,
+.freeform-rail .freeform-zoom-controls .zoom-value::before {
   inset: 8px 2px;
 }
 
 .freeform-stage-pane .freeform-stage-head .zoom-btn:hover:not(:disabled),
-.freeform-stage-pane .freeform-stage-head .zoom-value:hover {
+.freeform-stage-pane .freeform-stage-head .zoom-value:hover,
+.freeform-rail .freeform-zoom-controls .zoom-btn:hover:not(:disabled),
+.freeform-rail .freeform-zoom-controls .zoom-value:hover {
   background: transparent;
   color: var(--text);
 }
 
 .freeform-stage-pane .freeform-stage-head .zoom-btn:hover:not(:disabled)::before,
-.freeform-stage-pane .freeform-stage-head .zoom-value:hover::before {
+.freeform-stage-pane .freeform-stage-head .zoom-value:hover::before,
+.freeform-rail .freeform-zoom-controls .zoom-btn:hover:not(:disabled)::before,
+.freeform-rail .freeform-zoom-controls .zoom-value:hover::before {
   background: var(--hover);
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-btn[aria-pressed] {
+.freeform-stage-pane .freeform-stage-head .zoom-btn[aria-pressed],
+.freeform-rail .freeform-zoom-controls .zoom-btn[aria-pressed] {
   color: var(--text-3);
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-btn[aria-pressed='true'] {
+.freeform-stage-pane .freeform-stage-head .zoom-btn[aria-pressed='true'],
+.freeform-rail .freeform-zoom-controls .zoom-btn[aria-pressed='true'] {
   border-radius: 10px;
   background: transparent;
   color: var(--text);
 }
 
 .freeform-stage-pane .freeform-stage-head .zoom-btn[aria-pressed='true']::before,
-.freeform-stage-pane .freeform-stage-head .zoom-btn[aria-pressed='true']:hover:not(:disabled)::before {
+.freeform-stage-pane .freeform-stage-head .zoom-btn[aria-pressed='true']:hover:not(:disabled)::before,
+.freeform-rail .freeform-zoom-controls .zoom-btn[aria-pressed='true']::before,
+.freeform-rail .freeform-zoom-controls .zoom-btn[aria-pressed='true']:hover:not(:disabled)::before {
   background: var(--pressed);
 }
 
-.freeform-stage-pane .freeform-stage-head .zoom-btn svg {
+.freeform-stage-pane .freeform-stage-head .zoom-btn svg,
+.freeform-rail .freeform-zoom-controls .zoom-btn svg {
   width: 16px;
   height: 16px;
   stroke-width: 1.5;
@@ -443,7 +813,9 @@
 
 .freeform-stage-pane .freeform-stage-head .zoom-btn:focus-visible,
 .freeform-stage-pane .freeform-stage-head .zoom-value:focus-visible,
-.freeform-rail .freeform-add-page:focus-visible {
+.freeform-rail .freeform-add-page:focus-visible,
+.freeform-rail .freeform-zoom-controls .zoom-btn:focus-visible,
+.freeform-rail .freeform-zoom-controls .zoom-value:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -4px;
 }
@@ -558,31 +930,24 @@
 /* ---------- Right panel ---------- */
 .freeform-right-tabs {
   position: relative;
-  flex: 0 0 52px;
-  align-items: center;
-  gap: 2px;
-  padding: 12px 16px;
+  flex: 0 0 44px;
+  align-items: stretch;
+  gap: 20px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-  isolation: isolate;
-}
-
-.freeform-right-tabs::before {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  inset: 10px 14px;
-  border-radius: 8px;
-  background: var(--track);
 }
 
 .freeform-right-tab {
-  height: 28px;
-  border-radius: 6px;
-  color: var(--text-2);
-  font: 500 12.5px/1 var(--ui-font);
-  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
-    box-shadow var(--dur-fast) var(--ease-out);
+  flex: 0 0 auto;
+  height: auto;
+  padding: 0 1px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-3);
+  font: 600 12.5px/1 var(--ui-font);
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .freeform-right-tab:hover,
@@ -594,17 +959,24 @@
 .freeform-right-tab:focus-visible {
   box-shadow: none;
   outline: 2px solid var(--accent);
-  outline-offset: 0;
+  outline-offset: -2px;
+  border-radius: 4px;
 }
 
 .freeform-right-tab.is-active {
-  background: var(--thumb-on);
+  background: transparent;
   color: var(--text);
-  box-shadow: var(--thumb-on-shadow);
+  box-shadow: none;
 }
 
 .freeform-right-tab.is-active::after {
-  display: none;
+  display: block;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--text);
 }
 
 .freeform-inspector .freeform-panel-head {
@@ -928,4 +1300,319 @@
 .rich-span-swatch {
   border: 0;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+/* ---------- Layout breakpoints ----------
+   The legacy layer has its own column and stacking rules; this layer's grid
+   wins over them, so every breakpoint is restated here. */
+@media (max-width: 1279px) {
+  .freeform-main {
+    grid-template-columns: 64px auto minmax(0, 1fr) 224px;
+  }
+
+  .freeform-tools {
+    padding-inline: 3px;
+  }
+
+  .freeform-tools .freeform-tool,
+  .freeform-tools .freeform-insert-trigger {
+    height: 54px;
+    padding: 0;
+    font-size: 10.5px;
+  }
+
+  .freeform-drawer {
+    width: 264px;
+  }
+}
+
+@media (max-width: 720px) {
+  .freeform-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: max-content minmax(320px, 52vh) max-content auto minmax(280px, 42vh);
+    grid-template-areas: 'tools' 'stage' 'pages' 'drawer' 'inspector';
+    overflow-y: auto;
+  }
+
+  .freeform-tools {
+    flex-direction: row;
+    justify-content: center;
+    padding: 6px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .freeform-tools-sep {
+    width: 1px;
+    height: 28px;
+    margin: 0 6px;
+  }
+
+  .freeform-tools .freeform-tool,
+  .freeform-tools .freeform-insert-trigger {
+    width: 60px;
+  }
+
+  .freeform-tools .freeform-insert-menu-control {
+    width: auto;
+  }
+
+  .freeform-tools .freeform-insert-menu.is-tiles {
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .freeform-drawer {
+    width: auto;
+    max-height: 440px;
+    border-top: 1px solid var(--line);
+    border-right: 0;
+  }
+
+  .freeform-main > .freeform-rail {
+    max-height: none;
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  /* Pages get the whole first row; page actions and zoom share the second. */
+  .freeform-rail .freeform-slide-list {
+    flex: 1 1 100%;
+  }
+
+  .freeform-rail-actions {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .freeform-rail .freeform-zoom-controls {
+    margin-left: auto;
+  }
+
+  .freeform-main > .freeform-inspector {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  /* Framing and cropping take the whole width: only the stage stays, and the
+     disabled tools leave the top bar. */
+  .freeform-workspace.is-framing .editor-bar-center,
+  .freeform-workspace.is-image-cropping .editor-bar-center,
+  .freeform-workspace.is-framing .editor-bar .freeform-toolbar,
+  .freeform-workspace.is-image-cropping .editor-bar .freeform-toolbar {
+    display: none;
+  }
+
+  /* Framing and cropping take the whole width: only the stage stays. */
+  .freeform-workspace.is-framing .freeform-main,
+  .freeform-workspace.is-image-cropping .freeform-main {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: 'stage';
+    overflow: hidden;
+  }
+
+  .freeform-workspace.is-framing .freeform-tools,
+  .freeform-workspace.is-image-cropping .freeform-tools,
+  .freeform-workspace.is-framing .freeform-drawer,
+  .freeform-workspace.is-image-cropping .freeform-drawer,
+  .freeform-workspace.is-framing .freeform-rail,
+  .freeform-workspace.is-image-cropping .freeform-rail,
+  .freeform-workspace.is-framing .freeform-right-panel,
+  .freeform-workspace.is-image-cropping .freeform-right-panel {
+    display: none;
+  }
+}
+
+/* Toolbar text buttons carry a small leading icon. */
+.freeform-toolbar .bar-btn,
+.freeform-toolbar .toolbar-primary {
+  gap: 6px;
+}
+
+.freeform-toolbar .bar-btn > svg,
+.freeform-toolbar .toolbar-primary > svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.freeform-toolbar .bar-btn > svg {
+  color: var(--text-3);
+}
+
+.freeform-toolbar .bar-btn:hover:not(:disabled) > svg {
+  color: currentColor;
+}
+
+/* The tab already says 属性; keep the row only for the object path. */
+.freeform-inspector .freeform-panel-head > span:first-child {
+  display: none;
+}
+
+.freeform-inspector .freeform-panel-head:not(:has(nav)) {
+  display: none;
+}
+
+/* The inspector's shape switch shows the shapes themselves. */
+.freeform-inspector .seg-shape-icon {
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+}
+
+/* Guides, snapping and zoom live at the end of the page strip, off the canvas. */
+.freeform-rail .freeform-zoom-controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+}
+
+.freeform-rail .freeform-zoom-controls .zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.freeform-rail .freeform-zoom-controls .zoom-controls + .zoom-controls::before {
+  content: '';
+  align-self: center;
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--line-2);
+}
+
+.freeform-rail .freeform-zoom-controls .zoom-btn svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Export ----------
+   One primary button; format, scale and what to download open beneath it. */
+.ff-export {
+  position: relative;
+  flex: none;
+}
+
+.ff-export-trigger {
+  gap: 6px;
+  padding-right: 10px;
+}
+
+.ff-export-trigger .ff-export-chevron {
+  width: 12px;
+  height: 12px;
+  margin-left: -1px;
+  opacity: 0.7;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.ff-export-trigger[aria-expanded='true'] .ff-export-chevron {
+  transform: rotate(180deg);
+}
+
+.ff-export-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 90;
+  display: grid;
+  gap: 12px;
+  width: 280px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+  animation: ui-pop var(--dur) var(--ease-out);
+}
+
+.ff-export-row {
+  display: grid;
+  gap: 7px;
+}
+
+.ff-export-panel .field-label {
+  color: var(--text-2);
+  font: 600 11.5px/1 var(--ui-font);
+}
+
+.ff-export-panel .seg.stretch {
+  display: flex;
+  gap: 0;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--track);
+}
+
+.ff-export-panel .seg.stretch .seg-btn {
+  flex: 1 1 0;
+  height: 30px;
+  border-radius: 7px;
+  font-size: 12.5px;
+}
+
+.ff-export-panel .seg.stretch .seg-btn.on {
+  background: var(--thumb-on);
+  color: var(--text);
+  box-shadow: var(--thumb-on-shadow);
+}
+
+.ff-export-panel .paint-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ff-export-panel .paint-range {
+  flex: 1;
+}
+
+.ff-export-hint {
+  margin: -2px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ff-export-actions {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.ff-export-actions button {
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  height: 36px;
+  font-size: 13px;
+}
+
+.ff-export-actions button svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* The fill section is already titled 填充; its paint field needs no second label. */
+.freeform-inspector [data-testid='inspector-fill'] [data-testid='shape-fill-paint'] > .paint-field > .field-label:first-child {
+  display: none;
+}
+
+/* Five paint modes share one row: keep English labels inside their buttons. */
+.freeform-inspector .seg.stretch.paint-mode .seg-btn {
+  padding-inline: 2px;
+  font-size: 11.5px;
+}
+
+.freeform-inspector-breadcrumb-separator {
+  margin: 0 5px 0 0;
 }

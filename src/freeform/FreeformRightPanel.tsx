@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react'
+import { t } from '../i18n'
 
 export type FreeformRightPanelTab = 'properties' | 'layers' | 'history'
 
@@ -58,10 +59,10 @@ export function FreeformRightPanel({
     <aside
       ref={rootRef}
       className={`freeform-inspector freeform-right-panel${disabled ? ' is-disabled' : ''}`}
-      aria-label="属性和图层面板"
+      aria-label={t('属性和图层面板')}
       aria-disabled={disabled || undefined}
     >
-      <div className="freeform-right-tabs" role="tablist" aria-label="自由编辑面板">
+      <div className="freeform-right-tabs" role="tablist" aria-label={t('自由编辑面板')}>
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -80,7 +81,7 @@ export function FreeformRightPanel({
             onFocus={() => setFocusedTab(tab.id)}
             onKeyDown={(event) => moveTab(tab.id, event)}
           >
-            {tab.label}
+            {t(tab.label)}
           </button>
         ))}
       </div>

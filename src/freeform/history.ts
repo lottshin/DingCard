@@ -88,12 +88,3 @@ export function jumpHistory<T>(
     future: history.future.slice(target.index + 1),
   }
 }
-
-export function isLatestSaveForDraft(
-  startedGeneration: number,
-  currentGeneration: number,
-  startedDraftId: string | null,
-  currentDraftId: string | null,
-): boolean {
-  return startedGeneration === currentGeneration && startedDraftId === currentDraftId
-}

@@ -36,17 +36,13 @@ async function setDoc(page: import('@playwright/test').Page, text: string) {
   }, text)
 }
 
-test('Markdown workspace is the default workspace', async ({ page }) => {
+test('a bare editor link opens the Markdown editor by default', async ({ page }) => {
   await page.goto('/#/edit')
-  const markdownTab = page.getByRole('tab', { name: 'Markdown 卡片' })
-  await expect(markdownTab).toHaveAttribute('data-testid', 'workspace-tab-markdown')
-  await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
-  await expect(markdownTab).toHaveAttribute('aria-controls', 'workspace-panel-markdown')
-
-  const markdownPanel = page.getByRole('tabpanel', { name: 'Markdown 卡片' })
+  await expect(page).toHaveURL(/#\/edit\/md$/)
+  const markdownPanel = page.getByTestId('workspace-markdown')
   await expect(markdownPanel).toHaveAttribute('id', 'workspace-panel-markdown')
-  await expect(markdownPanel).toHaveAttribute('aria-labelledby', 'workspace-tab-markdown')
   await expect(markdownPanel.locator('.cm-content')).toBeVisible()
+  await expect(page.getByTestId('workspace-freeform')).toHaveCount(0)
 })
 
 test.describe('IME input in Markdown editor', () => {

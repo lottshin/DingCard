@@ -7,15 +7,14 @@ import { CloseIcon } from '../ui/icons'
 import { markdownFirstPage, previewStyle } from './previewModel'
 import { templatesForWorkspace } from './registry'
 import type { TemplateDefinition, TemplateWorkspace } from './types'
+import { t } from '../i18n'
 
 interface TemplateGalleryProps {
   open: boolean
   workspace: TemplateWorkspace
   hasCurrentContent: boolean
-  /** User-saved templates, shown in a dedicated group above the built-ins. */
-  userTemplates?: readonly TemplateDefinition[]
-  /** Delete a user template by its storage-layer id; absent for built-ins. */
-  onDeleteUserTemplate?: (id: string) => void
+  /** The open project is saved to the account, so a template can open beside it. */
+  currentIsSaved: boolean
   onClose: () => void
   onApply: (template: TemplateDefinition) => void
 }
@@ -70,21 +69,16 @@ function focusableElements(dialog: HTMLElement): HTMLElement[] {
   ))
 }
 
-export function TemplateGallery({ open, workspace, hasCurrentContent, userTemplates, onDeleteUserTemplate, onClose, onApply }: TemplateGalleryProps) {
+export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsSaved, onClose, onApply }: TemplateGalleryProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const pendingReturnFocusRef = useRef<HTMLElement | null>(null)
   const pendingRef = useRef<TemplateDefinition | null>(null)
   const onCloseRef = useRef(onClose)
-  const builtinTemplates = templatesForWorkspace(workspace)
-  const savedTemplates = userTemplates ?? []
-  const templates = savedTemplates.length > 0
-    ? [...savedTemplates, ...builtinTemplates]
-    : builtinTemplates
+  const templates = templatesForWorkspace(workspace)
   const [selectedId, setSelectedId] = useState(templates[0]?.id ?? '')
   const [pending, setPending] = useState<TemplateDefinition | null>(null)
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0]
-  const selectedUserTemplateId = selected.userTemplateId
   pendingRef.current = pending
   onCloseRef.current = onClose
 
@@ -169,7 +163,7 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, userTempla
         <button
           className='template-tile-preview'
           type='button'
-          aria-label={`预览${template.title}`}
+          aria-label={t('预览{title}', { title: t(template.title) })}
           aria-pressed={template.id === selected.id}
           onClick={() => setSelectedId(template.id)}
         >
@@ -177,13 +171,13 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, userTempla
         </button>
         <div className='template-tile-copy'>
           <div>
-            <h3>{template.title}</h3>
-            <p>{template.description}</p>
+            <h3>{t(template.title)}</h3>
+            <p>{t(template.description)}</p>
           </div>
-          <span className='template-page-count'>{template.pageCount} 页</span>
+          <span className='template-page-count'>{t('{n} 页', { n: template.pageCount })}</span>
         </div>
         <div className='template-tags'>
-          {template.tags.map((tag) => <span key={tag}>{tag}</span>)}
+          {template.tags.map((tag) => <span key={tag}>{t(tag)}</span>)}
         </div>
       </article>
     )
@@ -208,41 +202,29 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, userTempla
         <header className='template-dialog-head'>
           <div>
             <p className='template-kicker'>DINGCARD / TEMPLATE LIBRARY</p>
-            <h2 id='template-gallery-title'>从一套成品开始</h2>
-            <p className='template-dialog-subtitle'>样式和内容都可以继续改，先选一套接近你想法的。</p>
+            <h2 id='template-gallery-title'>{t('从一套成品开始')}</h2>
+            <p className='template-dialog-subtitle'>{t('样式和内容都可以继续改，先选一套接近你想法的。')}</p>
           </div>
-          <button className='template-close' type='button' aria-label='关闭模板中心' title='关闭' onClick={onClose}><CloseIcon /></button>
+          <button className='template-close' type='button' aria-label={t('关闭模板中心')} title={t('关闭')} onClick={onClose}><CloseIcon /></button>
         </header>
 
         <div className='template-dialog-body'>
-          <section className='template-list' aria-label='模板列表'>
-            {savedTemplates.length > 0 && <h4 className='template-list-group'>我的模板</h4>}
-            {savedTemplates.map(renderTile)}
-            {savedTemplates.length > 0 && <h4 className='template-list-group'>模板库</h4>}
-            {builtinTemplates.map(renderTile)}
+          <section className='template-list' aria-label={t('模板列表')}>
+            {templates.map(renderTile)}
           </section>
 
-          <aside className='template-detail' aria-label='模板详情'>
+          <aside className='template-detail' aria-label={t('模板详情')}>
             <div className='template-detail-preview'><TemplatePreview template={selected} detail /></div>
             <div className='template-detail-copy'>
-              <span className='template-detail-series'>{selected.title}</span>
-              <h3>{selected.workspace === 'markdown' ? 'Markdown 长文排版' : '自由画布轻设计'}</h3>
-              <p>{selected.description}</p>
+              <span className='template-detail-series'>{t(selected.title)}</span>
+              <h3>{selected.workspace === 'markdown' ? t('Markdown 长文排版') : t('自由画布轻设计')}</h3>
+              <p>{t(selected.description)}</p>
               <p className='template-detail-note'>
                 {selected.workspace === 'markdown'
-                  ? `${selected.pageCount} 页示例已经排好，正文、主题和字体都可以改。`
-                  : `${selected.pageCount} 页作品已经排好，文字、颜色、尺寸和图层都可以改。`}
+                  ? t('{n} 页示例已经排好，正文、主题和字体都可以改。', { n: selected.pageCount })
+                  : t('{n} 页作品已经排好，文字、颜色、尺寸和图层都可以改。', { n: selected.pageCount })}
               </p>
-              <button className='template-use' type='button' onClick={() => requestApply(selected)}>使用这套模板</button>
-              {selectedUserTemplateId && onDeleteUserTemplate && (
-                <button
-                  className='template-delete'
-                  type='button'
-                  onClick={() => onDeleteUserTemplate(selectedUserTemplateId)}
-                >
-                  删除此模板
-                </button>
-              )}
+              <button className='template-use' type='button' onClick={() => requestApply(selected)}>{t('使用这套模板')}</button>
             </div>
           </aside>
         </div>
@@ -258,12 +240,16 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, userTempla
             }}
           >
             <div className='template-confirm' role='alertdialog' aria-modal='true' aria-labelledby='template-confirm-title'>
-              <p className='template-kicker'>当前作品还在编辑中</p>
-              <h3 id='template-confirm-title'>要新建一份模板作品吗？</h3>
-              <p>已保存的草稿不会被覆盖；当前未保存的修改不会带入新作品。</p>
+              <p className='template-kicker'>{currentIsSaved ? t('当前项目已自动保存') : t('当前内容还没有保存')}</p>
+              <h3 id='template-confirm-title'>{t('用这套模板新建项目？')}</h3>
+              <p>
+                {currentIsSaved
+                  ? t('模板会作为一个新项目打开，当前项目留在「我的项目」里。')
+                  : t('访客模式下不会保存，打开模板后当前内容就找不回来了。')}
+              </p>
               <div className='template-confirm-actions'>
-                <button className='template-cancel' type='button' onClick={closePending}>继续编辑</button>
-                <button className='template-use' type='button' onClick={() => { pendingReturnFocusRef.current = null; onApply(pending); setPending(null) }}>新建模板作品</button>
+                <button className='template-cancel' type='button' onClick={closePending}>{t('继续编辑')}</button>
+                <button className='template-use' type='button' onClick={() => { pendingReturnFocusRef.current = null; onApply(pending); setPending(null) }}>{t('用模板新建')}</button>
               </div>
             </div>
           </div>

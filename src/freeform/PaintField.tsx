@@ -16,6 +16,7 @@ import {
   saveRecentColors,
 } from './recentColors'
 import type { ColorPaint, GradientStop, ShapeFill, SlideBackground } from './types'
+import { t } from '../i18n'
 
 export type PaintMode = 'solid' | 'linear-gradient' | 'radial-gradient' | 'transparent' | 'image'
 
@@ -212,13 +213,13 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
         onClick={() => (open ? closePopover() : openPopover())}
       />
       {open && (
-        <div className="paint-popover" data-testid="paint-popover" role="dialog" aria-label={`${label} 色板`}>
+        <div className="paint-popover" data-testid="paint-popover" role="dialog" aria-label={t('{label} 色板', { label })}>
           <div className="paint-popover-head">
             <span className="paint-popover-sample" style={{ background: color }} />
             <input
               className="paint-popover-hex"
               value={color}
-              aria-label={`${label} 自定义 HEX`}
+              aria-label={t('{label} 自定义 HEX', { label })}
               onChange={(event) => {
                 const nextColor = event.currentTarget.value
                 if (isHexColor(nextColor)) commitColor(nextColor)
@@ -229,8 +230,8 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
                 type="button"
                 className="paint-eyedropper"
                 data-testid="paint-eyedropper"
-                aria-label={`${label} 屏幕取色`}
-                title="屏幕取色"
+                aria-label={t('{label} 屏幕取色', { label })}
+                title={t('屏幕取色')}
                 disabled={eyedropperBusy}
                 onClick={() => { void pickWithEyeDropper() }}
               >
@@ -240,7 +241,7 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
               </button>
             )}
           </div>
-          <div className="paint-swatch-grid" aria-label={`${label} 常用颜色`}>
+          <div className="paint-swatch-grid" aria-label={t('{label} 常用颜色', { label })}>
             {PRESET_COLORS.map((preset) => (
               <button
                 key={preset}
@@ -253,14 +254,14 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
             ))}
           </div>
           {recentColors.length > 0 && (
-            <div className="paint-swatch-grid paint-recent-grid" aria-label={`${label} 最近使用`} data-testid="paint-recent-grid">
+            <div className="paint-swatch-grid paint-recent-grid" aria-label={t('{label} 最近使用', { label })} data-testid="paint-recent-grid">
               {recentColors.map((recent) => (
                 <button
                   key={recent}
                   type="button"
                   className="paint-swatch"
                   data-testid="paint-recent-swatch"
-                  aria-label={`${label} 最近 ${recent}`}
+                  aria-label={t('{label} 最近 {color}', { label, color: recent })}
                   style={{ background: recent }}
                   onClick={() => commitColor(recent)}
                 />
@@ -419,32 +420,32 @@ export function PaintField({
   return (
     <div className="paint-field" data-testid="freeform-paint-field">
       <div className="field-label">{label}</div>
-      <div className="seg stretch paint-mode" aria-label={`${label} 类型`}>
+      <div className="seg stretch paint-mode" aria-label={t('{label} 类型', { label })}>
         {modes.map((mode) => (
           <button
             key={mode}
             type="button"
             className={activeMode === mode ? 'seg-btn on' : 'seg-btn'}
             data-testid={`paint-mode-${mode}`}
-            aria-label={mode === 'image' ? '插入图片填充' : undefined}
+            aria-label={mode === 'image' ? t('插入图片填充') : undefined}
             onClick={() => changeMode(mode)}
           >
             {mode === 'solid'
-              ? '纯色'
+              ? t('纯色')
               : mode === 'linear-gradient'
-                ? '渐变'
+                ? t('渐变')
                 : mode === 'radial-gradient'
-                  ? '径向'
+                  ? t('径向')
                   : mode === 'transparent'
-                    ? '透明'
-                    : '图片'}
+                    ? t('透明')
+                    : t('图片')}
           </button>
         ))}
       </div>
 
       {activeMode === 'solid' && (
         <div className="paint-row">
-          <ColorPickerButton label={`${label} 颜色`} color={paintFallbackColor(paint)} onChange={updateSolid} />
+          <ColorPickerButton label={t('{label} 颜色', { label })} color={paintFallbackColor(paint)} onChange={updateSolid} />
           <input
             className="paint-hex"
             value={paintFallbackColor(paint)}
@@ -461,7 +462,7 @@ export function PaintField({
               {gradient.stops.map((stop, index) => (
                 <div className="paint-row" key={index}>
                   <ColorPickerButton
-                    label={`${label} 色标 ${index + 1} 颜色`}
+                    label={t('{label} 色标 {n} 颜色', { label, n: index + 1 })}
                     color={stop.color}
                     onChange={(color) => updateStopColor(index, color)}
                   />
@@ -470,7 +471,7 @@ export function PaintField({
                     value={stop.color}
                     onChange={(event) =>
                       isHexColor(event.currentTarget.value) && updateStopColor(index, event.currentTarget.value)}
-                    aria-label={`${label} 色标 ${index + 1} hex`}
+                    aria-label={t('{label} 色标 {n} hex', { label, n: index + 1 })}
                   />
                   <input
                     className="paint-angle"
@@ -484,7 +485,7 @@ export function PaintField({
                     }
                     value={Math.round(stop.offset * 100)}
                     onChange={(event) => updateStopOffset(index, Number(event.currentTarget.value))}
-                    aria-label={`${label} 色标 ${index + 1} 位置百分比`}
+                    aria-label={t('{label} 色标 {n} 位置百分比', { label, n: index + 1 })}
                   />
                   <button
                     type="button"
@@ -492,9 +493,9 @@ export function PaintField({
                     data-testid={`paint-stop-${index}-remove`}
                     disabled={gradient.stops.length <= GRADIENT_STOPS_MIN}
                     onClick={() => removeStop(index)}
-                    aria-label={`${label} 删除色标 ${index + 1}`}
+                    aria-label={t('{label} 删除色标 {n}', { label, n: index + 1 })}
                   >
-                    删除
+                    {t('删除')}
                   </button>
                 </div>
               ))}
@@ -503,7 +504,7 @@ export function PaintField({
             <>
               <div className="paint-row">
                 <ColorPickerButton
-                  label={`${label} 渐变起始色`}
+                  label={t('{label} 渐变起始色', { label })}
                   color={gradient.from}
                   onChange={(color) => updateGradient({ from: color })}
                 />
@@ -511,12 +512,12 @@ export function PaintField({
                   className="paint-hex"
                   value={gradient.from}
                   onChange={(event) => isHexColor(event.currentTarget.value) && updateGradient({ from: event.currentTarget.value })}
-                  aria-label={`${label} 渐变起始 hex`}
+                  aria-label={t('{label} 渐变起始 hex', { label })}
                 />
               </div>
               <div className="paint-row">
                 <ColorPickerButton
-                  label={`${label} 渐变结束色`}
+                  label={t('{label} 渐变结束色', { label })}
                   color={gradient.to}
                   onChange={(color) => updateGradient({ to: color })}
                 />
@@ -524,7 +525,7 @@ export function PaintField({
                   className="paint-hex"
                   value={gradient.to}
                   onChange={(event) => isHexColor(event.currentTarget.value) && updateGradient({ to: event.currentTarget.value })}
-                  aria-label={`${label} 渐变结束 hex`}
+                  aria-label={t('{label} 渐变结束 hex', { label })}
                 />
               </div>
             </>
@@ -539,7 +540,7 @@ export function PaintField({
                 max="359"
                 value={gradient.angle}
                 onChange={(event) => updateAngle(Number(event.currentTarget.value))}
-                aria-label={`${label} 渐变角度`}
+                aria-label={t('{label} 渐变角度', { label })}
               />
               <input
                 className="paint-angle"
@@ -548,7 +549,7 @@ export function PaintField({
                 max="359"
                 value={gradient.angle}
                 onChange={(event) => updateAngle(Number(event.currentTarget.value))}
-                aria-label={`${label} 渐变角度数值`}
+                aria-label={t('{label} 渐变角度数值', { label })}
               />
             </div>
           )}
@@ -559,9 +560,9 @@ export function PaintField({
               data-testid="paint-stops-add"
               disabled={isStopsGradient(gradient) && gradient.stops.length >= GRADIENT_STOPS_MAX}
               onClick={addStop}
-              aria-label={`${label} 添加色标`}
+              aria-label={t('{label} 添加色标', { label })}
             >
-              添加色标
+              {t('添加色标')}
             </button>
           </div>
           <div
@@ -589,7 +590,7 @@ export function PaintField({
                 data-testid={`paint-image-fit-${fit}`}
                 onClick={() => onImageFitChange?.(fit)}
               >
-                {fit === 'cover' ? '填满' : '适应'}
+                {fit === 'cover' ? t('填满') : t('适应')}
               </button>
             ))}
           </div>
@@ -598,29 +599,29 @@ export function PaintField({
               className="ghost"
               type="button"
               data-testid="freeform-adjust-framing"
-              aria-label="调整图片取景"
-              title={imageFramingDisabled ? imageFramingDisabledReason : '调整图片取景'}
+              aria-label={t('调整图片取景')}
+              title={imageFramingDisabled ? imageFramingDisabledReason : t('调整图片取景')}
               disabled={imageFramingDisabled}
               onClick={onAdjustImageFraming}
             >
-              调整取景
+              {t('调整取景')}
             </button>
             <button
               className="ghost"
               type="button"
               data-testid="freeform-reset-framing"
-              aria-label="重置图片取景"
-              title={imageFramingResetDisabled ? '当前已经是默认取景' : '重置图片取景'}
+              aria-label={t('重置图片取景')}
+              title={imageFramingResetDisabled ? t('当前已经是默认取景') : t('重置图片取景')}
               disabled={imageFramingResetDisabled}
               onClick={onResetImageFraming}
             >
-              重置取景
+              {t('重置取景')}
             </button>
             <button className="ghost" type="button" onClick={onChooseImage}>
-              替换图片
+              {t('替换图片')}
             </button>
             <button className="ghost" type="button" onClick={onClearImage}>
-              清除图片
+              {t('清除图片')}
             </button>
           </div>
         </div>

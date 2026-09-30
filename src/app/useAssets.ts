@@ -4,6 +4,7 @@ import type { User } from '../auth'
 import { store } from '../storage'
 import { prepareAssetFile } from './assetFiles'
 import { errorText } from './errors'
+import { t } from '../i18n'
 
 export interface PendingUpload {
   id: string
@@ -57,7 +58,7 @@ export function useAssets(user: User | null): AssetsState {
       (reason: unknown) => {
         if (generation !== generationRef.current) return
         setStatus('error')
-        setError(errorText(reason, '暂时无法读取素材库，请稍后重试'))
+        setError(errorText(reason, t('暂时无法读取素材库，请稍后重试')))
       },
     )
   }, [userId])
@@ -86,7 +87,7 @@ export function useAssets(user: User | null): AssetsState {
         setAssets((current) => sortAssets([asset, ...current]))
         setStatus('ready')
       } catch (reason) {
-        outcome.failed.push({ name: file.name, error: errorText(reason, '上传失败，请稍后重试') })
+        outcome.failed.push({ name: file.name, error: errorText(reason, t('上传失败，请稍后重试')) })
       } finally {
         setUploads((current) => current.filter((item) => item.id !== pending[index].id))
       }
@@ -117,13 +118,15 @@ export function useAssets(user: User | null): AssetsState {
 export function uploadNotice(outcome: UploadOutcome): { title: string; detail?: string; tone: 'info' | 'error' } | null {
   const { added, failed } = outcome
   if (failed.length === 0) {
-    return added.length > 0 ? { title: `已上传 ${added.length} 张图片`, tone: 'info' } : null
+    return added.length > 0 ? { title: t('已上传 {n} 张图片', { n: added.length }), tone: 'info' } : null
   }
   const [first] = failed
-  const more = failed.length > 1 ? `，另有 ${failed.length - 1} 张也没上传` : ''
+  const more = failed.length > 1 ? t('，另有 {n} 张也没上传', { n: failed.length - 1 }) : ''
   return {
-    title: added.length > 0 ? `上传了 ${added.length} 张，${failed.length} 张没有上传` : `${failed.length} 张图片没有上传`,
-    detail: `「${first.name}」${first.error}${more}`,
+    title: added.length > 0
+      ? t('上传了 {added} 张，{failed} 张没有上传', { added: added.length, failed: failed.length })
+      : t('{n} 张图片没有上传', { n: failed.length }),
+    detail: t('「{name}」{error}', { name: first.name, error: first.error }) + more,
     tone: 'error',
   }
 }

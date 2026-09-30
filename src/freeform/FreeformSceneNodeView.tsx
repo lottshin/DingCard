@@ -14,6 +14,7 @@ import type {
   ScenePath,
   ShadowPaint,
 } from './types'
+import { t } from '../i18n'
 
 /** CSS shadow components shared by box-shadow, text-shadow, and drop-shadow. */
 function shadowCss(shadow: ShadowPaint): string {
@@ -148,7 +149,7 @@ function SceneLeafContent({
     return (
       <PlainTextEditable
         className="freeform-textbox"
-        ariaLabel="文本内容"
+        ariaLabel={t('文本内容')}
         value={leaf.text}
         spans={leaf.spans}
         readOnly={readOnly}

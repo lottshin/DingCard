@@ -10,6 +10,7 @@ import {
 import { isValidImageFraming } from './imageFraming'
 import type { ImageCropBounds, ImageCropDraft, ImageCropHandle } from './imageCrop'
 import { SCENE_EPSILON, type Matrix2D } from './sceneTransform'
+import { t } from '../i18n'
 
 const HANDLE_LABELS: ReadonlyArray<readonly [ImageCropHandle, string]> = [
   ['n', '裁剪上边'],
@@ -231,7 +232,7 @@ export const ImageCropOverlay = forwardRef<ImageCropOverlayHandle, ImageCropOver
         data-testid="freeform-image-crop-overlay"
         data-crop-draft-key={draftKey(draft)}
         role="application"
-        aria-label="图片裁剪"
+        aria-label={t('图片裁剪')}
         tabIndex={-1}
         style={style.overlayStyle}
         onKeyDown={onKeyDown}
@@ -268,7 +269,7 @@ export const ImageCropOverlay = forwardRef<ImageCropOverlayHandle, ImageCropOver
               tabIndex={0}
               data-crop-handle={handle}
               data-active={activeHandle === handle ? 'true' : undefined}
-              aria-label={label}
+              aria-label={t(label)}
               onPointerDown={(event) => onHandlePointerDown?.(event, handle)}
               onKeyDown={(event) => onHandleKeyDown?.(event, handle)}
             >

@@ -1,6 +1,6 @@
-import type { Asset } from '../assets'
 import type { User } from '../auth'
 import type { TemplateDefinition } from '../templates/types'
+import type { Mode } from '../useAppTheme'
 
 export type WorkspaceMode = 'markdown-card' | 'freeform-slide'
 
@@ -10,21 +10,31 @@ export type WorkspaceRequest =
   | { nonce: number; kind: 'new'; platformId: string | null; width: number | null; height: number | null }
   | { nonce: number; kind: 'template'; template: TemplateDefinition }
   | { nonce: number; kind: 'removed'; draftId: string }
-  /** Put a library image into the open document, as an edit. */
-  | { nonce: number; kind: 'insert-asset'; asset: Asset }
+  | { nonce: number; kind: 'renamed'; draftId: string; title: string }
 
 export interface WorkspaceMeta {
   title: string
-  /** Saved draft currently open, if any. */
+  /** Saved project currently open, if any. */
   draftId: string | null
-  /** Edited since it was last opened or saved. */
-  dirty: boolean
+  /** Edits that leaving would lose: a guest's work, or a save that failed. */
+  unsaved: boolean
+}
+
+/** What the app shell lends every editor's top bar. */
+export interface EditorChrome {
+  theme: Mode
+  authStatus: 'checking' | 'ready' | 'error'
+  onHome: () => void
+  onToggleTheme: () => void
+  onRetryAuth: () => void
+  onLogout: () => void
 }
 
 export interface WorkspaceShellProps {
   isActive: boolean
   user: User | null
   requestAuth: () => void
+  chrome: EditorChrome
   request?: WorkspaceRequest | null
   onMetaChange?: (meta: WorkspaceMeta) => void
 }

@@ -225,10 +225,8 @@ test('auth request remembers a click invoker without DOM focus and ignores repea
 
   const dialog = page.getByRole('dialog', { name: '账户登录与注册' })
   await expect(dialog.getByLabel('用户名')).toBeFocused()
-  const repeatedRequest = page
-    .locator('#workspace-panel-markdown button')
-    .filter({ hasText: /^保存草稿$/ })
-    .first()
+  // The guest save hint asks for an account too; a second request while the dialog is open is ignored.
+  const repeatedRequest = page.locator('#workspace-panel-markdown [data-testid="editor-save-state"]')
   await repeatedRequest.evaluate((button) => {
     button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
   })
@@ -238,14 +236,14 @@ test('auth request remembers a click invoker without DOM focus and ignores repea
   await expect(trigger).toBeFocused()
 })
 
-test('invalid auth openers fall back to the selected workspace tab', async ({ page }) => {
+test('invalid auth openers fall back to the editor home button', async ({ page }) => {
   for (const invalidState of ['hidden', 'disabled', 'disconnected'] as const) {
     await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
 
     const trigger = page.getByTestId('account-login')
-    const selectedWorkspaceTab = page.getByTestId('workspace-tab-markdown')
+    const home = page.getByTestId('editor-home')
     await trigger.click()
     const dialog = page.getByRole('dialog', { name: '账户登录与注册' })
     await trigger.evaluate((button, state) => {
@@ -256,7 +254,7 @@ test('invalid auth openers fall back to the selected workspace tab', async ({ pa
 
     await dialog.getByRole('button', { name: '取消', exact: true }).click()
     await expect(dialog).toBeHidden()
-    await expect(selectedWorkspaceTab).toBeFocused()
+    await expect(home).toBeFocused()
   }
 })
 
@@ -375,13 +373,13 @@ test('auth dialog includes visible control types and skips hidden or inert senti
   await expect(username).toBeFocused()
 })
 
-test('freeform save restores its own button after cancel, Escape, and backdrop close', async ({ page }) => {
-  await page.goto('/#/edit')
+test('the guest save hint restores its own button after cancel, Escape, and backdrop close', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
 
-  const saveButton = page.getByRole('button', { name: '保存草稿', exact: true })
+  const saveButton = page.getByTestId('editor-save-state')
+  await expect(saveButton).toHaveText('登录后自动保存')
   const dialog = page.getByRole('dialog', { name: '账户登录与注册' })
 
   await saveButton.focus()
@@ -410,7 +408,9 @@ test('freeform save restores its own button after cancel, Escape, and backdrop c
   await dialog.getByLabel('密码').fill('1234')
   await dialog.getByRole('button', { name: '创建账号', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await expect(saveButton).toBeFocused()
+  // Signed in, the hint is gone; focus lands on the account menu that replaced 登录.
+  await expect(page.getByTestId('editor-save-state')).toHaveCount(0)
+  await expect(page.getByTestId('account-menu')).toBeFocused()
 })
 
 test('busy and failed local login keep only enabled controls in the dialog focus loop', async ({ page }) => {
@@ -500,18 +500,20 @@ test('existing local registration and login flows still succeed', async ({ page 
   await dialog.getByLabel('密码').fill('1234')
   await dialog.getByRole('button', { name: '创建账号', exact: true }).click()
   await expect(dialog).toBeHidden()
-  const firstLogout = page.getByTestId('account-logout')
-  await expect(firstLogout).toBeVisible()
-  await expect(firstLogout).toBeFocused()
+  const firstAccount = page.getByTestId('account-menu')
+  await expect(firstAccount).toBeVisible()
+  await expect(firstAccount).toBeFocused()
+  await expect(firstAccount).toHaveAccessibleName('账号菜单（auth-e2e-user）')
 
-  await firstLogout.click()
+  await firstAccount.click()
+  await page.getByRole('menu').getByTestId('account-logout').click()
   await expect(page.getByTestId('account-login')).toBeVisible()
   await page.getByTestId('account-login').click()
   await dialog.getByLabel('用户名').fill('auth-e2e-user')
   await dialog.getByLabel('密码').fill('1234')
   await dialog.getByRole('button', { name: '登录', exact: true }).last().click()
   await expect(dialog).toBeHidden()
-  const secondLogout = page.getByTestId('account-logout')
-  await expect(secondLogout).toBeVisible()
-  await expect(secondLogout).toBeFocused()
+  const secondAccount = page.getByTestId('account-menu')
+  await expect(secondAccount).toBeVisible()
+  await expect(secondAccount).toBeFocused()
 })

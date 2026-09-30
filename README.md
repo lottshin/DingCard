@@ -74,7 +74,7 @@
 
 Markdown 目前有“编辑档案”“公共剧场”“议题封面”三套四页模板，自由画布有八套三页作品。选中后会带着完整内容进入编辑器，可以继续改字、换图和调整样式。
 
-自己排好的版式也能复用：点工具栏「存为模板」把当前作品存为个人模板（本浏览器当前账号，图片一并嵌入），模板中心会出现「我的模板」分组，随时新建同款或删除。
+模板由社区共建，全部在仓库里维护：做了一套好看的版式，可以按 [贡献模板](docs/templates.md) 提交 Pull Request，合并后所有人都能用。想复用自己的作品，在「我的项目」里把它复制一份再改即可。
 
 ![叮卡模板中心，可选择 Markdown 长文和自由画布作品](docs/assets/template-center.png)
 
@@ -89,7 +89,7 @@ npm run mcp   # 以 stdio 启动 dingcard-mcp
 
 可用工具包括 `list_templates`、`create_document_from_template`、`create_document_from_outline`（Markdown 大纲一次生成整套卡片文档）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为 PNG）和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
 
-AI 生成的文档也可以一键回到编辑器精修：在「我的草稿」面板点击「导入 JSON 文档」或直接把 `.json` 文件拖进面板，文档会存为草稿并直接打开（自由画布 v1–v7 自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
+AI 生成的文档也可以一键回到编辑器精修：在工作台「我的项目」点击「导入 JSON」或直接把 `.json` 文件拖进页面，文档会存为项目并在对应的编辑器里打开（自由画布旧版本自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
 
 ### MCP 作品示例：山月 · 藍染海報
 
@@ -102,7 +102,7 @@ AI 生成的文档也可以一键回到编辑器精修：在「我的草稿」�
 
 <p align="center"><sub>左：山月 · 藍染海報　右：构造解剖页（形狀 54 / 線段 46 / 漸變 9 / 節點 105）</sub></p>
 
-整份两页文档在 [docs/assets/yamatsuki-poster.json](docs/assets/yamatsuki-poster.json)（约 74KB），下载后拖进「我的草稿」面板即可在编辑器里打开，每个元素都可以拆开重编。
+整份两页文档在 [docs/assets/yamatsuki-poster.json](docs/assets/yamatsuki-poster.json)（约 74KB），下载后拖进「我的项目」页面即可在编辑器里打开，每个元素都可以拆开重编。
 
 ## 使用与部署
 
@@ -266,6 +266,7 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ## 文档
 
 - [自由画布数据模型与交互说明](docs/freeform-editor.md)
+- [贡献模板](docs/templates.md)
 - [MCP 自动化接口](docs/mcp.md)
 - [Docker 部署与维护](docs/deployment.md)
 - [后端实现与接入方案](docs/backend-plan.md)

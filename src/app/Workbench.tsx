@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import logoUrl from '../logo.svg'
 import type { Asset } from '../assets'
 import type { User } from '../auth'
-import type { Draft, SaveDraftInput } from '../drafts'
+import { importDraftFromJson, type Draft, type SaveDraftInput } from '../drafts'
+import { setLang, useLang, useT } from '../i18n'
 import { readLastSession, updateLastSession } from '../lastSession'
 import { store } from '../storage'
 import type { TemplateDefinition } from '../templates/types'
@@ -19,6 +20,7 @@ import {
   PlusIcon,
   ProjectsIcon,
   SearchIcon,
+  SidebarIcon,
   SunIcon,
   TemplatesIcon,
 } from '../ui/icons'
@@ -30,6 +32,7 @@ import { CommandPalette, type PaletteAction } from './CommandPalette'
 import { ConfirmDialog } from './ConfirmDialog'
 import { errorText } from './errors'
 import { HomePage } from './HomePage'
+import { LanguageMenu } from './LanguageMenu'
 import { projectSource } from './ProjectCard'
 import { ProjectsPage } from './ProjectsPage'
 import { navigate, routes, type AppRoute } from './router'
@@ -49,6 +52,7 @@ interface WorkbenchProps {
   onLogout: () => void
   editorMeta: Record<WorkspaceMode, WorkspaceMeta>
   onProjectRemoved: (system: WorkspaceMode, draftId: string) => void
+  onProjectRenamed: (system: WorkspaceMode, draftId: string, title: string) => void
 }
 
 interface PendingNavigation {
@@ -67,7 +71,28 @@ const SYSTEM_NAME: Record<WorkspaceMode, string> = {
   'freeform-slide': '自由编辑',
 }
 
-export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorMeta, onProjectRemoved }: WorkbenchProps) {
+const COLLAPSED_KEY = 'dingcard.sidebar-collapsed.v1'
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeCollapsed(collapsed: boolean) {
+  try {
+    if (collapsed) localStorage.setItem(COLLAPSED_KEY, '1')
+    else localStorage.removeItem(COLLAPSED_KEY)
+  } catch {
+    // A per-browser convenience; the toggle still works for this page.
+  }
+}
+
+export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorMeta, onProjectRemoved, onProjectRenamed }: WorkbenchProps) {
+  const t = useT()
+  const lang = useLang()
   const projects = useProjects(user)
   const assets = useAssets(user)
   const usage = useMemo(() => assetUsage(assets.assets, projects.projects), [assets.assets, projects.projects])
@@ -78,21 +103,17 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [meMenuOpen, setMeMenuOpen] = useState(false)
   const [sideOpen, setSideOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(readCollapsed)
   const newMenuRef = useRef<HTMLDivElement>(null)
   const meMenuRef = useRef<HTMLDivElement>(null)
 
   const templates = useMemo(
-    () => [...templatesFor('markdown-card', user), ...templatesFor('freeform-slide', user)],
-    [user],
+    () => [...templatesFor('markdown-card'), ...templatesFor('freeform-slide')],
+    [],
   )
   const templateCounts = {
     'markdown-card': templates.filter((template) => template.workspace === 'markdown').length,
     'freeform-slide': templates.filter((template) => template.workspace === 'freeform').length,
-  }
-  const counts = {
-    all: projects.projects.length,
-    'markdown-card': projects.projects.filter((draft) => draft.mode === 'markdown-card').length,
-    'freeform-slide': projects.projects.filter((draft) => draft.mode === 'freeform-slide').length,
   }
 
   useEffect(() => {
@@ -128,14 +149,32 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
 
   useEffect(() => setSideOpen(false), [route])
 
-  /** Go to an editor, first asking before an intent would replace unsaved edits. */
+  useEffect(() => {
+    if (projects.movedTemplates === 0) return
+    setNotice({
+      title: t('你存过的 {n} 个模板已经放进「我的项目」', { n: projects.movedTemplates }),
+      detail: t('模板改由社区共建；想复用自己的作品，在项目卡片上选「复制一份」。'),
+      tone: 'info',
+    })
+  }, [projects.movedTemplates, t])
+
+  function toggleCollapsed() {
+    setCollapsed((current) => {
+      writeCollapsed(!current)
+      return !current
+    })
+    setNewMenuOpen(false)
+    setMeMenuOpen(false)
+  }
+
+  /** Go to an editor, first asking before an intent would replace edits that can't be saved. */
   function enterEditor(system: WorkspaceMode, path: string, targetDraftId?: string) {
     const meta = editorMeta[system]
     if (targetDraftId && meta.draftId === targetDraftId) {
       navigate(routes.editor(system))
       return
     }
-    if (meta.dirty) {
+    if (meta.unsaved) {
       setPending({ system, path })
       return
     }
@@ -156,14 +195,55 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
   async function duplicate(draft: Draft) {
     if (!user) return
     const input: SaveDraftInput = draft.mode === 'markdown-card'
-      ? { mode: draft.mode, title: `${draft.title} 副本`, document: draft.document }
-      : { mode: draft.mode, title: `${draft.title} 副本`, document: draft.document }
+      ? { mode: draft.mode, title: t('{title} 副本', { title: draft.title }), document: draft.document }
+      : { mode: draft.mode, title: t('{title} 副本', { title: draft.title }), document: draft.document }
     try {
       await store.drafts.save(user.id, input)
       projects.reload()
-      setNotice({ title: `已复制「${draft.title}」`, tone: 'info' })
+      setNotice({ title: t('已复制「{title}」', { title: draft.title }), tone: 'info' })
     } catch (error) {
-      setNotice({ title: '复制失败', detail: errorText(error, '暂时无法复制，请稍后重试'), tone: 'error' })
+      setNotice({ title: t('复制失败'), detail: errorText(error, t('暂时无法复制，请稍后重试')), tone: 'error' })
+    }
+  }
+
+  async function rename(draft: Draft, title: string) {
+    if (!user) return
+    const input: SaveDraftInput = draft.mode === 'markdown-card'
+      ? { id: draft.id, mode: draft.mode, title, document: draft.document }
+      : { id: draft.id, mode: draft.mode, title, document: draft.document }
+    try {
+      await store.drafts.save(user.id, input)
+      onProjectRenamed(draft.mode, draft.id, title)
+      projects.reload()
+    } catch (error) {
+      setNotice({ title: t('重命名失败'), detail: errorText(error, t('暂时无法重命名，请稍后重试')), tone: 'error' })
+    }
+  }
+
+  /** A .json document (from the MCP tools, or exported elsewhere) becomes a project and opens. */
+  async function importProject(file: File) {
+    if (!user) {
+      navigate(routes.login)
+      return
+    }
+    let text: string
+    try {
+      text = await file.text()
+    } catch {
+      setNotice({ title: t('导入失败'), detail: t('文件读取失败，请重试'), tone: 'error' })
+      return
+    }
+    const outcome = importDraftFromJson(text)
+    if (!outcome.ok) {
+      setNotice({ title: t('导入失败'), detail: t(outcome.error), tone: 'error' })
+      return
+    }
+    try {
+      const saved = await store.drafts.save(user.id, outcome.data)
+      projects.reload()
+      enterEditor(saved.mode, routes.openProject(saved.mode, saved.id), saved.id)
+    } catch (error) {
+      setNotice({ title: t('导入失败'), detail: errorText(error, t('暂时无法导入，请稍后重试')), tone: 'error' })
     }
   }
 
@@ -176,10 +256,11 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
       if (session.markdownDraftId === draft.id) updateLastSession(user.id, { markdownDraftId: null })
       if (session.freeformDraftId === draft.id) updateLastSession(user.id, { freeformDraftId: null })
       onProjectRemoved(draft.mode, draft.id)
+      projects.forget(draft.id)
       projects.reload()
-      setNotice({ title: `已删除「${draft.title}」`, tone: 'info' })
+      setNotice({ title: t('已删除「{title}」', { title: draft.title }), tone: 'info' })
     } catch (error) {
-      setNotice({ title: '删除失败', detail: errorText(error, '暂时无法删除，请稍后重试'), tone: 'error' })
+      setNotice({ title: t('删除失败'), detail: errorText(error, t('暂时无法删除，请稍后重试')), tone: 'error' })
     }
   }
 
@@ -193,36 +274,47 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
 
   function renameAsset(asset: Asset, name: string) {
     assets.rename(asset, name).catch((error: unknown) => {
-      setNotice({ title: '重命名失败', detail: errorText(error, '暂时无法重命名，请稍后重试'), tone: 'error' })
+      setNotice({ title: t('重命名失败'), detail: errorText(error, t('暂时无法重命名，请稍后重试')), tone: 'error' })
     })
   }
 
   function deleteAsset(asset: Asset) {
     assets.remove(asset).then(
-      () => setNotice({ title: `已删除「${asset.name}」`, tone: 'info' }),
-      (error: unknown) => setNotice({ title: '删除失败', detail: errorText(error, '暂时无法删除，请稍后重试'), tone: 'error' }),
+      () => setNotice({ title: t('已删除「{title}」', { title: asset.name }), tone: 'info' }),
+      (error: unknown) => setNotice({ title: t('删除失败'), detail: errorText(error, t('暂时无法删除，请稍后重试')), tone: 'error' }),
     )
   }
 
   const paletteActions: PaletteAction[] = [
-    { id: 'new-md', label: '新建 Markdown 卡片', hint: '小红书', icon: 'markdown', run: () => newMarkdown() },
-    { id: 'new-ff', label: '新建自由编辑', hint: '3:4', icon: 'freeform', run: () => newFreeform() },
-    { id: 'projects', label: '打开我的项目', icon: 'projects', run: () => navigate(routes.projects()) },
-    { id: 'templates', label: '打开模板中心', icon: 'templates', run: () => navigate(routes.templates()) },
-    { id: 'assets', label: '打开素材库', icon: 'assets', run: () => navigate(routes.assets) },
-    { id: 'theme', label: theme === 'dark' ? '切换到浅色模式' : '切换到深色模式', icon: 'theme', run: onToggleTheme },
+    { id: 'new-md', label: t('新建 Markdown 卡片'), hint: t('小红书'), icon: 'markdown', run: () => newMarkdown() },
+    { id: 'new-ff', label: t('新建自由编辑'), hint: '3:4', icon: 'freeform', run: () => newFreeform() },
+    { id: 'projects', label: t('打开我的项目'), icon: 'projects', run: () => navigate(routes.projects()) },
+    { id: 'templates', label: t('打开模板中心'), icon: 'templates', run: () => navigate(routes.templates()) },
+    { id: 'assets', label: t('打开素材库'), icon: 'assets', run: () => navigate(routes.assets) },
+    { id: 'theme', label: theme === 'dark' ? t('切换到浅色模式') : t('切换到深色模式'), icon: 'theme', run: onToggleTheme },
+    { id: 'language', label: lang === 'zh' ? 'Switch to English' : t('切换到中文'), icon: 'language', run: () => setLang(lang === 'zh' ? 'en' : 'zh') },
   ]
 
-  const navCurrent = (name: WorkbenchRoute['name'], system?: WorkspaceMode | null) => {
-    if (route.name !== name) return undefined
-    if (name === 'projects' && route.name === 'projects' && system !== undefined && route.system !== system) return undefined
-    return 'page' as const
-  }
+  const navCurrent = (name: WorkbenchRoute['name']) => (route.name === name ? ('page' as const) : undefined)
+  const wbClass = ['wb', sideOpen ? 'is-side-open' : '', collapsed ? 'is-collapsed' : ''].filter(Boolean).join(' ')
 
   return (
-    <div className={sideOpen ? 'wb is-side-open' : 'wb'} data-testid="workbench">
-      <aside className="wb-side" aria-label="主导航">
-        <div className="wb-brand"><img src={logoUrl} alt="" width="28" height="28" />叮卡</div>
+    <div className={wbClass} data-testid="workbench">
+      <aside className="wb-side" aria-label={t('主导航')}>
+        <div className="wb-brand">
+          <img src={logoUrl} alt="" width="28" height="28" />
+          <span className="wb-brand-name">{t('叮卡')}</span>
+          <button
+            className="icon-btn wb-collapse"
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? t('展开侧栏') : t('收起侧栏')}
+            title={collapsed ? t('展开侧栏') : t('收起侧栏')}
+            data-testid="sidebar-toggle"
+          >
+            <SidebarIcon />
+          </button>
+        </div>
 
         <div className="wb-new" ref={newMenuRef}>
           <button
@@ -230,46 +322,46 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
             type="button"
             aria-haspopup="menu"
             aria-expanded={newMenuOpen}
+            aria-label={collapsed ? t('新建项目') : undefined}
+            title={collapsed ? t('新建项目') : undefined}
             onClick={() => setNewMenuOpen((open) => !open)}
             data-testid="new-project"
           >
-            <span><PlusIcon />新建项目</span>
-            <ChevronDownIcon />
+            <span><PlusIcon /><span className="wb-text">{t('新建项目')}</span></span>
+            <ChevronDownIcon className="wb-text" />
           </button>
           {newMenuOpen && (
             <div className="menu wb-new-menu" role="menu">
               <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); newMarkdown() }}>
                 <span className="sys-tile sys-tile-md"><MarkdownMarkIcon /></span>
-                <span><b>Markdown 卡片</b><small>写长文，自动分页成一组卡片</small></span>
+                <span><b>{t('Markdown 卡片')}</b><small>{t('写长文，自动分页成一组卡片')}</small></span>
               </button>
               <button role="menuitem" type="button" onClick={() => { setNewMenuOpen(false); newFreeform() }}>
                 <span className="sys-tile sys-tile-ff"><FreeformMarkIcon /></span>
-                <span><b>自由编辑</b><small>像做海报一样自由排版</small></span>
+                <span><b>{t('自由编辑')}</b><small>{t('像做海报一样自由排版')}</small></span>
               </button>
             </div>
           )}
         </div>
 
-        <nav className="wb-nav">
-          <a href={`#${routes.home}`} aria-current={navCurrent('home')}><HomeIcon />首页</a>
-          <a href={`#${routes.projects()}`} aria-current={navCurrent('projects', null)}>
-            <ProjectsIcon />我的项目<span className="count tnum">{counts.all || ''}</span>
-          </a>
-          <a className="sub" href={`#${routes.projects('markdown-card')}`} aria-current={navCurrent('projects', 'markdown-card')}>
-            <span className="sys-dot md" aria-hidden="true" />Markdown 卡片<span className="count tnum">{counts['markdown-card'] || ''}</span>
-          </a>
-          <a className="sub" href={`#${routes.projects('freeform-slide')}`} aria-current={navCurrent('projects', 'freeform-slide')}>
-            <span className="sys-dot ff" aria-hidden="true" />自由编辑<span className="count tnum">{counts['freeform-slide'] || ''}</span>
-          </a>
-          <a href={`#${routes.templates()}`} aria-current={navCurrent('templates')}><TemplatesIcon />模板中心</a>
-          <a href={`#${routes.assets}`} aria-current={navCurrent('assets')}>
-            <AssetsIcon />素材库<span className="count tnum">{assets.assets.length || ''}</span>
-          </a>
+        <nav className="wb-nav" aria-label={t('工作台导航')}>
+          {[
+            { name: 'home' as const, href: routes.home, icon: <HomeIcon />, label: t('首页'), count: 0 },
+            { name: 'projects' as const, href: routes.projects(), icon: <ProjectsIcon />, label: t('我的项目'), count: projects.projects.length },
+            { name: 'templates' as const, href: routes.templates(), icon: <TemplatesIcon />, label: t('模板中心'), count: 0 },
+            { name: 'assets' as const, href: routes.assets, icon: <AssetsIcon />, label: t('素材库'), count: assets.assets.length },
+          ].map((item) => (
+            <a key={item.name} href={`#${item.href}`} aria-current={navCurrent(item.name)} title={collapsed ? item.label : undefined}>
+              {item.icon}
+              <span className="wb-text">{item.label}</span>
+              {item.count > 0 && <span className="count tnum">{item.count}</span>}
+            </a>
+          ))}
         </nav>
 
         {projects.projects.length > 0 && (
           <div className="wb-recent">
-            <div className="wb-label">最近打开</div>
+            <div className="wb-label">{t('最近打开')}</div>
             {projects.projects.slice(0, 3).map((draft) => (
               <button key={draft.id} type="button" className="wb-recent-item" onClick={() => openProject(draft)}>
                 <span className="wb-recent-thumb"><DocumentPreview source={projectSource(draft)} width={22} /></span>
@@ -286,13 +378,11 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
                 <div className="menu wb-me-menu" role="menu">
                   <div className="wb-me-head">
                     <b>{user.username}</b>
-                    <span>{store.remote ? '服务器账号 · 多设备同步' : '本地账号 · 数据只存在这台设备'}</span>
+                    <span>{store.remote ? t('服务器账号 · 多设备同步') : t('本地账号 · 数据只存在这台设备')}</span>
                   </div>
-                  <button role="menuitem" type="button" onClick={() => { setMeMenuOpen(false); onToggleTheme() }}>
-                    {theme === 'dark' ? <SunIcon /> : <MoonIcon />}{theme === 'dark' ? '切换到浅色' : '切换到深色'}
-                  </button>
+                  <div className="menu-sep" role="separator" />
                   <button role="menuitem" type="button" onClick={() => { setMeMenuOpen(false); onLogout() }} data-testid="workbench-logout">
-                    <LogoutIcon />退出登录
+                    <LogoutIcon />{t('退出登录')}
                   </button>
                 </div>
               )}
@@ -301,18 +391,26 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={meMenuOpen}
-                aria-label={`账号菜单（${user.username}）`}
+                aria-label={t('账号菜单（{name}）', { name: user.username })}
                 onClick={() => setMeMenuOpen((open) => !open)}
               >
                 <span className="wb-avatar" aria-hidden="true">{user.username.slice(0, 1)}</span>
-                <span className="wb-who"><b>{user.username}</b><span>{store.remote ? '服务器账号' : '本地账号'}</span></span>
-                <MoreIcon />
+                <span className="wb-who wb-text"><b>{user.username}</b><span>{store.remote ? t('服务器账号') : t('本地账号')}</span></span>
+                <MoreIcon className="wb-text" />
               </button>
             </div>
           ) : (
             <div className="wb-guest">
-              <p>现在是访客模式，项目不会被保存。</p>
-              <button className="accent" type="button" onClick={() => navigate(routes.login)} data-testid="workbench-login">登录或注册</button>
+              <p className="wb-text">{t('现在是访客模式，项目不会被保存。')}</p>
+              <button
+                className="accent"
+                type="button"
+                onClick={() => navigate(routes.login)}
+                data-testid="workbench-login"
+                title={collapsed ? t('登录或注册') : undefined}
+              >
+                {collapsed ? <LogoutIcon /> : t('登录或注册')}
+              </button>
             </div>
           )}
         </div>
@@ -321,14 +419,21 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
 
       <div className="wb-main">
         <header className="wb-top" data-testid="workbench-topbar">
-          <button className="icon-btn wb-menu-btn" type="button" aria-label="打开导航" onClick={() => setSideOpen(true)}>
-            <ProjectsIcon />
+          <button className="icon-btn wb-menu-btn" type="button" aria-label={t('打开导航')} onClick={() => setSideOpen(true)}>
+            <SidebarIcon />
           </button>
           <button className="wb-search" type="button" onClick={() => setPaletteOpen(true)} data-testid="open-palette">
-            <SearchIcon /><span>搜索项目、模板和操作</span><kbd>⌘K</kbd>
+            <SearchIcon /><span>{t('搜索项目、模板和操作')}</span><kbd>⌘K</kbd>
           </button>
           <span className="grow" />
-          <button className="icon-btn" type="button" aria-label="切换深浅色" onClick={onToggleTheme}>
+          <LanguageMenu />
+          <button
+            className="icon-btn wb-theme"
+            type="button"
+            aria-label={t('切换深浅色')}
+            title={theme === 'dark' ? t('切换到浅色模式') : t('切换到深色模式')}
+            onClick={onToggleTheme}
+          >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
         </header>
@@ -356,6 +461,7 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
               onOpenProject={openProject}
               onUseTemplate={useTemplate}
               onDuplicate={duplicate}
+              onRename={(draft, title) => void rename(draft, title)}
               onDelete={setDeleting}
             />
           )}
@@ -366,13 +472,15 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
               projects={projects}
               onNewMarkdown={() => newMarkdown()}
               onNewFreeform={() => newFreeform()}
+              onImport={(file) => void importProject(file)}
               onOpenProject={openProject}
               onDuplicate={duplicate}
+              onRename={(draft, title) => void rename(draft, title)}
               onDelete={setDeleting}
             />
           )}
           {route.name === 'templates' && (
-            <TemplatesPage user={user} system={route.system} onUseTemplate={useTemplate} />
+            <TemplatesPage system={route.system} onUseTemplate={useTemplate} />
           )}
           {route.name === 'assets' && (
             <AssetsPage user={user} assets={assets} usage={usage} onUpload={uploadAssets} onRename={renameAsset} onDelete={deleteAsset} />
@@ -393,10 +501,12 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
 
       {pending && (
         <ConfirmDialog
-          title={`${SYSTEM_NAME[pending.system]}里还有未保存的修改`}
-          body={`「${editorMeta[pending.system].title || '未命名'}」自上次保存后有改动。继续的话，这些改动会被丢掉。`}
-          confirmLabel="丢掉改动，继续"
-          cancelLabel="回去保存"
+          title={t('{system}里还有没保存的修改', { system: t(SYSTEM_NAME[pending.system]) })}
+          body={user
+            ? t('「{title}」最近的修改没能保存。继续的话，这些改动会被丢掉。', { title: editorMeta[pending.system].title || t('未命名') })
+            : t('访客模式不会保存「{title}」。继续的话，这些改动会被丢掉；登录后编辑的内容会自动保存。', { title: editorMeta[pending.system].title || t('未命名') })}
+          confirmLabel={t('丢掉改动，继续')}
+          cancelLabel={t('回去看看')}
           danger
           onCancel={() => {
             const system = pending.system
@@ -413,9 +523,9 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
 
       {deleting && (
         <ConfirmDialog
-          title={`删除「${deleting.title}」？`}
-          body="删除后无法恢复。"
-          confirmLabel="删除"
+          title={t('删除「{title}」？', { title: deleting.title })}
+          body={t('删除后无法恢复。')}
+          confirmLabel={t('删除')}
           danger
           onCancel={() => setDeleting(null)}
           onConfirm={() => void confirmDelete(deleting)}

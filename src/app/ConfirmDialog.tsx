@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import { t } from '../i18n'
 
 interface ConfirmDialogProps {
   title: string
@@ -14,7 +15,7 @@ export function ConfirmDialog({
   title,
   body,
   confirmLabel,
-  cancelLabel = '取消',
+  cancelLabel = t('取消'),
   danger = false,
   onConfirm,
   onCancel,

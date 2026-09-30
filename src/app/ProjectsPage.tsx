@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type DragEvent } from 'react'
 import type { User } from '../auth'
 import type { Draft } from '../drafts'
 import { Select } from '../Select'
-import { FreeformMarkIcon, MarkdownMarkIcon } from '../ui/icons'
+import { FileImportIcon, FreeformMarkIcon, MarkdownMarkIcon } from '../ui/icons'
 import type { WorkspaceMode } from '../workspaces/types'
 import { ProjectCard } from './ProjectCard'
 import { navigate, routes } from './router'
 import type { ProjectsState } from './useProjects'
+import { locale, t } from '../i18n'
 
 type SortKey = 'updated' | 'title'
 
@@ -16,9 +17,16 @@ interface ProjectsPageProps {
   projects: ProjectsState
   onNewMarkdown: () => void
   onNewFreeform: () => void
+  /** A .json document to turn into a project. */
+  onImport: (file: File) => void
   onOpenProject: (draft: Draft) => void
   onDuplicate: (draft: Draft) => void
+  onRename: (draft: Draft, title: string) => void
   onDelete: (draft: Draft) => void
+}
+
+function carriesJson(event: DragEvent) {
+  return Array.from(event.dataTransfer.types).includes('Files')
 }
 
 export function ProjectsPage({
@@ -27,11 +35,15 @@ export function ProjectsPage({
   projects,
   onNewMarkdown,
   onNewFreeform,
+  onImport,
   onOpenProject,
   onDuplicate,
+  onRename,
   onDelete,
 }: ProjectsPageProps) {
   const [sort, setSort] = useState<SortKey>('updated')
+  const [dropping, setDropping] = useState(false)
+  const importRef = useRef<HTMLInputElement>(null)
   const all = projects.projects
   const counts = {
     'markdown-card': all.filter((draft) => draft.mode === 'markdown-card').length,
@@ -40,67 +52,116 @@ export function ProjectsPage({
   const visible = useMemo(() => {
     const list = all.filter((draft) => !system || draft.mode === system)
     return sort === 'title'
-      ? [...list].sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
+      ? [...list].sort((a, b) => a.title.localeCompare(b.title, locale()))
       : list
   }, [all, sort, system])
 
   return (
-    <section className="page" aria-label="我的项目">
+    <section
+      className={dropping ? 'page page-projects is-dropping' : 'page page-projects'}
+      aria-label={t('我的项目')}
+      onDragOver={(event) => {
+        if (!user || !carriesJson(event)) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDropping(true)
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false)
+      }}
+      onDrop={(event) => {
+        if (!user || !carriesJson(event)) return
+        event.preventDefault()
+        setDropping(false)
+        const file = event.dataTransfer.files[0]
+        if (file) onImport(file)
+      }}
+    >
       <div className="page-head">
         <div>
-          <h1>我的项目</h1>
+          <h1>{t('我的项目')}</h1>
           <p>
             {user
               ? all.length > 0
-                ? `共 ${all.length} 个项目，最近一次保存在 ${new Date(all[0].updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}。`
-                : '保存过的项目都会出现在这里。'
-              : '登录后，保存的项目会出现在这里。'}
+                ? t('共 {n} 个项目，最近一次保存在 {time}。', { n: all.length, time: new Date(all[0].updatedAt).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) })
+                : t('编辑过的项目都会自动保存在这里。')
+              : t('登录后，编辑的项目会自动保存在这里。')}
           </p>
         </div>
         <div className="page-actions">
-          <button className="ghost" type="button" onClick={onNewMarkdown}><MarkdownMarkIcon className="sys-md" />新建 Markdown 卡片</button>
-          <button className="ghost" type="button" onClick={onNewFreeform}><FreeformMarkIcon className="sys-ff" />新建自由编辑</button>
+          {user && (
+            <button
+              className="ghost"
+              type="button"
+              data-testid="project-import"
+              title={t('导入 .json 文档，比如 MCP 工具生成的结果')}
+              onClick={() => importRef.current?.click()}
+            >
+              <FileImportIcon />{t('导入 JSON')}
+            </button>
+          )}
+          <button className="ghost" type="button" onClick={onNewMarkdown}><MarkdownMarkIcon className="sys-md" />{t('新建 Markdown 卡片')}</button>
+          <button className="ghost" type="button" onClick={onNewFreeform}><FreeformMarkIcon className="sys-ff" />{t('新建自由编辑')}</button>
+          <input
+            ref={importRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            aria-label={t('导入 JSON 文档')}
+            data-testid="project-import-input"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              event.currentTarget.value = ''
+              if (file) onImport(file)
+            }}
+          />
         </div>
       </div>
 
       <div className="toolbar-row">
-        <div className="tabs" role="group" aria-label="按系统筛选">
-          <button type="button" aria-pressed={!system} onClick={() => navigate(routes.projects())}>全部 <span className="tnum">{all.length}</span></button>
+        <div className="tabs" role="group" aria-label={t('按系统筛选')}>
+          <button type="button" aria-pressed={!system} onClick={() => navigate(routes.projects())}>{t('全部')} <span className="tnum">{all.length}</span></button>
           <button type="button" aria-pressed={system === 'markdown-card'} onClick={() => navigate(routes.projects('markdown-card'))}>
-            <span className="sys-dot md" aria-hidden="true" />Markdown 卡片 <span className="tnum">{counts['markdown-card']}</span>
+            <span className="sys-dot md" aria-hidden="true" />{t('Markdown 卡片')} <span className="tnum">{counts['markdown-card']}</span>
           </button>
           <button type="button" aria-pressed={system === 'freeform-slide'} onClick={() => navigate(routes.projects('freeform-slide'))}>
-            <span className="sys-dot ff" aria-hidden="true" />自由编辑 <span className="tnum">{counts['freeform-slide']}</span>
+            <span className="sys-dot ff" aria-hidden="true" />{t('自由编辑')} <span className="tnum">{counts['freeform-slide']}</span>
           </button>
         </div>
         <span className="grow" />
         <Select
           value={sort}
-          title="排序"
+          title={t('排序')}
           onChange={(value) => setSort(value as SortKey)}
-          options={[{ id: "updated", label: "最近编辑" }, { id: "title", label: "按名称" }]}
+          options={[{ id: "updated", label: t('最近编辑') }, { id: "title", label: t('按名称') }]}
         />
       </div>
 
       {projects.status === 'error' && (
         <div className="empty">
-          <b>项目读取失败</b>
+          <b>{t('项目读取失败')}</b>
           <span>{projects.error}</span>
-          <button className="ghost" type="button" onClick={projects.reload}>重试</button>
+          <button className="ghost" type="button" onClick={projects.reload}>{t('重试')}</button>
+        </div>
+      )}
+
+      {dropping && (
+        <div className="asset-drop-overlay" aria-hidden="true">
+          <div><FileImportIcon /><b>{t('松开，导入为项目')}</b></div>
         </div>
       )}
 
       {visible.length > 0 ? (
         <div className="project-grid">
           {visible.map((draft) => (
-            <ProjectCard key={draft.id} draft={draft} onOpen={onOpenProject} onDuplicate={onDuplicate} onDelete={onDelete} />
+            <ProjectCard key={draft.id} draft={draft} onOpen={onOpenProject} onDuplicate={onDuplicate} onRename={onRename} onDelete={onDelete} />
           ))}
         </div>
       ) : projects.status !== 'error' && (
         <div className="empty">
-          <b>{user ? (system ? '这一类还没有项目' : '还没有保存的项目') : '还没有登录'}</b>
-          <span>{user ? '新建一个，保存后就会出现在这里。' : '登录后可以保存项目，并在这里继续编辑。'}</span>
-          {!user && <button className="ghost" type="button" onClick={() => navigate(routes.login)}>登录或注册</button>}
+          <b>{user ? (system ? t('这一类还没有项目') : t('还没有保存的项目')) : t('还没有登录')}</b>
+          <span>{user ? t('新建一个，开始编辑就会自动保存到这里；也可以把 .json 文档拖进来导入。') : t('登录后编辑的项目会自动保存，并在这里继续编辑。')}</span>
+          {!user && <button className="ghost" type="button" onClick={() => navigate(routes.login)}>{t('登录或注册')}</button>}
         </div>
       )}
     </section>

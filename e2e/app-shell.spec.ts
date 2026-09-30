@@ -26,6 +26,13 @@ async function backToWorkbench(page: Page) {
   await expect(page.getByTestId('workbench')).toBeVisible()
 }
 
+async function typeInMarkdown(page: Page, text: string) {
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+End')
+  await page.keyboard.type(text)
+}
+
 test('a first visit lands on the login page and guests can look around', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByTestId('login-page')).toBeVisible()
@@ -36,7 +43,7 @@ test('a first visit lands on the login page and guests can look around', async (
   await expect(workbench).toBeVisible()
   await expect(page.getByTestId('system-markdown')).toContainText('Markdown 卡片')
   await expect(page.getByTestId('system-freeform')).toContainText('自由编辑')
-  await expect(workbench).toContainText('登录后，保存的项目会出现在这里')
+  await expect(workbench).toContainText('登录后，你的项目会出现在这里')
 
   await page.reload()
   await expect(page.getByTestId('workbench')).toBeVisible()
@@ -45,19 +52,29 @@ test('a first visit lands on the login page and guests can look around', async (
   await expect(page.getByTestId('login-page')).toBeVisible()
 })
 
-test('editor links open straight into the editor without an account', async ({ page }) => {
+test('each editor is its own entry, opened straight from a link without an account', async ({ page }) => {
   await page.goto('/#/edit/canvas')
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
-  await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('account-login')).toBeVisible()
+  // No switch between the two systems: one editor, one top bar.
+  await expect(page.getByRole('tab', { name: /Markdown 卡片/ })).toHaveCount(0)
+  await expect(page.getByTestId('app-header')).toHaveCount(1)
+  await expect(page.getByTestId('editor-title')).toHaveText('未命名设计')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('登录后自动保存')
 
-  await page.getByTestId('workspace-tab-markdown').click()
-  await expect(page).toHaveURL(/#\/edit\/md$/)
+  await page.goto('/#/edit/md')
+  await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
+  await expect(page.getByTestId('freeform-toolbar')).toHaveCount(0)
+  await expect(page.getByTestId('app-header')).toHaveCount(1)
   await backToWorkbench(page)
   await expect(page.getByTestId('system-markdown')).toBeVisible()
+
+  // A bare #/edit settles on an editor.
+  await page.goto('/#/edit')
+  await expect(page).toHaveURL(/#\/edit\/md$/)
 })
 
-test('new projects carry their platform and page size into the editors and show up once saved', async ({ page }) => {
+test('new projects carry their platform and page size and save themselves once edited', async ({ page }) => {
   const username = await registerOnLoginPage(page)
   await expect(page.locator('.hello')).toContainText(username)
 
@@ -66,21 +83,25 @@ test('new projects carry their platform and page size into the editors and show 
   await expect(page).toHaveURL(/#\/edit\/md$/)
   await expect(page.getByRole('tablist', { name: '平台' }).getByRole('button', { name: '微博', exact: true })).toHaveClass(/\bon\b/)
   await expect(page.getByTestId('editor-title')).toHaveText('标题')
+  // Nothing is stored until the first edit.
   await expect(page.getByTestId('editor-save-state')).toHaveCount(0)
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.locator('.pane-sub')).toContainText('已保存')
+  await expect(page.getByRole('button', { name: '保存草稿' })).toHaveCount(0)
+  await typeInMarkdown(page, '第一段正文')
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await backToWorkbench(page)
   await page.getByTestId('system-freeform').getByRole('button', { name: '9:16', exact: true }).click()
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
   await expect(page.getByTestId('freeform-slide-size')).toHaveText('9:16 · 1080×1920px')
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await page.getByTestId('insert-text').click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await backToWorkbench(page)
   await expect(page.getByTestId('project-card')).toHaveCount(2)
-  await page.getByRole('link', { name: /^Markdown 卡片/ }).click()
+  // The sidebar has a single 我的项目 entry; the system filter lives on the page.
+  await expect(page.getByRole('navigation', { name: '工作台导航' }).getByRole('link')).toHaveText(['首页', /^我的项目/, '模板中心', /^素材库/])
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  await page.getByRole('group', { name: '按系统筛选' }).getByRole('button', { name: /^Markdown 卡片/ }).click()
   await expect(page).toHaveURL(/#\/projects\?system=md$/)
   await expect(page.getByTestId('project-card')).toHaveCount(1)
   await expect(page.getByTestId('project-card')).toHaveAttribute('data-system', 'markdown-card')
@@ -88,12 +109,66 @@ test('new projects carry their platform and page size into the editors and show 
   await page.getByTestId('project-card').getByRole('button', { name: /^打开/ }).click()
   await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
   await expect(page.getByTestId('editor-title')).toHaveText('标题')
+  await expect(page.locator('.cm-content')).toContainText('第一段正文')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+})
+
+test('edits made right before leaving the editor still reach the project', async ({ page }) => {
+  await registerOnLoginPage(page)
+  await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
+  await page.getByTestId('insert-text').click()
+  await page.getByTestId('insert-text').click()
+  // Leave before the autosave pause runs out.
+  await backToWorkbench(page)
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  await expect(page.getByTestId('project-card')).toHaveCount(1)
+  await page.getByTestId('project-card').getByRole('button', { name: /^打开/ }).click()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(2)
+})
+
+test('projects are renamed from the editor title or the project card', async ({ page }) => {
+  await registerOnLoginPage(page)
+  await page.getByTestId('system-freeform').getByRole('button', { name: '3:4', exact: true }).click()
+  await expect(page.getByTestId('editor-title')).toHaveText('未命名设计')
+  await page.getByTestId('editor-title').click()
+  const input = page.getByTestId('editor-title-input')
+  await expect(input).toBeFocused()
+  await input.fill('春季海报')
+  await input.press('Enter')
+  await expect(page.getByTestId('editor-title')).toHaveText('春季海报')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+
+  // Escape keeps the old name.
+  await page.getByTestId('editor-title').click()
+  await page.getByTestId('editor-title-input').fill('不要这个')
+  await page.getByTestId('editor-title-input').press('Escape')
+  await expect(page.getByTestId('editor-title')).toHaveText('春季海报')
+
+  await backToWorkbench(page)
+  const card = page.getByTestId('project-card')
+  await expect(card).toContainText('春季海报')
+  await card.getByRole('button', { name: /更多操作/ }).click()
+  await page.getByRole('menuitem', { name: '重命名' }).click()
+  const rename = card.getByRole('textbox', { name: '项目名称' })
+  await rename.fill('春季海报 · 终稿')
+  await rename.press('Enter')
+  await expect(card).toContainText('春季海报 · 终稿')
+
+  // The open editor follows the rename instead of writing the old name back.
+  await card.getByRole('button', { name: /^打开/ }).click()
+  await expect(page.getByTestId('editor-title')).toHaveText('春季海报 · 终稿')
+  await page.getByTestId('insert-text').click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  await backToWorkbench(page)
+  await expect(page.getByTestId('project-card')).toContainText('春季海报 · 终稿')
 })
 
 test('templates start a new project in the matching editor', async ({ page }) => {
   await registerOnLoginPage(page)
   await page.getByRole('link', { name: '模板中心' }).click()
   await expect(page.getByRole('heading', { level: 1, name: '模板中心' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: '贡献模板' }).getByRole('link', { name: '查看贡献指南' }))
+    .toHaveAttribute('href', /docs\/templates\.md$/)
   await page.getByRole('group', { name: '按系统筛选' }).getByRole('button', { name: /^自由编辑/ }).click()
   await expect(page).toHaveURL(/#\/templates\?system=canvas$/)
   await expect(page.getByTestId('template-card')).toHaveCount(8)
@@ -101,22 +176,22 @@ test('templates start a new project in the matching editor', async ({ page }) =>
   await page.getByRole('button', { name: '用「夜航」新建项目' }).click()
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
   await expect(page.getByTestId('freeform-thumb')).toHaveCount(3)
+  await expect(page.getByTestId('editor-title')).toHaveText('夜航')
 })
 
-test('opening another project asks before throwing away unsaved edits', async ({ page }) => {
-  await registerOnLoginPage(page)
+test('guests are asked before a new project replaces work that was never saved', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('login-guest').click()
   await page.getByTestId('system-markdown').getByRole('button', { name: '小红书', exact: true }).click()
   const editor = page.locator('.cm-content')
-  await editor.click()
-  await page.keyboard.press('End')
-  await page.keyboard.type('还没保存的一句话')
-  await expect(page.getByTestId('editor-save-state')).toHaveText('未保存')
+  await typeInMarkdown(page, '还没保存的一句话')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('登录后自动保存')
 
   await backToWorkbench(page)
   await page.getByTestId('system-markdown').getByRole('button', { name: '推特', exact: true }).click()
   const confirm = page.getByRole('alertdialog')
-  await expect(confirm).toContainText('未保存的修改')
-  await confirm.getByRole('button', { name: '回去保存' }).click()
+  await expect(confirm).toContainText('没保存的修改')
+  await confirm.getByRole('button', { name: '回去看看' }).click()
   await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
   await expect(editor).toContainText('还没保存的一句话')
 
@@ -127,11 +202,41 @@ test('opening another project asks before throwing away unsaved edits', async ({
   await expect(editor).not.toContainText('还没保存的一句话')
 })
 
+test('signed-in edits are already saved, so a new project opens without asking', async ({ page }) => {
+  await registerOnLoginPage(page)
+  await page.getByTestId('system-markdown').getByRole('button', { name: '小红书', exact: true }).click()
+  await typeInMarkdown(page, '自动保存的一句话')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+
+  await backToWorkbench(page)
+  await page.getByTestId('system-markdown').getByRole('button', { name: '推特', exact: true }).click()
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  await expect(page.locator('.cm-content')).not.toContainText('自动保存的一句话')
+  await backToWorkbench(page)
+  await expect(page.getByTestId('project-card')).toHaveCount(1)
+})
+
+test('a guest who logs in keeps the canvas, and it saves to the new account', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await page.getByTestId('insert-text').click()
+  await page.getByTestId('editor-save-state').click()
+  await page.getByRole('button', { name: '注册' }).click()
+  await page.getByLabel('用户名').fill(uniqueName('guest-save'))
+  await page.getByLabel('密码').fill('1234')
+  await page.getByRole('button', { name: '创建账号' }).click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+
+  await page.reload()
+  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+})
+
 test('projects can be duplicated and deleted from the workbench', async ({ page }) => {
   await registerOnLoginPage(page)
   await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await page.getByTestId('insert-text').click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await backToWorkbench(page)
 
   const cards = page.getByTestId('project-card')
@@ -145,6 +250,97 @@ test('projects can be duplicated and deleted from the workbench', async ({ page 
   await page.getByRole('menuitem', { name: '删除' }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
   await expect(cards).toHaveCount(1)
+})
+
+test('deleting the open project clears the editor instead of saving it back', async ({ page }) => {
+  await registerOnLoginPage(page)
+  await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
+  await page.getByTestId('insert-text').click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  await backToWorkbench(page)
+
+  const cards = page.getByTestId('project-card')
+  await cards.first().getByRole('button', { name: /更多操作/ }).click()
+  await page.getByRole('menuitem', { name: '删除' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
+  await expect(cards).toHaveCount(0)
+
+  await page.goto('/#/edit/canvas')
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await page.getByTestId('editor-home').click()
+  await expect(page.getByTestId('project-card')).toHaveCount(0)
+})
+
+test('a JSON document dropped on 我的项目 becomes a project and opens', async ({ page }) => {
+  await registerOnLoginPage(page)
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  const document = {
+    source: '# 从 MCP 来的长文\n\n正文。',
+    platformId: 'rednote',
+    themeId: 'light',
+    fontFamily: "'Noto Sans SC', sans-serif",
+    profile: {
+      nickname: '叮卡',
+      handle: 'dingcard',
+      location: '',
+      avatarColor: '#f97316',
+      avatarImage: null,
+      verified: false,
+      headerFirstPageOnly: false,
+    },
+    radius: 18,
+  }
+  await page.getByTestId('project-import-input').setInputFiles({
+    name: 'mcp.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(document)),
+  })
+  await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
+  await expect(page.getByTestId('editor-title')).toHaveText('从 MCP 来的长文')
+  await backToWorkbench(page)
+  await expect(page.getByTestId('project-card')).toHaveCount(1)
+
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  await page.getByTestId('project-import-input').setInputFiles({
+    name: 'broken.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{"nope":true}'),
+  })
+  await expect(page.getByRole('alert')).toContainText('无法识别的文档')
+})
+
+test('templates saved by older versions turn into projects', async ({ page }) => {
+  await registerOnLoginPage(page)
+  await page.evaluate(() => {
+    const userId = localStorage.getItem('slicer.session.v1')
+    const slide = {
+      id: 'legacy-slide',
+      name: '旧模板页',
+      width: 1080,
+      height: 1440,
+      background: { type: 'solid', color: '#ffffff' },
+      nodes: [],
+    }
+    localStorage.setItem(`slicer.user-templates.${userId}`, JSON.stringify([{
+      id: 'legacy-template',
+      name: '我的旧模板',
+      createdAt: 1,
+      pageCount: 1,
+      draft: {
+        id: 'legacy-draft',
+        title: '我的旧模板',
+        schemaVersion: 2,
+        updatedAt: 1,
+        mode: 'freeform-slide',
+        document: { documentVersion: 14, activeSlideId: 'legacy-slide', slides: [slide] },
+      },
+    }]))
+  })
+  await page.reload()
+  await expect(page.getByRole('alert')).toContainText('你存过的 1 个模板已经放进「我的项目」')
+  await expect(page.getByTestId('project-card')).toContainText('我的旧模板')
+  const remaining = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('slicer.user-templates.')))
+  expect(remaining).toEqual([])
 })
 
 test('the command palette finds projects and runs actions', async ({ page }) => {
@@ -162,4 +358,76 @@ test('logging out of the workbench returns to the login page', async ({ page }) 
   await page.getByRole('button', { name: `账号菜单（${username}）` }).click()
   await page.getByTestId('workbench-logout').click()
   await expect(page.getByTestId('login-page')).toBeVisible()
+})
+
+test('the sidebar collapses to an icon rail and remembers it', async ({ page }) => {
+  await registerOnLoginPage(page)
+  const workbench = page.getByTestId('workbench')
+  const sidebar = page.getByRole('complementary', { name: '主导航' })
+  const expandedWidth = (await sidebar.boundingBox())!.width
+
+  await page.getByTestId('sidebar-toggle').click()
+  await expect(workbench).toHaveClass(/is-collapsed/)
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeLessThan(expandedWidth / 2)
+  await expect(page.getByTestId('sidebar-toggle')).toHaveAttribute('aria-label', '展开侧栏')
+  // Links keep their names for assistive tech and tooltips while the labels are hidden.
+  await expect(sidebar.getByRole('link', { name: '模板中心' })).toHaveAttribute('title', '模板中心')
+
+  await page.reload()
+  await expect(page.getByTestId('workbench')).toHaveClass(/is-collapsed/)
+  await page.getByTestId('sidebar-toggle').click()
+  await expect(page.getByTestId('workbench')).not.toHaveClass(/is-collapsed/)
+})
+
+async function chooseLanguage(page: Page, name: '中文' | 'English') {
+  const trigger = page.getByTestId('language-menu')
+  await trigger.click()
+  const menu = page.getByRole('menu', { name: /界面语言|Language/ })
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitemradio', { name }).click()
+  await expect(menu).toHaveCount(0)
+}
+
+test('the interface language is picked from a list at the top right and remembered', async ({ page }) => {
+  await page.goto('/')
+  const login = page.getByTestId('login-page')
+  // The trigger shows the current language; the list opens on click.
+  await expect(page.getByTestId('language-menu')).toHaveText('中文')
+  await page.getByTestId('language-menu').click()
+  const menu = page.getByRole('menu', { name: '界面语言' })
+  await expect(menu.getByRole('menuitemradio', { name: '中文' })).toHaveAttribute('aria-checked', 'true')
+  await expect(menu.getByRole('menuitemradio', { name: '中文' })).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(menu.getByRole('menuitemradio', { name: 'English' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await expect(page.getByTestId('language-menu')).toBeFocused()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
+
+  await chooseLanguage(page, 'English')
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+  await expect(login.getByRole('heading', { level: 1 })).toHaveText('Welcome back')
+  await expect(page.getByTestId('login-guest')).toHaveText('Look around without an account')
+
+  await page.reload()
+  await expect(page.getByTestId('login-guest')).toHaveText('Look around without an account')
+  await page.getByTestId('login-guest').click()
+  await expect(page.getByRole('link', { name: 'My projects' })).toBeVisible()
+  await expect(page.getByTestId('system-markdown')).toContainText('Markdown Cards')
+  // The workbench keeps the menu in its top bar, not in the sidebar.
+  const topbar = page.getByTestId('workbench-topbar')
+  await expect(topbar.getByTestId('language-menu')).toHaveText('English')
+  await expect(page.getByRole('complementary', { name: 'Main navigation' }).getByTestId('language-menu')).toHaveCount(0)
+
+  await page.getByTestId('system-freeform').getByRole('button', { name: '3:4', exact: true }).click()
+  await expect(page.getByTestId('insert-text')).toHaveText('Text')
+  await expect(page.getByTestId('editor-title')).toHaveText('Untitled design')
+  await expect(page.getByTestId('freeform-export')).toHaveText(/Export/)
+
+  const header = page.getByTestId('app-header')
+  await header.getByTestId('language-menu').click()
+  await page.getByRole('menu', { name: 'Language' }).getByRole('menuitemradio', { name: '中文' }).click()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
+  await expect(page.getByTestId('insert-text')).toHaveText('文字')
+  await expect(page.getByTestId('freeform-export')).toHaveText(/导出/)
 })

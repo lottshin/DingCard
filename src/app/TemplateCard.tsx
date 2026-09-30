@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { TemplateDefinition } from '../templates/types'
 import { DocumentPreview, Measured } from './DocumentPreview'
 import { templatePreviewSource } from './LoginPage'
+import { t } from '../i18n'
 
 interface TemplateCardProps {
   template: TemplateDefinition
@@ -16,7 +17,7 @@ export function TemplateCard({ template, onUse }: TemplateCardProps) {
 
   return (
     <article className="tpl-card" data-testid="template-card">
-      <button className="tpl-stage" type="button" onClick={() => onUse(template)} aria-label={`用「${template.title}」新建项目`}>
+      <button className="tpl-stage" type="button" onClick={() => onUse(template)} aria-label={t('用「{title}」新建项目', { title: t(template.title) })}>
         {source && (
           <Measured className="tpl-fan">
             {(width) => pages.map((page) => (
@@ -26,17 +27,17 @@ export function TemplateCard({ template, onUse }: TemplateCardProps) {
             ))}
           </Measured>
         )}
-        <span className="tpl-use">使用模板</span>
+        <span className="tpl-use">{t('使用模板')}</span>
       </button>
       <div className="tpl-info">
         <div className="tpl-title-row">
-          <h3>{template.title}</h3>
-          <span className="chip tnum">{template.pageCount} 页</span>
+          <h3>{t(template.title)}</h3>
+          <span className="chip tnum">{t('{n} 页', { n: template.pageCount })}</span>
         </div>
         <p>
           <span className={`sys-dot ${system}`} aria-hidden="true" />
-          {system === 'md' ? 'Markdown 卡片' : '自由编辑'}
-          {template.tags.length > 0 && ` · ${template.tags.join(' · ')}`}
+          {system === 'md' ? t('Markdown 卡片') : t('自由编辑')}
+          {template.tags.length > 0 && ` · ${template.tags.map((tag) => t(tag)).join(' · ')}`}
         </p>
       </div>
     </article>

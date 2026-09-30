@@ -120,6 +120,7 @@
 }
 
 .menu button {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -309,6 +310,7 @@
 }
 
 .login-panel {
+  position: relative;
   flex: 1 1 42%;
   min-width: 0;
   display: grid;
@@ -316,6 +318,12 @@
   padding: 40px 24px;
   overflow: auto;
   background: var(--surface);
+}
+
+.login-lang {
+  position: absolute;
+  top: 16px;
+  right: 16px;
 }
 
 .login-form {
@@ -430,6 +438,7 @@
   min-height: 0;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
+  transition: grid-template-columns 220ms var(--ease-out);
 }
 
 .wb-side {
@@ -452,7 +461,21 @@
 }
 
 .wb-brand img {
+  flex: none;
   border-radius: 7px;
+}
+
+.wb-brand-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.wb-collapse {
+  width: 30px;
+  height: 30px;
+  margin-right: -4px;
+  color: var(--text-3);
 }
 
 .wb-new {
@@ -557,17 +580,6 @@
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.wb-nav a.sub {
-  height: 32px;
-  padding-left: 38px;
-  color: var(--text-3);
-  font-size: 13px;
-}
-
-.wb-nav a.sub[aria-current='page'] {
-  color: var(--text);
 }
 
 .wb-nav .count {
@@ -737,6 +749,87 @@
 .wb-guest .accent {
   height: 34px;
   font-size: 13px;
+}
+
+/* Collapsed sidebar: an icon rail with the same targets (wide screens only;
+   narrow screens use the off-canvas drawer). */
+@media (min-width: 861px) {
+  .wb.is-collapsed {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  /* Menus open beside the rail, so the rail must not clip them. */
+  .wb.is-collapsed .wb-side {
+    position: relative;
+    z-index: 2;
+    align-items: center;
+    padding-inline: 10px;
+    overflow: visible;
+  }
+
+  .wb.is-collapsed .wb-text,
+  .wb.is-collapsed .wb-brand-name,
+  .wb.is-collapsed .wb-nav .count,
+  .wb.is-collapsed .wb-recent {
+    display: none;
+  }
+
+  .wb.is-collapsed .wb-brand {
+    flex-direction: column;
+    gap: 12px;
+    padding: 0;
+  }
+
+  .wb.is-collapsed .wb-collapse {
+    margin: 0;
+  }
+
+  .wb.is-collapsed .wb-new,
+  .wb.is-collapsed .wb-nav,
+  .wb.is-collapsed .wb-foot {
+    width: 100%;
+  }
+
+  .wb.is-collapsed .wb-new-btn {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .wb.is-collapsed .wb-new-menu,
+  .wb.is-collapsed .wb-me-menu {
+    right: auto;
+    left: calc(100% + 8px);
+    width: 240px;
+  }
+
+  .wb.is-collapsed .wb-new-menu {
+    top: 0;
+  }
+
+  .wb.is-collapsed .wb-me-menu {
+    bottom: 0;
+  }
+
+  .wb.is-collapsed .wb-nav a {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .wb.is-collapsed .wb-me-btn {
+    justify-content: center;
+    padding: 6px 0;
+  }
+
+  .wb.is-collapsed .wb-guest {
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .wb.is-collapsed .wb-guest .accent {
+    width: 100%;
+    padding: 0;
+  }
 }
 
 .wb-main {
@@ -1582,105 +1675,6 @@ kbd {
   background: color-mix(in srgb, var(--danger) 88%, #000);
 }
 
-/* ---------- Editor top bar ---------- */
-.app-brand {
-  gap: 8px;
-}
-
-.app-home {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 10px 0 4px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out);
-}
-
-.app-home:hover {
-  background: var(--hover);
-}
-
-.app-home:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.app-home-chevron {
-  width: 16px;
-  height: 16px;
-  color: var(--text-3);
-}
-
-.app-home .app-brand-name {
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-.app-title-sep {
-  flex: none;
-  color: var(--line-strong);
-}
-
-.app-doc-title {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-2);
-  font: 500 13.5px/1 var(--ui-font);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-save-state {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 5px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  color: var(--text-3);
-  font: 500 12px/1 var(--ui-font);
-  white-space: nowrap;
-}
-
-.app-save-state svg {
-  width: 13px;
-  height: 13px;
-}
-
-.app-save-state.is-unsaved {
-  background: var(--surface-3);
-  color: var(--text-2);
-}
-
-.app-save-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.workspace-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.tab-mark {
-  width: 15px;
-  height: 15px;
-}
-
-.workspace-tab:not([aria-selected='true']) .tab-mark {
-  color: var(--text-3);
-}
-
 /* ---------- Asset library ---------- */
 .search-field {
   display: flex;
@@ -2084,6 +2078,15 @@ kbd {
   }
 }
 
+/* The pick list shared by the editor drawers. */
+.asset-panel {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .asset-drawer-head {
   display: flex;
   align-items: flex-start;
@@ -2244,82 +2247,7 @@ kbd {
   color: var(--accent);
 }
 
-/* Header toggle for the drawer */
-.app-assets {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  margin-right: 4px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--control-radius);
-  background: transparent;
-  color: var(--text-2);
-  font: 500 13px/1 var(--ui-font);
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
-}
-
-.app-assets:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.app-assets[aria-pressed='true'] {
-  background: var(--accent-weak);
-  color: var(--accent-text);
-}
-
-.app-assets svg {
-  width: 16px;
-  height: 16px;
-}
-
-.app-assets:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
 @media (max-width: 860px) {
-  .app-assets {
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    margin: 0;
-    padding: 0;
-    border-radius: 10px;
-    isolation: isolate;
-  }
-
-  .app-assets,
-  .app-assets:hover,
-  .app-assets[aria-pressed='true'] {
-    background: transparent;
-  }
-
-  .app-assets::before {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    inset: 8px;
-    border-radius: 8px;
-    transition: background-color var(--dur-fast) var(--ease-out);
-  }
-
-  .app-assets:hover::before {
-    background: var(--hover);
-  }
-
-  .app-assets[aria-pressed='true']::before {
-    background: var(--accent-weak);
-  }
-
-  .app-assets-label {
-    display: none;
-  }
-
   .modal.asset-preview {
     grid-template-columns: minmax(0, 1fr);
     overflow: auto;
@@ -2331,10 +2259,6 @@ kbd {
 }
 
 @media (max-width: 520px) {
-  .app-assets {
-    display: none;
-  }
-
   .asset-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px 12px;
@@ -2351,15 +2275,10 @@ kbd {
   }
 }
 
-
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .systems {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .app-doc-title {
-    max-width: 180px;
   }
 }
 
@@ -2423,14 +2342,12 @@ kbd {
     display: inline-grid;
   }
 
-  .wb-top {
-    padding: 0 12px;
+  .wb-collapse {
+    display: none;
   }
 
-  .app-title-sep,
-  .app-doc-title,
-  .app-save-state {
-    display: none;
+  .wb-top {
+    padding: 0 12px;
   }
 }
 
@@ -2447,8 +2364,63 @@ kbd {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px 12px;
   }
+}
 
-  .app-home .app-brand-name {
-    display: none;
+/* ---------- Workbench top bar ---------- */
+.wb-top .lang-menu {
+  margin-right: 2px;
+}
+
+/* ---------- Projects: rename, import ---------- */
+.project-title .project-rename {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 13px;
+}
+
+.page-projects {
+  position: relative;
+}
+
+/* ---------- Templates: community note ---------- */
+.tpl-contribute {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 40px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.tpl-contribute b {
+  font: 600 14px/1.4 var(--ui-font);
+}
+
+.tpl-contribute p {
+  max-width: 640px;
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tpl-contribute-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 34px;
+  padding: 0 14px;
+  text-decoration: none;
+}
+
+@media (max-width: 720px) {
+  .tpl-contribute {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

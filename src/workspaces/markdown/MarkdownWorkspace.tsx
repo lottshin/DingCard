@@ -1,8 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorView } from '@codemirror/view'
 import { toPng } from 'html-to-image'
+import { AssetDrawer } from '../../app/AssetDrawer'
+import { navigate, routes } from '../../app/router'
 import { buildFontEmbedCSS } from '../../fontEmbed'
-import { isLatestSaveForDraft } from '../../freeform/history'
 import { collectMarkdownImageSources, parseBlocks, setImageWidth } from '../../markdown'
 import { paginate, type Page } from '../../paginate'
 import {
@@ -17,19 +18,22 @@ import {
 import type { CardConfig, Profile } from '../../theme'
 import { Card } from '../../Card'
 import { ProfileModal } from '../../ProfileModal'
-import { DraftsPanel } from '../../DraftsPanel'
 import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
-import { importDraftFromJson, type Draft } from '../../drafts'
+import { deriveMarkdownTitle, type Draft, type MarkdownCardDocument } from '../../drafts'
 import { readLastSession, updateLastSession } from '../../lastSession'
 import { store } from '../../storage'
 import type { Asset } from '../../assets'
 import { assetDocumentSource, markdownImageAlt } from '../assetSource'
+import { EditorTopBar, type SaveState } from '../EditorTopBar'
 import { OperationNotice } from '../OperationNotice'
 import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../types'
 import { useImageLease } from '../useImageLease'
+import { useProjectAutosave } from '../useProjectAutosave'
 import {
+  AssetsIcon,
+  BadgeIcon,
   BoldIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -40,18 +44,11 @@ import {
   PageBreakIcon,
   PlusIcon,
   QuoteIcon,
+  TemplatesIcon,
 } from '../../ui/icons'
 import { TemplateGallery } from '../../templates/TemplateGallery'
-import { SaveTemplateDialog } from '../../templates/SaveTemplateDialog'
 import type { TemplateDefinition } from '../../templates/types'
-import {
-  deleteUserTemplate,
-  inlineImageRefs,
-  listUserTemplates,
-  saveUserTemplate,
-  userTemplateToDefinition,
-  type UserTemplate,
-} from '../../templates/userTemplates'
+import { t } from '../../i18n'
 
 // CodeMirror weighs in at roughly half the entry chunk; it is only needed
 // once the Markdown editor pane is actually shown, so load it on demand.
@@ -107,10 +104,10 @@ interface WorkspaceNotice {
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback
+  return error instanceof Error && error.message.trim() ? t(error.message) : fallback
 }
 
-export function MarkdownWorkspace({ isActive, user, requestAuth, request = null, onMetaChange }: WorkspaceShellProps) {
+export function MarkdownWorkspace({ isActive, user, requestAuth, chrome, request = null, onMetaChange }: WorkspaceShellProps) {
   const [source, setSource] = useState(SAMPLE)
   const [platformId, setPlatformId] = useState(PLATFORMS[0].id)
   const [themeId, setThemeId] = useState(THEMES[0].id)
@@ -123,15 +120,12 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
   const [editorMounted, setEditorMounted] = useState(isActive)
 
   const [showProfile, setShowProfile] = useState(false)
-  const [showDrafts, setShowDrafts] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
-  const [userTemplates, setUserTemplates] = useState<readonly UserTemplate[]>([])
+  const [assetsOpen, setAssetsOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [active, setActive] = useState(0)
   const [ctx, setCtx] = useState<Ctx | null>(null)
 
-  const [drafts, setDrafts] = useState<Draft[]>([])
   // 刷新恢复：每账号只尝试一次；openDraftRef 让恢复 effect 不必依赖 openDraft 的函数身份。
   const restoreAttemptedUserIdRef = useRef<string | null>(null)
   // Bumped whenever the document is replaced, so a slow session restore can't overwrite it.
@@ -140,17 +134,17 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
   const openDraftRef = useRef<(draft: Draft) => void>(() => {})
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
-  const [saving, setSaving] = useState(false)
+  /** A name the user gave the project; otherwise the title follows the first line. */
+  const [customTitle, setCustomTitle] = useState<string | null>(null)
   const [operationNotice, setOperationNotice] = useState<WorkspaceNotice | null>(null)
 
   const cardRef = useRef<HTMLDivElement>(null)
   const previousUserId = useRef<string | null>(user?.id ?? null)
+  // The project a signed-out account left unsaved text in (see the account effect).
+  const parkedProjectRef = useRef<{ userId: string; draftId: string | null } | null>(null)
   const activeUserIdRef = useRef<string | null>(user?.id ?? null)
   const currentDraftIdRef = useRef<string | null>(draftId)
   const draftRevisionRef = useRef(0)
-  const draftListGeneration = useRef(0)
-  const saveGenerationRef = useRef(0)
-  const saveInFlightRef = useRef(false)
   activeUserIdRef.current = user?.id ?? null
   currentDraftIdRef.current = draftId
 
@@ -187,13 +181,13 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
   )
   const handleLeaseError = useCallback(
     (error: unknown) => {
-      showOperationError('图片资源续租失败', error, '暂时无法保护已上传图片，请稍后重试')
+      showOperationError(t('图片资源续租失败'), error, t('暂时无法保护已上传图片，请稍后重试'))
     },
     [showOperationError],
   )
   const handleImageError = useCallback(
     (error: unknown) => {
-      showOperationError('Markdown 图片上传失败', error, '图片处理失败，请稍后重试')
+      showOperationError(t('Markdown 图片上传失败'), error, t('图片处理失败，请稍后重试'))
     },
     [showOperationError],
   )
@@ -263,64 +257,65 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
     }
   }, [markDraftDirty])
 
-  const loadDrafts = useCallback(
-    async (uid: string) => {
-      const generation = ++draftListGeneration.current
-      try {
-        const list = await store.drafts.list(uid)
-        if (generation !== draftListGeneration.current || activeUserIdRef.current !== uid) return
-        setDrafts(list)
-      } catch (error) {
-        if (generation !== draftListGeneration.current || activeUserIdRef.current !== uid) return
-        showOperationError('草稿列表加载失败', error, '暂时无法加载草稿，请稍后重试')
-      }
-    },
-    [showOperationError],
-  )
-
-  const refreshDrafts = useCallback(() => {
+  // Autosave: every edit by a signed-in user lands in their project a moment later.
+  const autosave = useProjectAutosave<number>((saved, _content, revision) => {
+    updateDraftId(saved.id)
     const uid = activeUserIdRef.current
-    if (!uid) {
-      draftListGeneration.current += 1
-      setDrafts([])
-      return
+    if (uid) updateLastSession(uid, { mode: 'markdown-card', markdownDraftId: saved.id })
+    if (draftRevisionRef.current === revision) {
+      setDirty(false)
+      setSavedAt(saved.updatedAt)
     }
-    void loadDrafts(uid)
-  }, [loadDrafts])
+  })
+  const { schedule: scheduleSave, release: releaseSave, discard: discardSave } = autosave
 
+  // Leaving the editor (for the workbench, say): don't wait out the pause.
+  const flushSave = autosave.flush
+  useEffect(() => {
+    if (!isActive) void flushSave()
+  }, [flushSave, isActive])
+
+  // A different account: the open project belongs to the old one. A guest who
+  // signs in keeps the document, and autosave files its edits under the new account.
   useEffect(() => {
     const nextUserId = user?.id ?? null
-    const userChanged = previousUserId.current !== nextUserId
-    if (userChanged) {
-      previousUserId.current = nextUserId
-      draftListGeneration.current += 1
-      saveGenerationRef.current += 1
-      draftRevisionRef.current += 1
-      setDrafts([])
-      updateDraftId(null)
-      setSavedAt(null)
-      setShowDrafts(false)
+    const previous = previousUserId.current
+    if (previous === nextUserId) return
+    previousUserId.current = nextUserId
+    releaseSave()
+    // Unsaved text kept on screen after a session ended goes back into the same
+    // project when that account signs in again, instead of a copy.
+    if (previous !== null && nextUserId === null && dirty) {
+      parkedProjectRef.current = { userId: previous, draftId: currentDraftIdRef.current }
     }
+    const parked = parkedProjectRef.current
+    const resumed = parked !== null && parked.userId === nextUserId
+    if (nextUserId !== null) parkedProjectRef.current = null
+    updateDraftId(resumed ? parked.draftId : null)
+    setSavedAt(null)
+    // Signing back in reopens the last project.
+    if (nextUserId === null) restoreAttemptedUserIdRef.current = null
+    if (previous !== null && !dirty) resetDocument(NEW_DOCUMENT_SOURCE, null)
+  }, [user])
 
-    if (user) {
-      void loadDrafts(user.id)
-      setUserTemplates(listUserTemplates(user.id))
-    } else {
-      draftListGeneration.current += 1
-      setDrafts([])
-      setUserTemplates([])
-    }
-
-    return () => {
-      draftListGeneration.current += 1
-    }
-  }, [loadDrafts, updateDraftId, user])
+  // Declared after the account effect above, so a guest's edits are scheduled
+  // under the new account only once the old account's saver is gone.
+  useEffect(() => {
+    if (!user || !dirty) return
+    scheduleSave(user.id, currentDraftIdRef.current, {
+      mode: 'markdown-card',
+      ...(customTitle ? { title: customTitle } : {}),
+      document: { source, platformId, themeId, fontFamily, profile, radius },
+    }, draftRevisionRef.current)
+  }, [customTitle, dirty, fontFamily, platformId, profile, radius, scheduleSave, source, themeId, user])
 
   // 刷新恢复：账号确认后自动回到本工作台最近打开的草稿（每个账号只尝试
   // 一次；草稿已被删除或读取失败则保持新文档，不提示）。
   useEffect(() => {
     if (!user || restoreAttemptedUserIdRef.current === user.id) return
     restoreAttemptedUserIdRef.current = user.id
+    // Text already written (a guest who just signed in) stays; autosave files it.
+    if (dirty) return
     const draftId = readLastSession(user.id).markdownDraftId
     if (!draftId) return
     const uid = user.id
@@ -546,254 +541,75 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
     window.addEventListener('pointerup', onUp)
   }
 
-  // ---- Drafts -----------------------------------------------------------
-  async function handleSaveDraft() {
-    if (!user) {
-      requestAuth()
-      return
+  // ---- Projects ---------------------------------------------------------
+  /** Swap in another document. Edits still queued for the old one keep saving to it. */
+  function loadDocument(
+    document: MarkdownCardDocument | null,
+    project: { id: string; title: string; updatedAt: number } | null,
+  ) {
+    releaseSave()
+    draftRevisionRef.current += 1
+    restoreGenerationRef.current += 1
+    if (document) {
+      // Re-register the draft's embedded images so `img:` refs resolve again.
+      if (document.images) for (const [ref, url] of Object.entries(document.images)) store.images.register(ref, url)
+      setSource(document.source)
+      setPlatformId(document.platformId)
+      setThemeId(resolveTheme(document.themeId).id)
+      setFontFamily(document.fontFamily)
+      setProfile(document.profile)
+      setRadius(document.radius)
     }
-    if (saveInFlightRef.current) return
-    saveInFlightRef.current = true
-    setSaving(true)
-    const uid = user.id
-    const startedDraftId = currentDraftIdRef.current
-    const revisionSnapshot = draftRevisionRef.current
-    const saveGeneration = ++saveGenerationRef.current
-    try {
-      const saved = await store.drafts.save(uid, {
-        id: startedDraftId ?? undefined,
-        mode: 'markdown-card',
-        document: {
-          source,
-          platformId,
-          themeId,
-          fontFamily,
-          profile,
-          radius,
-        },
-      })
-      const saveIsCurrent = (
-        activeUserIdRef.current === uid &&
-        isLatestSaveForDraft(
-          saveGeneration,
-          saveGenerationRef.current,
-          startedDraftId,
-          currentDraftIdRef.current,
-        )
-      )
-      if (!saveIsCurrent) {
-        if (activeUserIdRef.current === uid) refreshDrafts()
-        return
-      }
-      updateDraftId(saved.id)
-      updateLastSession(uid, { markdownDraftId: saved.id })
-      setSavedAt(draftRevisionRef.current === revisionSnapshot ? saved.updatedAt : null)
-      if (draftRevisionRef.current === revisionSnapshot) setDirty(false)
-      setDrafts((current) => [saved, ...current.filter((draft) => draft.id !== saved.id)])
-      refreshDrafts()
-    } catch (error) {
-      if (
-        activeUserIdRef.current !== uid ||
-        !isLatestSaveForDraft(
-          saveGeneration,
-          saveGenerationRef.current,
-          startedDraftId,
-          currentDraftIdRef.current,
-        )
-      ) return
-      showOperationError('草稿保存失败', error, '暂时无法保存草稿，请稍后重试')
-    } finally {
-      saveInFlightRef.current = false
-      setSaving(false)
-    }
+    updateDraftId(project?.id ?? null)
+    setSavedAt(project?.updatedAt ?? null)
+    setCustomTitle(project && document && project.title !== deriveMarkdownTitle(document.source) ? project.title : null)
+    setDirty(false)
+    setActive(0)
+    setShowTemplates(false)
+  }
+
+  /** A fresh, unsaved document: nothing is stored until the first edit. */
+  function resetDocument(nextSource: string, nextPlatformId: string | null) {
+    loadDocument(null, null)
+    setSource(nextSource)
+    if (nextPlatformId && PLATFORMS.some((candidate) => candidate.id === nextPlatformId)) setPlatformId(nextPlatformId)
   }
 
   function openDraft(d: Draft) {
     if (d.mode !== 'markdown-card') return
-    saveGenerationRef.current += 1
-    draftRevisionRef.current += 1
-    const document = d.document
-    // Re-register the draft's embedded images so `img:` refs resolve again.
-    if (document.images) for (const [ref, url] of Object.entries(document.images)) store.images.register(ref, url)
-    setSource(document.source)
-    setPlatformId(document.platformId)
-    setThemeId(resolveTheme(document.themeId).id)
-    setFontFamily(document.fontFamily)
-    setProfile(document.profile)
-    setRadius(document.radius)
-    updateDraftId(d.id)
-    setSavedAt(d.updatedAt)
-    setDirty(false)
-    setActive(0)
-    setShowDrafts(false)
-    if (user) updateLastSession(user.id, { markdownDraftId: d.id })
+    loadDocument(d.document, d)
+    if (user) updateLastSession(user.id, { mode: 'markdown-card', markdownDraftId: d.id })
   }
   openDraftRef.current = openDraft
 
-  /** Import a picked/dropped .json file as a draft; markdown drafts open right away. */
-  async function importDraftFile(file: File) {
-    if (!user) {
-      requestAuth()
-      return
-    }
-    const uid = user.id
-    let text: string
-    try {
-      text = await file.text()
-    } catch {
-      showOperationError('草稿导入失败', new Error('文件读取失败'), '文件读取失败，请重试')
-      return
-    }
-    const outcome = importDraftFromJson(text)
-    if (!outcome.ok) {
-      showOperationError('草稿导入失败', new Error(outcome.error), '文件无法识别为叮卡文档')
-      return
-    }
-    try {
-      const saved = await store.drafts.save(uid, outcome.data)
-      if (activeUserIdRef.current !== uid) return
-      setDrafts((current) => [saved, ...current.filter((draft) => draft.id !== saved.id)])
-      refreshDrafts()
-      if (saved.mode === 'markdown-card') {
-        openDraft(saved)
-      } else {
-        setOperationNotice({
-          title: '已导入自由画布文档',
-          detail: '请在自由画布工作台的「我的草稿」打开',
-        })
-      }
-    } catch (error) {
-      if (activeUserIdRef.current !== uid) return
-      showOperationError('草稿导入失败', error, '暂时无法导入草稿，请稍后重试')
-    }
-  }
-
-  async function removeDraft(id: string) {
-    if (!user) return
-    const uid = user.id
-    try {
-      if (store.remote) await retainNow()
-      await store.drafts.remove(uid, id)
-      if (activeUserIdRef.current !== uid) return
-      setDrafts((current) => current.filter((draft) => draft.id !== id))
-      if (id === currentDraftIdRef.current) {
-        saveGenerationRef.current += 1
-        updateDraftId(null)
-        setSavedAt(null)
-      }
-      if (readLastSession(uid).markdownDraftId === id) {
-        updateLastSession(uid, { markdownDraftId: null })
-      }
-      refreshDrafts()
-    } catch (error) {
-      if (activeUserIdRef.current !== uid) return
-      showOperationError('草稿删除失败', error, '暂时无法删除草稿，请稍后重试')
-    }
-  }
-
-  const userTemplateDefinitions = useMemo(
-    () => userTemplates.map(userTemplateToDefinition),
-    [userTemplates],
-  )
-
-  const saveTemplateDefaultName = source
-    .split('\n')
-    .map((line) => line.replace(/^#+\s*/, '').trim())
-    .find((line) => line.length > 0) ?? ''
-
-  function handleOpenSaveTemplate() {
-    if (!user) {
-      requestAuth()
-      return
-    }
-    setShowSaveTemplate(true)
-  }
-
-  function saveAsTemplate(name: string) {
-    if (!user) return
-    const uid = user.id
-    try {
-      const resolvedSource = inlineImageRefs(source, store.images.collect(source))
-      const saved = saveUserTemplate(uid, {
-        name,
-        pageCount: pages.length,
-        draft: {
-          mode: 'markdown-card',
-          document: {
-            source: resolvedSource,
-            platformId,
-            themeId,
-            fontFamily,
-            profile,
-            radius,
-          },
-        },
-      })
-      if (activeUserIdRef.current === uid) {
-        setUserTemplates(listUserTemplates(uid))
-      }
-      setShowSaveTemplate(false)
-      setOperationNotice({
-        title: '已存为模板',
-        detail: `「${saved.name}」已出现在模板中心，可随时新建同款`,
-      })
-    } catch (error) {
-      showOperationError('模板保存失败', error, '暂时无法保存模板，请稍后重试')
-    }
-  }
-
-  function removeUserTemplate(id: string) {
-    if (!user) return
-    const uid = user.id
-    try {
-      deleteUserTemplate(uid, id)
-      if (activeUserIdRef.current === uid) {
-        setUserTemplates(listUserTemplates(uid))
-      }
-    } catch (error) {
-      showOperationError('模板删除失败', error, '暂时无法删除模板，请稍后重试')
-    }
+  function renameProject(title: string) {
+    setCustomTitle(title)
+    markDraftDirty()
   }
 
   function applyMarkdownTemplate(template: TemplateDefinition) {
     if (template.workspace !== 'markdown') return
     const document = template.createMarkdown?.()
     if (!document) return
-    saveGenerationRef.current += 1
-    draftRevisionRef.current += 1
-    restoreGenerationRef.current += 1
-    updateDraftId(null)
-    setSavedAt(null)
-    setDirty(false)
-    setSource(document.source)
-    setPlatformId(document.platformId)
-    setThemeId(resolveTheme(document.themeId).id)
-    setFontFamily(document.fontFamily)
-    setProfile(document.profile)
-    setRadius(document.radius)
-    setActive(0)
-    setShowDrafts(false)
-    setShowTemplates(false)
+    loadDocument(document, null)
   }
 
-  function startNewDocument(nextPlatformId: string | null) {
-    saveGenerationRef.current += 1
-    draftRevisionRef.current += 1
-    restoreGenerationRef.current += 1
-    updateDraftId(null)
-    setSavedAt(null)
-    setDirty(false)
-    setSource(NEW_DOCUMENT_SOURCE)
-    if (nextPlatformId && PLATFORMS.some((candidate) => candidate.id === nextPlatformId)) setPlatformId(nextPlatformId)
-    setActive(0)
-    setShowDrafts(false)
-    setShowTemplates(false)
-  }
-
-  const documentTitle = saveTemplateDefaultName || '未命名'
+  const derivedTitle = deriveMarkdownTitle(source)
+  const documentTitle = customTitle ?? (derivedTitle === '未命名草稿' ? t('未命名') : derivedTitle)
+  const unsaved = dirty && (!user || autosave.status === 'error')
   useEffect(() => {
-    onMetaChange?.({ title: documentTitle, draftId, dirty })
-  }, [documentTitle, draftId, dirty, onMetaChange])
+    onMetaChange?.({ title: documentTitle, draftId, unsaved })
+  }, [documentTitle, draftId, unsaved, onMetaChange])
+
+  const saveState: SaveState = !user
+    ? chrome.authStatus === 'checking' ? { kind: 'none' } : { kind: 'guest' }
+    : autosave.status === 'error'
+      ? { kind: 'error', message: autosave.error ?? '' }
+      : dirty || autosave.status === 'saving'
+        ? { kind: 'saving' }
+        : draftId
+          ? { kind: 'saved', at: savedAt ?? Date.now() }
+          : { kind: 'none' }
 
   async function insertAsset(asset: Asset) {
     // The user is editing this document now; a late last-session restore must not replace it.
@@ -816,64 +632,85 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
         markDraftDirty()
       }
     } catch (error) {
-      showOperationError('图片插入失败', error, '暂时无法插入这张图片，请稍后重试')
+      showOperationError(t('图片插入失败'), error, t('暂时无法插入这张图片，请稍后重试'))
     }
   }
 
-  // One-shot instructions from the workbench (open / new / template / removed)
-  // and the asset drawer (insert-asset).
+  // One-shot instructions from the workbench (open / new / template / removed / renamed).
   useEffect(() => {
     if (!request || handledRequestRef.current === request.nonce) return
-    if (request.kind === 'insert-asset') {
-      handledRequestRef.current = request.nonce
-      void insertAsset(request.asset)
-      return
-    }
     if (request.kind === 'open' && !user) return
     handledRequestRef.current = request.nonce
+    if (request.kind === 'removed' || request.kind === 'renamed') {
+      if (currentDraftIdRef.current !== request.draftId) return
+      if (request.kind === 'renamed') {
+        setCustomTitle(request.title)
+        return
+      }
+      // The project is gone: drop what was queued for it and start over.
+      discardSave()
+      resetDocument(NEW_DOCUMENT_SOURCE, null)
+      return
+    }
     restoreGenerationRef.current += 1
     if (user) restoreAttemptedUserIdRef.current = user.id
     if (request.kind === 'new') {
-      startNewDocument(request.platformId)
+      resetDocument(NEW_DOCUMENT_SOURCE, request.platformId)
     } else if (request.kind === 'template') {
       applyMarkdownTemplate(request.template)
-    } else if (request.kind === 'removed') {
-      setDrafts((current) => current.filter((draft) => draft.id !== request.draftId))
-      if (currentDraftIdRef.current === request.draftId) {
-        saveGenerationRef.current += 1
-        updateDraftId(null)
-        setSavedAt(null)
-        setDirty(true)
-      }
     } else if (user && currentDraftIdRef.current !== request.draftId) {
       const uid = user.id
       const id = request.draftId
-      const known = drafts.find((draft) => draft.id === id)
-      if (known) {
-        openDraft(known)
-      } else {
-        void store.drafts.list(uid).then(
-          (list) => {
-            if (activeUserIdRef.current !== uid) return
-            const target = list.find((draft) => draft.id === id && draft.mode === 'markdown-card')
-            if (target) openDraft(target)
-            else setOperationNotice({ title: '没有找到这个项目', detail: '它可能已经被删除了', tone: 'error' })
-          },
-          (error: unknown) => showOperationError('项目打开失败', error, '暂时无法读取项目，请稍后重试'),
-        )
-      }
+      const generation = restoreGenerationRef.current
+      void store.drafts.list(uid).then(
+        (list) => {
+          if (activeUserIdRef.current !== uid || restoreGenerationRef.current !== generation) return
+          const target = list.find((draft) => draft.id === id && draft.mode === 'markdown-card')
+          if (target) openDraft(target)
+          else setOperationNotice({ title: t('没有找到这个项目'), detail: t('它可能已经被删除了'), tone: 'error' })
+        },
+        (error: unknown) => showOperationError(t('项目打开失败'), error, t('暂时无法读取项目，请稍后重试')),
+      )
     }
   }, [request, user])
 
   return (
     <div className="app">
-      <WorkspaceToolbar testId="markdown-toolbar" label="Markdown 卡片工具栏">
+      {isActive && (
+        <EditorTopBar
+          chrome={chrome}
+          user={user}
+          requestAuth={requestAuth}
+          system="markdown-card"
+          title={documentTitle}
+          onRename={renameProject}
+          save={saveState}
+          onRetrySave={() => void autosave.flush()}
+          primary={(
+            <button
+              className="toolbar-primary editor-primary"
+              type="button"
+              aria-label={exporting ? t('导出中…') : t('打包下载 {n} 页', { n: pages.length })}
+              onClick={exportAllZip}
+              disabled={exporting}
+            >
+              <DownloadIcon />
+              <span className="editor-primary-label">
+                {exporting ? t('导出中…') : t('打包下载 {n} 页', { n: pages.length })}
+              </span>
+            </button>
+          )}
+        />
+      )}
+
+      <WorkspaceToolbar testId="markdown-toolbar" label={t('Markdown 卡片工具栏')} className="markdown-toolbar">
         <ToolbarGroup>
           <button className='bar-btn' data-testid='markdown-template-button' onClick={() => setShowTemplates(true)}>
-            模板
+            <TemplatesIcon />
+            {t('模板')}
           </button>
           <ToolbarDivider />
-          <div className="seg" role="tablist" aria-label="平台">
+          <div className="seg" role="tablist" aria-label={t('平台')}>
             {PLATFORMS.map((p) => (
               <button
                 key={p.id}
@@ -884,7 +721,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
                   markDraftDirty()
                 }}
               >
-                {p.label}
+                {t(p.label)}
               </button>
             ))}
           </div>
@@ -896,11 +733,11 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               setThemeId(nextThemeId)
               markDraftDirty()
             }}
-            title="主题"
-            options={themesForPicker(themeId).map((t) => ({
-              id: t.id,
-              label: t.label,
-              swatch: { bg: t.background, accent: t.accent },
+            title={t('主题')}
+            options={themesForPicker(themeId).map((theme) => ({
+              id: theme.id,
+              label: t(theme.label),
+              swatch: { bg: theme.background, accent: theme.accent },
             }))}
           />
 
@@ -911,43 +748,29 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               setFontFamily(nextFontFamily)
               markDraftDirty()
             }}
-            title="字体"
+            title={t('字体')}
             previewFonts
-            options={FONTS.map((f) => ({ id: f.id, label: f.label }))}
+            options={FONTS.map((f) => ({ id: f.id, label: t(f.label) }))}
           />
 
           <ToolbarDivider />
-          <button className="bar-btn" onClick={() => setShowProfile(true)}>
-            个人资料
+          <button className="bar-btn" onClick={() => setShowProfile(true)} title={t('卡片署名：头像、昵称、账号')}>
+            <BadgeIcon />
+            {t('个人资料')}
           </button>
         </ToolbarGroup>
 
         <ToolbarGroup side="right">
-          <button className="bar-btn" onClick={handleSaveDraft} disabled={saving}>
-            {saving ? '保存中…' : '保存草稿'}
-          </button>
           <button
             className="bar-btn"
-            data-testid="markdown-save-template-button"
-            onClick={handleOpenSaveTemplate}
+            type="button"
+            data-testid="editor-assets"
+            aria-pressed={assetsOpen}
+            title={t('素材库：插入常用图片')}
+            onClick={() => setAssetsOpen((open) => !open)}
           >
-            存为模板
-          </button>
-          <button
-            className="bar-btn"
-            onClick={() => {
-              if (!user) {
-                requestAuth()
-                return
-              }
-              setShowDrafts(true)
-            }}
-          >
-            我的草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
-          </button>
-
-          <button className="toolbar-primary" onClick={exportAllZip} disabled={exporting}>
-            {exporting ? '导出中…' : `打包下载 ${pages.length} 页`}
+            <AssetsIcon />
+            {t('素材库')}
           </button>
         </ToolbarGroup>
       </WorkspaceToolbar>
@@ -965,22 +788,22 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
       <div className="body">
         <section className="pane pane-editor">
           <div className="pane-head">
-            <div className="md-format" role="toolbar" aria-label="Markdown 格式">
+            <div className="md-format" role="toolbar" aria-label={t('Markdown 格式')}>
               <button
                 type="button"
                 className="md-format-btn"
-                aria-label="一级标题"
-                title="一级标题"
-                onClick={() => handleInsertSnippet('# ', '\n', '大标题')}
+                aria-label={t('一级标题')}
+                title={t('一级标题')}
+                onClick={() => handleInsertSnippet('# ', '\n', t('大标题'))}
               >
                 H1
               </button>
               <button
                 type="button"
                 className="md-format-btn"
-                aria-label="二级标题"
-                title="二级标题"
-                onClick={() => handleInsertSnippet('## ', '\n', '小标题')}
+                aria-label={t('二级标题')}
+                title={t('二级标题')}
+                onClick={() => handleInsertSnippet('## ', '\n', t('小标题'))}
               >
                 H2
               </button>
@@ -988,18 +811,18 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               <button
                 type="button"
                 className="md-format-btn"
-                aria-label="加粗"
-                title="加粗"
-                onClick={() => handleInsertSnippet('**', '**', '重点文字')}
+                aria-label={t('加粗')}
+                title={t('加粗')}
+                onClick={() => handleInsertSnippet('**', '**', t('重点文字'))}
               >
                 <BoldIcon />
               </button>
               <button
                 type="button"
                 className="md-format-btn"
-                aria-label="斜体"
-                title="斜体"
-                onClick={() => handleInsertSnippet('*', '*', '斜体文字')}
+                aria-label={t('斜体')}
+                title={t('斜体')}
+                onClick={() => handleInsertSnippet('*', '*', t('斜体文字'))}
               >
                 <ItalicIcon />
               </button>
@@ -1007,18 +830,18 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               <button
                 type="button"
                 className="md-format-btn"
-                aria-label="引用"
-                title="引用"
-                onClick={() => handleInsertSnippet('> ', '\n', '引用金句或核心观点')}
+                aria-label={t('引用')}
+                title={t('引用')}
+                onClick={() => handleInsertSnippet('> ', '\n', t('引用金句或核心观点'))}
               >
                 <QuoteIcon />
               </button>
               <button
                 type="button"
                 className="md-format-btn"
-                aria-label="列表"
-                title="列表"
-                onClick={() => handleInsertSnippet('- ', '\n', '列表要点')}
+                aria-label={t('列表')}
+                title={t('列表')}
+                onClick={() => handleInsertSnippet('- ', '\n', t('列表要点'))}
               >
                 <ListIcon />
               </button>
@@ -1026,15 +849,15 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               <button
                 type="button"
                 className="md-format-btn md-format-btn--label"
-                title="插入分页（---）"
+                title={t('插入分页（---）')}
                 onClick={handleInsertPageBreak}
               >
                 <PageBreakIcon />
-                分页
+                {t('分页')}
               </button>
             </div>
             <span className="pane-sub">
-              {source.length} 字 · {pages.length} 页{savedAt ? ' · 已保存' : ''}
+              {t('{chars} 字 · {pages} 页', { chars: source.length, pages: pages.length })}
             </span>
           </div>
 
@@ -1059,17 +882,17 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
         <section className="pane pane-preview" style={cssVars}>
           <div className="pane-head">
             <div className="md-preview-meta">
-              <span className="md-preview-title">预览</span>
+              <span className="md-preview-title">{t('预览')}</span>
               <span className="md-preview-spec">
-                {platform.label} · {config.width * EXPORT_PIXEL_RATIO} × {config.height * EXPORT_PIXEL_RATIO}
+                {t(platform.label)} · {config.width * EXPORT_PIXEL_RATIO} × {config.height * EXPORT_PIXEL_RATIO}
               </span>
             </div>
-            <div className="zoom-controls" aria-label="预览缩放">
+            <div className="zoom-controls" aria-label={t('预览缩放')}>
               <button
                 type="button"
                 className="zoom-btn"
-                aria-label="缩小预览"
-                title="缩小预览"
+                aria-label={t('缩小预览')}
+                title={t('缩小预览')}
                 onClick={() => setPreviewScale((s) => Math.max(0.75, Number((s - 0.1).toFixed(2))))}
                 disabled={previewScale <= 0.75}
               >
@@ -1078,7 +901,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               <button
                 type="button"
                 className="zoom-value"
-                title="恢复 100%"
+                title={t('恢复 100%')}
                 onClick={() => setPreviewScale(1)}
               >
                 {Math.round(previewScale * 100)}%
@@ -1086,8 +909,8 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               <button
                 type="button"
                 className="zoom-btn"
-                aria-label="放大预览"
-                title="放大预览"
+                aria-label={t('放大预览')}
+                title={t('放大预览')}
                 onClick={() => setPreviewScale((s) => Math.min(1.75, Number((s + 0.1).toFixed(2))))}
                 disabled={previewScale >= 1.75}
               >
@@ -1132,21 +955,21 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               <button
                 type="button"
                 className="md-dock-btn"
-                aria-label="上一页"
-                title="上一页"
+                aria-label={t('上一页')}
+                title={t('上一页')}
                 onClick={() => setActive((i) => Math.max(0, i - 1))}
                 disabled={active === 0}
               >
                 <ChevronLeftIcon />
               </button>
-              <div className="pager" role="group" aria-label="页码">
+              <div className="pager" role="group" aria-label={t('页码')}>
                 {pages.map((_, i) => (
                   <button
                     key={i}
                     type="button"
                     className={i === active ? 'page-dot active' : 'page-dot'}
                     aria-current={i === active ? 'page' : undefined}
-                    title={`第 ${i + 1} 页`}
+                    title={t('第 {n} 页', { n: i + 1 })}
                     onClick={() => setActive(i)}
                   >
                     {i + 1}
@@ -1156,8 +979,8 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               <button
                 type="button"
                 className="md-dock-btn"
-                aria-label="下一页"
-                title="下一页"
+                aria-label={t('下一页')}
+                title={t('下一页')}
                 onClick={() => setActive((i) => Math.min(pages.length - 1, i + 1))}
                 disabled={active >= pages.length - 1}
               >
@@ -1167,15 +990,15 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               <button
                 type="button"
                 className="md-dock-action"
-                title="导出当前页为 PNG"
+                title={t('导出当前页为 PNG')}
                 onClick={() => exportOne(active)}
                 disabled={exporting}
               >
                 <DownloadIcon />
-                导出本页
+                {t('导出本页')}
               </button>
             </div>
-            <div className="pager-hint">右键卡片导出单页 · 拖动卡片四角调整圆角 · 拖动图片右下角调整宽度</div>
+            <div className="pager-hint">{t('右键卡片导出单页 · 拖动卡片四角调整圆角 · 拖动图片右下角调整宽度')}</div>
           </div>
         </section>
       </div>
@@ -1195,7 +1018,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               exportOne(i)
             }}
           >
-            导出第 {ctx.index + 1} 页 PNG
+            {t('导出第 {n} 页 PNG', { n: ctx.index + 1 })}
           </button>
           <button
             className="ctx-item"
@@ -1204,7 +1027,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
               exportAllZip()
             }}
           >
-            打包下载全部 {pages.length} 页
+            {t('打包下载全部 {n} 页', { n: pages.length })}
           </button>
         </div>
       )}
@@ -1222,14 +1045,14 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
         />
       )}
 
-      {showDrafts && (
-        <DraftsPanel
-          drafts={drafts}
-          activeId={draftId}
-          onOpen={openDraft}
-          onDelete={removeDraft}
-          onClose={() => setShowDrafts(false)}
-          onImportFile={importDraftFile}
+      {assetsOpen && isActive && (
+        <AssetDrawer
+          user={user}
+          system="markdown-card"
+          onInsert={(asset) => void insertAsset(asset)}
+          onRequestAuth={requestAuth}
+          onManage={() => navigate(routes.assets)}
+          onClose={() => setAssetsOpen(false)}
         />
       )}
 
@@ -1237,17 +1060,9 @@ export function MarkdownWorkspace({ isActive, user, requestAuth, request = null,
         open={showTemplates}
         workspace='markdown'
         hasCurrentContent={draftId !== null || draftRevisionRef.current > 0}
-        userTemplates={userTemplateDefinitions}
-        onDeleteUserTemplate={removeUserTemplate}
+        currentIsSaved={Boolean(user) && !unsaved}
         onClose={() => setShowTemplates(false)}
         onApply={applyMarkdownTemplate}
-      />
-
-      <SaveTemplateDialog
-        open={showSaveTemplate}
-        defaultName={saveTemplateDefaultName}
-        onClose={() => setShowSaveTemplate(false)}
-        onConfirm={saveAsTemplate}
       />
     </div>
   )

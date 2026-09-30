@@ -37,10 +37,6 @@ const TEST_PNG = Buffer.from(
   'base64',
 )
 
-// The drafts toolbar button reads "我的草稿" or "我的草稿 · N" — match from the start so
-// it never collides with the "保存草稿" (save) button.
-const draftsButton = /^我的草稿/
-
 test.beforeEach(async ({ context }) => {
   await installOfflineFontRoutes(context)
 })
@@ -60,9 +56,54 @@ async function register(page: import('@playwright/test').Page, username: string)
   const payload = await (await registerResponse).json() as {
     user: { id: string; username: string; createdAt: number }
   }
-  // Header flips to the logout (avatar) button once signed in.
-  await expect(page.getByTestId('account-logout')).toBeVisible()
+  // The top bar swaps 登录 for the account (avatar) menu once signed in.
+  await expect(page.getByTestId('account-menu')).toBeVisible()
   return payload.user
+}
+
+async function signIn(page: import('@playwright/test').Page, username: string) {
+  await page.getByTestId('account-login').click()
+  // The account already exists — the modal opens on the 登录 tab by default,
+  // so fill the fields and click the submit button (.accent) in the modal footer.
+  await page.getByLabel('用户名').fill(username)
+  await page.getByLabel('密码').fill('1234')
+  await page.locator('.sheet-foot button.accent').click()
+  await expect(page.getByTestId('account-menu')).toBeVisible()
+}
+
+async function expectSaved(page: import('@playwright/test').Page) {
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+}
+
+async function serverDrafts(page: import('@playwright/test').Page) {
+  const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
+  const response = await page.request.get(`${API_BASE}/api/drafts`, {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  expect(response.ok()).toBe(true)
+  return response.json() as Promise<Array<{ id: string; title: string; mode: string }>>
+}
+
+/** Open a server project by (part of) its title, the way a project card does. */
+async function openServerDraft(page: import('@playwright/test').Page, title: string) {
+  const draft = (await serverDrafts(page)).find((candidate) => candidate.title.includes(title))
+  if (!draft) throw new Error(`no server project titled ${title}`)
+  const system = draft.mode === 'markdown-card' ? 'md' : 'canvas'
+  await page.goto(`/#/edit/${system}/${encodeURIComponent(draft.id)}`)
+  await expect(page.getByTestId('editor-title')).toHaveText(draft.title)
+  return draft
+}
+
+/** The workbench list of the signed-in user's projects. */
+async function openProjectsPage(page: import('@playwright/test').Page) {
+  await page.goto('/#/projects')
+  await expect(page.getByRole('heading', { level: 1, name: '我的项目' })).toBeVisible()
+}
+
+async function openExportMenu(page: import('@playwright/test').Page) {
+  const panel = page.getByTestId('freeform-export-options')
+  if (!(await panel.isVisible())) await page.getByTestId('freeform-export').click()
+  await expect(panel).toBeVisible()
 }
 
 function draftKeys(page: import('@playwright/test').Page) {
@@ -399,24 +440,23 @@ test.describe('remote backend integration', () => {
     const marker = `服务器草稿 ${Date.now()}`
     await setEditorDoc(page, `# ${marker}`)
 
-    // Save. In remote mode this POSTs to /api/drafts.
-    await page.getByRole('button', { name: '保存草稿' }).click()
-    // The editor pane footer shows "· 已保存" once the save resolves (the header shows it too).
-    await expect(page.locator('.pane-sub')).toContainText('已保存')
+    // Autosave. In remote mode this POSTs to /api/drafts.
+    await expectSaved(page)
 
-    // The draft list (opened from the toolbar) should show our new draft.
-    await page.getByRole('button', { name: draftsButton }).click()
-    await expect(page.getByText(marker).first()).toBeVisible()
+    // The workbench's 我的项目 lists the new project.
+    await openProjectsPage(page)
+    await expect(page.getByTestId('project-card').filter({ hasText: marker })).toBeVisible()
 
     // DECISIVE: the draft must NOT be in localStorage — it lives on the server.
     expect(await draftKeys(page)).toHaveLength(0)
 
     // Full reload: the app re-fetches /api/auth/me (token persisted) and
-    // /api/drafts. The draft must come back from the server.
+    // /api/drafts. The project must come back from the server.
     await page.reload()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
-    await page.getByRole('button', { name: draftsButton }).click()
-    await expect(page.getByText(marker).first()).toBeVisible()
+    await expect(page.getByTestId('project-card').filter({ hasText: marker })).toBeVisible()
+    await page.goto('/#/edit/md')
+    await expect(page.getByTestId('editor-title')).toHaveText(marker)
+    await expectSaved(page)
   })
 
   test('uploads and restores remote freeform images', async ({ page }) => {
@@ -431,7 +471,7 @@ test.describe('remote backend integration', () => {
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
-    await page.getByTestId('workspace-tab-freeform').click()
+    await page.goto('/#/edit/canvas')
 
     await insertRemoteImageElementAndShapeFill(page)
     await expectRemoteFreeformImagesDecoded(page)
@@ -444,8 +484,7 @@ test.describe('remote backend integration', () => {
       .getAttribute('src')
     expect(shapeSource).toContain(`${API_BASE}/uploads/`)
 
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await expectSaved(page)
 
     const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
     expect(token).toBeTruthy()
@@ -457,15 +496,15 @@ test.describe('remote backend integration', () => {
     expect(serializedDrafts).toContain('/uploads/')
     expect(serializedDrafts).not.toContain('data:image/')
 
+    // Reloading the editor reopens the project from the server.
     await page.reload()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
-    await page.getByTestId('workspace-tab-freeform').click()
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: 'Page 1' }).click()
+    await expect(page.getByTestId('account-menu')).toBeVisible()
+    await expectSaved(page)
     await expectRemoteFreeformImagesDecoded(page)
 
+    await openExportMenu(page)
     const downloadPromise = page.waitForEvent('download')
-    await page.getByRole('button', { name: '导出当前页', exact: true }).click()
+    await page.getByTestId('freeform-primary-export').click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toBe('slide-01.png')
   })
@@ -521,15 +560,9 @@ test.describe('remote backend integration', () => {
     const secondContext = await browser.newContext()
     await installOfflineFontRoutes(secondContext)
     const secondPage = await secondContext.newPage()
-    await secondPage.goto('/#/edit')
-    await secondPage.getByTestId('account-login').click()
-    await secondPage.getByLabel('用户名').fill(username)
-    await secondPage.getByLabel('密码').fill('1234')
-    await secondPage.locator('.sheet-foot button.accent').click()
-    await expect(secondPage.getByTestId('account-logout')).toBeVisible()
-    await secondPage.getByTestId('workspace-tab-freeform').click()
-    await secondPage.getByRole('button', { name: draftsButton }).click()
-    await secondPage.locator('.draft-item', { hasText: 'Nested remote scene' }).click()
+    await secondPage.goto('/#/edit/canvas')
+    await signIn(secondPage, username)
+    await openServerDraft(secondPage, 'Nested remote scene')
     await secondPage.getByRole('tab', { name: '图层', exact: true }).click()
     const tree = secondPage.getByRole('tree', { name: '图层树' })
     const hiddenGroup = tree.getByRole('treeitem', { name: 'Remote hidden group' })
@@ -565,10 +598,8 @@ test.describe('remote backend integration', () => {
     const created = await createResponse.json() as { id: string }
 
     await page.reload()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
-    await page.getByTestId('workspace-tab-freeform').click()
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: 'Nested remote scene' }).click()
+    await expect(page.getByTestId('account-menu')).toBeVisible()
+    await openServerDraft(page, 'Nested remote scene')
     await page.getByRole('tab', { name: '图层', exact: true }).click()
     const tree = page.getByRole('tree', { name: '图层树' })
     const hiddenGroup = tree.getByRole('treeitem', { name: 'Remote hidden group' })
@@ -605,8 +636,7 @@ test.describe('remote backend integration', () => {
           height: Number.parseFloat(element.style.height),
         }
       })
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await expectSaved(page)
 
     const draftsResponse = await page.request.get(`${API_BASE}/api/drafts`, {
       headers: { authorization: `Bearer ${token}` },
@@ -646,10 +676,8 @@ test.describe('remote backend integration', () => {
     const expectedFrame = { ...savedImage.framing }
 
     await page.reload()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
-    await page.getByTestId('workspace-tab-freeform').click()
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: 'Nested remote scene' }).click()
+    await expect(page.getByTestId('account-menu')).toBeVisible()
+    await expectSaved(page)
     await page.getByRole('tab', { name: '图层', exact: true }).click()
     await page.getByRole('tree', { name: '图层树' })
       .getByRole('treeitem', { name: 'Remote nested image' })
@@ -706,7 +734,13 @@ test.describe('remote backend integration', () => {
     }
     expect(reloadedImage?.framing).toEqual(expectedFrame)
     await page.getByTestId('freeform-crop-image').click()
-    expect(await readCropOverlayDraft(page)).toEqual(expectedDraft)
+    // The crop is rebuilt from the stored node, so allow floating-point noise.
+    const restoredDraft = await readCropOverlayDraft(page)
+    for (const bounds of ['frame', 'image'] as const) {
+      for (const edge of ['left', 'top', 'right', 'bottom'] as const) {
+        expect(restoredDraft[bounds][edge]).toBeCloseTo(expectedDraft[bounds][edge], 9)
+      }
+    }
     await page.getByTestId('freeform-image-crop-done').click()
   })
 
@@ -730,10 +764,7 @@ test.describe('remote backend integration', () => {
     )
 
     await page.reload()
-    await page.getByTestId('workspace-tab-freeform').click()
-    await expect(page.getByRole('button', { name: /^我的草稿 · 2$/ })).toBeVisible()
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: draftA.title }).click()
+    await openServerDraft(page, draftA.title)
     await page.locator('[data-scene-node-id="authority-a-leaf"]').dblclick()
     await expect(page.getByTestId('freeform-canvas'))
       .toHaveAttribute('data-active-group-path', 'authority-a-outer')
@@ -748,10 +779,9 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    // The inserted text autosaves; hold that request while another project opens.
     await expect.poll(() => delayedSaveRoute !== null).toBe(true)
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: draftB.title }).click()
+    await openServerDraft(page, draftB.title)
     await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
     await expect(page.locator('[data-scene-node-id="authority-b-leaf"]')).toHaveCount(1)
     await expect(page.getByTestId('freeform-canvas').locator('[data-selected="true"]')).toHaveCount(0)
@@ -782,9 +812,7 @@ test.describe('remote backend integration', () => {
     )
 
     await page.reload()
-    await page.getByTestId('workspace-tab-freeform').click()
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: draft.title }).click()
+    await openServerDraft(page, draft.title)
     await page.locator('[data-scene-node-id="history-authority-leaf"]').dblclick()
     await expect(page.getByTestId('freeform-canvas'))
       .toHaveAttribute('data-active-group-path', 'history-authority-outer')
@@ -803,7 +831,7 @@ test.describe('remote backend integration', () => {
     const historyAfterInsert = Number(await workspace.getAttribute('data-history-depth'))
     const moveHandle = page.getByTestId('freeform-selection-move')
 
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    // The inserted text autosaves; its request is held.
     await expect.poll(() => heldSaveRoutes.length).toBe(1)
     const firstMoveBox = await moveHandle.boundingBox()
     expect(firstMoveBox).toBeTruthy()
@@ -841,9 +869,10 @@ test.describe('remote backend integration', () => {
       }))
     })
     await expect(workspace).toHaveAttribute('data-history-depth', String(historyAfterInsert + 1))
-    await expect(page.getByTestId('freeform-slide-meta')).not.toContainText('已保存')
+    // The committed move is newer than the held save, so it is not saved yet…
+    await expect(page.getByTestId('editor-save-state')).toHaveText('保存中…')
 
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    // …until its own autosave request goes out (held too).
     await expect.poll(() => heldSaveRoutes.length).toBe(2)
     const secondMoveBox = await moveHandle.boundingBox()
     expect(secondMoveBox).toBeTruthy()
@@ -878,7 +907,7 @@ test.describe('remote backend integration', () => {
       }))
     })
     await expect(workspace).toHaveAttribute('data-history-depth', String(historyAfterInsert + 1))
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await expectSaved(page)
     await expect(page.getByTestId('freeform-canvas'))
       .toHaveAttribute('data-active-group-path', 'history-authority-outer')
     await expect(page.getByTestId('freeform-canvas').locator('[data-selected="true"]')).toHaveCount(1)
@@ -897,8 +926,7 @@ test.describe('remote backend integration', () => {
     await register(pageA, username)
     const marker = `跨设备 ${Date.now()}`
     await setEditorDoc(pageA, `# ${marker}`)
-    await pageA.getByRole('button', { name: '保存草稿' }).click()
-    await expect(pageA.locator('.pane-sub')).toContainText('已保存')
+    await expectSaved(pageA)
     await ctxA.close()
 
     // Second context: totally fresh storage (simulates another device). Logging
@@ -907,18 +935,10 @@ test.describe('remote backend integration', () => {
     await installOfflineFontRoutes(ctxB)
     const pageB = await ctxB.newPage()
     await pageB.goto('/#/edit')
+    await signIn(pageB, username)
 
-    await pageB.getByTestId('account-login').click()
-    // This account already exists — the modal opens on the 登录 tab by default,
-    // so just fill the fields and click the submit button (.accent), scoped to
-    // the modal footer to avoid matching the 登录 tab of the same name.
-    await pageB.getByLabel('用户名').fill(username)
-    await pageB.getByLabel('密码').fill('1234')
-    await pageB.locator('.sheet-foot button.accent').click()
-    await expect(pageB.getByTestId('account-logout')).toBeVisible()
-
-    await pageB.getByRole('button', { name: draftsButton }).click()
-    await expect(pageB.getByText(marker).first()).toBeVisible()
+    await openProjectsPage(pageB)
+    await expect(pageB.getByTestId('project-card').filter({ hasText: marker })).toBeVisible()
     expect(await draftKeys(pageB)).toHaveLength(0)
     await ctxB.close()
   })
@@ -934,8 +954,7 @@ test.describe('remote backend integration', () => {
     const draftB = await createRemoteMarkdownDraft(page, token!, '# 草稿 B')
 
     await page.reload()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^我的草稿 · 1$/ })).toBeVisible()
+    await expect(page.getByTestId('account-menu')).toBeVisible()
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
     let markSaveCaptured: () => void = () => {}
@@ -958,13 +977,13 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
+    // A new document autosaves (held) while project B opens.
+    await page.goto('/#/edit/md/new')
     const draftAMarker = `迟到保存 A ${Date.now()}`
     await setEditorDoc(page, `# ${draftAMarker}`)
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     await saveCaptured
 
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: '草稿 B' }).click()
+    await openServerDraft(page, '草稿 B')
     await expect.poll(() => page.evaluate(() => window.__cmView?.state.doc.toString())).toBe('# 草稿 B')
 
     const delayedSaveResponse = page.waitForResponse((response) => {
@@ -979,9 +998,9 @@ test.describe('remote backend integration', () => {
     }))
 
     await setEditorDoc(page, '# 草稿 B 更新后')
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     await expect.poll(() => postBodies.length).toBe(2)
     expect(postBodies[1].id).toBe(draftB.id)
+    await expectSaved(page)
   })
 
   test('keeps a newly opened Markdown draft active when an older delete resolves late', async ({ page }) => {
@@ -996,10 +1015,8 @@ test.describe('remote backend integration', () => {
     const draftB = await createRemoteMarkdownDraft(page, token!, '# 保留的草稿 B')
 
     await page.reload()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^我的草稿 · 2$/ })).toBeVisible()
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: '删除中的草稿 A' }).click()
+    await expect(page.getByTestId('account-menu')).toBeVisible()
+    await openServerDraft(page, '删除中的草稿 A')
 
     let delayedDeleteRoute: import('@playwright/test').Route | null = null
     let markDeleteCaptured: () => void = () => {}
@@ -1011,13 +1028,15 @@ test.describe('remote backend integration', () => {
       markDeleteCaptured()
     })
 
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page
-      .locator('.draft-item', { hasText: '删除中的草稿 A' })
-      .getByRole('button', { name: '删除草稿' })
-      .click()
+    // Delete A from the workbench, and open B before the delete answers.
+    await openProjectsPage(page)
+    const cardA = page.getByTestId('project-card').filter({ hasText: '删除中的草稿 A' })
+    await cardA.getByRole('button', { name: /更多操作/ }).click()
+    await page.getByRole('menuitem', { name: '删除' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
     await deleteCaptured
-    await page.locator('.draft-item', { hasText: '保留的草稿 B' }).click()
+    await page.getByTestId('project-card').filter({ hasText: '保留的草稿 B' })
+      .getByRole('button', { name: /^打开/ }).click()
     await expect.poll(() => page.evaluate(() => window.__cmView?.state.doc.toString()))
       .toBe('# 保留的草稿 B')
 
@@ -1035,12 +1054,13 @@ test.describe('remote backend integration', () => {
       request.method() === 'POST' && new URL(request.url()).pathname === '/api/drafts'
     ))
     await setEditorDoc(page, '# 保留的草稿 B 更新后')
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     const saveBody = (await nextSaveRequest).postDataJSON() as Record<string, unknown>
     expect(saveBody.id).toBe(draftB.id)
+    await expect.poll(() => page.evaluate(() => window.__cmView?.state.doc.toString()))
+      .toBe('# 保留的草稿 B 更新后')
   })
 
-  test('serializes Markdown saves and keeps the saved marker tied to the full document', async ({ page }) => {
+  test('serializes Markdown autosaves and keeps the saved marker tied to the full document', async ({ page }) => {
     await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
@@ -1050,9 +1070,8 @@ test.describe('remote backend integration', () => {
     await createRemoteMarkdownDraft(page, token!, '# 串行保存草稿')
 
     await page.reload()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
-    await page.getByRole('button', { name: /^我的草稿 · 1$/ }).click()
-    await page.locator('.draft-item', { hasText: '串行保存草稿' }).click()
+    await expect(page.getByTestId('account-menu')).toBeVisible()
+    const opened = await openServerDraft(page, '串行保存草稿')
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
     let markSaveCaptured: () => void = () => {}
@@ -1075,77 +1094,47 @@ test.describe('remote backend integration', () => {
     })
 
     await setEditorDoc(page, '# 串行保存 v1')
-    const saveButton = page.getByTestId('markdown-toolbar').locator('button').filter({ hasText: /保存/ })
-    await saveButton.click()
     await saveCaptured
-    await expect(saveButton).toBeDisabled()
-    await saveButton.evaluate((button) => (button as HTMLButtonElement).click())
-    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
-    expect(postBodies).toHaveLength(1)
+    const saveState = page.getByTestId('editor-save-state')
+    await expect(saveState).toHaveText('保存中…')
 
+    // An edit made while the first request is out waits for it instead of racing it.
     await page.locator('.sel[title="主题"] .sel-trigger').click()
     await page.getByRole('option', { name: '暖米色' }).click()
+    await page.waitForTimeout(1_200)
+    expect(postBodies).toHaveLength(1)
+    await expect(saveState).toHaveText('保存中…')
+
     const delayedResponse = page.waitForResponse((response) => (
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/drafts'
     ))
     await delayedSaveRoute!.continue()
     await delayedResponse
-    await expect(saveButton).toBeEnabled()
-    await expect(page.locator('.pane-editor .pane-sub')).not.toContainText('已保存')
 
-    await saveButton.click()
     await expect.poll(() => postBodies.length).toBe(2)
+    expect(postBodies[0].id).toBe(opened.id)
+    expect(postBodies[1].id).toBe(opened.id)
     const secondDocument = postBodies[1].document as Record<string, unknown>
     expect(secondDocument.themeId).toBe('warm')
-    const markdownMeta = page.locator('.pane-editor .pane-sub')
-    await expect(markdownMeta).toContainText('已保存')
+    expect(secondDocument.source).toBe('# 串行保存 v1')
+    await expectSaved(page)
+
     await page.locator('.sel[title="主题"] .sel-trigger').click()
     await page.getByRole('option', { name: '简约白' }).click()
-    await expect(markdownMeta).not.toContainText('已保存')
+    await expect.poll(() => postBodies.length).toBe(3)
+    expect((postBodies[2].document as Record<string, unknown>).themeId).toBe('light')
+    await expectSaved(page)
   })
 
-  test('ignores stale freeform draft lists that resolve after a newer refresh', async ({ page }) => {
-    const staleListRoutes: import('@playwright/test').Route[] = []
-    await page.route(`${API_BASE}/api/drafts`, async (route) => {
-      if (route.request().method() === 'GET' && staleListRoutes.length < 2) {
-        staleListRoutes.push(route)
-        return
-      }
-      await route.continue()
-    })
-
+  test('ignores a freeform save failure after another project is opened', async ({ page }) => {
     await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
-    await expect.poll(() => staleListRoutes.length).toBe(2)
-    await page.getByTestId('workspace-tab-freeform').click()
-
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-    await expect(page.getByRole('button', { name: /^我的草稿 · 1$/ })).toBeVisible()
-
-    await Promise.all(staleListRoutes.map((route) => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: '[]',
-    })))
-    await page.evaluate(() => new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-    }))
-
-    await expect(page.getByRole('button', { name: /^我的草稿 · 1$/ })).toBeVisible()
-  })
-
-  test('ignores a freeform save failure after another draft is opened', async ({ page }) => {
-    await page.goto('/#/edit')
-    await page.evaluate(() => localStorage.clear())
-    await page.reload()
-    await register(page, uniqueName())
-    await page.getByTestId('workspace-tab-freeform').click()
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await page.goto('/#/edit/canvas')
+    await page.getByTestId('insert-text').click()
+    await expectSaved(page)
 
     const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
     expect(token).toBeTruthy()
@@ -1165,12 +1154,10 @@ test.describe('remote backend integration', () => {
     })
     expect(createBResponse.ok()).toBe(true)
 
+    // Reloading reopens project A.
     await page.reload()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
-    await page.getByTestId('workspace-tab-freeform').click()
-    await expect(page.getByRole('button', { name: /^我的草稿 · 2$/ })).toBeVisible()
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: draftA.title }).click()
+    await expect(page.getByTestId('account-menu')).toBeVisible()
+    await expect(page.getByTestId('editor-title')).toHaveText(draftA.title)
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
     let markSaveCaptured: () => void = () => {}
@@ -1187,26 +1174,25 @@ test.describe('remote backend integration', () => {
     })
 
     await page.getByTestId('insert-text').click()
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     await saveCaptured
-    await page.getByRole('button', { name: draftsButton }).click()
-    await page.locator('.draft-item', { hasText: '另一个自由编辑草稿 B' }).click()
+    await openServerDraft(page, '另一个自由编辑草稿 B')
 
     await fulfillJsonError(delayedSaveRoute!, 500, '测试：迟到的保存失败')
     await page.evaluate(() => new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     }))
     await expect(page.locator('#workspace-panel-freeform').getByRole('alert')).toHaveCount(0)
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   })
 
-  test('serializes freeform saves so a newer document cannot be overwritten by an older request', async ({ page }) => {
+  test('serializes freeform autosaves so a newer document cannot be overwritten by an older request', async ({ page }) => {
     await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
-    await page.getByTestId('workspace-tab-freeform').click()
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await page.goto('/#/edit/canvas')
+    await page.getByTestId('insert-text').click()
+    await expectSaved(page)
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
     let markSaveCaptured: () => void = () => {}
@@ -1228,41 +1214,41 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
-    await page.getByTestId('insert-text').click()
-    const saveButton = page.getByTestId('freeform-toolbar').locator('button').filter({ hasText: /保存/ })
-    await saveButton.click()
-    await saveCaptured
-    await expect(saveButton).toBeDisabled()
-    await saveButton.evaluate((button) => (button as HTMLButtonElement).click())
-    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
-    expect(postBodies).toHaveLength(1)
-
     await page.getByTestId('insert-shape').click()
     await page.getByRole('menuitem', { name: '矩形', exact: true }).click()
+    await saveCaptured
+
+    // A newer edit while that request is out waits for it rather than racing it.
+    await page.getByTestId('insert-shape').click()
+    await page.getByRole('menuitem', { name: '圆形', exact: true }).click()
+    await page.waitForTimeout(1_200)
+    expect(postBodies).toHaveLength(1)
+    await expect(page.getByTestId('editor-save-state')).toHaveText('保存中…')
+
+    const firstDocument = postBodies[0].document as { slides: Array<{ nodes: unknown[] }> }
+    expect(firstDocument.slides[0].nodes).toHaveLength(2)
     const delayedResponse = page.waitForResponse((response) => (
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/drafts'
     ))
-    await delayedSaveRoute!.continue()
-    await delayedResponse
-    await expect(saveButton).toBeEnabled()
-    await expect(page.getByTestId('freeform-slide-meta')).not.toContainText('已保存')
-
     const secondSaveResponsePromise = page.waitForResponse((response) => (
       response.request().method() === 'POST' &&
-      new URL(response.url()).pathname === '/api/drafts'
+      new URL(response.url()).pathname === '/api/drafts' &&
+      (response.request().postData()?.includes('"shape":"ellipse"') ?? false)
     ))
-    await saveButton.click()
+    await delayedSaveRoute!.continue()
+    await delayedResponse
     const secondSaveResponse = await secondSaveResponsePromise
     expect(secondSaveResponse.ok()).toBe(true)
     await expect.poll(() => postBodies.length).toBe(2)
+    expect(postBodies[1].id).toBe(postBodies[0].id)
     const secondDocument = postBodies[1].document as {
       documentVersion: unknown
       slides: Array<{ nodes: unknown[]; elements?: unknown }>
     }
     expect(secondDocument.documentVersion).toBe(14)
     expect(secondDocument.slides[0]).not.toHaveProperty('elements')
-    expect(secondDocument.slides[0].nodes).toHaveLength(2)
+    expect(secondDocument.slides[0].nodes).toHaveLength(3)
 
     const secondSavedDraft = await secondSaveResponse.json() as {
       document: {
@@ -1272,42 +1258,43 @@ test.describe('remote backend integration', () => {
     }
     expect(secondSavedDraft.document.documentVersion).toBe(14)
     expect(secondSavedDraft.document.slides[0]).not.toHaveProperty('elements')
-    expect(secondSavedDraft.document.slides[0].nodes).toHaveLength(2)
+    expect(secondSavedDraft.document.slides[0].nodes).toHaveLength(3)
+    await expectSaved(page)
   })
 
-  test('clears the saved marker after deleting the active freeform draft', async ({ page }) => {
+  test('deleting the open freeform project from the workbench clears the editor', async ({ page }) => {
     await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
-    await page.getByTestId('workspace-tab-freeform').click()
+    await page.goto('/#/edit/canvas')
 
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    const slideMeta = page.getByTestId('freeform-slide-meta')
-    await expect(slideMeta).toContainText('已保存')
-    await page.getByRole('button', { name: /^我的草稿 · 1$/ }).click()
-    await page
-      .locator('.draft-item', { hasText: 'Page 1' })
-      .getByRole('button', { name: '删除草稿' })
-      .click()
+    await page.getByTestId('insert-text').click()
+    await expectSaved(page)
+    await openProjectsPage(page)
+    const card = page.getByTestId('project-card')
+    await card.getByRole('button', { name: /更多操作/ }).click()
+    await page.getByRole('menuitem', { name: '删除' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
+    await expect(card).toHaveCount(0)
+    expect(await serverDrafts(page)).toHaveLength(0)
 
-    await expect(slideMeta).not.toContainText('已保存')
-    await expect(page.getByRole('button', { name: /^我的草稿$/ })).toBeVisible()
+    // The editor starts over instead of saving the deleted project back.
+    await page.goto('/#/edit/canvas')
+    await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+    await expect(page.getByTestId('editor-save-state')).toHaveCount(0)
+    expect(await serverDrafts(page)).toHaveLength(0)
   })
 
   test('retains active images and blocks a new upload when pre-retain fails', async ({ page }) => {
     const pageErrors = collectPageErrors(page)
     const imagePosts: string[] = []
     const retainRequests: string[] = []
-    const deleteRequests: string[] = []
     let failRetain = false
 
     page.on('request', (request) => {
       const path = new URL(request.url()).pathname
       if (request.method() === 'POST' && path === '/api/images') imagePosts.push(request.url())
-      if (request.method() === 'DELETE' && path.startsWith('/api/drafts/')) {
-        deleteRequests.push(request.url())
-      }
     })
     await page.route(`${API_BASE}/api/images/retain`, async (route) => {
       retainRequests.push(route.request().url())
@@ -1322,7 +1309,7 @@ test.describe('remote backend integration', () => {
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
-    await page.getByTestId('workspace-tab-freeform').click()
+    await page.goto('/#/edit/canvas')
 
     const firstRetainResponse = page.waitForResponse((response) => (
       response.request().method() === 'POST' &&
@@ -1346,9 +1333,8 @@ test.describe('remote backend integration', () => {
     expect((await onlineRetainResponse).ok()).toBe(true)
     expect(retainRequests.length).toBeGreaterThan(retainsBeforeOnline)
 
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-    await expect(page.getByRole('button', { name: /^我的草稿 · 1$/ })).toBeVisible()
+    await expectSaved(page)
+    expect(await serverDrafts(page)).toHaveLength(1)
 
     failRetain = true
     const imagePostsBeforeBlockedUpload = imagePosts.length
@@ -1373,19 +1359,8 @@ test.describe('remote backend integration', () => {
 
     await freeformNotice.getByRole('button', { name: '关闭提示' }).click()
     await expect(freeformPanel.getByRole('alert')).toHaveCount(0)
-    await page.getByRole('button', { name: draftsButton }).click()
-    const savedDraft = page.locator('.draft-item', { hasText: 'Page 1' })
-    const retainsBeforeDelete = retainRequests.length
-    const deleteRetainResponse = page.waitForResponse((response) => (
-      response.request().method() === 'POST' &&
-      new URL(response.url()).pathname === '/api/images/retain'
-    ))
-    await savedDraft.getByRole('button', { name: '删除草稿' }).click()
-    expect((await deleteRetainResponse).status()).toBe(500)
-    expect(retainRequests).toHaveLength(retainsBeforeDelete + 1)
-    await expect(freeformNotice).toContainText('测试：图片续租失败')
-    expect(deleteRequests).toHaveLength(0)
-    await expect(savedDraft).toBeVisible()
+    // The blocked upload changed nothing, so the saved project is untouched.
+    await expectSaved(page)
     expect(pageErrors).toEqual([])
   })
 
@@ -1424,34 +1399,44 @@ test.describe('remote backend integration', () => {
     await page.reload()
     await register(page, uniqueName())
 
-    const markdownPanel = page.locator('#workspace-panel-markdown')
-    const notice = markdownPanel.getByRole('alert')
-    await expect(notice).toContainText('测试：草稿列表失败')
-
-    await notice.getByRole('button', { name: /关闭/ }).click()
+    // A failed autosave says so in the top bar and can be retried.
     draftFailure = 'save'
     const marker = `错误恢复草稿 ${Date.now()}`
     await setEditorDoc(page, `# ${marker}`)
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(notice).toContainText('测试：草稿保存失败')
-
-    await notice.getByRole('button', { name: /关闭/ }).click()
+    const saveState = page.getByTestId('editor-save-state')
+    await expect(saveState).toHaveText(/保存失败/)
+    await expect(saveState).toHaveAttribute('title', '测试：草稿保存失败')
     draftFailure = null
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.locator('.pane-sub')).toContainText('已保存')
-    await page.getByRole('button', { name: draftsButton }).click()
-    await expect(page.getByText(marker).first()).toBeVisible()
+    await page.getByTestId('editor-save-retry').click()
+    await expectSaved(page)
 
+    // A failed project list offers a retry on 我的项目.
+    draftFailure = 'list'
+    await openProjectsPage(page)
+    await expect(page.getByText('项目读取失败')).toBeVisible()
+    await expect(page.getByText('测试：草稿列表失败')).toBeVisible()
+    draftFailure = null
+    await page.getByRole('button', { name: '重试', exact: true }).click()
+    const card = page.getByTestId('project-card').filter({ hasText: marker })
+    await expect(card).toBeVisible()
+
+    // A failed delete keeps the project and says why.
     draftFailure = 'delete'
-    await page.locator('.draft-item', { hasText: marker }).getByRole('button', { name: '删除草稿' }).click()
-    await expect(notice).toContainText('测试：草稿删除失败')
-    await expect(page.locator('.draft-item', { hasText: marker })).toBeVisible()
+    await card.getByRole('button', { name: /更多操作/ }).click()
+    await page.getByRole('menuitem', { name: '删除' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
+    const workbenchNotice = page.getByRole('alert')
+    await expect(workbenchNotice).toContainText('删除失败')
+    await expect(workbenchNotice).toContainText('测试：草稿删除失败')
+    await expect(card).toBeVisible()
 
-    await page.getByRole('button', { name: '关闭', exact: true }).click()
+    // Pasted pictures that fail to upload report it in the editor.
     draftFailure = null
     imageUploadFailure = true
+    await card.getByRole('button', { name: /^打开/ }).click()
+    await expect(page.getByTestId('editor-title')).toHaveText(marker)
     await pasteMarkdownImage(page)
-    await expect(notice).toContainText('测试：Markdown 图片上传失败')
+    await expect(page.locator('#workspace-panel-markdown').getByRole('alert')).toContainText('测试：Markdown 图片上传失败')
     expect(pageErrors).toEqual([])
   })
 
@@ -1483,7 +1468,12 @@ test.describe('remote backend integration', () => {
     await expect(page.getByRole('alert')).toContainText('登录状态尚未确认')
     failMeRequests = false
     await page.getByRole('button', { name: /重试/ }).click()
-    await expect(page.getByTestId('account-logout')).toBeVisible()
+    await expect(page.getByTestId('account-menu')).toBeVisible()
+
+    // One save goes through, so the text below belongs to an existing project.
+    await setEditorDoc(page, `# 过期前的项目 ${Date.now()}`)
+    await expectSaved(page)
+    const [project] = await serverDrafts(page)
 
     await page.route(`${API_BASE}/api/drafts`, async (route) => {
       if (route.request().method() === 'POST') {
@@ -1492,12 +1482,27 @@ test.describe('remote backend integration', () => {
       }
       await route.continue()
     })
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+    // The next autosave learns the session is gone.
+    const unsavedLine = `过期前写的一句 ${Date.now()}`
+    await setEditorDoc(page, `# ${unsavedLine}`)
 
     await expect(page.getByTestId('account-login')).toBeVisible()
+    // The unsaved text stays on screen for the next sign-in.
+    await expect.poll(() => page.evaluate(() => window.__cmView?.state.doc.toString())).toBe(`# ${unsavedLine}`)
+    await expect(page.getByTestId('editor-save-state')).toHaveText('登录后自动保存')
     await expect(page.getByRole('alert')).toHaveCount(1)
     await expect(page.getByRole('alert')).toContainText('登录已过期')
     expect(await page.evaluate(() => localStorage.getItem('slicer.token.v1'))).toBeNull()
+
+    // Signing back in saves the kept text into the same project, not a copy.
+    await page.unroute(`${API_BASE}/api/drafts`)
+    await page.unroute(`${API_BASE}/api/auth/me`)
+    await signIn(page, registeredUser.username)
+    await expectSaved(page)
+    const after = await serverDrafts(page)
+    expect(after).toHaveLength(1)
+    expect(after[0].id).toBe(project.id)
+    expect(after[0].title).toBe(unsavedLine)
     expect(pageErrors).toEqual([])
   })
 

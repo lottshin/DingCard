@@ -1,21 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import logoUrl from '../logo.svg'
 import { AuthModal } from '../AuthModal'
-import { AssetDrawer } from '../app/AssetDrawer'
 import { readGuest, writeGuest } from '../app/guest'
 import { LoginPage } from '../app/LoginPage'
 import { navigate, routes, useRoute, type EditIntent } from '../app/router'
 import { findTemplate } from '../app/templates'
+import { t, useLang } from '../i18n'
 import { Workbench } from '../app/Workbench'
 import type { User } from '../auth'
 import { readLastSession, updateLastSession } from '../lastSession'
 import { store } from '../storage'
 import { FreeformWorkspace } from '../freeform/FreeformWorkspace'
 import { useAppTheme } from '../useAppTheme'
-import { AppHeader } from './AppHeader'
+import { flushAllAutosaves } from './autosave'
 import { MarkdownWorkspace } from './markdown/MarkdownWorkspace'
 import { OperationNotice } from './OperationNotice'
-import type { WorkspaceMeta, WorkspaceMode, WorkspaceRequest } from './types'
+import type { EditorChrome, WorkspaceMeta, WorkspaceMode, WorkspaceRequest } from './types'
 
 interface AuthNotice {
   title: string
@@ -49,18 +49,21 @@ function focusRestorableTarget(target: HTMLElement | null): boolean {
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
-const EMPTY_META: WorkspaceMeta = { title: '', draftId: null, dirty: false }
+const EMPTY_META: WorkspaceMeta = { title: '', draftId: null, unsaved: false }
 
 function sameMeta(a: WorkspaceMeta, b: WorkspaceMeta) {
-  return a.title === b.title && a.draftId === b.draftId && a.dirty === b.dirty
+  return a.title === b.title && a.draftId === b.draftId && a.unsaved === b.unsaved
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback
+  return error instanceof Error && error.message.trim() ? t(error.message) : fallback
 }
 
 export function AppShell() {
+  // Re-render the whole app when the UI language changes.
+  useLang()
   const route = useRoute()
+  // The editor on screen (or last on screen, while the workbench is up).
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(
     () => (route.name === 'edit' && route.system) || 'markdown-card',
   )
@@ -76,9 +79,6 @@ export function AppShell() {
   const authOpenRef = useRef(false)
   const pendingAuthInvokerRef = useRef<HTMLElement | null>(null)
   const pendingAuthInvokerGeneration = useRef(0)
-  // 刷新恢复：只在首屏会话确认时恢复一次工作区；用户在本页内手动切换过就不再抢。
-  const sessionModeRestoredRef = useRef(false)
-  const modeTouchedRef = useRef(false)
   const [guest, setGuestState] = useState(readGuest)
   const [requests, setRequests] = useState<Record<WorkspaceMode, WorkspaceRequest | null>>({
     'markdown-card': null,
@@ -89,23 +89,26 @@ export function AppShell() {
     'markdown-card': EMPTY_META,
     'freeform-slide': EMPTY_META,
   })
-  const editorRoute = route.name === 'edit'
-  // Editors mount on first visit and then stay mounted, so leaving for the
-  // workbench (or switching editors) never drops unsaved work.
-  const [editorsMounted, setEditorsMounted] = useState(editorRoute)
-  const [assetsOpen, setAssetsOpen] = useState(false)
+  const editorRoute = route.name === 'edit' && route.system !== null
+  // Each editor mounts on its first visit and then stays mounted, so a trip to
+  // the workbench never drops a guest's work.
+  const [mounted, setMounted] = useState<Record<WorkspaceMode, boolean>>(() => ({
+    'markdown-card': route.name === 'edit' && route.system === 'markdown-card',
+    'freeform-slide': route.name === 'edit' && route.system === 'freeform-slide',
+  }))
   const userRef = useRef(user)
   userRef.current = user
+  const workspaceModeRef = useRef(workspaceMode)
+  workspaceModeRef.current = workspaceMode
+  // The editor to show follows the URL in the same render: an effect would leave
+  // the previous editor active (and listening for keys) for a frame.
+  const routeSystem = route.name === 'edit' ? route.system : null
+  const activeSystem: WorkspaceMode = routeSystem ?? workspaceMode
+  const isMounted = (system: WorkspaceMode) => mounted[system] || routeSystem === system
 
   const setGuest = useCallback((value: boolean) => {
     writeGuest(value)
     setGuestState(value)
-  }, [])
-
-  const changeWorkspaceMode = useCallback((next: WorkspaceMode) => {
-    modeTouchedRef.current = true
-    setWorkspaceMode(next)
-    if (location.hash.startsWith('#/edit')) navigate(routes.editor(next), { replace: true })
   }, [])
 
   const sendRequest = useCallback((system: WorkspaceMode, request: DistributiveOmit<WorkspaceRequest, 'nonce'>) => {
@@ -120,10 +123,6 @@ export function AppShell() {
     setEditorMeta((current) => (sameMeta(current['freeform-slide'], meta) ? current : { ...current, 'freeform-slide': meta }))
   }, [])
 
-  useEffect(() => {
-    if (editorRoute) setEditorsMounted(true)
-  }, [editorRoute])
-
   // Editor URLs carry a one-shot intent (open / new / template); hand it to the
   // editor, then settle on the plain #/edit/<system> URL.
   useEffect(() => {
@@ -134,20 +133,33 @@ export function AppShell() {
     if (route.name !== 'edit') return
     if (!userRef.current && !readGuest()) setGuest(true)
     const system = route.system
-    if (!system) return
-    modeTouchedRef.current = true
+    if (!system) {
+      // Bare #/edit: the editor used last.
+      const last = userRef.current ? readLastSession(userRef.current.id).mode : workspaceModeRef.current
+      navigate(routes.editor(last), { replace: true })
+      return
+    }
     setWorkspaceMode(system)
+    setMounted((current) => (current[system] ? current : { ...current, [system]: true }))
+    if (userRef.current) updateLastSession(userRef.current.id, { mode: system })
     const intent: EditIntent | null = route.intent
     if (!intent) return
     if (intent.kind === 'open') sendRequest(system, { kind: 'open', draftId: intent.draftId })
     else if (intent.kind === 'new') {
       sendRequest(system, { kind: 'new', platformId: intent.platformId, width: intent.width, height: intent.height })
     } else {
-      const template = findTemplate(system, intent.templateId, userRef.current)
+      const template = findTemplate(system, intent.templateId)
       if (template) sendRequest(system, { kind: 'template', template })
     }
     navigate(routes.editor(system), { replace: true })
   }, [route, sendRequest, setGuest])
+
+  // Leaving the page: send what the editors still have queued.
+  useEffect(() => {
+    const flush = () => void flushAllAutosaves()
+    window.addEventListener('pagehide', flush)
+    return () => window.removeEventListener('pagehide', flush)
+  }, [])
 
   const captureAuthInvoker = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target
@@ -224,11 +236,11 @@ export function AppShell() {
 
     const shell = shellRef.current
     const accountControl = shell?.querySelector<HTMLElement>(
-      '[data-testid="account-login"], [data-testid="account-logout"], [data-testid="account-status-retry"]',
+      '[data-testid="account-login"], [data-testid="account-menu"], [data-testid="account-status-retry"]',
     ) ?? null
     if (focusRestorableTarget(accountControl)) return
     focusRestorableTarget(
-      shell?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? null,
+      shell?.querySelector<HTMLElement>('[data-testid="editor-home"], [data-testid="open-palette"]') ?? null,
     )
   }, [showAuth])
 
@@ -245,8 +257,8 @@ export function AppShell() {
       if (generation !== authCheckGeneration.current) return
       setAuthStatus('error')
       setAuthNotice({
-        title: '登录状态尚未确认',
-        detail: errorMessage(error, '暂时无法连接服务器，请稍后重试'),
+        title: t('登录状态尚未确认'),
+        detail: errorMessage(error, t('暂时无法连接服务器，请稍后重试')),
         retry: true,
       })
     }
@@ -261,7 +273,7 @@ export function AppShell() {
       setAuthStatus('ready')
       setShowAuth(false)
       setAuthNotice({
-        title: '登录已过期，请重新登录',
+        title: t('登录已过期，请重新登录'),
         retry: false,
       })
     })
@@ -273,25 +285,16 @@ export function AppShell() {
     }
   }, [checkCurrentSession])
 
-  // 刷新后恢复上一次使用的工作区。只在首屏会话确认（checking → ready）时
-  // 执行一次；页面内登录/退出不抢用户当前所在的工作区。
+  // Remember the editor in use once the account is known, so a bare #/edit returns to it.
   useEffect(() => {
-    if (sessionModeRestoredRef.current || authStatus !== 'ready') return
-    sessionModeRestoredRef.current = true
-    if (!user || modeTouchedRef.current) return
-    setWorkspaceMode(readLastSession(user.id).mode)
-  }, [authStatus, user])
-
-  // 登录状态下持续记录当前工作区：登录、切换工作区都会同步，刷新后即可回到原处。
-  // （modeTouchedRef 不参与此处——即使用户在登录前切过工作区，登录时也要把
-  // 当前所在的工作区记下来。）
-  useEffect(() => {
-    if (user) updateLastSession(user.id, { mode: workspaceMode })
-  }, [user, workspaceMode])
+    if (user && editorRoute) updateLastSession(user.id, { mode: activeSystem })
+  }, [activeSystem, editorRoute, user])
 
   async function handleLogout(): Promise<boolean> {
     const generation = ++authCheckGeneration.current
     try {
+      // Edits still waiting for their pause belong to the account being left.
+      await flushAllAutosaves()
       await store.auth.logout()
       if (generation !== authCheckGeneration.current) return false
       setUser(null)
@@ -301,13 +304,16 @@ export function AppShell() {
     } catch (error) {
       if (generation !== authCheckGeneration.current) return false
       setAuthNotice({
-        title: '退出登录失败',
-        detail: errorMessage(error, '请稍后重试'),
+        title: t('退出登录失败'),
+        detail: errorMessage(error, t('请稍后重试')),
         retry: false,
       })
       return false
     }
   }
+
+  const logoutRef = useRef(handleLogout)
+  logoutRef.current = handleLogout
 
   function completeLogin(nextUser: User) {
     authCheckGeneration.current += 1
@@ -317,6 +323,15 @@ export function AppShell() {
     setGuest(false)
     if (route.name === 'login') navigate(routes.home, { replace: true })
   }
+
+  const chrome = useMemo<EditorChrome>(() => ({
+    theme: appTheme,
+    authStatus,
+    onHome: () => navigate(routes.home),
+    onToggleTheme: toggleAppTheme,
+    onRetryAuth: () => void checkCurrentSession(),
+    onLogout: () => void logoutRef.current(),
+  }), [appTheme, authStatus, checkCurrentSession, toggleAppTheme])
 
   const view: 'editor' | 'workbench' | 'login' | 'splash' = editorRoute
     ? 'editor'
@@ -332,12 +347,12 @@ export function AppShell() {
     <div
       ref={shellRef}
       className="app-shell"
-      data-workspace={workspaceMode}
+      data-workspace={activeSystem}
       data-view={view}
       onClickCapture={captureAuthInvoker}
     >
       {view === 'splash' && (
-        <div className="app-splash" aria-label="正在加载">
+        <div className="app-splash" aria-label={t('正在加载')}>
           <img src={logoUrl} alt="" width="40" height="40" />
         </div>
       )}
@@ -359,68 +374,45 @@ export function AppShell() {
           }}
           editorMeta={editorMeta}
           onProjectRemoved={(system, draftId) => sendRequest(system, { kind: 'removed', draftId })}
+          onProjectRenamed={(system, draftId, title) => sendRequest(system, { kind: 'renamed', draftId, title })}
         />
       )}
 
-      {editorsMounted && (
+      {(isMounted('markdown-card') || isMounted('freeform-slide')) && (
         <div className="editor-frame" hidden={view !== 'editor'}>
-          <AppHeader
-            mode={workspaceMode}
-            theme={appTheme}
-            user={user}
-            authStatus={authStatus}
-            title={editorMeta[workspaceMode].title}
-            saveState={user ? (editorMeta[workspaceMode].dirty ? 'unsaved' : editorMeta[workspaceMode].draftId ? 'saved' : null) : null}
-            onHome={() => navigate(routes.home)}
-            assetsOpen={assetsOpen}
-            onToggleAssets={() => setAssetsOpen((open) => !open)}
-            onModeChange={changeWorkspaceMode}
-            onToggleTheme={toggleAppTheme}
-            onRequestAuth={requestAuth}
-            onRetryAuth={() => void checkCurrentSession()}
-            onLogout={() => void handleLogout()}
-          />
-
-          <div
-            id="workspace-panel-markdown"
-            className="workspace-panel"
-            role="tabpanel"
-            aria-labelledby="workspace-tab-markdown"
-            hidden={workspaceMode !== 'markdown-card'}
-          >
-            <MarkdownWorkspace
-              isActive={view === 'editor' && workspaceMode === 'markdown-card'}
-              user={user}
-              requestAuth={requestAuth}
-              request={requests['markdown-card']}
-              onMetaChange={onMarkdownMeta}
-            />
-          </div>
-          <div
-            id="workspace-panel-freeform"
-            className="workspace-panel"
-            role="tabpanel"
-            aria-labelledby="workspace-tab-freeform"
-            hidden={workspaceMode !== 'freeform-slide'}
-          >
-            <FreeformWorkspace
-              isActive={view === 'editor' && workspaceMode === 'freeform-slide'}
-              user={user}
-              requestAuth={requestAuth}
-              request={requests['freeform-slide']}
-              onMetaChange={onFreeformMeta}
-            />
-          </div>
-
-          {assetsOpen && view === 'editor' && (
-            <AssetDrawer
-              user={user}
-              system={workspaceMode}
-              onInsert={(asset) => sendRequest(workspaceMode, { kind: 'insert-asset', asset })}
-              onRequestAuth={requestAuth}
-              onManage={() => navigate(routes.assets)}
-              onClose={() => setAssetsOpen(false)}
-            />
+          {isMounted('markdown-card') && (
+            <div
+              id="workspace-panel-markdown"
+              className="workspace-panel"
+              data-testid="workspace-markdown"
+              hidden={activeSystem !== 'markdown-card'}
+            >
+              <MarkdownWorkspace
+                isActive={view === 'editor' && activeSystem === 'markdown-card'}
+                user={user}
+                requestAuth={requestAuth}
+                chrome={chrome}
+                request={requests['markdown-card']}
+                onMetaChange={onMarkdownMeta}
+              />
+            </div>
+          )}
+          {isMounted('freeform-slide') && (
+            <div
+              id="workspace-panel-freeform"
+              className="workspace-panel"
+              data-testid="workspace-freeform"
+              hidden={activeSystem !== 'freeform-slide'}
+            >
+              <FreeformWorkspace
+                isActive={view === 'editor' && activeSystem === 'freeform-slide'}
+                user={user}
+                requestAuth={requestAuth}
+                chrome={chrome}
+                request={requests['freeform-slide']}
+                onMetaChange={onFreeformMeta}
+              />
+            </div>
           )}
         </div>
       )}

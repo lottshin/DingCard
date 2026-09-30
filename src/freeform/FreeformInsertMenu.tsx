@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { t } from '../i18n'
 import { isFocusablePointerTarget } from './focusTarget'
 
 export interface FreeformInsertMenuOption<T extends string> {
   id: T
   label: string
+  icon?: ReactNode
 }
 
 export interface FreeformInsertMenuProps<T extends string> {
@@ -13,6 +15,9 @@ export interface FreeformInsertMenuProps<T extends string> {
   options: Array<FreeformInsertMenuOption<T>>
   onSelect: (id: T) => void
   onEscape?: () => void
+  /** `rail`: an icon-over-label tool in the vertical insert rail, opening a tile menu beside it. */
+  variant?: 'toolbar' | 'rail'
+  icon?: ReactNode
 }
 
 export function FreeformInsertMenu<T extends string>({
@@ -22,6 +27,8 @@ export function FreeformInsertMenu<T extends string>({
   options,
   onSelect,
   onEscape,
+  variant = 'toolbar',
+  icon,
 }: FreeformInsertMenuProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -106,7 +113,7 @@ export function FreeformInsertMenu<T extends string>({
   }, [open, isActive])
 
   return (
-    <div className="freeform-insert-menu-control" ref={rootRef}>
+    <div className={variant === 'rail' ? 'freeform-insert-menu-control is-rail' : 'freeform-insert-menu-control'} ref={rootRef}>
       <button
         ref={triggerRef}
         className="freeform-insert-trigger"
@@ -118,18 +125,21 @@ export function FreeformInsertMenu<T extends string>({
         aria-controls={menuId}
         onClick={() => (open ? closeMenu(false) : openMenu())}
       >
-        <span>{label}</span>
-        <svg viewBox="0 0 12 12" aria-hidden="true">
-          <path d="m3 4.5 3 3 3-3" />
-        </svg>
+        {icon}
+        <span>{t(label)}</span>
+        {variant === 'toolbar' && (
+          <svg viewBox="0 0 12 12" aria-hidden="true">
+            <path d="m3 4.5 3 3 3-3" />
+          </svg>
+        )}
       </button>
 
       {open && (
         <div
-          className="freeform-insert-menu"
+          className={variant === 'rail' ? 'freeform-insert-menu is-tiles' : 'freeform-insert-menu'}
           id={menuId}
           role="menu"
-          aria-label={label}
+          aria-label={t(label)}
           onKeyDown={(event) => {
             const activeIndex = itemRefs.current.findIndex(
               (item) => item === globalThis.document.activeElement,
@@ -170,7 +180,8 @@ export function FreeformInsertMenu<T extends string>({
               tabIndex={-1}
               onClick={() => selectOption(option.id)}
             >
-              {option.label}
+              {option.icon}
+              <span>{t(option.label)}</span>
             </button>
           ))}
         </div>

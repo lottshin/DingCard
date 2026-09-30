@@ -337,3 +337,30 @@
     display: none;
   }
 }
+
+/* Toolbar text buttons carry a small leading icon, dropped when space is tight. */
+.markdown-toolbar .bar-btn,
+.markdown-toolbar .toolbar-primary {
+  gap: 6px;
+}
+
+.markdown-toolbar .bar-btn > svg,
+.markdown-toolbar .toolbar-primary > svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.markdown-toolbar .bar-btn > svg {
+  color: var(--text-3);
+}
+
+.markdown-toolbar .bar-btn:hover:not(:disabled) > svg {
+  color: currentColor;
+}
+
+@media (max-width: 1279px) {
+  .markdown-toolbar .bar-btn > svg {
+    display: none;
+  }
+}

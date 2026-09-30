@@ -63,7 +63,8 @@
   --bar-bg: var(--surface);
   --bar-blur: none;
 
-  --freeform-stage-sink: #e9e8e3;
+  --freeform-stage-sink: #eceae5;
+  --freeform-stage-dot: rgba(26, 25, 23, 0.11);
   --freeform-ruler-bg: #ffffff;
   --freeform-ruler-tick: rgba(26, 25, 23, 0.2);
   --freeform-ruler-label: #9a978f;
@@ -136,6 +137,7 @@
   --bar-blur: none;
 
   --freeform-stage-sink: #0f0e0c;
+  --freeform-stage-dot: rgba(255, 255, 255, 0.07);
   --freeform-ruler-bg: #191918;
   --freeform-ruler-tick: rgba(255, 255, 255, 0.18);
   --freeform-ruler-label: #6f6c66;

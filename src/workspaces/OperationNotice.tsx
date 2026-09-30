@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 interface OperationNoticeProps {
   title: string
   detail?: string
@@ -13,7 +14,7 @@ export function OperationNotice({
   detail,
   onDismiss,
   onRetry,
-  retryLabel = '重试',
+  retryLabel = t('重试'),
   tone = 'info',
   className = '',
 }: OperationNoticeProps) {
@@ -37,8 +38,8 @@ export function OperationNotice({
         <button
           type="button"
           className="operation-notice-dismiss"
-          aria-label="关闭提示"
-          title="关闭提示"
+          aria-label={t('关闭提示')}
+          title={t('关闭提示')}
           onClick={onDismiss}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">

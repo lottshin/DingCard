@@ -12,6 +12,7 @@ import {
 } from './sceneTransform'
 import type { Matrix2D, SceneBounds } from './sceneTransform'
 import type { FreeformSceneNode, LinePoint, ScenePath } from './types'
+import { t } from '../i18n'
 
 export type SelectionOverlayInteraction = 'move' | 'resize' | 'rotate' | null
 
@@ -63,10 +64,10 @@ type SelectionOverlayStyle = CSSProperties & {
   '--freeform-inverse-scale': number
 }
 
-const MOVE_LABEL = '\u79fb\u52a8\u5bf9\u8c61'
-const MOVE_TITLE = '\u62d6\u62fd\u79fb\u52a8'
-const RESIZE_LABEL = '\u8c03\u6574\u5927\u5c0f'
-const ROTATE_LABEL = '\u65cb\u8f6c\u5bf9\u8c61'
+const MOVE_LABEL = '移动对象'
+const MOVE_TITLE = '拖拽移动'
+const RESIZE_LABEL = '调整大小'
+const ROTATE_LABEL = '旋转对象'
 
 interface OverlayFrame {
   target: SelectionOverlayTarget
@@ -214,22 +215,22 @@ export function FreeformSelectionOverlay({
                     className="freeform-ui-only element-drag freeform-selection-move"
                     data-testid="freeform-selection-move"
                     type="button"
-                    aria-label={MOVE_LABEL}
-                    title={MOVE_TITLE}
+                    aria-label={t(MOVE_LABEL)}
+                    title={t(MOVE_TITLE)}
                     onPointerDown={(event) => onMovePointerDown(event, target)}
                   />
                   <button
                     className="freeform-ui-only element-resize freeform-selection-resize"
                     data-testid="freeform-selection-resize"
                     type="button"
-                    aria-label={RESIZE_LABEL}
+                    aria-label={t(RESIZE_LABEL)}
                     onPointerDown={(event) => onResizePointerDown(event, target)}
                   />
                   <button
                     className="freeform-ui-only element-rotate freeform-selection-rotate"
                     data-testid="freeform-selection-rotate"
                     type="button"
-                    aria-label={ROTATE_LABEL}
+                    aria-label={t(ROTATE_LABEL)}
                     onPointerDown={(event) => onRotatePointerDown(event, target)}
                   />
                 </>
@@ -242,7 +243,7 @@ export function FreeformSelectionOverlay({
                           className="freeform-ui-only freeform-vertex-handle"
                           data-testid={`freeform-vertex-handle-${index}`}
                           type="button"
-                          aria-label={`拖动顶点 ${index + 1}`}
+                          aria-label={t('拖动顶点 {n}', { n: index + 1 })}
                           style={{ left: vertex.x, top: vertex.y }}
                           onPointerDown={(event) => onVertexPointerDown(event, target, index)}
                           onDoubleClick={(event) => onVertexDoubleClick?.(event, target, index)}

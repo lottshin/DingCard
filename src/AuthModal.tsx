@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { User } from './auth'
 import { store } from './storage'
+import { t } from './i18n'
 
 interface AuthModalProps {
   onAuthed: (user: User) => void
@@ -55,7 +56,7 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
           : await store.auth.register(username, password)
       onAuthed(user)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '出错了，请重试')
+      setError(err instanceof Error ? t(err.message) : t('出错了，请重试'))
     } finally {
       setBusy(false)
     }
@@ -135,7 +136,7 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
         onKeyDown={handleKeyDown}
       >
         <h2 id={titleId} className="sr-only">
-          账户登录与注册
+          {t('账户登录与注册')}
         </h2>
         <div className="sheet-tabs">
           <button
@@ -145,7 +146,7 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
               setError(null)
             }}
           >
-            登录
+            {t('登录')}
           </button>
           <button
             className={mode === 'register' ? 'sheet-tab on' : 'sheet-tab'}
@@ -154,30 +155,30 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
               setError(null)
             }}
           >
-            注册
+            {t('注册')}
           </button>
         </div>
 
         <form className="sheet-body" onSubmit={submit}>
           <label className="field">
-            <span className="field-label">用户名</span>
+            <span className="field-label">{t('用户名')}</span>
             <input
               className="text-input"
               value={username}
               autoFocus
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="至少 2 个字符"
+              placeholder={t('至少 2 个字符')}
             />
           </label>
 
           <label className="field">
-            <span className="field-label">密码</span>
+            <span className="field-label">{t('密码')}</span>
             <input
               className="text-input"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="至少 4 个字符"
+              placeholder={t('至少 4 个字符')}
             />
           </label>
 
@@ -189,16 +190,16 @@ export function AuthModal({ onAuthed, onClose }: AuthModalProps) {
 
           <p className="form-note">
             {store.remote
-              ? '账号会安全保存到你的服务器，可在登录后跨设备同步草稿。'
-              : '账号仅保存在此浏览器本地，不会上传，也不能跨设备同步。'}
+              ? t('账号会安全保存到你的服务器，可在登录后跨设备同步草稿。')
+              : t('账号仅保存在此浏览器本地，不会上传，也不能跨设备同步。')}
           </p>
 
           <div className="sheet-foot">
             <button ref={cancelButtonRef} type="button" className="ghost" onClick={onClose}>
-              取消
+              {t('取消')}
             </button>
             <button ref={submitButtonRef} type="submit" className="accent" disabled={busy}>
-              {busy ? '请稍候…' : mode === 'login' ? '登录' : '创建账号'}
+              {busy ? t('请稍候…') : mode === 'login' ? t('登录') : t('创建账号')}
             </button>
           </div>
         </form>

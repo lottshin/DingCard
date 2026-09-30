@@ -94,7 +94,6 @@ async function expectEditorLayout(page: Page) {
         const viewport = { width: window.innerWidth, height: window.innerHeight }
         const targets = [
           ['header', '[data-testid="app-header"]'],
-          ['toolbar', '[data-testid="freeform-toolbar"]'],
           ['rail', '.freeform-rail'],
           ['stage', '.freeform-stage-pane'],
           ['inspector', '.freeform-inspector'],
@@ -133,9 +132,18 @@ async function expectEditorLayout(page: Page) {
         }
 
         const toolbar = document.querySelector<HTMLElement>('[data-testid="freeform-toolbar"]')
+        const header = document.querySelector<HTMLElement>('[data-testid="app-header"]')
+        if (!toolbar) issues.push('toolbar missing')
+        if (toolbar && header) {
+          const inner = toolbar.getBoundingClientRect()
+          const outer = header.getBoundingClientRect()
+          if (inner.top < outer.top - 1 || inner.bottom > outer.bottom + 1 || inner.left < outer.left - 1 || inner.right > outer.right + 1) {
+            issues.push('toolbar outside the header')
+          }
+        }
         const toolbarControls = Array.from(
           document.querySelectorAll<HTMLElement>(
-            '[data-testid="app-header"] button, [data-testid="freeform-toolbar"] button, .freeform-stage-head button',
+            '[data-testid="app-header"] button, [data-testid="freeform-toolbar"] button, .freeform-stage-head button, .freeform-zoom-controls button',
           ),
         )
           .filter((control) => {
@@ -194,8 +202,7 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   const uniqueText = `验收旅程-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const username = `editor-acceptance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
 
   await page.getByTestId('page-size-trigger').click()
@@ -239,8 +246,10 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await expectNoDocumentOverflow(page)
   await expectEditorLayout(page)
 
-  const saveButton = page.getByRole('button', { name: '保存草稿', exact: true })
-  await saveButton.click()
+  // A guest's work is not saved; the hint in the top bar opens the account dialog.
+  const saveHint = page.getByTestId('editor-save-state')
+  await expect(saveHint).toHaveText('登录后自动保存')
+  await saveHint.click()
   const authDialog = page.getByRole('dialog', { name: '账户登录与注册' })
   await expect(authDialog).toBeVisible()
   await expect(authDialog).toContainText('账号仅保存在此浏览器本地')
@@ -249,22 +258,17 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await authDialog.getByLabel('密码').fill('1234')
   await authDialog.getByRole('button', { name: '创建账号', exact: true }).click()
   await expect(authDialog).toBeHidden()
-  await expect(page.getByTestId('account-logout')).toHaveAccessibleName(`退出登录（${username}）`)
+  await expect(page.getByTestId('account-menu')).toHaveAccessibleName(`账号菜单（${username}）`)
 
-  await saveButton.click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-  await expect(page.getByRole('button', { name: '我的草稿 · 1', exact: true })).toBeVisible()
+  // The canvas made before signing in saves to the new account by itself.
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.reload()
-  await expect(page.getByTestId('account-logout')).toHaveAccessibleName(`退出登录（${username}）`)
-  // 刷新后工作区与草稿自动恢复：无需手动切工作区或从抽屉重新打开。
-  await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('account-menu')).toHaveAccessibleName(`账号菜单（${username}）`)
+  // 刷新后编辑器与项目自动恢复。
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await expect(page.getByTestId('freeform-textbox').last()).toContainText(uniqueText)
-  await page.getByRole('button', { name: '我的草稿 · 1', exact: true }).click()
-  const draft = page.locator('.draft-item').filter({ hasText: 'Page 1' })
-  await expect(draft).toContainText('自由编辑 · 1 页')
-  await draft.click()
 
   const restoredTextElement = page.getByTestId('freeform-element').last()
   const restoredTextBox = page.getByTestId('freeform-textbox').last()
@@ -295,6 +299,7 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await expectNoDocumentOverflow(page)
   await expectEditorLayout(page)
 
+  await page.getByTestId('freeform-export').click()
   const exportButton = page.getByTestId('freeform-primary-export')
   await expect(exportButton).toBeEnabled()
   const exportStartedAt = performance.now()
@@ -321,8 +326,7 @@ test('editor acceptance preserves nested layer state through save, reload, and e
   const runtimeIssues = collectRuntimeIssues(page)
   const username = `layer-acceptance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
 
   await insertAcceptanceShape(page, '矩形')
@@ -358,23 +362,19 @@ test('editor acceptance preserves nested layer state through save, reload, and e
   await expect(outerGroup.getByRole('button', { name: '锁定图层 组' }))
     .toHaveAttribute('aria-pressed', 'true')
 
-  const saveButton = page.getByRole('button', { name: '保存草稿', exact: true })
-  await saveButton.click()
+  await page.getByTestId('account-login').click()
   const authDialog = page.getByRole('dialog', { name: '账户登录与注册' })
   await authDialog.getByRole('button', { name: '注册', exact: true }).click()
   await authDialog.getByLabel('用户名').fill(username)
   await authDialog.getByLabel('密码').fill('1234')
   await authDialog.getByRole('button', { name: '创建账号', exact: true }).click()
   await expect(authDialog).toBeHidden()
-  await saveButton.click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.reload()
-  // 刷新后工作区与草稿自动恢复：无需手动切工作区或从抽屉重新打开。
-  await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-  await page.getByRole('button', { name: '我的草稿 · 1', exact: true }).click()
-  await page.locator('.draft-item', { hasText: 'Page 1' }).click()
+  // 刷新后编辑器与项目自动恢复。
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await page.getByRole('tab', { name: '图层', exact: true }).click()
 
   const restoredTree = page.getByRole('tree', { name: '图层树' })
@@ -386,6 +386,7 @@ test('editor acceptance preserves nested layer state through save, reload, and e
     .toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByTestId('freeform-canvas').locator('[data-scene-node-id]:visible')).toHaveCount(1)
 
+  await page.getByTestId('freeform-export').click()
   const exportButton = page.getByTestId('freeform-primary-export')
   const exportStartedAt = performance.now()
   const [download] = await Promise.all([

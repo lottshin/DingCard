@@ -25,7 +25,7 @@
 }
 
 /* Chrome buttons press down half a pixel; legacy also added an inset ring. */
-:where(.app-header, .workspace-toolbar, .freeform-rail, .freeform-stage-head, .freeform-inspector)
+:where(.editor-bar, .workspace-toolbar, .freeform-rail, .freeform-stage-head, .freeform-inspector)
   :where(button):active:not(:disabled) {
   transform: translateY(0.5px);
   box-shadow: none;

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { t } from './i18n'
 
 const TYPEAHEAD_RESET_MS = 500
 
@@ -295,7 +296,7 @@ export function Select({ value, options, onChange, title, testId, previewFonts }
                 : undefined
             }
           >
-            {selected?.label ?? '暂无选项'}
+            {selected?.label ?? t('暂无选项')}
           </span>
         </span>
         <svg className="sel-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden>

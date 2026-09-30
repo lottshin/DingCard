@@ -16,19 +16,20 @@ import { navigate, routes } from './router'
 import { TemplateCard } from './TemplateCard'
 import type { AssetsState } from './useAssets'
 import type { ProjectsState } from './useProjects'
+import { t } from '../i18n'
 
 const FREEFORM_SIZES = pageSizePresets.filter((preset) => ['3:4', '1:1', '9:16', '16:9'].includes(preset.ratio))
 
 function greeting(now = new Date()): string {
   const hour = now.getHours()
-  if (hour < 6) return '夜深了'
-  if (hour < 12) return '早上好'
-  if (hour < 18) return '下午好'
-  return '晚上好'
+  if (hour < 6) return t('夜深了')
+  if (hour < 12) return t('早上好')
+  if (hour < 18) return t('下午好')
+  return t('晚上好')
 }
 
 function nodeLabel(node: FreeformSceneNode): string {
-  return node.name || (node.type === 'text' ? '文本' : node.type === 'image' ? '图片' : '形状')
+  return node.name || (node.type === 'text' ? t('文本') : node.type === 'image' ? t('图片') : t('形状'))
 }
 
 interface HomePageProps {
@@ -42,6 +43,7 @@ interface HomePageProps {
   onOpenProject: (draft: Draft) => void
   onUseTemplate: (template: TemplateDefinition) => void
   onDuplicate: (draft: Draft) => void
+  onRename: (draft: Draft, title: string) => void
   onDelete: (draft: Draft) => void
 }
 
@@ -56,6 +58,7 @@ export function HomePage({
   onOpenProject,
   onUseTemplate,
   onDuplicate,
+  onRename,
   onDelete,
 }: HomePageProps) {
   const [filter, setFilter] = useState<'all' | WorkspaceMode>('all')
@@ -85,29 +88,29 @@ export function HomePage({
   )
 
   return (
-    <section className="page page-home" aria-label="首页">
-      <h1 className="hello">{greeting()}{user ? `，${user.username}` : ''}</h1>
-      <p className="hello-sub">今天想发点什么？写长文用 Markdown 卡片，自己排版用自由编辑。</p>
+    <section className="page page-home" aria-label={t('首页')}>
+      <h1 className="hello">{user ? t('{greeting}，{name}', { greeting: greeting(), name: user.username }) : greeting()}</h1>
+      <p className="hello-sub">{t('今天想发点什么？写长文用 Markdown 卡片，自己排版用自由编辑。')}</p>
 
       <div className="systems">
         <article className="system" data-testid="system-markdown">
           <div className="system-top">
-            <span className="sys-badge"><MarkdownMarkIcon className="sys-md" />Markdown 卡片</span>
-            <span className="system-count tnum">{counts['markdown-card']} 个项目 · {templateCounts['markdown-card']} 套模板</span>
+            <span className="sys-badge"><MarkdownMarkIcon className="sys-md" />{t('Markdown 卡片')}</span>
+            <span className="system-count tnum">{t('{projects} 个项目 · {templates} 套模板', { projects: counts['markdown-card'], templates: templateCounts['markdown-card'] })}</span>
           </div>
           <div>
-            <h2 className="system-title">写一篇长文，自动排成一组卡片</h2>
-            <p className="system-desc">只管写字。标题、正文、金句按内容自动分页，整组图片一键导出。</p>
+            <h2 className="system-title">{t('写一篇长文，自动排成一组卡片')}</h2>
+            <p className="system-desc">{t('只管写字。标题、正文、金句按内容自动分页，整组图片一键导出。')}</p>
           </div>
           <div className="system-art system-art-md" aria-hidden="true">
             <div className="md-doc">
-              <b># 这周事情很多，我先删掉一半</b>
+              <b>{t('# 这周事情很多，我先删掉一半')}</b>
               <i /><i className="short" />
               <span className="md-break">---</span>
-              <b>## 任务列了二十多条，今天只做三条</b>
+              <b>{t('## 任务列了二十多条，今天只做三条')}</b>
               <i /><i /><i className="short" />
               <span className="md-break">---</span>
-              <span>&gt; 明天上午先不回消息</span>
+              <span>{t('> 明天上午先不回消息')}</span>
             </div>
             <span className="md-flow" />
             <div className="md-fan">
@@ -117,22 +120,22 @@ export function HomePage({
             </div>
           </div>
           <div className="system-actions">
-            <span className="system-label">新建</span>
+            <span className="system-label">{t('新建')}</span>
             {PLATFORMS.map((platform) => (
-              <button key={platform.id} className="pill" type="button" onClick={() => onNewMarkdown(platform.id)}>{platform.label}</button>
+              <button key={platform.id} className="pill" type="button" onClick={() => onNewMarkdown(platform.id)}>{t(platform.label)}</button>
             ))}
-            <button className="system-more" type="button" onClick={() => navigate(routes.templates('markdown-card'))}>从模板开始</button>
+            <button className="system-more" type="button" onClick={() => navigate(routes.templates('markdown-card'))}>{t('从模板开始')}</button>
           </div>
         </article>
 
         <article className="system" data-testid="system-freeform">
           <div className="system-top">
-            <span className="sys-badge"><FreeformMarkIcon className="sys-ff" />自由编辑</span>
-            <span className="system-count tnum">{counts['freeform-slide']} 个项目 · {templateCounts['freeform-slide']} 套模板</span>
+            <span className="sys-badge"><FreeformMarkIcon className="sys-ff" />{t('自由编辑')}</span>
+            <span className="system-count tnum">{t('{projects} 个项目 · {templates} 套模板', { projects: counts['freeform-slide'], templates: templateCounts['freeform-slide'] })}</span>
           </div>
           <div>
-            <h2 className="system-title">像做海报一样，自由摆放每个元素</h2>
-            <p className="system-desc">文字、图片、形状、图层和参考线都在手边，多页设计一次导出。</p>
+            <h2 className="system-title">{t('像做海报一样，自由摆放每个元素')}</h2>
+            <p className="system-desc">{t('文字、图片、形状、图层和参考线都在手边，多页设计一次导出。')}</p>
           </div>
           <div className="system-art system-art-ff" aria-hidden="true">
             <div className="ff-rail"><span><TemplatesIcon /></span><span className="on"><AssetsIcon /></span><span><FreeformMarkIcon /></span></div>
@@ -144,40 +147,40 @@ export function HomePage({
             </div>
           </div>
           <div className="system-actions">
-            <span className="system-label">新建</span>
+            <span className="system-label">{t('新建')}</span>
             {FREEFORM_SIZES.map((preset) => (
               <button key={preset.ratio} className="pill tnum" type="button" onClick={() => onNewFreeform(preset.width, preset.height)}>{preset.ratio}</button>
             ))}
-            <button className="system-more" type="button" onClick={() => navigate(routes.templates('freeform-slide'))}>从模板开始</button>
+            <button className="system-more" type="button" onClick={() => navigate(routes.templates('freeform-slide'))}>{t('从模板开始')}</button>
           </div>
         </article>
       </div>
 
       <section className="section" aria-labelledby="home-recent">
         <div className="section-head">
-          <h2 id="home-recent">最近编辑</h2>
+          <h2 id="home-recent">{t('最近编辑')}</h2>
           <div className="section-tools">
-            <div className="tabs" role="group" aria-label="按系统筛选">
-              <button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>全部</button>
-              <button type="button" aria-pressed={filter === 'markdown-card'} onClick={() => setFilter('markdown-card')}>Markdown 卡片</button>
-              <button type="button" aria-pressed={filter === 'freeform-slide'} onClick={() => setFilter('freeform-slide')}>自由编辑</button>
+            <div className="tabs" role="group" aria-label={t('按系统筛选')}>
+              <button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>{t('全部')}</button>
+              <button type="button" aria-pressed={filter === 'markdown-card'} onClick={() => setFilter('markdown-card')}>{t('Markdown 卡片')}</button>
+              <button type="button" aria-pressed={filter === 'freeform-slide'} onClick={() => setFilter('freeform-slide')}>{t('自由编辑')}</button>
             </div>
             {projects.projects.length > 0 && (
-              <button className="link-btn" type="button" onClick={() => navigate(routes.projects())}>查看全部 {projects.projects.length} 个</button>
+              <button className="link-btn" type="button" onClick={() => navigate(routes.projects())}>{t('查看全部 {n} 个', { n: projects.projects.length })}</button>
             )}
           </div>
         </div>
         {recent.length > 0 ? (
           <div className="project-grid">
             {recent.map((draft) => (
-              <ProjectCard key={draft.id} draft={draft} onOpen={onOpenProject} onDuplicate={onDuplicate} onDelete={onDelete} />
+              <ProjectCard key={draft.id} draft={draft} onOpen={onOpenProject} onDuplicate={onDuplicate} onRename={onRename} onDelete={onDelete} />
             ))}
           </div>
         ) : (
           <div className="empty">
-            <b>{user ? '还没有保存的项目' : '登录后，保存的项目会出现在这里'}</b>
-            <span>{user ? '从上面选一种方式新建，保存后就会出现在这里。' : '现在也可以先新建一个试试，保存时再登录。'}</span>
-            {!user && <button className="ghost" type="button" onClick={() => navigate(routes.login)}>登录或注册</button>}
+            <b>{user ? t('还没有项目') : t('登录后，你的项目会出现在这里')}</b>
+            <span>{user ? t('从上面选一种方式新建，开始编辑就会自动保存到这里。') : t('现在也可以先新建一个试试；登录后，编辑的内容会自动保存。')}</span>
+            {!user && <button className="ghost" type="button" onClick={() => navigate(routes.login)}>{t('登录或注册')}</button>}
           </div>
         )}
       </section>
@@ -186,11 +189,11 @@ export function HomePage({
         <section className="section" aria-labelledby="home-assets">
           <div className="section-head">
             <div>
-              <h2 id="home-assets">素材库</h2>
-              <p className="section-hint">常用的照片、头像和 Logo 放在这里，两套系统都能直接取用。</p>
+              <h2 id="home-assets">{t('素材库')}</h2>
+              <p className="section-hint">{t('常用的照片、头像和 Logo 放在这里，两套系统都能直接取用。')}</p>
             </div>
             <button className="link-btn" type="button" onClick={() => navigate(routes.assets)}>
-              {assets.assets.length > 0 ? `管理全部 ${assets.assets.length} 张` : '打开素材库'}
+              {assets.assets.length > 0 ? t('管理全部 {n} 张', { n: assets.assets.length }) : t('打开素材库')}
             </button>
           </div>
           <div className="asset-strip">
@@ -200,7 +203,7 @@ export function HomePage({
                 className="asset-strip-item"
                 type="button"
                 title={asset.name}
-                aria-label={`在素材库中查看 ${asset.name}`}
+                aria-label={t('在素材库中查看 {name}', { name: asset.name })}
                 onClick={() => navigate(routes.assets)}
               >
                 <img src={asset.src} alt="" loading="lazy" decoding="async" draggable={false} />
@@ -208,7 +211,7 @@ export function HomePage({
             ))}
             <button className="asset-strip-add" type="button" onClick={() => assetInputRef.current?.click()}>
               <UploadIcon />
-              <span>上传图片</span>
+              <span>{t('上传图片')}</span>
             </button>
             <input
               ref={assetInputRef}
@@ -228,8 +231,8 @@ export function HomePage({
 
       <section className="section" aria-labelledby="home-templates">
         <div className="section-head">
-          <h2 id="home-templates">模板推荐</h2>
-          <button className="link-btn" type="button" onClick={() => navigate(routes.templates())}>去模板中心</button>
+          <h2 id="home-templates">{t('模板推荐')}</h2>
+          <button className="link-btn" type="button" onClick={() => navigate(routes.templates())}>{t('去模板中心')}</button>
         </div>
         <div className="tpl-grid">
           {picks.map((template) => <TemplateCard key={template.id} template={template} onUse={onUseTemplate} />)}

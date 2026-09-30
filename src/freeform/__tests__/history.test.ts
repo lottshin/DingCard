@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   createHistory,
-  isLatestSaveForDraft,
   jumpHistory,
   pushHistory,
   redo,
@@ -101,12 +100,5 @@ describe('freeform history', () => {
     expect(jumpHistory(history, { kind: 'past', index: 2 })).toBe(history)
     expect(jumpHistory(history, { kind: 'past', index: 1.5 })).toBe(history)
     expect(jumpHistory(history, { kind: 'future', index: 0 })).toBe(history)
-  })
-
-  it('accepts save results only from the latest request for the same draft identity', () => {
-    expect(isLatestSaveForDraft(2, 2, null, null)).toBe(true)
-    expect(isLatestSaveForDraft(1, 2, null, null)).toBe(false)
-    expect(isLatestSaveForDraft(2, 2, 'draft-a', 'draft-b')).toBe(false)
-    expect(isLatestSaveForDraft(2, 2, null, 'created-by-another-save')).toBe(false)
   })
 })

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
 import { pageSizePresets, validatePageSize } from './document'
 import { isFocusablePointerTarget } from './focusTarget'
+import { t } from '../i18n'
 
 export interface FreeformPageSizePopoverProps {
   isActive: boolean
@@ -38,7 +39,7 @@ export function FreeformPageSizePopover({
   )
   const sizeLabel = matchingPreset
     ? `${matchingPreset.ratio} · ${width}×${height}px`
-    : `自定义 · ${width}×${height}px`
+    : t('自定义 · {width}×{height}px', { width, height })
 
   isActiveRef.current = isActive
 
@@ -162,14 +163,14 @@ export function FreeformPageSizePopover({
           id={POPOVER_ID}
           data-testid="page-size-popover"
           role="dialog"
-          aria-label="页面尺寸"
+          aria-label={t('页面尺寸')}
         >
           <div className="page-size-popover-heading">
-            <strong>页面尺寸</strong>
+            <strong>{t('页面尺寸')}</strong>
             <span>{width}×{height}px</span>
           </div>
 
-          <div className="page-size-presets" aria-label="常用页面比例">
+          <div className="page-size-presets" aria-label={t('常用页面比例')}>
             {pageSizePresets.map((preset) => {
               const selected = preset.width === width && preset.height === height
               return (
@@ -196,12 +197,12 @@ export function FreeformPageSizePopover({
               apply(parseDraft(widthDraft), parseDraft(heightDraft))
             }}
           >
-            <div className="page-size-custom-heading">自定义尺寸</div>
+            <div className="page-size-custom-heading">{t('自定义尺寸')}</div>
             <div className="page-size-fields">
               <label className="page-size-field">
-                <span>宽度 <small>px</small></span>
+                <span>{t('宽度')} <small>px</small></span>
                 <input
-                  aria-label="宽度 px"
+                  aria-label={t('宽度 px')}
                   aria-describedby={error ? ERROR_ID : undefined}
                   type="number"
                   inputMode="numeric"
@@ -217,9 +218,9 @@ export function FreeformPageSizePopover({
               </label>
               <span className="page-size-times" aria-hidden="true">×</span>
               <label className="page-size-field">
-                <span>高度 <small>px</small></span>
+                <span>{t('高度')} <small>px</small></span>
                 <input
-                  aria-label="高度 px"
+                  aria-label={t('高度 px')}
                   aria-describedby={error ? ERROR_ID : undefined}
                   type="number"
                   inputMode="numeric"
@@ -242,7 +243,7 @@ export function FreeformPageSizePopover({
             )}
 
             <button className="page-size-apply" type="submit">
-              应用尺寸
+              {t('应用尺寸')}
             </button>
           </form>
         </div>

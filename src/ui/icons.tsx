@@ -273,3 +273,206 @@ export function CheckIcon(props: IconProps) {
     </Icon>
   )
 }
+
+export function SidebarIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2" />
+      <path d="M6.25 2.75v10.5" />
+    </Icon>
+  )
+}
+
+export function LanguageIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M2.25 8h11.5M8 2.25c1.6 1.7 2.4 3.6 2.4 5.75S9.6 12.05 8 13.75C6.4 12.05 5.6 10.15 5.6 8S6.4 3.95 8 2.25Z" />
+    </Icon>
+  )
+}
+
+export function UndoIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5.5 4.25 2.75 7l2.75 2.75" />
+      <path d="M2.75 7h6.5a4 4 0 0 1 0 8h-2" />
+    </Icon>
+  )
+}
+
+export function RedoIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10.5 4.25 13.25 7l-2.75 2.75" />
+      <path d="M13.25 7h-6.5a4 4 0 0 0 0 8h2" />
+    </Icon>
+  )
+}
+
+export function TextIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 4.25V3h10v1.25M8 3v10M6 13h4" />
+    </Icon>
+  )
+}
+
+export function ShapesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="5.5" cy="5.5" r="3" />
+      <path d="M8.75 8.75h4.5v4.5h-4.5z" />
+      <path d="m10.75 2.25 2.5 4.25h-5z" />
+    </Icon>
+  )
+}
+
+export function LineToolIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 13 13 3" />
+      <path d="M9 3h4v4" />
+    </Icon>
+  )
+}
+
+export function ImageIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.25" y="3" width="11.5" height="10" rx="1.75" />
+      <circle cx="5.75" cy="6.5" r="1.1" />
+      <path d="m13.75 10.5-3.25-3-7.5 5.25" />
+    </Icon>
+  )
+}
+
+export function SaveIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 3.75A.75.75 0 0 1 3.75 3h6.5L13 5.75v6.5a.75.75 0 0 1-.75.75h-8.5a.75.75 0 0 1-.75-.75z" />
+      <path d="M5.5 3v3h4V3M5.5 13v-3.5h5V13" />
+    </Icon>
+  )
+}
+
+export function FolderIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.25 4.5a1 1 0 0 1 1-1h3l1.5 1.5h5a1 1 0 0 1 1 1v6.25a1 1 0 0 1-1 1h-9.5a1 1 0 0 1-1-1z" />
+    </Icon>
+  )
+}
+
+/** Solid previews for the shape and line insert menus. */
+export function ShapePreviewIcon({ shape, ...props }: IconProps & { shape: string }) {
+  const paths: Record<string, JSX.Element> = {
+    rect: <rect x="4" y="6" width="24" height="20" rx="3" />,
+    ellipse: <circle cx="16" cy="16" r="11" />,
+    triangle: <path d="M16 5 28 26H4z" />,
+    star: <path d="m16 4 3.6 7.6 8.4 1-6.2 5.8 1.6 8.3L16 22.6l-7.4 4.1 1.6-8.3L4 12.6l8.4-1z" />,
+    hexagon: <path d="M10 5h12l6 11-6 11H10L4 16z" />,
+    line: <path d="M5 27 27 5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />,
+    arrow: (
+      <g fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 27 26 6" />
+        <path d="M15 6h11v11" />
+      </g>
+    ),
+  }
+  return (
+    <svg viewBox="0 0 32 32" width="32" height="32" fill="currentColor" aria-hidden="true" focusable="false" {...props}>
+      {paths[shape] ?? paths.rect}
+    </svg>
+  )
+}
+
+export function BookmarkIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4.25 2.75h7.5v10.5L8 10.75l-3.75 2.5z" />
+    </Icon>
+  )
+}
+
+export function StackIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m8 2.5 5.5 2.75L8 8 2.5 5.25z" />
+      <path d="m2.5 8 5.5 2.75L13.5 8M2.5 10.75 8 13.5l5.5-2.75" />
+    </Icon>
+  )
+}
+
+export function BadgeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="6" r="2.75" />
+      <path d="M3 13.5c.7-2.3 2.7-3.75 5-3.75s4.3 1.45 5 3.75" />
+    </Icon>
+  )
+}
+
+export function CloudCheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4.5 12.25a3 3 0 0 1-.4-5.97 4 4 0 0 1 7.72-.9 3.2 3.2 0 0 1 .43 6.87z" />
+      <path d="m6.25 9 1.25 1.25L9.75 8" />
+    </Icon>
+  )
+}
+
+export function CloudOffIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 12.25H4.5a3 3 0 0 1-.4-5.97 4 4 0 0 1 .8-1.73M7.1 3.1a4 4 0 0 1 4.72 2.28 3.2 3.2 0 0 1 1.83 5.6" />
+      <path d="m2.5 2.5 11 11" />
+    </Icon>
+  )
+}
+
+export function AlertIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M8 5v3.5M8 10.9v.1" />
+    </Icon>
+  )
+}
+
+export function FileImportIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9.25 2.25H4.75a1 1 0 0 0-1 1v9.5a1 1 0 0 0 1 1h6.5a1 1 0 0 0 1-1V5.25z" />
+      <path d="M9.25 2.25v3h3M8 7v4.25M6.25 9.5 8 11.25 9.75 9.5" />
+    </Icon>
+  )
+}
+
+export function LayersIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m8 2.5 5.5 2.75L8 8 2.5 5.25z" />
+      <path d="m2.5 8 5.5 2.75L13.5 8" />
+    </Icon>
+  )
+}
+
+export function HistoryIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.75 8a5.25 5.25 0 1 0 1.54-3.71" />
+      <path d="M2.75 2.75v2.5h2.5M8 5.25V8l1.75 1.25" />
+    </Icon>
+  )
+}
+
+export function SlidersIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.75 5h10.5M2.75 11h10.5" />
+      <circle cx="6" cy="5" r="1.6" fill="var(--surface-pop, #fff)" />
+      <circle cx="10" cy="11" r="1.6" fill="var(--surface-pop, #fff)" />
+    </Icon>
+  )
+}

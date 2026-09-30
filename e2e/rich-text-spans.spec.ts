@@ -51,8 +51,7 @@ async function selectTextRange(page: Page, start: number, end: number) {
 }
 
 test('rich text spans: select, bold, color, survive edits, and delete', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   await page.getByTestId('insert-text').click()
   const textbox = page.getByTestId('freeform-textbox')

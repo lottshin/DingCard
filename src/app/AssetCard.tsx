@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { formatBytes, type Asset } from '../assets'
 import { CloseIcon, DownloadIcon, MoreIcon, PencilIcon, TrashIcon } from '../ui/icons'
 import { useDismiss } from './useDismiss'
+import { locale, t } from '../i18n'
 
 function assetFileName(asset: Asset): string {
   const match = /^data:image\/(png|jpeg|webp)/i.exec(asset.src) ?? /\.(png|jpe?g|webp)(?:[?#]|$)/i.exec(asset.src)
@@ -19,7 +20,7 @@ export function downloadAsset(asset: Asset) {
 }
 
 function uploadedOn(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+  return new Date(timestamp).toLocaleDateString(locale(), { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 interface AssetCardProps {
@@ -45,14 +46,14 @@ export function AssetCard({ asset, onPreview, onRename, onDelete }: AssetCardPro
 
   return (
     <article className="asset" data-testid="asset-card">
-      <button className="asset-thumb" type="button" onClick={() => onPreview(asset)} aria-label={`查看 ${asset.name}`}>
+      <button className="asset-thumb" type="button" onClick={() => onPreview(asset)} aria-label={t('查看 {name}', { name: asset.name })}>
         <img src={asset.src} alt="" loading="lazy" decoding="async" draggable={false} />
       </button>
       <div className="asset-info">
         {renaming ? (
           <input
             className="text-input asset-rename"
-            aria-label="素材名称"
+            aria-label={t('素材名称')}
             defaultValue={asset.name}
             maxLength={60}
             autoFocus
@@ -78,7 +79,7 @@ export function AssetCard({ asset, onPreview, onRename, onDelete }: AssetCardPro
         <button
           className="icon-btn asset-more"
           type="button"
-          aria-label={`${asset.name} 的更多操作`}
+          aria-label={t('{name} 的更多操作', { name: asset.name })}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((open) => !open)}
@@ -88,13 +89,13 @@ export function AssetCard({ asset, onPreview, onRename, onDelete }: AssetCardPro
         {menuOpen && (
           <div className="menu asset-menu-list" role="menu">
             <button role="menuitem" type="button" onClick={() => { setMenuOpen(false); cancelRenameRef.current = false; setRenaming(true) }}>
-              <PencilIcon />重命名
+              <PencilIcon />{t('重命名')}
             </button>
             <button role="menuitem" type="button" onClick={() => { setMenuOpen(false); downloadAsset(asset) }}>
-              <DownloadIcon />下载
+              <DownloadIcon />{t('下载')}
             </button>
             <button role="menuitem" type="button" className="danger" onClick={() => { setMenuOpen(false); onDelete(asset) }}>
-              <TrashIcon />删除
+              <TrashIcon />{t('删除')}
             </button>
           </div>
         )}
@@ -141,20 +142,20 @@ export function AssetPreview({ asset, usedBy, onDelete, onClose }: AssetPreviewP
         <div className="asset-preview-side">
           <div className="modal-head">
             <h3 id={titleId}>{asset.name}</h3>
-            <button ref={closeRef} className="modal-x" type="button" onClick={onClose} aria-label="关闭">
+            <button ref={closeRef} className="modal-x" type="button" onClick={onClose} aria-label={t('关闭')}>
               <CloseIcon />
             </button>
           </div>
           <dl className="asset-facts">
-            <div><dt>尺寸</dt><dd className="tnum">{asset.width} × {asset.height} px</dd></div>
-            <div><dt>大小</dt><dd className="tnum">{formatBytes(asset.bytes)}</dd></div>
-            <div><dt>上传于</dt><dd>{uploadedOn(asset.createdAt)}</dd></div>
-            <div><dt>用在</dt><dd className="tnum">{usedBy > 0 ? `${usedBy} 个项目里` : '还没有项目用到'}</dd></div>
+            <div><dt>{t('尺寸')}</dt><dd className="tnum">{asset.width} × {asset.height} px</dd></div>
+            <div><dt>{t('大小')}</dt><dd className="tnum">{formatBytes(asset.bytes)}</dd></div>
+            <div><dt>{t('上传于')}</dt><dd>{uploadedOn(asset.createdAt)}</dd></div>
+            <div><dt>{t('用在')}</dt><dd className="tnum">{usedBy > 0 ? t('{n} 个项目里', { n: usedBy }) : t('还没有项目用到')}</dd></div>
           </dl>
-          <p className="asset-preview-hint">在编辑器顶栏打开「素材库」，点一下就能放进 Markdown 卡片或自由编辑的项目里。</p>
+          <p className="asset-preview-hint">{t('在 Markdown 卡片工具栏的「素材库」或自由编辑插入栏的「图片」里，点一下就能放进项目。')}</p>
           <div className="modal-foot">
-            <button className="ghost confirm-danger-ghost" type="button" onClick={() => onDelete(asset)}><TrashIcon />删除</button>
-            <button className="accent" type="button" onClick={() => downloadAsset(asset)}><DownloadIcon />下载</button>
+            <button className="ghost confirm-danger-ghost" type="button" onClick={() => onDelete(asset)}><TrashIcon />{t('删除')}</button>
+            <button className="accent" type="button" onClick={() => downloadAsset(asset)}><DownloadIcon />{t('下载')}</button>
           </div>
         </div>
       </div>

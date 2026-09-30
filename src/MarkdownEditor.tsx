@@ -9,6 +9,7 @@ import { indentWithTab, insertNewlineAndIndent } from '@codemirror/commands'
 import { tags } from '@lezer/highlight'
 import { downscaleDataUrl } from './imageStore'
 import { store } from './storage'
+import { t } from './i18n'
 
 /**
  * Obsidian-style "Live Preview" Markdown editor built on CodeMirror 6.
@@ -282,11 +283,15 @@ const baseTheme = EditorView.theme({
   },
   '.cm-md-link': { color: 'var(--accent-text)', textDecoration: 'underline' },
   '.cm-md-bullet': { color: 'var(--accent)', fontWeight: '700' },
+  // Keep pictures from taking over the writing column; the card preview shows them full size.
   '.cm-md-img': {
     maxWidth: '100%',
+    maxHeight: '260px',
+    objectFit: 'contain',
     borderRadius: '8px',
     display: 'block',
     margin: '6px 0',
+    boxShadow: 'var(--thumb-ring)',
   },
 })
 
@@ -298,9 +303,9 @@ function readFileAsDataUrl(file: File): Promise<string> {
         resolve(reader.result)
         return
       }
-      reject(new Error('无法读取粘贴的图片'))
+      reject(new Error(t('无法读取粘贴的图片')))
     }
-    reader.onerror = () => reject(reader.error ?? new Error('无法读取粘贴的图片'))
+    reader.onerror = () => reject(reader.error ?? new Error(t('无法读取粘贴的图片')))
     try {
       reader.readAsDataURL(file)
     } catch (error) {

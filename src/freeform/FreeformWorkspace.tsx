@@ -1,10 +1,11 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, SetStateAction } from 'react'
 import { toCanvas } from 'html-to-image'
+import { AssetPanel } from '../app/AssetDrawer'
+import { navigate, routes } from '../app/router'
 import type { Asset } from '../assets'
-import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
-import { type Draft, importDraftFromJson } from '../drafts'
+import type { Draft } from '../drafts'
 import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
@@ -12,20 +13,29 @@ import { readLastSession, updateLastSession } from '../lastSession'
 import { store } from '../storage'
 import { FONTS } from '../theme'
 import { assetDocumentSource } from '../workspaces/assetSource'
+import {
+  CloseIcon,
+  CopyIcon,
+  ImageIcon,
+  LineToolIcon,
+  PlusIcon,
+  RedoIcon,
+  ShapePreviewIcon,
+  ShapesIcon,
+  TemplatesIcon,
+  TextIcon,
+  TrashIcon,
+  UndoIcon,
+  UploadIcon,
+} from '../ui/icons'
+import { EditorTopBar, type SaveState } from '../workspaces/EditorTopBar'
 import { OperationNotice } from '../workspaces/OperationNotice'
 import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../workspaces/types'
 import { useImageLease } from '../workspaces/useImageLease'
+import { useProjectAutosave } from '../workspaces/useProjectAutosave'
 import { TemplateGallery } from '../templates/TemplateGallery'
-import { SaveTemplateDialog } from '../templates/SaveTemplateDialog'
 import type { TemplateDefinition } from '../templates/types'
-import {
-  deleteUserTemplate,
-  listUserTemplates,
-  saveUserTemplate,
-  userTemplateToDefinition,
-  type UserTemplate,
-} from '../templates/userTemplates'
 import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE, PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
 import { collectTextAutoSize } from './textAutoSize'
 import {
@@ -37,12 +47,12 @@ import {
   createTextElement,
   freeformReducer,
 } from './document'
-import { materializeLocalFreeformImages } from './imageAssets'
 import { insertRichTextSpan } from './richText'
 import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
+import { FreeformExportMenu } from './FreeformExportMenu'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorNumberInput } from './InspectorNumberInput'
-import { FreeformLayersPanel } from './FreeformLayersPanel'
+import { FreeformLayersPanel, layerLabel } from './FreeformLayersPanel'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
 import { FreeformRightPanel } from './FreeformRightPanel'
 import {
@@ -64,7 +74,6 @@ import {
 import { InspectorSection } from './InspectorSection'
 import {
   createHistory,
-  isLatestSaveForDraft,
   jumpHistory,
   pushHistory,
   redo,
@@ -212,6 +221,7 @@ import {
   zoomPercentFromWheelDelta,
 } from './viewportScale'
 import { copyStylePatch, pasteStylePatch } from './styleClipboard'
+import { t } from '../i18n'
 
 const FIT_SCALE_EPSILON = 0.0001
 const EXPORT_IMAGE_WAIT_MS = 3_500
@@ -272,6 +282,17 @@ const LINES: Array<{ id: FreeformLineElement['lineKind']; label: string }> = [
   { id: 'line', label: '直线' },
   { id: 'arrow', label: '箭头' },
 ]
+
+const SHAPE_TILES = SHAPES.map((shape) => ({ ...shape, icon: <ShapePreviewIcon shape={shape.id} /> }))
+const LINE_TILES = LINES.map((line) => ({ ...line, icon: <ShapePreviewIcon shape={line.id} /> }))
+
+/** Page strip thumbnails share one height; width follows each page's ratio.
+ *  The strip stays as short as the old stage header so the canvas keeps its size. */
+const THUMB_HEIGHT = 40
+function thumbFrameWidth(slide: FreeformSlide): number {
+  const ratio = slide.width > 0 && slide.height > 0 ? slide.width / slide.height : 1
+  return Math.round(Math.min(72, Math.max(24, THUMB_HEIGHT * ratio)))
+}
 
 const FITS: Array<{ id: 'cover' | 'contain'; label: string }> = [
   { id: 'cover', label: '填满' },
@@ -475,6 +496,11 @@ function withNaturalAspect(
   }
 }
 
+/** The page itself is the root of every breadcrumb; everything below is a layer name. */
+function breadcrumbLabel(breadcrumb: { name: string; path: readonly unknown[] }): string {
+  return breadcrumb.path.length === 0 ? t(breadcrumb.name) : layerLabel(breadcrumb.name)
+}
+
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -667,7 +693,7 @@ type RulerView = {
 type GuideDragState = { axis: 'x' | 'y'; guideId: string | null; position: number }
 
 function operationErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback
+  return error instanceof Error && error.message.trim() ? t(error.message) : fallback
 }
 
 const LOCKED_OPERATION_NOTICE = '图层已锁定，先解锁后再编辑'
@@ -679,24 +705,24 @@ function sceneStructureFailureMessage(
 ): string {
   if (reason === 'locked' || reason === 'locked-parent') {
     return operation === 'group'
-      ? '图层或父级已锁定，无法组合'
+      ? t('图层或父级已锁定，无法组合')
       : operation === 'ungroup'
-        ? '图层或父级已锁定，无法解组'
-        : LOCKED_OPERATION_NOTICE
+        ? t('图层或父级已锁定，无法解组')
+        : t(LOCKED_OPERATION_NOTICE)
   }
   if (operation === 'group') {
     if (reason === 'requires-two' || reason === 'empty-selection') {
-      return '至少选择两个同级图层后才能组合'
+      return t('至少选择两个同级图层后才能组合')
     }
-    if (reason === 'invalid-selection') return '只能组合同一组内的图层'
-    if (reason === 'hidden') return '隐藏图层无法组合'
-    return '当前图层无法组合'
+    if (reason === 'invalid-selection') return t('只能组合同一组内的图层')
+    if (reason === 'hidden') return t('隐藏图层无法组合')
+    return t('当前图层无法组合')
   }
   if (operation === 'ungroup') {
-    if (reason === 'not-group') return '请选择一个或多个组合后再解组'
-    return '当前图层无法解组'
+    if (reason === 'not-group') return t('请选择一个或多个组合后再解组')
+    return t('当前图层无法解组')
   }
-  return '无法在当前编辑范围内插入对象'
+  return t('无法在当前编辑范围内插入对象')
 }
 
 function toRect(marquee: MarqueeState): Rect {
@@ -743,16 +769,16 @@ function FilterField({
           data-testid="filter-add"
           onClick={() => onChange({ brightness: 1.1, contrast: 1.1 })}
         >
-          添加滤镜
+          {t('添加滤镜')}
         </button>
       </div>
     )
   }
   const fields: Array<{ key: keyof SceneFilter; label: string; min: number; max: number; fallback: number }> = [
-    { key: 'brightness', label: '亮度', min: 0, max: 3, fallback: 1 },
-    { key: 'contrast', label: '对比度', min: 0, max: 3, fallback: 1 },
-    { key: 'saturation', label: '饱和度', min: 0, max: 3, fallback: 1 },
-    { key: 'blur', label: '模糊', min: 0, max: 100, fallback: 0 },
+    { key: 'brightness', label: t('亮度'), min: 0, max: 3, fallback: 1 },
+    { key: 'contrast', label: t('对比度'), min: 0, max: 3, fallback: 1 },
+    { key: 'saturation', label: t('饱和度'), min: 0, max: 3, fallback: 1 },
+    { key: 'blur', label: t('模糊'), min: 0, max: 100, fallback: 0 },
   ]
   return (
     <>
@@ -761,7 +787,7 @@ function FilterField({
           <label key={key}>
             {label}
             <InspectorNumberInput
-              ariaLabel={`滤镜${label}`}
+              ariaLabel={t('滤镜{name}', { name: label })}
               min={min}
               max={max}
               resetKey={resetKey}
@@ -778,7 +804,7 @@ function FilterField({
           data-testid="filter-clear"
           onClick={() => onChange(null)}
         >
-          清除滤镜
+          {t('清除滤镜')}
         </button>
       </div>
     </>
@@ -804,7 +830,7 @@ function ShadowField({
           data-testid="shadow-add"
           onClick={() => onChange({ ...DEFAULT_SHADOW })}
         >
-          添加阴影
+          {t('添加阴影')}
         </button>
       </div>
     )
@@ -813,20 +839,20 @@ function ShadowField({
     <>
       <div className="field-grid with-gap">
         <div className="stroke-color-field" data-testid="shadow-color">
-          <span className="stroke-color-label">颜色</span>
+          <span className="stroke-color-label">{t('颜色')}</span>
           <div className="color-field">
             <span className="color-field-value">{shadow.color.toUpperCase()}</span>
             <ColorPickerButton
-              label="阴影颜色"
+              label={t('阴影颜色')}
               color={shadow.color}
               onChange={(color) => onChange({ ...shadow, color })}
             />
           </div>
         </div>
         <label>
-          模糊
+          {t('模糊')}
           <InspectorNumberInput
-            ariaLabel="阴影模糊"
+            ariaLabel={t('阴影模糊')}
             min={0}
             max={400}
             resetKey={resetKey}
@@ -837,9 +863,9 @@ function ShadowField({
       </div>
       <div className="field-grid">
         <label>
-          水平偏移
+          {t('水平偏移')}
           <InspectorNumberInput
-            ariaLabel="阴影水平偏移"
+            ariaLabel={t('阴影水平偏移')}
             min={-1000}
             max={1000}
             resetKey={resetKey}
@@ -848,9 +874,9 @@ function ShadowField({
           />
         </label>
         <label>
-          垂直偏移
+          {t('垂直偏移')}
           <InspectorNumberInput
-            ariaLabel="阴影垂直偏移"
+            ariaLabel={t('阴影垂直偏移')}
             min={-1000}
             max={1000}
             resetKey={resetKey}
@@ -866,14 +892,14 @@ function ShadowField({
           data-testid="shadow-clear"
           onClick={() => onChange(null)}
         >
-          清除阴影
+          {t('清除阴影')}
         </button>
       </div>
     </>
   )
 }
 
-export function FreeformWorkspace({ isActive, user, requestAuth, request = null, onMetaChange }: WorkspaceShellProps) {
+export function FreeformWorkspace({ isActive, user, requestAuth, chrome, request = null, onMetaChange }: WorkspaceShellProps) {
   const [history, setHistory] = useState<HistoryState<FreeformDocument>>(() =>
     createHistory(createFreeformDocument()),
   )
@@ -930,21 +956,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
   } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
-  const [exportOptionsOpen, setExportOptionsOpen] = useState(false)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
-  const [showDrafts, setShowDrafts] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
-  const [userTemplates, setUserTemplates] = useState<readonly UserTemplate[]>([])
+  const [toolDrawer, setToolDrawer] = useState<'images' | null>(null)
   const [textSelection, setTextSelection] = useState<{
     path: ScenePath
     start: number
     end: number
   } | null>(null)
-  const [drafts, setDrafts] = useState<Draft[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [projectTitle, setProjectTitle] = useState(() => t('未命名设计'))
+  /** Renamed since the last save. */
+  const [titleDirty, setTitleDirty] = useState(false)
   // 刷新恢复：每账号只尝试一次；openDraftRef 让恢复 effect 不必依赖 openDraft 的函数身份。
   const restoreAttemptedUserIdRef = useRef<string | null>(null)
   // Bumped whenever the document is replaced, so a slow session restore can't overwrite it.
@@ -1074,15 +1098,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
   const currentDocumentRef = useRef(doc)
   const currentDraftIdRef = useRef(draftId)
   const currentUserIdRef = useRef<string | null>(user?.id ?? null)
-  const draftListGenerationRef = useRef(0)
-  const saveGenerationRef = useRef(0)
-  const saveInFlightRef = useRef(false)
   const successfulSaveRef = useRef<{
     source: FreeformDocument
     document: FreeformDocument
     updatedAt: number
   } | null>(null)
 
+  const projectTitleRef = useRef(projectTitle)
+  const savedAtRef = useRef(savedAt)
+  const titleDirtyRef = useRef(titleDirty)
+  // The document as stored (or as opened); a different current document still needs saving.
+  const persistedDocRef = useRef(doc)
+  // The project a signed-out account left unsaved work in (see the account effect).
+  const parkedProjectRef = useRef<{ userId: string; draftId: string | null } | null>(null)
+  // What autosave was last handed, so leaving a project doesn't queue it twice.
+  const scheduledDocRef = useRef<FreeformDocument | null>(null)
+  const scheduledTitleRef = useRef<string | null>(null)
+  projectTitleRef.current = projectTitle
+  savedAtRef.current = savedAt
+  titleDirtyRef.current = titleDirty
   selectedElementIds.current = selection
   historyRef.current = history
   currentDocumentRef.current = doc
@@ -1170,17 +1204,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     )),
   )
   const selectedFramingDisabledReason = propertySelectionReadOnly
-    ? '请先解锁图片'
+    ? t('请先解锁图片')
     : selectedShapeFillPending
-      ? '图片正在处理中'
+      ? t('图片正在处理中')
       : selectedImageTarget?.fit === 'contain'
         ? selectedImageTarget.targetKind === 'image'
-          ? '请先切换到填满模式后裁剪'
-          : '适应模式不支持调整取景'
+          ? t('请先切换到填满模式后裁剪')
+          : t('适应模式不支持调整取景')
         : !selectedImageNaturalSize
           ? selectedImageTarget?.targetKind === 'image'
-            ? '图片加载完成后可裁剪'
-            : '图片加载完成后可调整取景'
+            ? t('图片加载完成后可裁剪')
+            : t('图片加载完成后可调整取景')
           : null
   const canAdjustSelectedFraming = Boolean(
     selectedImageTarget
@@ -1249,7 +1283,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     return next
   }, [])
   const showLockedOperationNotice = useCallback(() => {
-    setOperationNotice(LOCKED_OPERATION_NOTICE)
+    setOperationNotice(t(LOCKED_OPERATION_NOTICE))
   }, [])
   const blockDocumentMutationDuringInteraction = useCallback(() => {
     if (
@@ -1258,11 +1292,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       && !framingSessionRef.current
       && !imageCropSessionRef.current
     ) return false
-    setOperationNotice(ACTIVE_INTERACTION_NOTICE)
+    setOperationNotice(t(ACTIVE_INTERACTION_NOTICE))
     return true
   }, [])
   const handleImageLeaseError = useCallback((error: unknown) => {
-    showOperationError(error, '图片续租失败，请检查网络后重试')
+    showOperationError(error, t('图片续租失败，请检查网络后重试'))
   }, [showOperationError])
   const retainImagesNow = useImageLease(
     imageSources,
@@ -1304,7 +1338,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
           invalidatedCropDecodeIdentityRef.current = { ...report.identity }
         } else if (invalidation.reason === 'error') {
           invalidatedCropDecodeIdentityRef.current = null
-          setOperationNotice('图片加载失败，请重试')
+          setOperationNotice(t('图片加载失败，请重试'))
         } else {
           invalidatedCropDecodeIdentityRef.current = null
         }
@@ -1343,37 +1377,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     }
     if (report.status === 'error' && followsInvalidatedCrop) {
       invalidatedCropDecodeIdentityRef.current = null
-      setOperationNotice('图片加载失败，请重试')
+      setOperationNotice(t('图片加载失败，请重试'))
     } else if (report.status === 'ready' && followsInvalidatedCrop) {
       invalidatedCropDecodeIdentityRef.current = null
     }
   }, [activeGroupPath, imageReadinessRefresh])
-
-  const loadDrafts = useCallback(async (uid: string) => {
-    const generation = ++draftListGenerationRef.current
-    try {
-      const list = await store.drafts.list(uid)
-      if (
-        generation === draftListGenerationRef.current &&
-        currentUserIdRef.current === uid
-      ) setDrafts(list)
-    } catch (error) {
-      if (
-        generation === draftListGenerationRef.current &&
-        currentUserIdRef.current === uid
-      ) showOperationError(error, '草稿列表加载失败，请稍后重试')
-    }
-  }, [showOperationError])
-
-  const refreshDrafts = useCallback(() => {
-    const uid = currentUserIdRef.current
-    if (!uid) {
-      draftListGenerationRef.current += 1
-      setDrafts([])
-      return
-    }
-    void loadDrafts(uid)
-  }, [loadDrafts])
 
   const measureFitScale = useCallback(() => {
     const stage = stageScrollRef.current
@@ -1545,45 +1553,84 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     return () => window.removeEventListener('pointerdown', onPointerDown, true)
   }, [contextMenu, slideContextMenu])
 
+  // Autosave: a signed-in user's edits land in their project a moment later.
+  const autosave = useProjectAutosave<{ title: string }>((saved, content, tag) => {
+    if (saved.mode !== 'freeform-slide' || content.mode !== 'freeform-slide') return
+    const snapshot = content.document
+    updateDraftId(saved.id)
+    const uid = currentUserIdRef.current
+    if (uid) updateLastSession(uid, { mode: 'freeform-slide', freeformDraftId: saved.id })
+    successfulSaveRef.current = { source: snapshot, document: saved.document, updatedAt: saved.updatedAt }
+    const interacting = Boolean(
+      activeInteractionRef.current
+      || marqueePointerIdRef.current !== null
+      || framingSessionRef.current
+      || imageCropSessionRef.current,
+    )
+    // Remote saves upload inline images; adopt the uploaded copy if nothing changed since.
+    if (store.remote && !interacting) {
+      updateHistory((current) => (
+        Object.is(current.current, snapshot) ? { ...current, current: saved.document } : current
+      ))
+    }
+    const current = currentDocumentRef.current
+    persistedDocRef.current = Object.is(current, saved.document) ? saved.document : snapshot
+    if (Object.is(current, snapshot) || Object.is(current, saved.document)) setSavedAt(saved.updatedAt)
+    if (tag.title === projectTitleRef.current) {
+      titleDirtyRef.current = false
+      setTitleDirty(false)
+    }
+  })
+  const { schedule: scheduleSave, release: releaseSave, discard: discardSave } = autosave
+
+  // Leaving the editor (for the workbench, say): don't wait out the pause.
+  const flushSave = autosave.flush
+  useEffect(() => {
+    if (!isActive) void flushSave()
+  }, [flushSave, isActive])
+
+  // A different account: the open project belongs to the old one. A guest who
+  // signs in keeps the canvas, and autosave files its edits under the new account.
   useEffect(() => {
     const nextUserId = user?.id ?? null
-    const userChanged = previousUserId.current !== nextUserId
-    if (userChanged) {
-      cancelFramingBeforeTransition(previousUserId.current, currentDraftIdRef.current)
-      previousUserId.current = nextUserId
-      documentIdentityGenerationRef.current += 1
-      shapeFillOperationTokensRef.current.clear()
-      setPendingShapeFillKeys(new Set())
-      clearAllImageReadinessNow()
-      draftListGenerationRef.current += 1
-      saveGenerationRef.current += 1
-      successfulSaveRef.current = null
-      setDrafts([])
-      updateDraftId(null)
-      setSavedAt(null)
-      setShowDrafts(false)
-      setOperationNotice(null)
+    const previous = previousUserId.current
+    if (previous === nextUserId) return
+    // Edits that never reached the old account (its saves were failing, say an expired session).
+    const hadUnsavedEdits = titleDirtyRef.current
+      || (savedAtRef.current === null && historyRef.current.past.length > 0)
+    cancelFramingBeforeTransition(previous, currentDraftIdRef.current)
+    previousUserId.current = nextUserId
+    // A crop that just committed still belongs to the old account.
+    if (previous !== null) leaveDocument(previous)
+    else releaseSave()
+    documentIdentityGenerationRef.current += 1
+    shapeFillOperationTokensRef.current.clear()
+    setPendingShapeFillKeys(new Set())
+    clearAllImageReadinessNow()
+    successfulSaveRef.current = null
+    // Unsaved edits kept on screen after a session ended go back into the same
+    // project when that account signs in again, instead of a copy.
+    if (previous !== null && nextUserId === null && hadUnsavedEdits) {
+      parkedProjectRef.current = { userId: previous, draftId: currentDraftIdRef.current }
     }
-
-    if (user) {
-      void loadDrafts(user.id)
-      setUserTemplates(listUserTemplates(user.id))
-    } else {
-      draftListGenerationRef.current += 1
-      setDrafts([])
-      setUserTemplates([])
-    }
-
-    return () => {
-      draftListGenerationRef.current += 1
-    }
-  }, [clearAllImageReadinessNow, loadDrafts, updateDraftId, user])
+    const parked = parkedProjectRef.current
+    const resumed = parked !== null && parked.userId === nextUserId
+    if (nextUserId !== null) parkedProjectRef.current = null
+    updateDraftId(resumed ? parked.draftId : null)
+    setSavedAt(null)
+    setOperationNotice(null)
+    // Signing back in reopens the last project.
+    if (nextUserId === null) restoreAttemptedUserIdRef.current = null
+    if (previous !== null && !hadUnsavedEdits) startFreshDocument(createFreeformDocument(), undefined, false)
+  }, [clearAllImageReadinessNow, releaseSave, updateDraftId, user])
 
   // 刷新恢复：账号确认后自动回到本工作台最近打开的草稿（每个账号只尝试
   // 一次；草稿已被删除或读取失败则保持新文档，不提示）。
   useEffect(() => {
     if (!user || restoreAttemptedUserIdRef.current === user.id) return
     restoreAttemptedUserIdRef.current = user.id
+    // Work already on the canvas (a guest who just signed in) stays; autosave files it.
+    if (titleDirtyRef.current || (savedAtRef.current === null && historyRef.current.past.length > 0)) return
     const draftId = readLastSession(user.id).freeformDraftId
     if (!draftId) return
     const uid = user.id
@@ -1614,7 +1661,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       invalidatedCropDecodeIdentityRef.current = { ...sessionIdentity }
     } else if (invalidation.reason === 'error') {
       invalidatedCropDecodeIdentityRef.current = null
-      setOperationNotice('图片加载失败，请重试')
+      setOperationNotice(t('图片加载失败，请重试'))
     } else {
       invalidatedCropDecodeIdentityRef.current = null
     }
@@ -1854,7 +1901,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     })
   }, [updateHistory])
 
-  const commitLiveEdit = useCallback((startDocument: FreeformDocument, label = '编辑') => {
+  const commitLiveEdit = useCallback((startDocument: FreeformDocument, label = t('编辑')) => {
     const savedStart = successfulSaveRef.current
     const historyStart = savedStart && (
       Object.is(savedStart.source, startDocument) || Object.is(savedStart.document, startDocument)
@@ -2052,7 +2099,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     const current = currentTargetForImageCropSession(session)
     clearImageCropSession()
     invalidatedCropDecodeIdentityRef.current = null
-    if (current) setOperationNotice('图片加载失败，请重试')
+    if (current) setOperationNotice(t('图片加载失败，请重试'))
   }
 
   function startImageCrop(path: ScenePath): boolean {
@@ -2115,7 +2162,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
 
   function applyImageCropAspect(aspect: ImageCropAspectId) {
     const changed = imageCropSessionApi.applyAspectRatio(IMAGE_CROP_ASPECT_RATIOS[aspect])
-    setOperationNotice(changed ? null : '当前裁剪范围无法应用该比例')
+    setOperationNotice(changed ? null : t('当前裁剪范围无法应用该比例'))
   }
 
   function finishImageCrop(
@@ -2143,7 +2190,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       draft,
     })
     if (!update) {
-      setOperationNotice('图片裁剪未能应用，请重试')
+      setOperationNotice(t('图片裁剪未能应用，请重试'))
       imageCropSessionRef.current = null
       invalidatedCropDecodeIdentityRef.current = null
       return 'rejected'
@@ -2161,9 +2208,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         },
       },
       imageCropUpdateChangesNode(session.startNode, update),
-      '调整裁切',
+      t('调整裁切'),
     )
-    setOperationNotice(result === 'rejected' ? '图片裁剪未能应用，请重试' : null)
+    setOperationNotice(result === 'rejected' ? t('图片裁剪未能应用，请重试') : null)
     imageCropSessionRef.current = null
     invalidatedCropDecodeIdentityRef.current = null
     return result
@@ -2256,7 +2303,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     if (!current || imageFramingEquals(current.target.framing, session.startFraming)) {
       cancelLiveEdit(session.startDocument)
     } else {
-      commitLiveEdit(session.startDocument, '调整取景')
+      commitLiveEdit(session.startDocument, t('调整取景'))
     }
     clearImageFramingSession()
   }
@@ -2607,7 +2654,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     try {
       await insertImageElement(() => assetDocumentSource(asset), asset.name, asset)
     } catch (error) {
-      showOperationError(error, '图片插入失败，请稍后重试')
+      showOperationError(error, t('图片插入失败，请稍后重试'))
     }
   }
 
@@ -2617,7 +2664,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     try {
       await addImageFromFile(file)
     } catch (error) {
-      showOperationError(error, '图片插入失败，请稍后重试')
+      showOperationError(error, t('图片插入失败，请稍后重试'))
     } finally {
       if (imageInputRef.current) imageInputRef.current.value = ''
     }
@@ -2669,7 +2716,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     try {
       await fillSelectedShapeFromFile(file)
     } catch (error) {
-      showOperationError(error, '形状图片填充失败，请稍后重试')
+      showOperationError(error, t('形状图片填充失败，请稍后重试'))
     } finally {
       if (shapeFillInputRef.current) shapeFillInputRef.current.value = ''
     }
@@ -2719,7 +2766,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       slideId: activeSlide.id,
       parentPath: activeGroupPath,
       nodeIds: selection,
-    }, '原位复制')
+    }, t('原位复制'))
     if (!changed) {
       if (effectiveLockedSelection || lockedDescendantSelection) showLockedOperationNotice()
       return
@@ -2753,7 +2800,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         : []
     })
     if (pasted.length !== clipboard.nodes.length) {
-      setOperationNotice('无法在当前编辑范围内粘贴对象')
+      setOperationNotice(t('无法在当前编辑范围内粘贴对象'))
       return
     }
     const changed = applyAction({
@@ -2761,7 +2808,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       slideId: activeSlide.id,
       parentPath: activeGroupPath,
       nodes: pasted,
-    }, inPlace ? '原位粘贴' : undefined)
+    }, inPlace ? t('原位粘贴') : undefined)
     if (changed) {
       setSelection(pasted.map((node) => node.id))
     } else if (
@@ -2781,7 +2828,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       slideId: activeSlide.id,
       parentPath: activeGroupPath,
       nodeIds: selection,
-    }, '剪切对象')
+    }, t('剪切对象'))
     if (changed) {
       setSelection([])
     } else if (effectiveLockedSelection || lockedDescendantSelection) {
@@ -2806,7 +2853,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     const groupId = crypto.randomUUID()
     const mutation = createSceneGroup(currentSlide.nodes, parentPath, nodeIds, {
       id: groupId,
-      name: '组',
+      name: t('组'),
     })
     if (!mutation.ok) {
       setOperationNotice(sceneStructureFailureMessage('group', mutation.reason))
@@ -2819,14 +2866,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       parentPath,
       nodeIds,
       groupId,
-      name: '组',
+      name: t('组'),
     })
     const committedSlide = currentDocumentRef.current.slides.find(
       (slide) => slide.id === currentSlide.id,
     )
     const groupPath = [...parentPath, groupId]
     if (!changed || findNodeAtPath(committedSlide?.nodes ?? [], groupPath)?.type !== 'group') {
-      setOperationNotice('组合未能应用到当前文档，请重试')
+      setOperationNotice(t('组合未能应用到当前文档，请重试'))
       return false
     }
 
@@ -2872,7 +2919,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       .map((id) => [...parentPath, id])
       .filter((path) => Boolean(findNodeAtPath(committedSlide?.nodes ?? [], path)))
     if (!changed || promotedPaths.length !== mutation.selectionIds.length) {
-      setOperationNotice('解组未能应用到当前文档，请重试')
+      setOperationNotice(t('解组未能应用到当前文档，请重试'))
       return false
     }
 
@@ -3072,7 +3119,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
           return { path, patch: { x: node.x + localDelta.x, y: node.y + localDelta.y } }
         }),
       },
-      single ? '对齐到页面' : '对齐',
+      single ? t('对齐到页面') : t('对齐'),
     )
   }
 
@@ -3120,7 +3167,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         patch: { x: node.x + localDelta.x, y: node.y + localDelta.y },
       }
     })
-    applyAction({ type: 'node/update-geometry', slideId: activeSlide.id, updates }, '分布')
+    applyAction({ type: 'node/update-geometry', slideId: activeSlide.id, updates }, t('分布'))
   }
 
   /** Jump the timeline to any past or future state in one step. */
@@ -3566,7 +3613,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             path: directPath,
             patch: { points: directNode.points.filter((_, index) => index !== nearestVertex) },
           }],
-        }, '删除顶点')
+        }, t('删除顶点'))
         return
       }
       let insertIndex = -1
@@ -3577,14 +3624,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         const b = transformPoint(world, directNode.points[index + 1])
         const ab = { x: b.x - a.x, y: b.y - a.y }
         const lengthSquared = ab.x * ab.x + ab.y * ab.y
-        const t = lengthSquared > 0
+        const along = lengthSquared > 0
           ? clamp(
             ((pagePoint.x - a.x) * ab.x + (pagePoint.y - a.y) * ab.y) / lengthSquared,
             0,
             1,
           )
           : 0
-        const projected = { x: a.x + ab.x * t, y: a.y + ab.y * t }
+        const projected = { x: a.x + ab.x * along, y: a.y + ab.y * along }
         const distance = Math.hypot(projected.x - pagePoint.x, projected.y - pagePoint.y)
         if (distance < nearestSegmentDistance) {
           nearestSegmentDistance = distance
@@ -3603,7 +3650,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
           type: 'node/update-style',
           slideId: activeSlide.id,
           updates: [{ path: directPath, patch: { points } }],
-        }, '添加顶点')
+        }, t('添加顶点'))
       }
       return
     }
@@ -3787,7 +3834,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     }
     const finishDrag = () => {
       cleanupDrag()
-      commitLiveEdit(startDocument, event.altKey ? '拖拽复制' : '移动对象')
+      commitLiveEdit(startDocument, event.altKey ? t('拖拽复制') : t('移动对象'))
     }
     const cancelDrag = () => {
       cleanupDrag()
@@ -4014,7 +4061,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               slideId: slide.id,
               guides: (slide.guides ?? []).filter((guide) => guide.id !== guideId),
             },
-            '删除参考线',
+            t('删除参考线'),
           )
           return
         }
@@ -4028,7 +4075,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               slideId: slide.id,
               guides: (slide.guides ?? []).filter((guide) => guide.id !== guideId),
             },
-            '删除参考线',
+            t('删除参考线'),
           )
         }
         return
@@ -4046,7 +4093,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               guide.id === guideId ? { ...guide, position: settled } : guide,
             ),
           },
-          '调整参考线',
+          t('调整参考线'),
         )
         return
       }
@@ -4059,7 +4106,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             { id: `guide-${crypto.randomUUID()}`, axis, position: settled },
           ],
         },
-        '新增参考线',
+        t('新增参考线'),
       )
     }
     const onCancel = () => {
@@ -4323,7 +4370,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
 
     const finishVertexDrag = () => {
       cleanupVertexDrag()
-      commitLiveEdit(startDocument, '拖动顶点')
+      commitLiveEdit(startDocument, t('拖动顶点'))
     }
 
     const cancelVertexDrag = () => {
@@ -4368,7 +4415,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         path,
         patch: { points: node.points.filter((_, index) => index !== vertexIndex) },
       }],
-    }, '删除顶点')
+    }, t('删除顶点'))
   }
 
   function onResizePointerDown(event: React.PointerEvent, target: SelectionOverlayTarget) {
@@ -4512,7 +4559,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
 
     const finishResize = () => {
       cleanupResize()
-      commitLiveEdit(startDocument, '调整大小')
+      commitLiveEdit(startDocument, t('调整大小'))
     }
 
     const cancelResize = () => {
@@ -4603,7 +4650,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     }
     const finish = () => {
       cleanup()
-      commitLiveEdit(startDocument, '旋转对象')
+      commitLiveEdit(startDocument, t('旋转对象'))
     }
     const cancel = () => {
       cleanup()
@@ -4630,8 +4677,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     })
     if (!imageWait.ok) {
       throw new Error(imageWait.reason === 'timeout'
-        ? '图片加载超时，导出已取消'
-        : '图片加载失败，导出已取消')
+        ? t('图片加载超时，导出已取消')
+        : t('图片加载失败，导出已取消'))
     }
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     // html-to-image's toBlob drops the type/quality options, so render to a
@@ -4684,7 +4731,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         downloadBlob(blob, slideExportName(activeIndex, viewPrefs.exportFormat))
       }
     } catch (error) {
-      showOperationError(error, '导出失败，请稍后重试')
+      showOperationError(error, t('导出失败，请稍后重试'))
     } finally {
       setExporting(false)
     }
@@ -4713,7 +4760,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         await downloadZip(entries, `freeform-slides-${stamp}.zip`)
       }
     } catch (error) {
-      showOperationError(error, '打包导出失败，请稍后重试')
+      showOperationError(error, t('打包导出失败，请稍后重试'))
     } finally {
       replaceCurrent({ type: 'slide/select', slideId: originalSlideId })
       setExportProgress(null)
@@ -4738,113 +4785,30 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     void exportAllSlides()
   }
 
-  async function handleSaveDraft() {
-    if (blockDocumentMutationDuringInteraction()) return
-    if (!user) {
-      requestAuth()
-      return
+  /** Moving off this document: queue anything not stored yet (an edit a transition just committed), then let go. */
+  function leaveDocument(userId = currentUserIdRef.current) {
+    const current = currentDocumentRef.current
+    const hasProject = currentDraftIdRef.current !== null || historyRef.current.past.length > 0
+    const changed = !Object.is(current, persistedDocRef.current) || titleDirtyRef.current
+    const alreadyQueued = Object.is(current, scheduledDocRef.current) && scheduledTitleRef.current === projectTitleRef.current
+    if (userId && hasProject && changed && !alreadyQueued) {
+      const title = projectTitleRef.current
+      scheduleSave(userId, currentDraftIdRef.current, { mode: 'freeform-slide', title, document: current }, { title })
     }
-    if (saveInFlightRef.current) return
-    saveInFlightRef.current = true
-    setSaving(true)
-    const snapshot = doc
-    const startedDraftId = currentDraftIdRef.current
-    const saveGeneration = ++saveGenerationRef.current
-    try {
-      const saved = await store.drafts.save(user.id, {
-        id: startedDraftId ?? undefined,
-        mode: 'freeform-slide',
-        document: snapshot,
-      })
-      const saveIsCurrent = (
-        currentUserIdRef.current === user.id &&
-        isLatestSaveForDraft(
-          saveGeneration,
-          saveGenerationRef.current,
-          startedDraftId,
-          currentDraftIdRef.current,
-        )
-      )
-      const snapshotIsCurrent = Object.is(currentDocumentRef.current, snapshot)
-      if (saveIsCurrent) {
-        updateDraftId(saved.id)
-        updateLastSession(user.id, { freeformDraftId: saved.id })
-      }
-      if (saveIsCurrent && saved.mode === 'freeform-slide') {
-        successfulSaveRef.current = {
-          source: snapshot,
-          document: saved.document,
-          updatedAt: saved.updatedAt,
-        }
-      }
-      if (saveIsCurrent && store.remote && saved.mode === 'freeform-slide') {
-        updateHistory((current) => (
-          Object.is(current.current, snapshot)
-            ? { ...current, current: saved.document }
-            : current
-        ))
-      }
-      if (saveIsCurrent) setSavedAt(snapshotIsCurrent ? saved.updatedAt : null)
-      if (currentUserIdRef.current === user.id) void refreshDrafts()
-    } catch (error) {
-      if (
-        currentUserIdRef.current !== user.id ||
-        !isLatestSaveForDraft(
-          saveGeneration,
-          saveGenerationRef.current,
-          startedDraftId,
-          currentDraftIdRef.current,
-        )
-      ) return
-      showOperationError(error, '草稿保存失败，请稍后重试')
-    } finally {
-      saveInFlightRef.current = false
-      setSaving(false)
-    }
-  }
-
-  /** Import a picked/dropped .json file as a draft; freeform drafts open right away. */
-  async function importDraftFile(file: File) {
-    if (!user) {
-      requestAuth()
-      return
-    }
-    if (blockDocumentMutationDuringInteraction()) return
-    let text: string
-    try {
-      text = await file.text()
-    } catch {
-      showOperationError(new Error('文件读取失败'), '文件读取失败，请重试')
-      return
-    }
-    const outcome = importDraftFromJson(text)
-    if (!outcome.ok) {
-      showOperationError(new Error(outcome.error), '文件无法识别为叮卡文档')
-      return
-    }
-    try {
-      const saved = await store.drafts.save(user.id, outcome.data)
-      if (currentUserIdRef.current !== user.id) return
-      void refreshDrafts()
-      if (saved.mode === 'freeform-slide') {
-        openDraft(saved)
-      } else {
-        setOperationNotice('已导入 Markdown 文档，请在 Markdown 工作台的「我的草稿」打开')
-      }
-    } catch (error) {
-      if (currentUserIdRef.current !== user.id) return
-      showOperationError(error, '草稿导入失败，请稍后重试')
-    }
+    scheduledDocRef.current = null
+    scheduledTitleRef.current = null
+    releaseSave()
   }
 
   function openDraft(draft: Draft) {
     if (draft.mode !== 'freeform-slide') return
     cancelFramingBeforeTransition()
     if (blockDocumentMutationDuringInteraction()) return
+    leaveDocument()
+    persistedDocRef.current = draft.document
     documentIdentityGenerationRef.current += 1
     shapeFillOperationTokensRef.current.clear()
     setPendingShapeFillKeys(new Set())
-    saveGenerationRef.current += 1
     successfulSaveRef.current = {
       source: draft.document,
       document: draft.document,
@@ -4854,101 +4818,37 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     setSelection([])
     updateDraftId(draft.id)
     setSavedAt(draft.updatedAt)
-    setShowDrafts(false)
-    if (user) updateLastSession(user.id, { freeformDraftId: draft.id })
+    setProjectTitle(draft.title)
+    titleDirtyRef.current = false
+    setTitleDirty(false)
+    if (user) updateLastSession(user.id, { mode: 'freeform-slide', freeformDraftId: draft.id })
   }
   openDraftRef.current = openDraft
 
-  async function removeDraft(id: string) {
-    if (!user) return
-    if (blockDocumentMutationDuringInteraction()) return
-    try {
-      if (store.remote) await retainImagesNow()
-      if (blockDocumentMutationDuringInteraction()) return
-      await store.drafts.remove(user.id, id)
-      if (currentUserIdRef.current !== user.id) return
-      if (id === currentDraftIdRef.current) {
-        cancelFramingBeforeTransition()
-        documentIdentityGenerationRef.current += 1
-        shapeFillOperationTokensRef.current.clear()
-        setPendingShapeFillKeys(new Set())
-        saveGenerationRef.current += 1
-        successfulSaveRef.current = null
-        updateDraftId(null)
-        setSavedAt(null)
-      }
-      if (readLastSession(user.id).freeformDraftId === id) {
-        updateLastSession(user.id, { freeformDraftId: null })
-      }
-      void refreshDrafts()
-    } catch (error) {
-      if (currentUserIdRef.current === user.id) {
-        showOperationError(error, '草稿删除失败，请稍后重试')
-      }
-    }
-  }
-
-  const userTemplateDefinitions = useMemo(
-    () => userTemplates.map(userTemplateToDefinition),
-    [userTemplates],
-  )
-
-  function handleOpenSaveTemplate() {
-    if (!user) {
-      requestAuth()
-      return
-    }
-    setShowSaveTemplate(true)
-  }
-
-  function saveAsTemplate(name: string) {
-    if (!user) return
-    try {
-      const materialized = materializeLocalFreeformImages(doc, store.images)
-      const saved = saveUserTemplate(user.id, {
-        name,
-        pageCount: doc.slides.length,
-        draft: { mode: 'freeform-slide', document: materialized },
-      })
-      if (currentUserIdRef.current === user.id) {
-        setUserTemplates(listUserTemplates(user.id))
-      }
-      setShowSaveTemplate(false)
-      setOperationNotice(`已存为模板「${saved.name}」，在模板中心随时可用`)
-    } catch (error) {
-      showOperationError(error, '模板保存失败，请稍后重试')
-    }
-  }
-
-  function removeUserTemplate(id: string) {
-    if (!user) return
-    try {
-      deleteUserTemplate(user.id, id)
-      if (currentUserIdRef.current === user.id) {
-        setUserTemplates(listUserTemplates(user.id))
-      }
-    } catch (error) {
-      showOperationError(error, '模板删除失败，请稍后重试')
-    }
+  function renameProject(title: string) {
+    setProjectTitle(title)
+    setTitleDirty(true)
   }
 
   function applyFreeformTemplate(template: TemplateDefinition) {
     if (template.workspace !== 'freeform') return
     const document = template.createFreeform?.()
     if (!document) return
-    startFreshDocument(document)
+    startFreshDocument(document, t(template.title))
   }
 
   /** Replace the canvas with an unsaved document (a template, or a blank page). */
-  function startFreshDocument(document: FreeformDocument) {
+  function startFreshDocument(document: FreeformDocument, title = t('未命名设计'), saveCurrent = true) {
     cancelFramingBeforeTransition()
     if (blockDocumentMutationDuringInteraction()) return
+    if (saveCurrent) leaveDocument()
+    else releaseSave()
+    persistedDocRef.current = document
     restoreGenerationRef.current += 1
     documentIdentityGenerationRef.current += 1
     inspectorNumberResetGenerationRef.current += 1
     shapeFillOperationTokensRef.current.clear()
     setPendingShapeFillKeys(new Set())
-    saveGenerationRef.current += 1
     successfulSaveRef.current = null
     updateHistory(createHistory(document))
     setSceneUiState({
@@ -4965,27 +4865,57 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
     setSnapLines([])
     updateDraftId(null)
     setSavedAt(null)
-    setShowDrafts(false)
+    setProjectTitle(title)
+    titleDirtyRef.current = false
+    setTitleDirty(false)
     setShowTemplates(false)
   }
 
-  const documentTitle = drafts.find((draft) => draft.id === draftId)?.title ?? doc.slides[0]?.name ?? '未命名'
   const documentDirty = savedAt === null && history.past.length > 0
+  const interactionIdle = !activeInteraction && marquee === null && !framingSession && !imageCropSession
   useEffect(() => {
-    onMetaChange?.({ title: documentTitle, draftId, dirty: documentDirty })
-  }, [documentTitle, draftId, documentDirty, onMetaChange])
+    if (!user || !(documentDirty || titleDirty) || !interactionIdle) return
+    scheduledDocRef.current = doc
+    scheduledTitleRef.current = projectTitle
+    scheduleSave(
+      user.id,
+      currentDraftIdRef.current,
+      { mode: 'freeform-slide', title: projectTitle, document: doc },
+      { title: projectTitle },
+    )
+  }, [doc, documentDirty, interactionIdle, projectTitle, scheduleSave, titleDirty, user])
 
-  // One-shot instructions from the workbench (open / new / template / removed)
-  // and the asset drawer (insert-asset).
+  const unsaved = (documentDirty || titleDirty) && (!user || autosave.status === 'error')
+  useEffect(() => {
+    onMetaChange?.({ title: projectTitle, draftId, unsaved })
+  }, [projectTitle, draftId, unsaved, onMetaChange])
+
+  const saveState: SaveState = !user
+    ? chrome.authStatus === 'checking' ? { kind: 'none' } : { kind: 'guest' }
+    : autosave.status === 'error'
+      ? { kind: 'error', message: autosave.error ?? '' }
+      : documentDirty || titleDirty || autosave.status === 'saving'
+        ? { kind: 'saving' }
+        : draftId
+          ? { kind: 'saved', at: savedAt ?? Date.now() }
+          : { kind: 'none' }
+
+  // One-shot instructions from the workbench (open / new / template / removed / renamed).
   useEffect(() => {
     if (!request || handledRequestRef.current === request.nonce) return
-    if (request.kind === 'insert-asset') {
-      handledRequestRef.current = request.nonce
-      void addImageFromAsset(request.asset)
-      return
-    }
     if (request.kind === 'open' && !user) return
     handledRequestRef.current = request.nonce
+    if (request.kind === 'removed' || request.kind === 'renamed') {
+      if (currentDraftIdRef.current !== request.draftId) return
+      if (request.kind === 'renamed') {
+        setProjectTitle(request.title)
+        return
+      }
+      // The project is gone: drop what was queued for it and start over.
+      discardSave()
+      startFreshDocument(createFreeformDocument(), undefined, false)
+      return
+    }
     restoreGenerationRef.current += 1
     if (user) restoreAttemptedUserIdRef.current = user.id
     if (request.kind === 'new') {
@@ -4995,31 +4925,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
       startFreshDocument({ ...createFreeformDocument(), activeSlideId: slide.id, slides: [slide] })
     } else if (request.kind === 'template') {
       applyFreeformTemplate(request.template)
-    } else if (request.kind === 'removed') {
-      setDrafts((current) => current.filter((draft) => draft.id !== request.draftId))
-      if (currentDraftIdRef.current === request.draftId) {
-        saveGenerationRef.current += 1
-        successfulSaveRef.current = null
-        updateDraftId(null)
-        setSavedAt(null)
-      }
     } else if (user && currentDraftIdRef.current !== request.draftId) {
       const uid = user.id
       const id = request.draftId
-      const known = drafts.find((draft) => draft.id === id)
-      if (known) {
-        openDraft(known)
-      } else {
-        void store.drafts.list(uid).then(
-          (list) => {
-            if (currentUserIdRef.current !== uid) return
-            const target = list.find((draft) => draft.id === id && draft.mode === 'freeform-slide')
-            if (target) openDraft(target)
-            else setOperationNotice('没有找到这个项目，它可能已经被删除了')
-          },
-          (error: unknown) => showOperationError(error, '暂时无法读取项目，请稍后重试'),
-        )
-      }
+      const generation = restoreGenerationRef.current
+      void store.drafts.list(uid).then(
+        (list) => {
+          if (currentUserIdRef.current !== uid || restoreGenerationRef.current !== generation) return
+          const target = list.find((draft) => draft.id === id && draft.mode === 'freeform-slide')
+          if (target) openDraft(target)
+          else setOperationNotice(t('没有找到这个项目，它可能已经被删除了'))
+        },
+        (error: unknown) => showOperationError(error, t('暂时无法读取项目，请稍后重试')),
+      )
     }
   }, [request, user])
 
@@ -5082,212 +5000,81 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         framingSession ? 'is-framing' : '',
         imageCropSession ? 'is-image-cropping' : '',
       ].filter(Boolean).join(' ')}
-      aria-label="自由编辑工作区"
+      aria-label={t('自由编辑工作区')}
       data-history-depth={history.past.length}
     >
-      <WorkspaceToolbar
-        testId="freeform-toolbar"
-        label="自由编辑工具栏"
-        className="freeform-toolbar"
-        disabled={hasImageEditSession}
-      >
-        <ToolbarGroup>
-          <button className='bar-btn' data-testid='freeform-template-button' onClick={() => setShowTemplates(true)}>
-            模板
-          </button>
-          <div className="freeform-page-context">
-            <FreeformPageSizePopover
-              isActive={isActive}
-              width={activeSlide.width}
-              height={activeSlide.height}
-              onApply={applySlideSize}
-            />
-            <span
-              className="freeform-page-meta toolbar-collapsible-label"
-              data-testid="freeform-slide-meta"
+      {isActive && (
+        <EditorTopBar
+          chrome={chrome}
+          user={user}
+          requestAuth={requestAuth}
+          system="freeform-slide"
+          title={projectTitle}
+          onRename={renameProject}
+          save={saveState}
+          onRetrySave={() => void autosave.flush()}
+          center={(
+            <WorkspaceToolbar
+              testId="freeform-toolbar"
+              label={t('自由编辑工具栏')}
+              className="freeform-toolbar"
+              disabled={hasImageEditSession}
             >
-              {doc.slides.length}页
-              {savedAt ? '·已保存' : ''}
-            </span>
-          </div>
-
-          <div className="toolbar-insert-tools" role="group" aria-label="插入工具">
-            <button className="bar-btn" type="button" data-testid="insert-text" onClick={addText}>
-              文本框
-            </button>
-            <button
-              className="bar-btn"
-              type="button"
-              data-testid="insert-image"
-              onClick={() => imageInputRef.current?.click()}
-            >
-              图片
-            </button>
-            <input
-              ref={imageInputRef}
-              className="freeform-file"
-              type="file"
-              accept="image/*"
-              onChange={(event) => handleImageInput(event.currentTarget.files)}
-            />
-            <FreeformInsertMenu
-              isActive={isActive}
-              testId="insert-shape"
-              label="形状"
-              options={SHAPES}
-              onSelect={addShape}
-            />
-            <FreeformInsertMenu
-              isActive={isActive}
-              testId="insert-line"
-              label="线条"
-              options={LINES}
-              onSelect={addLine}
-            />
-          </div>
-
-          <ToolbarDivider />
-
-          <button className="bar-btn" type="button" onClick={undoDocument} disabled={!canUndo}>
-            撤销
-          </button>
-          <button className="bar-btn" type="button" onClick={redoDocument} disabled={!canRedo}>
-            重做
-          </button>
-        </ToolbarGroup>
-
-        <ToolbarGroup side="right">
-          <button className="bar-btn" type="button" onClick={handleSaveDraft} disabled={saving}>
-            {saving ? '保存中…' : '保存草稿'}
-          </button>
-          <button
-            className="bar-btn"
-            type="button"
-            data-testid="freeform-save-template-button"
-            onClick={handleOpenSaveTemplate}
-          >
-            存为模板
-          </button>
-          <button
-            className="bar-btn"
-            type="button"
-            onClick={() => {
-              if (!user) {
-                requestAuth()
-                return
-              }
-              setShowDrafts(true)
-            }}
-          >
-            我的草稿{user && drafts.length ? ` · ${drafts.length}` : ''}
-          </button>
-          <div className="export-options-trigger">
-            <button
-              className="bar-btn export-options-btn"
-              type="button"
-              data-testid="freeform-export-options-toggle"
-              aria-label="导出选项"
-              title="导出选项"
-              aria-expanded={exportOptionsOpen}
-              onClick={() => setExportOptionsOpen((open) => !open)}
-            >
-              <svg viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M3.5 6.5h13M3.5 13.5h13" />
-                <circle cx="8" cy="6.5" r="2.1" />
-                <circle cx="12.5" cy="13.5" r="2.1" />
-              </svg>
-              <span className="toolbar-collapsible-label">导出选项</span>
-            </button>
-            {exportOptionsOpen && (
-              <div
-                className="export-options-panel"
-                data-testid="freeform-export-options"
-                role="group"
-                aria-label="导出选项"
-              >
-                <div className="field-label">格式</div>
-                <div className="seg stretch">
-                  {(['png', 'jpeg'] as const).map((format) => (
-                    <button
-                      key={format}
-                      type="button"
-                      className={viewPrefs.exportFormat === format ? 'seg-btn on' : 'seg-btn'}
-                      data-testid={`export-format-${format}`}
-                      onClick={() => updateViewPrefs({ exportFormat: format })}
-                    >
-                      {format === 'png' ? 'PNG' : 'JPG'}
-                    </button>
-                  ))}
-                </div>
-                <div className="field-label">倍率</div>
-                <div className="seg stretch">
-                  {([1, 2] as const).map((scale) => (
-                    <button
-                      key={scale}
-                      type="button"
-                      className={viewPrefs.exportScale === scale ? 'seg-btn on' : 'seg-btn'}
-                      data-testid={`export-scale-${scale}x`}
-                      onClick={() => updateViewPrefs({ exportScale: scale })}
-                    >
-                      {scale}x
-                    </button>
-                  ))}
-                </div>
-                {viewPrefs.exportFormat === 'jpeg' && (
-                  <>
-                    <div className="field-label">质量</div>
-                    <div className="paint-row">
-                      <input
-                        className="paint-range"
-                        data-testid="export-quality-range"
-                        type="range"
-                        min={50}
-                        max={100}
-                        value={Math.round(viewPrefs.exportQuality * 100)}
-                        onChange={(event) =>
-                          updateViewPrefs({ exportQuality: Number(event.currentTarget.value) / 100 })}
-                        aria-label="导出质量"
-                      />
-                      <span className="export-quality-value">
-                        {Math.round(viewPrefs.exportQuality * 100)}%
-                      </span>
-                    </div>
-                  </>
-                )}
-                <p className="export-options-hint">
-                  {viewPrefs.exportFormat === 'jpeg'
-                    ? 'JPG 不支持透明，导出自动衬白底。'
-                    : 'PNG 保留透明背景。'}
-                </p>
+              <ToolbarGroup>
                 <button
-                  className="ghost"
+                  className="bar-btn bar-icon"
                   type="button"
-                  onClick={() => setExportOptionsOpen(false)}
+                  onClick={undoDocument}
+                  disabled={!canUndo}
+                  aria-label={t('撤销')}
+                  title={t('撤销（⌘Z）')}
                 >
-                  完成
+                  <UndoIcon />
                 </button>
-              </div>
-            )}
-          </div>
-          <button
-            className="bar-btn"
-            type="button"
-            onClick={requestExportAllSlides}
-            disabled={exporting || renderScale === null}
-          >
-            {exportProgress ? `导出 ${exportProgress.current}/${exportProgress.total}` : '打包导出'}
-          </button>
-          <button
-            className="toolbar-primary"
-            type="button"
-            data-testid="freeform-primary-export"
-            onClick={exportCurrentSlide}
-            disabled={exporting || renderScale === null}
-          >
-            {exporting ? '导出中…' : '导出当前页'}
-          </button>
-        </ToolbarGroup>
-      </WorkspaceToolbar>
+                <button
+                  className="bar-btn bar-icon"
+                  type="button"
+                  onClick={redoDocument}
+                  disabled={!canRedo}
+                  aria-label={t('重做')}
+                  title={t('重做（⇧⌘Z）')}
+                >
+                  <RedoIcon />
+                </button>
+
+                <ToolbarDivider />
+
+                <div className="freeform-page-context">
+                  <FreeformPageSizePopover
+                    isActive={isActive}
+                    width={activeSlide.width}
+                    height={activeSlide.height}
+                    onApply={applySlideSize}
+                  />
+                  <span
+                    className="freeform-page-meta toolbar-collapsible-label"
+                    data-testid="freeform-slide-meta"
+                  >
+                    {t('{n}页', { n: doc.slides.length })}
+                  </span>
+                </div>
+              </ToolbarGroup>
+            </WorkspaceToolbar>
+          )}
+          primary={(
+            <FreeformExportMenu
+              disabled={renderScale === null || hasImageEditSession}
+              exporting={exporting}
+              progress={exportProgress}
+              pageCount={doc.slides.length}
+              prefs={viewPrefs}
+              onPrefsChange={updateViewPrefs}
+              onExportCurrent={() => void exportCurrentSlide()}
+              onExportAll={requestExportAllSlides}
+            />
+          )}
+        />
+      )}
 
       {operationNotice && (
         <OperationNotice
@@ -5296,276 +5083,165 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         />
       )}
 
-      <main className="freeform-main">
-        <aside className="freeform-rail" aria-label="页面列表">
-          <div className="freeform-panel-head">
-            <span>页面</span>
-            <button
-              className="mini-btn freeform-add-page"
-              type="button"
-              aria-label="新增页面"
-              title="新增页面"
-              onClick={addSlide}
-            >
-              <svg viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M10 4v12M4 10h12" />
-              </svg>
-            </button>
-          </div>
-          <div
-            className="freeform-slide-list"
-            onDragOver={(event) => {
-              if (!dragSlideIdRef.current) return
+      <main className={toolDrawer ? 'freeform-main has-drawer' : 'freeform-main'}>
+        <nav
+          className="freeform-tools"
+          aria-label={t('插入')}
+          ref={(element) => {
+            if (!element) return
+            if (hasImageEditSession) element.setAttribute('inert', '')
+            else element.removeAttribute('inert')
+          }}
+        >
+          <button
+            className="freeform-tool"
+            type="button"
+            data-testid="freeform-template-button"
+            title={t('从模板开始')}
+            onClick={() => setShowTemplates(true)}
+          >
+            <TemplatesIcon />
+            <span>{t('模板')}</span>
+          </button>
+          <span className="freeform-tools-sep" aria-hidden="true" />
+          <button className="freeform-tool" type="button" data-testid="insert-text" title={t('添加文本框')} onClick={addText}>
+            <TextIcon />
+            <span>{t('文字')}</span>
+          </button>
+          <button
+            className="freeform-tool"
+            type="button"
+            data-testid="freeform-images-tool"
+            aria-expanded={toolDrawer === 'images'}
+            aria-controls="freeform-images-drawer"
+            title={t('上传图片或从素材库选择')}
+            onClick={() => setToolDrawer((current) => (current === 'images' ? null : 'images'))}
+          >
+            <ImageIcon />
+            <span>{t('图片')}</span>
+          </button>
+          <FreeformInsertMenu
+            isActive={isActive}
+            testId="insert-shape"
+            label={t('形状')}
+            variant="rail"
+            icon={<ShapesIcon />}
+            options={SHAPE_TILES}
+            onSelect={addShape}
+          />
+          <FreeformInsertMenu
+            isActive={isActive}
+            testId="insert-line"
+            label={t('线条')}
+            variant="rail"
+            icon={<LineToolIcon />}
+            options={LINE_TILES}
+            onSelect={addLine}
+          />
+          <input
+            ref={imageInputRef}
+            className="freeform-file"
+            type="file"
+            accept="image/*"
+            onChange={(event) => handleImageInput(event.currentTarget.files)}
+          />
+        </nav>
+
+        {toolDrawer === 'images' && (
+          <aside
+            className="freeform-drawer"
+            id="freeform-images-drawer"
+            aria-label={t('图片')}
+            data-testid="freeform-images-drawer"
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape' || event.defaultPrevented) return
+              if (event.target instanceof HTMLInputElement && event.target.value) return
               event.preventDefault()
-              event.dataTransfer.dropEffect = 'move'
-            }}
-            onDrop={(event) => {
-              const sourceId = dragSlideIdRef.current
-              if (!sourceId) return
-              event.preventDefault()
-              dragSlideIdRef.current = null
-              setSlideDropTarget(null)
-              reorderSlide(sourceId, doc.slides.length - 1)
+              setToolDrawer(null)
             }}
           >
-            {doc.slides.map((slide, index) => (
-              <div key={slide.id} className="freeform-thumb-wrap">
-                <button
-                  type="button"
-                  draggable
-                  className={`freeform-thumb${slide.id === activeSlide.id ? ' on' : ''}${
-                    slideDropTarget?.slideId === slide.id
-                      ? slideDropTarget.position === 'before' ? ' drop-before' : ' drop-after'
-                      : ''
-                  }`}
-                  aria-current={slide.id === activeSlide.id ? 'page' : undefined}
-                  data-testid="freeform-thumb"
-                  onClick={() => selectSlide(slide.id)}
-                  onDragStart={(event) => {
-                    dragSlideIdRef.current = slide.id
-                    event.dataTransfer.effectAllowed = 'move'
-                    event.dataTransfer.setData('text/plain', slide.id)
-                  }}
-                  onDragEnd={() => {
-                    dragSlideIdRef.current = null
-                    setSlideDropTarget(null)
-                  }}
-                  onDragOver={(event) => {
-                    if (!dragSlideIdRef.current || dragSlideIdRef.current === slide.id) return
-                    event.preventDefault()
-                    event.dataTransfer.dropEffect = 'move'
-                    const bounds = event.currentTarget.getBoundingClientRect()
-                    const position: 'before' | 'after' =
-                      event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
-                    setSlideDropTarget((current) =>
-                      current && current.slideId === slide.id && current.position === position
-                        ? current
-                        : { slideId: slide.id, position },
-                    )
-                  }}
-                  onDragLeave={() => {
-                    setSlideDropTarget((current) =>
-                      current?.slideId === slide.id ? null : current,
-                    )
-                  }}
-                  onDrop={(event) => {
-                    const sourceId = dragSlideIdRef.current
-                    if (!sourceId || sourceId === slide.id) return
-                    event.preventDefault()
-                    event.stopPropagation()
-                    dragSlideIdRef.current = null
-                    setSlideDropTarget(null)
-                    const bounds = event.currentTarget.getBoundingClientRect()
-                    const after = event.clientY >= bounds.top + bounds.height / 2
-                    const targetIndex = slideDropTargetIndex(sourceId, slide.id, after)
-                    if (targetIndex !== null) reorderSlide(sourceId, targetIndex)
-                  }}
-                  onContextMenu={(event) => onSlideThumbContextMenu(event, slide.id)}
-                >
-                  <FreeformSlidePreview
-                    slide={slide}
-                    frameWidth={104}
-                    frameHeight={128}
-                    className="freeform-thumb-art"
-                    deferOffscreen={slide.id !== activeSlide.id}
-                  />
-                  <span className="freeform-thumb-caption">
-                    <span className="freeform-thumb-number">{String(index + 1).padStart(2, '0')}</span>
-                    <span
-                      className="freeform-thumb-title"
-                      data-testid="freeform-thumb-title"
-                      title={slide.name}
-                      onDoubleClick={(event) => {
-                        event.stopPropagation()
-                        event.preventDefault()
-                        beginSlideRename(slide.id)
-                      }}
-                    >
-                      {slide.name}
-                    </span>
-                  </span>
-                </button>
-                {renamingSlideId === slide.id && (
-                  <input
-                    ref={slideRenameInputRef}
-                    className="freeform-thumb-rename"
-                    data-testid="freeform-thumb-rename"
-                    aria-label="重命名页面"
-                    value={slideRenameValue}
-                    onChange={(event) => setSlideRenameValue(event.currentTarget.value)}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onBlur={() => commitSlideRename()}
-                    onKeyDown={(event) => {
-                      event.stopPropagation()
-                      if (event.key === 'Enter') {
-                        if (event.nativeEvent.isComposing || slideRenameCompositionRef.current) return
-                        event.preventDefault()
-                        commitSlideRename()
-                      } else if (event.key === 'Escape') {
-                        event.preventDefault()
-                        cancelSlideRename()
-                      }
-                    }}
-                    onCompositionStart={() => {
-                      slideRenameCompositionRef.current = true
-                    }}
-                    onCompositionEnd={() => {
-                      slideRenameCompositionRef.current = false
-                    }}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="freeform-rail-actions">
-            <button className="ghost" type="button" onClick={() => duplicateSlide()}>
-              复制页面
+            <div className="freeform-drawer-head">
+              <h2>{t('图片')}</h2>
+              <button className="icon-btn" type="button" aria-label={t('关闭面板')} onClick={() => setToolDrawer(null)}>
+                <CloseIcon />
+              </button>
+            </div>
+            <button
+              className="accent freeform-drawer-upload"
+              type="button"
+              data-testid="insert-image"
+              onClick={() => imageInputRef.current?.click()}
+            >
+              <UploadIcon />
+              {t('上传图片')}
             </button>
-            <button className="ghost" type="button" onClick={() => deleteSlide()} disabled={doc.slides.length <= 1}>
-              删除页面
-            </button>
-          </div>
-        </aside>
+            <p className="freeform-drawer-hint">{t('直接放进当前页。常用的图片存进素材库，所有项目都能用。')}</p>
+            <div className="freeform-drawer-section">{t('素材库')}</div>
+            <AssetPanel
+              user={user}
+              onInsert={(asset) => void addImageFromAsset(asset)}
+              onRequestAuth={requestAuth}
+              onManage={() => navigate(routes.assets)}
+            />
+          </aside>
+        )}
 
-        <section className="freeform-stage-pane" aria-label="自由画布">
-          <div className="freeform-stage-head">
-            {imageCropSession ? (
-              <div
-                className="freeform-framing-head freeform-crop-head"
-                role="toolbar"
-                aria-label="图片裁剪"
-              >
+        <section className="freeform-stage-pane" aria-label={t('自由画布')}>
+          {(imageCropSession || framingSession) && (
+            <div className="freeform-stage-head is-session">
+              {imageCropSession ? (
                 <div
-                  className="freeform-toolbar"
-                  data-image-crop-control=""
-                  style={{ position: 'relative', zIndex: 70 }}
+                  className="freeform-framing-head freeform-crop-head"
+                  role="toolbar"
+                  aria-label={t('图片裁剪')}
                 >
-                  <FreeformInsertMenu
-                    isActive={isActive}
-                    testId="freeform-image-crop-aspect"
-                    label="比例"
-                    options={IMAGE_CROP_ASPECTS}
-                    onSelect={applyImageCropAspect}
-                    onEscape={() => { finishImageCrop() }}
-                  />
-                </div>
-                <strong>裁剪</strong>
-                <button
-                  className="toolbar-primary"
-                  type="button"
-                  data-testid="freeform-image-crop-done"
-                  onClick={() => { finishImageCrop() }}
-                >
-                  完成
-                </button>
-              </div>
-            ) : framingSession ? (
-              <div className="freeform-framing-head" role="toolbar" aria-label="图片取景">
-                <button
-                  className="ghost"
-                  type="button"
-                  data-testid="freeform-framing-cancel"
-                  onClick={cancelImageFraming}
-                >
-                  取消
-                </button>
-                <strong>调整取景</strong>
-                <button
-                  className="toolbar-primary"
-                  type="button"
-                  data-testid="freeform-framing-done"
-                  onClick={finishImageFraming}
-                >
-                  完成
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="zoom-controls" aria-label="画布设置">
-                  <button
-                    className="zoom-btn"
-                    type="button"
-                    data-testid="freeform-guides-toggle"
-                    aria-label="显示参考线"
-                    title="显示参考线"
-                    aria-pressed={viewPrefs.guidesVisible}
-                    onClick={() => updateViewPrefs({ guidesVisible: !viewPrefs.guidesVisible })}
+                  <div
+                    className="freeform-toolbar"
+                    data-image-crop-control=""
+                    style={{ position: 'relative', zIndex: 70 }}
                   >
-                    <svg viewBox="0 0 20 20" aria-hidden="true">
-                      <path d="M6.5 3v14M13.5 3v14" />
-                    </svg>
-                  </button>
+                    <FreeformInsertMenu
+                      isActive={isActive}
+                      testId="freeform-image-crop-aspect"
+                      label={t('比例')}
+                      options={IMAGE_CROP_ASPECTS}
+                      onSelect={applyImageCropAspect}
+                      onEscape={() => { finishImageCrop() }}
+                    />
+                  </div>
+                  <strong>{t('裁剪')}</strong>
                   <button
-                    className="zoom-btn"
+                    className="toolbar-primary"
                     type="button"
-                    data-testid="freeform-snap-toggle"
-                    aria-label="对象吸附"
-                    title="对象吸附"
-                    aria-pressed={viewPrefs.snappingEnabled}
-                    onClick={() => updateViewPrefs({ snappingEnabled: !viewPrefs.snappingEnabled })}
+                    data-testid="freeform-image-crop-done"
+                    onClick={() => { finishImageCrop() }}
                   >
-                    <svg viewBox="0 0 20 20" aria-hidden="true">
-                      <path d="M4 10h12M10 4v12" />
-                    </svg>
+                    {t('完成')}
                   </button>
                 </div>
-                <div className="zoom-controls" aria-label="预览缩放">
+              ) : (
+                <div className="freeform-framing-head" role="toolbar" aria-label={t('图片取景')}>
                   <button
-                    className="zoom-btn"
+                    className="ghost"
                     type="button"
-                    aria-label="缩小画布"
-                    title="缩小画布"
-                    disabled={zoomPercent <= MIN_ZOOM_PERCENT}
-                    onClick={() => setZoomPercent((value) => clampZoomPercent(value - ZOOM_STEP))}
+                    data-testid="freeform-framing-cancel"
+                    onClick={cancelImageFraming}
                   >
-                    <svg viewBox="0 0 20 20" aria-hidden="true">
-                      <path d="M4 10h12" />
-                    </svg>
+                    {t('取消')}
                   </button>
+                  <strong>{t('调整取景')}</strong>
                   <button
-                    className="zoom-value"
+                    className="toolbar-primary"
                     type="button"
-                    title="适应画布（恢复 100%）"
-                    onClick={() => setZoomPercent(DEFAULT_ZOOM_PERCENT)}
+                    data-testid="freeform-framing-done"
+                    onClick={finishImageFraming}
                   >
-                    {zoomPercent}%
-                  </button>
-                  <button
-                    className="zoom-btn"
-                    type="button"
-                    aria-label="放大画布"
-                    title="放大画布"
-                    disabled={zoomPercent >= MAX_ZOOM_PERCENT}
-                    onClick={() => setZoomPercent((value) => clampZoomPercent(value + ZOOM_STEP))}
-                  >
-                    <svg viewBox="0 0 20 20" aria-hidden="true">
-                      <path d="M10 4v12M4 10h12" />
-                    </svg>
+                    {t('完成')}
                   </button>
                 </div>
-              </>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           <div
             ref={stageViewportRef}
@@ -5576,7 +5252,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 <div
                   className="freeform-ruler freeform-ruler-x"
                   data-testid="freeform-ruler-x"
-                  title="按住拖动可拉出竖向参考线"
+                  title={t('按住拖动可拉出竖向参考线')}
                   onPointerDown={(event) => guideDragPointerDown(event, 'x', null)}
                 >
                   {rulerXTicks.map((tick) => (
@@ -5599,7 +5275,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 <div
                   className="freeform-ruler freeform-ruler-y"
                   data-testid="freeform-ruler-y"
-                  title="按住拖动可拉出横向参考线"
+                  title={t('按住拖动可拉出横向参考线')}
                   onPointerDown={(event) => guideDragPointerDown(event, 'y', null)}
                 >
                   {rulerYTicks.map((tick) => (
@@ -5746,7 +5422,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           className={`freeform-ui-only freeform-guide freeform-guide-${guide.axis}`}
                           data-testid="freeform-guide"
                           data-guide-axis={guide.axis}
-                          title="拖动参考线，拖出页面删除；双击移除"
+                          title={t('拖动参考线，拖出页面删除；双击移除')}
                           onPointerDown={(event) => guideDragPointerDown(event, guide.axis, guide.id)}
                           style={guide.axis === 'x'
                             ? { left: guide.position, width: 1 / renderScale }
@@ -5801,7 +5477,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                       data-framing-focus-y={framingRenderTarget.target.framing.focusY}
                       data-framing-zoom={framingRenderTarget.target.framing.zoom}
                       role="application"
-                      aria-label="调整图片取景"
+                      aria-label={t('调整图片取景')}
                       tabIndex={0}
                       style={framingOverlayStyle}
                       onPointerDown={onImageFramingPointerDown}
@@ -5837,11 +5513,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             </div>
           </div>
           {framingRenderTarget && (
-            <div className="freeform-framing-zoom" role="group" aria-label="图片缩放">
+            <div className="freeform-framing-zoom" role="group" aria-label={t('图片缩放')}>
               <button
                 type="button"
-                aria-label="缩小图片"
-                title="缩小图片"
+                aria-label={t('缩小图片')}
+                title={t('缩小图片')}
                 data-testid="freeform-framing-zoom-out"
                 disabled={framingRenderTarget.target.framing.zoom <= MIN_IMAGE_ZOOM}
                 onClick={() => updateImageFramingZoom(
@@ -5857,7 +5533,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 step="1"
                 value={Math.round(framingRenderTarget.target.framing.zoom * 100)}
                 data-testid="freeform-framing-zoom"
-                aria-label="图片缩放比例"
+                aria-label={t('图片缩放比例')}
                 onChange={(event) => updateImageFramingZoom(
                   Number(event.currentTarget.value) / 100,
                 )}
@@ -5865,8 +5541,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               <output>{Math.round(framingRenderTarget.target.framing.zoom * 100)}%</output>
               <button
                 type="button"
-                aria-label="放大图片"
-                title="放大图片"
+                aria-label={t('放大图片')}
+                title={t('放大图片')}
                 data-testid="freeform-framing-zoom-in"
                 disabled={framingRenderTarget.target.framing.zoom >= MAX_IMAGE_ZOOM}
                 onClick={() => updateImageFramingZoom(
@@ -5883,14 +5559,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               className="freeform-align-bar"
               data-testid="freeform-align-bar"
               role="toolbar"
-              aria-label="对齐与分布"
+              aria-label={t('对齐与分布')}
             >
               <button
                 type="button"
                 className="align-bar-btn"
                 data-testid="freeform-align-left"
-                aria-label="左对齐"
-                title="左对齐"
+                aria-label={t('左对齐')}
+                title={t('左对齐')}
                 onClick={() => alignSelection('left')}
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3v14M5 6h10M5 12h7" /></svg>
@@ -5899,8 +5575,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 type="button"
                 className="align-bar-btn"
                 data-testid="freeform-align-hcenter"
-                aria-label="水平居中"
-                title="水平居中"
+                aria-label={t('水平居中')}
+                title={t('水平居中')}
                 onClick={() => alignSelection('h-center')}
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M5 6h10M7 12h6" /></svg>
@@ -5909,8 +5585,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 type="button"
                 className="align-bar-btn"
                 data-testid="freeform-align-right"
-                aria-label="右对齐"
-                title="右对齐"
+                aria-label={t('右对齐')}
+                title={t('右对齐')}
                 onClick={() => alignSelection('right')}
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15 3v14M5 6h10M8 12h7" /></svg>
@@ -5919,8 +5595,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 type="button"
                 className="align-bar-btn"
                 data-testid="freeform-align-top"
-                aria-label="顶对齐"
-                title="顶对齐"
+                aria-label={t('顶对齐')}
+                title={t('顶对齐')}
                 onClick={() => alignSelection('top')}
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 5v10M12 5v7" /></svg>
@@ -5929,8 +5605,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 type="button"
                 className="align-bar-btn"
                 data-testid="freeform-align-vcenter"
-                aria-label="垂直居中"
-                title="垂直居中"
+                aria-label={t('垂直居中')}
+                title={t('垂直居中')}
                 onClick={() => alignSelection('v-center')}
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h14M6 5v10M12 7v6" /></svg>
@@ -5939,8 +5615,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 type="button"
                 className="align-bar-btn"
                 data-testid="freeform-align-bottom"
-                aria-label="底对齐"
-                title="底对齐"
+                aria-label={t('底对齐')}
+                title={t('底对齐')}
                 onClick={() => alignSelection('bottom')}
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15h14M6 5v10M12 8v7" /></svg>
@@ -5950,8 +5626,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 type="button"
                 className="align-bar-btn"
                 data-testid="freeform-distribute-h"
-                aria-label="水平均分"
-                title="水平均分"
+                aria-label={t('水平均分')}
+                title={t('水平均分')}
                 disabled={selectionPaths.length < 3}
                 onClick={() => distributeSelection('horizontal')}
               >
@@ -5961,8 +5637,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 type="button"
                 className="align-bar-btn"
                 data-testid="freeform-distribute-v"
-                aria-label="垂直均分"
-                title="垂直均分"
+                aria-label={t('垂直均分')}
+                title={t('垂直均分')}
                 disabled={selectionPaths.length < 3}
                 onClick={() => distributeSelection('vertical')}
               >
@@ -5971,6 +5647,234 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             </div>
           )}
         </section>
+
+        <aside className="freeform-rail" aria-label={t('页面列表')} data-testid="freeform-page-strip">
+          <div
+            className="freeform-slide-list"
+            onDragOver={(event) => {
+              if (!dragSlideIdRef.current) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+            }}
+            onDrop={(event) => {
+              const sourceId = dragSlideIdRef.current
+              if (!sourceId) return
+              event.preventDefault()
+              dragSlideIdRef.current = null
+              setSlideDropTarget(null)
+              reorderSlide(sourceId, doc.slides.length - 1)
+            }}
+          >
+            {doc.slides.map((slide, index) => (
+              <div key={slide.id} className="freeform-thumb-wrap">
+                <button
+                  type="button"
+                  draggable
+                  className={`freeform-thumb${slide.id === activeSlide.id ? ' on' : ''}${
+                    slideDropTarget?.slideId === slide.id
+                      ? slideDropTarget.position === 'before' ? ' drop-before' : ' drop-after'
+                      : ''
+                  }`}
+                  aria-current={slide.id === activeSlide.id ? 'page' : undefined}
+                  data-testid="freeform-thumb"
+                  onClick={() => selectSlide(slide.id)}
+                  onDragStart={(event) => {
+                    dragSlideIdRef.current = slide.id
+                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.setData('text/plain', slide.id)
+                  }}
+                  onDragEnd={() => {
+                    dragSlideIdRef.current = null
+                    setSlideDropTarget(null)
+                  }}
+                  onDragOver={(event) => {
+                    if (!dragSlideIdRef.current || dragSlideIdRef.current === slide.id) return
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                    const bounds = event.currentTarget.getBoundingClientRect()
+                    const position: 'before' | 'after' =
+                      event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after'
+                    setSlideDropTarget((current) =>
+                      current && current.slideId === slide.id && current.position === position
+                        ? current
+                        : { slideId: slide.id, position },
+                    )
+                  }}
+                  onDragLeave={() => {
+                    setSlideDropTarget((current) =>
+                      current?.slideId === slide.id ? null : current,
+                    )
+                  }}
+                  onDrop={(event) => {
+                    const sourceId = dragSlideIdRef.current
+                    if (!sourceId || sourceId === slide.id) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    dragSlideIdRef.current = null
+                    setSlideDropTarget(null)
+                    const bounds = event.currentTarget.getBoundingClientRect()
+                    const after = event.clientX >= bounds.left + bounds.width / 2
+                    const targetIndex = slideDropTargetIndex(sourceId, slide.id, after)
+                    if (targetIndex !== null) reorderSlide(sourceId, targetIndex)
+                  }}
+                  onContextMenu={(event) => onSlideThumbContextMenu(event, slide.id)}
+                >
+                  <FreeformSlidePreview
+                    slide={slide}
+                    frameWidth={thumbFrameWidth(slide)}
+                    frameHeight={THUMB_HEIGHT}
+                    className="freeform-thumb-art"
+                    deferOffscreen={slide.id !== activeSlide.id}
+                  />
+                  <span className="freeform-thumb-caption">
+                    <span className="freeform-thumb-number">{String(index + 1).padStart(2, '0')}</span>
+                    <span
+                      className="freeform-thumb-title"
+                      data-testid="freeform-thumb-title"
+                      title={slide.name}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation()
+                        event.preventDefault()
+                        beginSlideRename(slide.id)
+                      }}
+                    >
+                      {slide.name}
+                    </span>
+                  </span>
+                </button>
+                {renamingSlideId === slide.id && (
+                  <input
+                    ref={slideRenameInputRef}
+                    className="freeform-thumb-rename"
+                    data-testid="freeform-thumb-rename"
+                    aria-label={t('重命名页面')}
+                    value={slideRenameValue}
+                    onChange={(event) => setSlideRenameValue(event.currentTarget.value)}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onBlur={() => commitSlideRename()}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                      if (event.key === 'Enter') {
+                        if (event.nativeEvent.isComposing || slideRenameCompositionRef.current) return
+                        event.preventDefault()
+                        commitSlideRename()
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelSlideRename()
+                      }
+                    }}
+                    onCompositionStart={() => {
+                      slideRenameCompositionRef.current = true
+                    }}
+                    onCompositionEnd={() => {
+                      slideRenameCompositionRef.current = false
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+            <button
+              className="freeform-add-page"
+              type="button"
+              aria-label={t('新增页面')}
+              title={t('新增页面')}
+              onClick={addSlide}
+            >
+              <PlusIcon />
+            </button>
+          </div>
+          <div className="freeform-rail-actions">
+            <button
+              className="freeform-page-action"
+              type="button"
+              aria-label={t('复制页面')}
+              title={t('复制页面')}
+              onClick={() => duplicateSlide()}
+            >
+              <CopyIcon />
+            </button>
+            <button
+              className="freeform-page-action"
+              type="button"
+              aria-label={t('删除页面')}
+              title={t('删除页面')}
+              onClick={() => deleteSlide()}
+              disabled={doc.slides.length <= 1}
+            >
+              <TrashIcon />
+            </button>
+          </div>
+          {!imageCropSession && !framingSession && (
+            <div className="freeform-zoom-controls">
+              <div className="zoom-controls" aria-label={t('画布设置')}>
+                <button
+                  className="zoom-btn"
+                  type="button"
+                  data-testid="freeform-guides-toggle"
+                  aria-label={t('显示参考线')}
+                  title={t('显示参考线')}
+                  aria-pressed={viewPrefs.guidesVisible}
+                  onClick={() => updateViewPrefs({ guidesVisible: !viewPrefs.guidesVisible })}
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M7 2.5v15M2.5 13h15" strokeDasharray="2 2" />
+                    <rect x="4.5" y="4.5" width="11" height="11" rx="1.5" />
+                  </svg>
+                </button>
+                <button
+                  className="zoom-btn"
+                  type="button"
+                  data-testid="freeform-snap-toggle"
+                  aria-label={t('对象吸附')}
+                  title={t('对象吸附')}
+                  aria-pressed={viewPrefs.snappingEnabled}
+                  onClick={() => updateViewPrefs({ snappingEnabled: !viewPrefs.snappingEnabled })}
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M5.5 3.5v6.25a4.5 4.5 0 0 0 9 0V3.5" />
+                    <path d="M5.5 6.75h3M11.5 6.75h3" />
+                  </svg>
+                </button>
+              </div>
+              <div className="zoom-controls" aria-label={t('预览缩放')}>
+                <button
+                  className="zoom-btn"
+                  type="button"
+                  aria-label={t('缩小画布')}
+                  title={t('缩小画布')}
+                  disabled={zoomPercent <= MIN_ZOOM_PERCENT}
+                  onClick={() => setZoomPercent((value) => clampZoomPercent(value - ZOOM_STEP))}
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 10h12" />
+                  </svg>
+                </button>
+                <button
+                  className="zoom-value"
+                  data-testid="freeform-zoom-value"
+                  type="button"
+                  title={t('适应画布（恢复 100%）')}
+                  onClick={() => setZoomPercent(DEFAULT_ZOOM_PERCENT)}
+                >
+                  {zoomPercent}%
+                </button>
+                <button
+                  className="zoom-btn"
+                  type="button"
+                  aria-label={t('放大画布')}
+                  title={t('放大画布')}
+                  disabled={zoomPercent >= MAX_ZOOM_PERCENT}
+                  onClick={() => setZoomPercent((value) => clampZoomPercent(value + ZOOM_STEP))}
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M10 4v12M4 10h12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+        </aside>
+
 
         <FreeformRightPanel
           propertiesTabRef={propertiesTabRef}
@@ -5998,8 +5902,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               data-testid="freeform-history-panel"
               data-history-count={historyRows.length}
             >
-              <p className="freeform-history-hint">点击任意步骤，在时间线上前后跳转；新编辑会清空重做步骤。</p>
-              <ol className="freeform-history-list" aria-label="编辑历史">
+              <p className="freeform-history-hint">{t('点击任意步骤，在时间线上前后跳转；新编辑会清空重做步骤。')}</p>
+              <ol className="freeform-history-list" aria-label={t('编辑历史')}>
                 {historyRows.map((row) => {
                   const { kind, index } = row
                   return kind === 'current' ? (
@@ -6009,8 +5913,8 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         data-testid="freeform-history-item"
                         data-history-kind="current"
                       >
-                        <span className="freeform-history-label">{row.label}</span>
-                        <span className="freeform-history-state">当前</span>
+                        <span className="freeform-history-label">{t(row.label)}</span>
+                        <span className="freeform-history-state">{t('当前')}</span>
                       </div>
                     </li>
                   ) : (
@@ -6021,12 +5925,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         data-testid="freeform-history-item"
                         data-history-kind={kind}
                         data-history-index={index}
-                        title={kind === 'past' ? '撤销到这一步' : '重做到这一步'}
+                        title={kind === 'past' ? t('撤销到这一步') : t('重做到这一步')}
                         onClick={() => jumpToHistoryState(kind, index)}
                       >
-                        <span className="freeform-history-label">{row.label}</span>
+                        <span className="freeform-history-label">{t(row.label)}</span>
                         <span className="freeform-history-state">
-                          {kind === 'past' ? '撤销' : '重做'}
+                          {kind === 'past' ? t('撤销') : t('重做')}
                         </span>
                       </button>
                     </li>
@@ -6037,33 +5941,33 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
           )}
         >
           <div className="freeform-panel-head">
-            <span>属性</span>
+            <span>{t('属性')}</span>
             {(selectedProperties || activeGroupPath.length > 0) && (
               <nav
                 className="freeform-inspector-breadcrumb"
-                aria-label={selectedProperties ? '对象路径' : '编辑范围'}
+                aria-label={selectedProperties ? t('对象路径') : t('编辑范围')}
                 data-testid={selectedProperties ? undefined : 'freeform-scope-breadcrumb'}
                 title={(selectedProperties
                   ? [
-                      ...selectedProperties.breadcrumbs.map((breadcrumb) => breadcrumb.name),
-                      selectedProperties.node.name,
+                      ...selectedProperties.breadcrumbs.map(breadcrumbLabel),
+                      layerLabel(selectedProperties.node.name),
                     ]
-                  : scopeBreadcrumbs.map((breadcrumb) => breadcrumb.name)
+                  : scopeBreadcrumbs.map(breadcrumbLabel)
                 ).join(' / ')}
               >
                 {(selectedProperties?.breadcrumbs ?? scopeBreadcrumbs).map((breadcrumb, index) => (
-                  <span key={scenePathKey(breadcrumb.path)} title={breadcrumb.name}>
+                  <span key={scenePathKey(breadcrumb.path)} title={breadcrumbLabel(breadcrumb)}>
                     {index > 0 && <span className="freeform-inspector-breadcrumb-separator" aria-hidden="true">/</span>}
-                    {breadcrumb.name}
+                    {breadcrumbLabel(breadcrumb)}
                   </span>
                 ))}
                 {selectedProperties && (
                   <span
                     className="freeform-inspector-breadcrumb-current"
-                    title={selectedProperties.node.name}
+                    title={layerLabel(selectedProperties.node.name)}
                   >
                     <span className="freeform-inspector-breadcrumb-separator" aria-hidden="true">/</span>
-                    {selectedProperties.node.name}
+                    {layerLabel(selectedProperties.node.name)}
                   </span>
                 )}
               </nav>
@@ -6072,9 +5976,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
 
           {liveSelection.length === 0 ? (
             <>
-              <InspectorSection title="页面" testId="inspector-page">
+              <InspectorSection title={t('页面')} testId="inspector-page">
                 <label className="field">
-                  <span className="field-label">页面名称</span>
+                  <span className="field-label">{t('页面名称')}</span>
                   <input
                     className="text-input"
                     value={activeSlide.name}
@@ -6089,7 +5993,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                 </label>
                 <div data-testid="page-background-paint">
                   <PaintField
-                    label="背景"
+                    label={t('背景')}
                     value={activeSlide.background}
                     modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent']}
                     fallbackPaint={DEFAULT_PAGE_PAINT}
@@ -6103,7 +6007,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                   />
                 </div>
               </InspectorSection>
-              <div className="inspector-empty">选择对象以编辑属性。</div>
+              <div className="inspector-empty">{t('选择对象以编辑属性。')}</div>
             </>
           ) : (
             <>
@@ -6112,21 +6016,21 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                   className="freeform-lock-banner"
                   data-testid="freeform-lock-banner"
                   role="note"
-                  aria-label="锁定状态"
+                  aria-label={t('锁定状态')}
                 >
                   <svg viewBox="0 0 20 20" aria-hidden="true">
                     <rect x="4" y="8" width="12" height="9" rx="2" />
                     <path d="M7 8V6a3 3 0 0 1 6 0v2" />
                   </svg>
                   <div className="freeform-lock-banner-copy">
-                    <strong>已锁定</strong>
-                    <span>锁定来源：{effectiveLockedSelection.unlockName}</span>
+                    <strong>{t('已锁定')}</strong>
+                    <span>{t('锁定来源：{name}', { name: effectiveLockedSelection.unlockName })}</span>
                   </div>
                   <button
                     className="ghost freeform-lock-banner-action"
                     type="button"
-                    aria-label={`解锁 ${effectiveLockedSelection.unlockName}`}
-                    title={`解锁 ${effectiveLockedSelection.unlockName}`}
+                    aria-label={t('解锁 {name}', { name: effectiveLockedSelection.unlockName })}
+                    title={t('解锁 {name}', { name: effectiveLockedSelection.unlockName })}
                     onClick={() => {
                       if (setLayerLocked(effectiveLockedSelection.unlockPath, false)) {
                         requestAnimationFrame(() => propertiesTabRef.current?.focus())
@@ -6137,7 +6041,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                       <rect x="4" y="8" width="12" height="9" rx="2" />
                       <path d="M7 8V6a3 3 0 0 1 5.7-1.3" />
                     </svg>
-                    <span>解锁</span>
+                    <span>{t('解锁')}</span>
                   </button>
                 </div>
               )}
@@ -6147,45 +6051,45 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                   className="freeform-lock-descendant-banner"
                   data-testid="freeform-lock-descendant-banner"
                   role="note"
-                  aria-label="包含锁定图层"
+                  aria-label={t('包含锁定图层')}
                 >
                   <svg viewBox="0 0 20 20" aria-hidden="true">
                     <rect x="4" y="8" width="12" height="9" rx="2" />
                     <path d="M7 8V6a3 3 0 0 1 6 0v2" />
                   </svg>
                   <div className="freeform-lock-banner-copy">
-                    <strong>包含锁定图层</strong>
-                    <span>锁定来源：{lockedDescendantSelection.sourceName}，请先在图层面板解锁</span>
+                    <strong>{t('包含锁定图层')}</strong>
+                    <span>{t('锁定来源：{name}，请先在图层面板解锁', { name: lockedDescendantSelection.sourceName })}</span>
                   </div>
                 </div>
               )}
 
               {!propertySelectionReadOnly && liveSelection.length === 1 && selectedProperties && (
                 <>
-                  <InspectorSection title="位置与尺寸" testId="inspector-geometry">
+                  <InspectorSection title={t('位置与尺寸')} testId="inspector-geometry">
                     <div className="field-grid">
                       <label>
-                        {selectedProperties.kind === 'group' ? '中心 X' : 'X'}
+                        {selectedProperties.kind === 'group' ? t('中心 X') : 'X'}
                         <InspectorNumberInput
-                          ariaLabel={selectedProperties.kind === 'group' ? '中心 X' : 'X'}
+                          ariaLabel={selectedProperties.kind === 'group' ? t('中心 X') : 'X'}
                           resetKey={inspectorNumberResetKey}
                           value={selectedProperties.x}
                           onCommit={(value) => commitSceneProperty({ property: 'x', value })}
                         />
                       </label>
                       <label>
-                        {selectedProperties.kind === 'group' ? '中心 Y' : 'Y'}
+                        {selectedProperties.kind === 'group' ? t('中心 Y') : 'Y'}
                         <InspectorNumberInput
-                          ariaLabel={selectedProperties.kind === 'group' ? '中心 Y' : 'Y'}
+                          ariaLabel={selectedProperties.kind === 'group' ? t('中心 Y') : 'Y'}
                           resetKey={inspectorNumberResetKey}
                           value={selectedProperties.y}
                           onCommit={(value) => commitSceneProperty({ property: 'y', value })}
                         />
                       </label>
                       <label>
-                        宽
+                        {t('宽')}
                         <InspectorNumberInput
-                          ariaLabel="宽"
+                          ariaLabel={t('宽')}
                           min={Number.MIN_VALUE}
                           resetKey={inspectorNumberResetKey}
                           value={selectedProperties.width}
@@ -6193,9 +6097,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         />
                       </label>
                       <label>
-                        高
+                        {t('高')}
                         <InspectorNumberInput
-                          ariaLabel="高"
+                          ariaLabel={t('高')}
                           min={Number.MIN_VALUE}
                           resetKey={inspectorNumberResetKey}
                           value={selectedProperties.height}
@@ -6203,9 +6107,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         />
                       </label>
                       <label>
-                        旋转
+                        {t('旋转')}
                         <InspectorNumberInput
-                          ariaLabel="旋转"
+                          ariaLabel={t('旋转')}
                           resetKey={inspectorNumberResetKey}
                           value={selectedProperties.rotation}
                           onCommit={(value) => commitSceneProperty({ property: 'rotation', value })}
@@ -6213,9 +6117,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                       </label>
                       {selectedProperties.kind === 'group' && (
                         <label>
-                          缩放 %
+                          {t('缩放 %')}
                           <InspectorNumberInput
-                            ariaLabel="缩放 %"
+                            ariaLabel={t('缩放 %')}
                             min={Number.MIN_VALUE}
                             resetKey={inspectorNumberResetKey}
                             value={selectedProperties.scalePercent}
@@ -6229,7 +6133,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                     </div>
                     {isShapeElement(selectedElement) && (
                       <>
-                        <div className="field-label with-gap">形状</div>
+                        <div className="field-label with-gap">{t('形状')}</div>
                         <div className="seg stretch">
                           {SHAPES.map((shape) => (
                             <button
@@ -6237,8 +6141,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                               type="button"
                               className={selectedElement.shape === shape.id ? 'seg-btn on' : 'seg-btn'}
                               onClick={() => updateSelectedStyle({ shape: shape.id })}
+                              title={t(shape.label)}
                             >
-                              {shape.label}
+                              <ShapePreviewIcon shape={shape.id} className="seg-shape-icon" />
+                              <span className="sr-only">{t(shape.label)}</span>
                             </button>
                           ))}
                         </div>
@@ -6247,9 +6153,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                   </InspectorSection>
 
                   {isTextElement(selectedElement) && (
-                    <InspectorSection title="文字" testId="inspector-typography">
+                    <InspectorSection title={t('文字')} testId="inspector-typography">
                       <label className="field">
-                        <span className="field-label">文本</span>
+                        <span className="field-label">{t('文本')}</span>
                         <textarea
                           className="freeform-inspector-text"
                           value={selectedElement.text}
@@ -6259,7 +6165,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         />
                       </label>
                       <label className="field">
-                        <span className="field-label">字体</span>
+                        <span className="field-label">{t('字体')}</span>
                         <Select
                           value={selectedElement.fontFamily}
                           onChange={(fontFamily) => {
@@ -6270,17 +6176,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                             ).catch(() => undefined)
                             updateSelectedStyle({ fontFamily })
                           }}
-                          title="字体"
+                          title={t('字体')}
                           testId="freeform-font-select"
                           previewFonts
-                          options={FONTS.map((font) => ({ id: font.id, label: font.label }))}
+                          options={FONTS.map((font) => ({ id: font.id, label: t(font.label) }))}
                         />
                       </label>
                       <div className="field-grid">
                         <label>
-                          字号
+                          {t('字号')}
                           <InspectorNumberInput
-                            ariaLabel="字号"
+                            ariaLabel={t('字号')}
                             min={Number.MIN_VALUE}
                             max={Number.MAX_VALUE}
                             resetKey={inspectorNumberResetKey}
@@ -6291,9 +6197,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           />
                         </label>
                         <label>
-                          行高
+                          {t('行高')}
                           <InspectorNumberInput
-                            ariaLabel="行高"
+                            ariaLabel={t('行高')}
                             min={0.5}
                             max={4}
                             resetKey={inspectorNumberResetKey}
@@ -6302,9 +6208,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           />
                         </label>
                         <label>
-                          字距
+                          {t('字距')}
                           <InspectorNumberInput
-                            ariaLabel="字距"
+                            ariaLabel={t('字距')}
                             min={-50}
                             max={200}
                             resetKey={inspectorNumberResetKey}
@@ -6313,7 +6219,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           />
                         </label>
                       </div>
-                      <div className="field-label with-gap">对齐</div>
+                      <div className="field-label with-gap">{t('对齐')}</div>
                       <div className="seg stretch">
                         {(['left', 'center', 'right'] as const).map((align) => (
                           <button
@@ -6322,11 +6228,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                             className={selectedElement.align === align ? 'seg-btn on' : 'seg-btn'}
                             onClick={() => updateSelectedStyle({ align })}
                           >
-                            {align === 'left' ? '左' : align === 'center' ? '中' : '右'}
+                            {align === 'left' ? t('左') : align === 'center' ? t('中') : t('右')}
                           </button>
                         ))}
                       </div>
-                      <div className="field-label with-gap">字型</div>
+                      <div className="field-label with-gap">{t('字型')}</div>
                       <div className="seg stretch">
                         <button
                           type="button"
@@ -6337,7 +6243,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                             fontWeight: selectedElement.fontWeight === 'bold' ? 'normal' : 'bold',
                           })}
                         >
-                          粗体
+                          {t('粗体')}
                         </button>
                         <button
                           type="button"
@@ -6346,7 +6252,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           aria-pressed={selectedElement.italic ? 'true' : 'false'}
                           onClick={() => updateSelectedStyle({ italic: !selectedElement.italic })}
                         >
-                          斜体
+                          {t('斜体')}
                         </button>
                         <button
                           type="button"
@@ -6355,13 +6261,13 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           aria-pressed={selectedElement.vertical ? 'true' : 'false'}
                           onClick={() => updateSelectedStyle({ vertical: !selectedElement.vertical })}
                         >
-                          竖排
+                          {t('竖排')}
                         </button>
                       </div>
-                      <div className="field-label with-gap">描边</div>
+                      <div className="field-label with-gap">{t('描边')}</div>
                       <div className="paint-row" data-testid="text-stroke-field">
                         <ColorPickerButton
-                          label="描边颜色"
+                          label={t('描边颜色')}
                           color={selectedElement.stroke ?? '#18181b'}
                           onChange={(color) => updateSelectedStyle({
                             stroke: color,
@@ -6371,7 +6277,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         <input
                           className="paint-hex"
                           value={selectedElement.stroke ?? ''}
-                          placeholder="无"
+                          placeholder={t('无')}
                           onChange={(event) => {
                             if (!isHexColor(event.currentTarget.value)) return
                             updateSelectedStyle({
@@ -6379,10 +6285,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                               strokeWidth: selectedElement.strokeWidth ?? 2,
                             })
                           }}
-                          aria-label="描边 hex"
+                          aria-label={t('描边 hex')}
                         />
                         <InspectorNumberInput
-                          ariaLabel="描边宽度"
+                          ariaLabel={t('描边宽度')}
                           min={0.5}
                           max={100}
                           resetKey={inspectorNumberResetKey}
@@ -6398,21 +6304,21 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           data-testid="text-stroke-clear"
                           onClick={() => updateSelectedStyle({ stroke: null, strokeWidth: null })}
                         >
-                          清除
+                          {t('清除')}
                         </button>
                       </div>
                     </InspectorSection>
                   )}
 
                   {isTextElement(selectedElement) && (
-                    <InspectorSection title="文字片段" testId="inspector-rich-spans">
+                    <InspectorSection title={t('文字片段')} testId="inspector-rich-spans">
                       <div className="rich-span-apply" data-testid="rich-span-apply">
                         {activeTextRange ? (
                           <span className="rich-span-hint">
-                            已选 {activeTextRange.end - activeTextRange.start} 字
+                            {t('已选 {n} 字', { n: activeTextRange.end - activeTextRange.start })}
                           </span>
                         ) : (
-                          <span className="rich-span-hint muted">双击文本后选中一段文字</span>
+                          <span className="rich-span-hint muted">{t('双击文本后选中一段文字')}</span>
                         )}
                         <button
                           className="ghost"
@@ -6422,14 +6328,14 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => applySelectedTextSpan({ bold: true })}
                         >
-                          加粗
+                          {t('加粗')}
                         </button>
                         {RICH_SPAN_COLORS.map((color) => (
                           <button
                             key={color}
                             className="rich-span-swatch"
                             type="button"
-                            aria-label={`标色 ${color}`}
+                            aria-label={t('标色 {color}', { color })}
                             title={color}
                             style={{ background: color }}
                             disabled={!activeTextRange}
@@ -6445,19 +6351,19 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                               <span className="rich-span-range" title={selectedElement.text.slice(span.start, span.end)}>
                                 {selectedElement.text.slice(span.start, span.end)}
                               </span>
-                              {span.bold && <span className="rich-span-chip">加粗</span>}
+                              {span.bold && <span className="rich-span-chip">{t('加粗')}</span>}
                               {span.color && (
                                 <span className="rich-span-chip" style={{ color: span.color }}>
-                                  标色
+                                  {t('标色')}
                                 </span>
                               )}
                               <button
                                 className="draft-del"
                                 type="button"
-                                aria-label="删除文字片段"
+                                aria-label={t('删除文字片段')}
                                 onClick={() => removeSelectedTextSpan(index)}
                               >
-                                删除
+                                {t('删除')}
                               </button>
                             </li>
                           ))}
@@ -6469,11 +6375,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                   {(isTextElement(selectedElement) ||
                     isShapeElement(selectedElement) ||
                     isImageElement(selectedElement)) && (
-                    <InspectorSection title="填充" testId="inspector-fill">
+                    <InspectorSection title={t('填充')} testId="inspector-fill">
                       {isTextElement(selectedElement) && (
                         <div data-testid="text-fill-paint">
                           <PaintField
-                            label="文字颜色"
+                            label={t('文字颜色')}
                             value={selectedElement.textFill}
                             modes={['solid', 'linear-gradient', 'radial-gradient']}
                             fallbackPaint={DEFAULT_TEXT_PAINT}
@@ -6487,7 +6393,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         <>
                           <div data-testid="shape-fill-paint">
                             <PaintField
-                              label="填充"
+                              label={t('填充')}
                               value={selectedElement.fill}
                               modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent', 'image']}
                               fallbackPaint={DEFAULT_SHAPE_PAINT}
@@ -6522,7 +6428,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                       )}
                       {isImageElement(selectedElement) && (
                         <>
-                          <div className="field-label">图片填充方式</div>
+                          <div className="field-label">{t('图片填充方式')}</div>
                           <div className="seg stretch">
                             {FITS.map((fit) => (
                               <button
@@ -6532,7 +6438,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                                 data-testid={`paint-image-fit-${fit.id}`}
                                 onClick={() => updateSelectedStyle({ fit: fit.id })}
                               >
-                                {fit.label}
+                                {t(fit.label)}
                               </button>
                             ))}
                           </div>
@@ -6541,29 +6447,29 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                               className="ghost"
                               type="button"
                               data-testid="freeform-crop-image"
-                              aria-label="裁剪图片"
+                              aria-label={t('裁剪图片')}
                               title={canCropSelectedImage
-                                ? '裁剪图片'
+                                ? t('裁剪图片')
                                 : selectedFramingDisabledReason ?? undefined}
                               disabled={!canCropSelectedImage}
                               onClick={() => {
                                 if (selectedPath) startImageCrop(selectedPath)
                               }}
                             >
-                              裁剪
+                              {t('裁剪')}
                             </button>
                             <button
                               className="ghost"
                               type="button"
                               data-testid="freeform-reset-framing"
-                              aria-label="重置图片取景"
+                              aria-label={t('重置图片取景')}
                               title={canResetSelectedFraming
-                                ? '重置图片取景'
-                                : '当前已经是默认取景'}
+                                ? t('重置图片取景')
+                                : t('当前已经是默认取景')}
                               disabled={!canResetSelectedFraming}
                               onClick={resetSelectedImageFraming}
                             >
-                              重置取景
+                              {t('重置取景')}
                             </button>
                           </div>
                         </>
@@ -6572,10 +6478,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                   )}
 
                   {(isShapeElement(selectedElement) || isLineElement(selectedElement)) && (
-                    <InspectorSection title="描边" testId="inspector-stroke">
+                    <InspectorSection title={t('描边')} testId="inspector-stroke">
                       {isLineElement(selectedElement) && (
                         <>
-                          <div className="field-label">线条</div>
+                          <div className="field-label">{t('线条')}</div>
                           <div className="seg stretch" data-testid="line-kind-seg">
                             {(['line', 'arrow'] as const).map((lineKind) => (
                               <button
@@ -6584,7 +6490,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                                 className={selectedElement.lineKind === lineKind ? 'seg-btn on' : 'seg-btn'}
                                 onClick={() => updateSelectedStyle({ lineKind })}
                               >
-                                {lineKind === 'line' ? '直线' : '箭头'}
+                                {lineKind === 'line' ? t('直线') : t('箭头')}
                               </button>
                             ))}
                           </div>
@@ -6595,22 +6501,20 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                           className="stroke-color-field"
                           data-testid={isShapeElement(selectedElement) ? 'shape-stroke-color' : 'line-stroke-color'}
                         >
-                          <span className="stroke-color-label">
-                            {isShapeElement(selectedElement) ? '描边' : '颜色'}
-                          </span>
+                          <span className="stroke-color-label">{t('颜色')}</span>
                           <div className="color-field">
                             <span className="color-field-value">{selectedElement.stroke.toUpperCase()}</span>
                             <ColorPickerButton
-                              label={isShapeElement(selectedElement) ? '形状描边颜色' : '线条颜色'}
+                              label={isShapeElement(selectedElement) ? t('形状描边颜色') : t('线条颜色')}
                               color={selectedElement.stroke}
                               onChange={(stroke) => updateSelectedStyle({ stroke })}
                             />
                           </div>
                         </div>
                         <label>
-                          {isShapeElement(selectedElement) ? '描边宽' : '粗细'}
+                          {isShapeElement(selectedElement) ? t('描边宽') : t('粗细')}
                           <InspectorNumberInput
-                            ariaLabel={isShapeElement(selectedElement) ? '描边宽' : '粗细'}
+                            ariaLabel={isShapeElement(selectedElement) ? t('描边宽') : t('粗细')}
                             min={isShapeElement(selectedElement) ? 0 : Number.MIN_VALUE}
                             max={Number.MAX_VALUE}
                             resetKey={inspectorNumberResetKey}
@@ -6625,9 +6529,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         <>
                           <div className="field-grid with-gap">
                             <label>
-                              虚线
+                              {t('虚线')}
                               <InspectorNumberInput
-                                ariaLabel="虚线"
+                                ariaLabel={t('虚线')}
                                 min={1}
                                 max={500}
                                 resetKey={inspectorNumberResetKey}
@@ -6643,11 +6547,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                                 disabled={selectedElement.dash === undefined}
                                 onClick={() => updateSelectedStyle({ dash: null })}
                               >
-                                实线
+                                {t('实线')}
                               </button>
                             </div>
                           </div>
-                          <div className="field-label with-gap">线帽</div>
+                          <div className="field-label with-gap">{t('线帽')}</div>
                           <div className="seg stretch">
                             {LINE_CAPS.map((cap) => (
                               <button
@@ -6657,11 +6561,11 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                                 data-testid={`line-cap-${cap.id}`}
                                 onClick={() => updateSelectedStyle({ cap: cap.id })}
                               >
-                                {cap.label}
+                                {t(cap.label)}
                               </button>
                             ))}
                           </div>
-                          <div className="field-label with-gap">端点</div>
+                          <div className="field-label with-gap">{t('端点')}</div>
                           <div className="field-grid with-gap">
                             {LINE_ENDPOINT_SIDES.map((side) => {
                               const active = side.id === 'start'
@@ -6670,7 +6574,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                                   ?? (selectedElement.lineKind === 'arrow' ? 'arrow' : 'none')
                               return (
                                 <div key={side.id}>
-                                  <div className="field-label">{side.label}</div>
+                                  <div className="field-label">{t(side.label)}</div>
                                   <div className="seg stretch">
                                     {LINE_ENDPOINT_CAPS.map((cap) => {
                                       const fallback = side.id === 'end' && selectedElement.lineKind === 'arrow'
@@ -6688,7 +6592,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                                               : (side.id === 'start' ? { startCap: cap.id } : { endCap: cap.id }),
                                           )}
                                         >
-                                          {cap.label}
+                                          {t(cap.label)}
                                         </button>
                                       )
                                     })}
@@ -6703,12 +6607,12 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                   )}
 
                   {selectedElement && (
-                  <InspectorSection title="外观" testId="inspector-appearance">
+                  <InspectorSection title={t('外观')} testId="inspector-appearance">
                     <div className="field-grid with-gap">
                       <label>
-                        不透明度 %
+                        {t('不透明度 %')}
                         <InspectorNumberInput
-                          ariaLabel="不透明度 %"
+                          ariaLabel={t('不透明度 %')}
                           min={0}
                           max={100}
                           resetKey={inspectorNumberResetKey}
@@ -6719,9 +6623,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                       </label>
                       {isShapeElement(selectedElement) && selectedElement.shape === 'rect' && (
                         <label>
-                          圆角
+                          {t('圆角')}
                           <InspectorNumberInput
-                            ariaLabel="圆角"
+                            ariaLabel={t('圆角')}
                             min={0}
                             max={2000}
                             resetKey={inspectorNumberResetKey}
@@ -6731,23 +6635,23 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                         </label>
                       )}
                     </div>
-                    <div className="field-label with-gap">阴影</div>
+                    <div className="field-label with-gap">{t('阴影')}</div>
                     <ShadowField
                       shadow={selectedElement.shadow}
                       resetKey={inspectorNumberResetKey}
                       onChange={(shadow) => updateSelectedStyle({ shadow })}
                     />
-                    <div className="field-label with-gap">混合模式</div>
+                    <div className="field-label with-gap">{t('混合模式')}</div>
                     <Select
                       value={selectedElement.blendMode ?? 'normal'}
                       onChange={(blendMode) => updateSelectedStyle({
                         blendMode: blendMode === 'normal' ? null : blendMode as BlendMode,
                       })}
-                      title="混合模式"
+                      title={t('混合模式')}
                       testId="freeform-blend-select"
-                      options={BLEND_MODE_OPTIONS}
+                      options={BLEND_MODE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
                     />
-                    <div className="field-label with-gap">滤镜</div>
+                    <div className="field-label with-gap">{t('滤镜')}</div>
                     <FilterField
                       filter={selectedElement.filter}
                       resetKey={inspectorNumberResetKey}
@@ -6759,68 +6663,68 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               )}
 
               {!propertySelectionReadOnly && (
-                <InspectorSection title="排列" testId="inspector-arrange">
+                <InspectorSection title={t('排列')} testId="inspector-arrange">
                   {canUseLogicalAlignment && (
                     <>
-                      <div className="field-label">对齐与分布</div>
+                      <div className="field-label">{t('对齐与分布')}</div>
                       <div className="inspector-actions">
                         <button className="ghost" type="button" onClick={() => alignSelection('left')}>
-                          左对齐
+                          {t('左对齐')}
                         </button>
                         <button className="ghost" type="button" onClick={() => alignSelection('h-center')}>
-                          水平居中
+                          {t('水平居中')}
                         </button>
                         <button className="ghost" type="button" onClick={() => alignSelection('right')}>
-                          右对齐
+                          {t('右对齐')}
                         </button>
                         <button className="ghost" type="button" onClick={() => alignSelection('top')}>
-                          顶对齐
+                          {t('顶对齐')}
                         </button>
                         <button className="ghost" type="button" onClick={() => alignSelection('v-center')}>
-                          垂直居中
+                          {t('垂直居中')}
                         </button>
                         <button className="ghost" type="button" onClick={() => alignSelection('bottom')}>
-                          底对齐
+                          {t('底对齐')}
                         </button>
                         <button
                           className="ghost"
                           type="button"
                           onClick={() => distributeSelection('horizontal')}
                         >
-                          水平均分
+                          {t('水平均分')}
                         </button>
                         <button
                           className="ghost"
                           type="button"
                           onClick={() => distributeSelection('vertical')}
                         >
-                          垂直均分
+                          {t('垂直均分')}
                         </button>
                       </div>
                     </>
                   )}
-                  <div className="field-label with-gap">层级</div>
+                  <div className="field-label with-gap">{t('层级')}</div>
                   <div className="inspector-actions">
                     <button className="ghost" type="button" onClick={() => reorderSelection('backward')}>
-                      后移
+                      {t('后移')}
                     </button>
                     <button className="ghost" type="button" onClick={() => reorderSelection('forward')}>
-                      前移
+                      {t('前移')}
                     </button>
                     <button className="ghost" type="button" onClick={() => reorderSelection('back')}>
-                      置底
+                      {t('置底')}
                     </button>
                     <button className="ghost" type="button" onClick={() => reorderSelection('front')}>
-                      置顶
+                      {t('置顶')}
                     </button>
                     </div>
                 </InspectorSection>
               )}
 
               {!propertySelectionReadOnly && liveSelection.length === 1 && (
-                <InspectorSection title="删除" testId="inspector-danger" tone="danger">
+                <InspectorSection title={t('删除')} testId="inspector-danger" tone="danger">
                   <button className="ghost inspector-delete" type="button" onClick={deleteSelection}>
-                    删除
+                    {t('删除')}
                   </button>
                 </InspectorSection>
               )}
@@ -6829,45 +6733,27 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
         </FreeformRightPanel>
       </main>
 
-      {showDrafts && (
-        <DraftsPanel
-          drafts={drafts}
-          activeId={draftId}
-          onOpen={openDraft}
-          onDelete={removeDraft}
-          onClose={() => setShowDrafts(false)}
-          onImportFile={importDraftFile}
-        />
-      )}
 
       <TemplateGallery
         open={showTemplates}
         workspace='freeform'
         hasCurrentContent={draftId !== null || history.past.length > 0 || doc.slides.length > 1 || doc.slides.some((slide) => slide.nodes.length > 0)}
-        userTemplates={userTemplateDefinitions}
-        onDeleteUserTemplate={removeUserTemplate}
+        currentIsSaved={Boolean(user) && !unsaved}
         onClose={() => setShowTemplates(false)}
         onApply={applyFreeformTemplate}
-      />
-
-      <SaveTemplateDialog
-        open={showSaveTemplate}
-        defaultName={doc.slides[0]?.name?.trim() || ''}
-        onClose={() => setShowSaveTemplate(false)}
-        onConfirm={saveAsTemplate}
       />
 
       {showMixedSizeWarning && (
         <div className="sheet-backdrop" onClick={() => setShowMixedSizeWarning(false)}>
           <div className="sheet freeform-warning-sheet" onClick={(event) => event.stopPropagation()}>
             <div className="sheet-body">
-              <h2>包含不同尺寸页面</h2>
+              <h2>{t('包含不同尺寸页面')}</h2>
               <p className="form-note">
-                当前作品包含不同尺寸页面。ZIP 中的图片会保留各自页面尺寸，不会统一拉伸或裁剪。
+                {t('当前作品包含不同尺寸页面。ZIP 中的图片会保留各自页面尺寸，不会统一拉伸或裁剪。')}
               </p>
               <div className="sheet-foot">
                 <button type="button" className="ghost" onClick={() => setShowMixedSizeWarning(false)}>
-                  取消
+                  {t('取消')}
                 </button>
                 <button
                   type="button"
@@ -6875,7 +6761,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
                   onClick={continueMixedSizeExport}
                   disabled={renderScale === null}
                 >
-                  继续导出
+                  {t('继续导出')}
                 </button>
               </div>
             </div>
@@ -6889,7 +6775,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
           className="freeform-context-menu"
           data-testid="freeform-context-menu"
           role="menu"
-          aria-label="画布操作"
+          aria-label={t('画布操作')}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
@@ -6900,7 +6786,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); copySelection() }}
           >
-            复制
+            {t('复制')}
           </button>
           <button
             type="button"
@@ -6910,7 +6796,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); duplicateSelection() }}
           >
-            原位复制
+            {t('原位复制')}
           </button>
           <button
             type="button"
@@ -6920,7 +6806,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); cutSelection() }}
           >
-            剪切
+            {t('剪切')}
           </button>
           <button
             type="button"
@@ -6930,7 +6816,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={!clipboard || clipboard.nodes.length === 0}
             onClick={() => { closeContextMenu(); pasteClipboard() }}
           >
-            粘贴
+            {t('粘贴')}
           </button>
           <button
             type="button"
@@ -6940,7 +6826,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={!clipboard || clipboard.nodes.length === 0}
             onClick={() => { closeContextMenu(); pasteClipboard(true) }}
           >
-            原位粘贴
+            {t('原位粘贴')}
           </button>
           <button
             type="button"
@@ -6950,7 +6836,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); deleteSelection() }}
           >
-            删除
+            {t('删除')}
           </button>
           <div className="freeform-context-menu-separator" role="separator" />
           <button
@@ -6961,7 +6847,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); reorderSelection('forward') }}
           >
-            上移一层
+            {t('上移一层')}
           </button>
           <button
             type="button"
@@ -6971,7 +6857,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); reorderSelection('backward') }}
           >
-            下移一层
+            {t('下移一层')}
           </button>
           <button
             type="button"
@@ -6981,7 +6867,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); reorderSelection('front') }}
           >
-            置于顶层
+            {t('置于顶层')}
           </button>
           <button
             type="button"
@@ -6991,7 +6877,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); reorderSelection('back') }}
           >
-            移到底层
+            {t('移到底层')}
           </button>
           <div className="freeform-context-menu-separator" role="separator" />
           <button
@@ -7002,7 +6888,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selectionPaths.length < 2}
             onClick={() => { closeContextMenu(); groupSelection() }}
           >
-            编组
+            {t('编组')}
           </button>
           <button
             type="button"
@@ -7012,7 +6898,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={!menuSelectionHasGroup}
             onClick={() => { closeContextMenu(); ungroupSelection() }}
           >
-            解组
+            {t('解组')}
           </button>
           <div className="freeform-context-menu-separator" role="separator" />
           <button
@@ -7026,7 +6912,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               selectionPaths.forEach((path) => { setLayerLocked(path, !menuSelectionAllLocked) })
             }}
           >
-            {menuSelectionAllLocked ? '解锁' : '锁定'}
+            {menuSelectionAllLocked ? t('解锁') : t('锁定')}
           </button>
           <button
             type="button"
@@ -7039,7 +6925,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               selectionPaths.forEach((path) => { setLayerHidden(path, !menuSelectionAllHidden) })
             }}
           >
-            {menuSelectionAllHidden ? '取消隐藏' : '隐藏'}
+            {menuSelectionAllHidden ? t('取消隐藏') : t('隐藏')}
           </button>
           <div className="freeform-context-menu-separator" role="separator" />
           <button
@@ -7050,7 +6936,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={!menuSelectionHasLeaf}
             onClick={() => { closeContextMenu(); copySelectionStyle() }}
           >
-            复制样式
+            {t('复制样式')}
           </button>
           <button
             type="button"
@@ -7060,7 +6946,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={!styleClipboard || !menuSelectionHasLeaf}
             onClick={() => { closeContextMenu(); pasteStyleToSelection() }}
           >
-            粘贴样式
+            {t('粘贴样式')}
           </button>
           <button
             type="button"
@@ -7070,7 +6956,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
             disabled={selection.length === 0}
             onClick={() => { closeContextMenu(); zoomToSelectionBounds() }}
           >
-            缩放到选区
+            {t('缩放到选区')}
           </button>
         </div>
       )}
@@ -7081,7 +6967,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
           className="freeform-context-menu"
           data-testid="freeform-slide-context-menu"
           role="menu"
-          aria-label="页面操作"
+          aria-label={t('页面操作')}
           style={{ left: slideContextMenu.x, top: slideContextMenu.y }}
         >
           <button
@@ -7095,7 +6981,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               beginSlideRename(slideId)
             }}
           >
-            重命名此页
+            {t('重命名此页')}
           </button>
           <button
             type="button"
@@ -7108,7 +6994,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               duplicateSlide(slideContextMenu.slideId)
             }}
           >
-            复制此页
+            {t('复制此页')}
           </button>
           <button
             type="button"
@@ -7121,7 +7007,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               deleteSlide(slideContextMenu.slideId)
             }}
           >
-            删除此页
+            {t('删除此页')}
           </button>
           <div className="freeform-context-menu-separator" role="separator" />
           <button
@@ -7135,7 +7021,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               reorderSlide(slideContextMenu.slideId, slideMenuIndex - 1)
             }}
           >
-            上移一位
+            {t('上移一位')}
           </button>
           <button
             type="button"
@@ -7148,7 +7034,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               reorderSlide(slideContextMenu.slideId, slideMenuIndex + 1)
             }}
           >
-            下移一位
+            {t('下移一位')}
           </button>
           <button
             type="button"
@@ -7161,7 +7047,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               reorderSlide(slideContextMenu.slideId, 0)
             }}
           >
-            移到最前
+            {t('移到最前')}
           </button>
           <button
             type="button"
@@ -7174,7 +7060,7 @@ export function FreeformWorkspace({ isActive, user, requestAuth, request = null,
               reorderSlide(slideContextMenu.slideId, doc.slides.length - 1)
             }}
           >
-            移到最后
+            {t('移到最后')}
           </button>
         </div>
       )}

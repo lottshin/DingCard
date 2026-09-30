@@ -773,7 +773,7 @@ async function expectFreeformCanvasMatchesZoom(
 }
 
 async function setFreeformZoom(page: import('@playwright/test').Page, target: number) {
-  const value = page.locator('.freeform-stage-pane .zoom-value')
+  const value = page.getByTestId('freeform-zoom-value')
   const current = Number.parseInt((await value.textContent()) ?? '', 10)
   if (!Number.isFinite(current) || target % 10 !== 0) throw new Error('invalid zoom target')
   const direction = target > current ? 10 : -10
@@ -843,6 +843,40 @@ async function registerUser(page: import('@playwright/test').Page, username: str
   await page.getByLabel('用户名').fill(username)
   await page.getByLabel('密码').fill('1234')
   await page.getByRole('button', { name: '创建账号' }).click()
+}
+
+/** Sign up from the guest save hint; the canvas then saves itself to the new account. */
+async function signUpToSave(page: import('@playwright/test').Page, username: string) {
+  await page.getByTestId('editor-save-state').click()
+  await registerUser(page, username)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+}
+
+/** Open the export menu under 导出 (no-op when it is already open). */
+async function openExportMenu(page: import('@playwright/test').Page) {
+  const panel = page.getByTestId('freeform-export-options')
+  if (!(await panel.isVisible())) await page.getByTestId('freeform-export').click()
+  await expect(panel).toBeVisible()
+}
+
+/** The signed-in user's id in the local store. */
+async function currentUserId(page: import('@playwright/test').Page): Promise<string> {
+  const id = await page.evaluate(() => localStorage.getItem('slicer.session.v1'))
+  if (!id) throw new Error('no signed-in user')
+  return id
+}
+
+/** Store drafts straight into the signed-in user's projects, then open the first one. */
+async function openStoredDrafts(page: import('@playwright/test').Page, drafts: unknown[]) {
+  const userId = await currentUserId(page)
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), [
+    `slicer.drafts.${userId}`,
+    JSON.stringify(drafts),
+  ])
+  const first = drafts[0] as { id: string }
+  await page.goto('about:blank')
+  await page.goto(`/#/edit/canvas/${encodeURIComponent(first.id)}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 }
 
 type ShapeFillFileReaderGate = {
@@ -1019,8 +1053,7 @@ async function setSelectedElementBox(
 }
 
 async function openFreeform(page: import('@playwright/test').Page) {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 }
 
 async function openNestedV3Draft(
@@ -1029,28 +1062,18 @@ async function openNestedV3Draft(
   includeDeepLayer = false,
   createDraft: () => ReturnType<typeof nestedV3Draft> = nestedV3Draft,
 ) {
-  await page.goto('/#/edit')
+  await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+  await page.getByTestId('account-login').click()
   await registerUser(page, username)
-  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('\u5df2\u4fdd\u5b58')
+  await expect(page.getByTestId('account-menu')).toBeVisible()
 
   const draft = createDraft()
   if (includeDeepLayer) {
     (draft.document.slides[0].nodes as unknown[]).push(deepLayerBranch(25))
   }
-  await page.evaluate((draft) => {
-    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
-    if (!key) throw new Error('draft storage key missing')
-    localStorage.setItem(key, JSON.stringify([draft]))
-  }, draft)
-  await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f(?: · \d+)?$/ }).click()
-  await page.locator('.draft-item', { hasText: 'Nested v3 scene' }).click()
+  await openStoredDrafts(page, [draft])
 }
 
 async function insertText(page: import('@playwright/test').Page) {
@@ -1222,6 +1245,7 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await expect(lineStroke.getByTestId('paint-mode-image')).toHaveCount(0)
 
   const fileChooserPromise = page.waitForEvent('filechooser')
+  await page.getByTestId('freeform-images-tool').click()
   await page.getByTestId('insert-image').click()
   const fileChooser = await fileChooserPromise
   await fileChooser.setFiles('public/favicon.svg')
@@ -1409,14 +1433,10 @@ test('shape fill transparent mode renders an outline-only shape and persists', a
   await expect(shapeView).toHaveCSS('background-color', 'rgb(254, 215, 170)')
   await shapeFill.getByTestId('paint-mode-transparent').click()
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await registerUser(page, `no-fill-${Date.now().toString(36)}`)
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  const slideStatus = page.getByTestId('freeform-slide-meta')
-  await expect(slideStatus).toContainText('已保存')
+  await signUpToSave(page, `no-fill-${Date.now().toString(36)}`)
 
   await page.reload()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   const restoredShape = page.locator('.freeform-shape')
   await expect(restoredShape).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(restoredShape).toHaveCSS('border-top-width', '6px')
@@ -1449,13 +1469,11 @@ test('shape fill radial gradient edits stops and persists through reload', async
   await shapeFill.getByTestId('paint-mode-radial-gradient').click()
   await expect(shapeView).toHaveCSS('background-image', /radial-gradient\(/)
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await registerUser(page, `radial-${Date.now().toString(36)}`)
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await signUpToSave(page, `radial-${Date.now().toString(36)}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.reload()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await expect(page.locator('.freeform-shape')).toHaveCSS(
     'background-image',
     /radial-gradient\(/,
@@ -1487,13 +1505,11 @@ test('line endpoint caps draw start arrows and end dots and persist', async ({ p
   await stroke.getByTestId('line-endpoint-end-dot').click()
   await expect(svgLine).toHaveAttribute('marker-end', /url\(#.*dot/)
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await registerUser(page, `caps-${Date.now().toString(36)}`)
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await signUpToSave(page, `caps-${Date.now().toString(36)}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.reload()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   const restoredLine = page.locator('.freeform-line').locator('line')
   await expect(restoredLine).toHaveAttribute('marker-start', /url\(#.*arrow-start/)
   await expect(restoredLine).toHaveAttribute('marker-end', /url\(#.*dot/)
@@ -1694,36 +1710,35 @@ test('inspector danger text remains readable in light and dark themes', async ({
   expect(darkTitle.foreground).not.toBe(lightTitle.foreground)
 })
 
-test('global header owns workspace tabs, theme, and account state', async ({ page }) => {
+test('each editor top bar carries theme and account state', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/#/edit')
+  await page.goto('/#/edit/md')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
   await expect(page.getByTestId('app-header')).toHaveCount(1)
-  await expect(page.getByTestId('workspace-tab-markdown')).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
+  await expect(page.getByTestId('app-header')).toHaveAttribute('data-system', 'markdown-card')
 
   await page.getByTestId('theme-toggle').click()
   const theme = await page.locator('html').getAttribute('data-theme')
   expect(theme).toMatch(/^(light|dark)$/)
 
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
+  await expect(page.getByTestId('app-header')).toHaveCount(1)
+  await expect(page.getByTestId('app-header')).toHaveAttribute('data-system', 'freeform-slide')
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme!)
 
   await page.getByTestId('account-login').click()
   await expect(page.locator('.form-note')).toContainText('仅保存在此浏览器本地')
   await registerUser(page, `header-${Date.now()}`)
 
-  await expect(page.getByTestId('account-logout')).toBeVisible()
+  await expect(page.getByTestId('account-menu')).toBeVisible()
   await expect(page.locator('html')).not.toHaveClass(/theme-anim/)
   const accountBackground = await page
-    .getByTestId('account-logout')
+    .getByTestId('account-menu')
     .evaluate((element) => getComputedStyle(element).backgroundColor)
   const primaryExportBackground = await page
-    .getByTestId('freeform-primary-export')
+    .getByTestId('freeform-export')
     .evaluate((element) => getComputedStyle(element).backgroundColor)
   const accentBackground = await page.evaluate(() => {
     const probe = document.createElement('div')
@@ -1735,8 +1750,10 @@ test('global header owns workspace tabs, theme, and account state', async ({ pag
   })
   expect(accountBackground).not.toBe(accentBackground)
   expect(accountBackground).not.toBe(primaryExportBackground)
-  await page.getByTestId('workspace-tab-markdown').click()
-  await expect(page.getByTestId('account-logout')).toBeVisible()
+  await page.goto('/#/edit/md')
+  await expect(page.getByTestId('account-menu')).toBeVisible()
+  await page.getByTestId('account-menu').click()
+  await expect(page.getByRole('menu').getByTestId('account-logout')).toBeVisible()
 })
 
 test('malformed account storage falls back to a logged-out app shell', async ({ page }) => {
@@ -1749,7 +1766,7 @@ test('malformed account storage falls back to a logged-out app shell', async ({ 
 
   await expect(page.getByTestId('app-header')).toBeVisible()
   await expect(page.getByTestId('account-login')).toBeVisible()
-  await expect(page.getByTestId('workspace-tab-markdown')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
 })
 
 test('blocked browser storage keeps the app shell and theme toggle usable', async ({ page }) => {
@@ -1773,18 +1790,20 @@ test('blocked browser storage keeps the app shell and theme toggle usable', asyn
   await expect(page.getByTestId('app-header')).toBeVisible()
 })
 
-test('only the active workspace contextual toolbar is exposed', async ({ page }) => {
-  await page.goto('/#/edit')
+test('only the open editor exposes its toolbar, with one primary action in the top bar', async ({ page }) => {
+  await page.goto('/#/edit/md')
 
   const markdownToolbar = page.getByTestId('markdown-toolbar')
+  const header = page.getByTestId('app-header')
   await expect(markdownToolbar).toBeVisible()
   await expect(markdownToolbar).toHaveAttribute('role', 'toolbar')
   await expect(markdownToolbar).toHaveCSS('height', '50px')
-  await expect(page.getByTestId('freeform-toolbar')).toBeHidden()
+  await expect(page.getByTestId('freeform-toolbar')).toHaveCount(0)
   await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
+  await expect(header).toHaveCSS('height', '52px')
   await expect(markdownToolbar.locator('.bar-btn').first()).toHaveCSS('height', '32px')
   await expect(markdownToolbar.locator('.sel-trigger').first()).toHaveCSS('height', '32px')
-  await expect(markdownToolbar.locator('.toolbar-primary')).toHaveCSS('height', '32px')
+  await expect(header.locator('.toolbar-primary')).toHaveCSS('height', '32px')
   const segmentBox = await markdownToolbar.getByRole('tablist', { name: '平台' }).boundingBox()
   expect(segmentBox).toBeTruthy()
   expect(segmentBox!.height).toBeLessThanOrEqual(32)
@@ -1801,7 +1820,7 @@ test('only the active workspace contextual toolbar is exposed', async ({ page })
     markdownToolbar.locator('.seg-btn').first(),
     markdownToolbar.locator('.sel-trigger').first(),
     markdownToolbar.locator('.bar-btn').first(),
-    markdownToolbar.locator('.toolbar-primary'),
+    header.locator('.toolbar-primary'),
   ]
   for (const control of focusableControls) {
     await control.focus()
@@ -1810,23 +1829,31 @@ test('only the active workspace contextual toolbar is exposed', async ({ page })
     await expect(control).toHaveCSS('outline-width', '2px')
   }
 
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await expect(page.getByTestId('markdown-toolbar')).toBeHidden()
   const freeformToolbar = page.getByTestId('freeform-toolbar')
   await expect(freeformToolbar).toBeVisible()
   await expect(freeformToolbar).toHaveAttribute('role', 'toolbar')
-  await expect(freeformToolbar).toHaveCSS('height', '50px')
-  await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
+  // The freeform tools ride in the top bar instead of a second row.
+  await expect(page.getByTestId('app-header').getByTestId('freeform-toolbar')).toBeVisible()
+  await expect(freeformToolbar).toHaveCSS('height', '44px')
+  await expect(page.getByTestId('freeform-export')).toBeVisible()
   await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
-  await expect(page.getByTestId('insert-text')).toHaveCSS('height', '32px')
-  await expect(page.getByTestId('insert-shape')).toHaveCSS('height', '32px')
-  await expect(freeformToolbar.locator('.toolbar-primary')).toHaveCSS('height', '32px')
+  const tools = page.getByRole('navigation', { name: '插入' })
+  for (const testId of ['freeform-template-button', 'insert-text', 'freeform-images-tool', 'insert-shape', 'insert-line']) {
+    await expect(tools.getByTestId(testId)).toBeVisible()
+    const box = await tools.getByTestId(testId).boundingBox()
+    expect(box!.width).toBeGreaterThanOrEqual(44)
+    expect(box!.height).toBeGreaterThanOrEqual(44)
+  }
+  await expect(freeformToolbar.getByTestId('insert-text')).toHaveCount(0)
+  await expect(page.getByTestId('freeform-export')).toHaveCSS('height', '32px')
   await expect(page.locator('.freeform-thumb.on')).toHaveAttribute('aria-current', 'page')
 })
 
 for (const viewport of [
-  { name: 'wide', width: 1440, height: 900, railWidth: 152, inspectorWidth: 248 },
-  { name: 'compact', width: 1024, height: 768, railWidth: 136, inspectorWidth: 224 },
+  { name: 'wide', width: 1440, height: 900, toolsWidth: 72, inspectorWidth: 248 },
+  { name: 'compact', width: 1024, height: 768, toolsWidth: 64, inspectorWidth: 224 },
 ]) {
   test(`freeform chrome fits the ${viewport.name} desktop viewport`, async ({ page }) => {
     await page.setViewportSize(viewport)
@@ -1841,15 +1868,20 @@ for (const viewport of [
     const mainOverflow = await main.evaluate((element) => element.scrollWidth - element.clientWidth)
     expect(mainOverflow).toBeLessThanOrEqual(0)
     await expect(main).toHaveCSS('overflow-x', 'hidden')
-    await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
+    await expect(page.getByTestId('freeform-export')).toBeVisible()
     await expect(page.locator('.freeform-inspector')).toBeVisible()
     await expect(page.locator('.freeform-stage-scroll')).toBeVisible()
 
-    const railBox = await page.locator('.freeform-rail').boundingBox()
+    const toolsBox = await page.locator('.freeform-tools').boundingBox()
+    const stageBox = await page.locator('.freeform-stage-pane').boundingBox()
+    const stripBox = await page.locator('.freeform-rail').boundingBox()
     const inspectorBox = await page.locator('.freeform-inspector').boundingBox()
-    expect(railBox?.width).toBeCloseTo(viewport.railWidth, 0)
+    expect(toolsBox?.width).toBeCloseTo(viewport.toolsWidth, 0)
     expect(inspectorBox?.width).toBeCloseTo(viewport.inspectorWidth, 0)
-    await expect(page.locator('.freeform-slide-list')).toHaveCSS('overflow-y', 'auto')
+    // The page strip runs under the stage, exactly as wide.
+    expect(stripBox?.width).toBeCloseTo(stageBox!.width, 0)
+    expect(stripBox!.y).toBeGreaterThanOrEqual(stageBox!.y + stageBox!.height - 1)
+    await expect(page.locator('.freeform-slide-list')).toHaveCSS('overflow-x', 'auto')
     await expect(page.locator('.freeform-stage-scroll')).toHaveCSS('overflow-y', 'auto')
     await expect(page.locator('.freeform-inspector')).toHaveCSS('overflow-y', 'auto')
 
@@ -1901,11 +1933,11 @@ test.describe('fit-relative freeform zoom', () => {
     await page.goto('/#/edit')
     await expect(page.getByTestId('freeform-canvas')).toHaveCount(0)
 
-    await page.getByTestId('workspace-tab-freeform').click()
+    await page.goto('/#/edit/canvas')
 
     await expect(page.getByTestId('freeform-canvas')).toBeVisible()
     await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
-    await expect(page.getByTestId('freeform-primary-export')).toBeEnabled()
+    await expect(page.getByTestId('freeform-export')).toBeEnabled()
   })
 
   for (const viewport of [
@@ -1915,7 +1947,7 @@ test.describe('fit-relative freeform zoom', () => {
     test(`fits common ratios at 100% in the ${viewport.name} stage`, async ({ page }) => {
       await page.setViewportSize(viewport)
       await openFreeform(page)
-      await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('100%')
+      await expect(page.getByTestId('freeform-zoom-value')).toHaveText('100%')
 
       for (const ratio of ['1:1', '9:16', '16:9'] as const) {
         await selectFreeformPagePreset(page, ratio)
@@ -1949,8 +1981,8 @@ test.describe('fit-relative freeform zoom', () => {
     const half = await expectFreeformCanvasMatchesZoom(page, 50, true)
     expect(half.renderedHeight).toBeCloseTo(fitted.renderedHeight / 2, 0)
 
-    await page.locator('.freeform-stage-pane .zoom-value').click()
-    await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('100%')
+    await page.getByTestId('freeform-zoom-value').click()
+    await expect(page.getByTestId('freeform-zoom-value')).toHaveText('100%')
     await setFreeformZoom(page, 110)
     await expect
       .poll(async () => {
@@ -1967,7 +1999,8 @@ test.describe('fit-relative freeform zoom', () => {
     await stage.evaluate((node) => { node.scrollTop = node.scrollHeight })
     await expect.poll(async () => (await freeformStageMetrics(page)).scrollTop).toBeGreaterThan(0)
     const atBottom = await freeformStageMetrics(page)
-    expect(atBottom.canvasBottom).toBeCloseTo(atBottom.stageBottom - atBottom.paddingBottom, 0)
+    // Scroll offsets are whole pixels, so a fractional canvas height can leave half a pixel.
+    expect(Math.abs(atBottom.canvasBottom - (atBottom.stageBottom - atBottom.paddingBottom))).toBeLessThanOrEqual(0.5)
   })
 
   test('makes both horizontal edges reachable at 110%', async ({ page }) => {
@@ -1990,14 +2023,14 @@ test.describe('fit-relative freeform zoom', () => {
     await stage.evaluate((node) => { node.scrollLeft = node.scrollWidth })
     await expect.poll(async () => (await freeformStageMetrics(page)).scrollLeft).toBeGreaterThan(0)
     const atRight = await freeformStageMetrics(page)
-    expect(atRight.canvasRight).toBeCloseTo(atRight.stageRight - atRight.paddingRight, 0)
+    expect(Math.abs(atRight.canvasRight - (atRight.stageRight - atRight.paddingRight))).toBeLessThanOrEqual(0.5)
   })
 
   test('enforces zoom bounds and resets the middle control to 100%', async ({ page }) => {
     await openFreeform(page)
     const shrink = page.getByRole('button', { name: '缩小画布', exact: true })
     const enlarge = page.getByRole('button', { name: '放大画布', exact: true })
-    const value = page.locator('.freeform-stage-pane .zoom-value')
+    const value = page.getByTestId('freeform-zoom-value')
 
     await setFreeformZoom(page, 10)
     await expect(shrink).toBeDisabled()
@@ -2022,16 +2055,16 @@ test.describe('fit-relative freeform zoom', () => {
     await page.setViewportSize({ width: 1024, height: 768 })
     const compact = await expectFreeformCanvasMatchesZoom(page, 150, false)
     expect(compact.renderedWidth).not.toBeCloseTo(wide.renderedWidth, 0)
-    await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('150%')
+    await expect(page.getByTestId('freeform-zoom-value')).toHaveText('150%')
 
     await selectFreeformPagePreset(page, '9:16')
     await expectFreeformCanvasMatchesZoom(page, 150, false)
-    await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('150%')
+    await expect(page.getByTestId('freeform-zoom-value')).toHaveText('150%')
 
-    await page.getByTestId('workspace-tab-markdown').click()
-    await page.getByTestId('workspace-tab-freeform').click()
+    await page.goto('/#/edit/md')
+    await page.goto('/#/edit/canvas')
     await expectFreeformCanvasMatchesZoom(page, 150, false)
-    await expect(page.locator('.freeform-stage-pane .zoom-value')).toHaveText('150%')
+    await expect(page.getByTestId('freeform-zoom-value')).toHaveText('150%')
   })
 
   test('uses the live render scale for dragging and resizing at 150%', async ({ page }) => {
@@ -2083,8 +2116,10 @@ test('dark mode keeps freeform chrome controls and popovers legible', async ({ p
   await expect(html).not.toHaveClass(/theme-anim/)
 
   const toolbar = page.getByTestId('freeform-toolbar')
-  await expect(toolbar).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-  await expect(toolbar).not.toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)')
+  // The tools sit on the top bar, which carries the surface and the divider.
+  const header = page.getByTestId('app-header')
+  await expect(header).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(header).not.toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)')
   const undoButton = toolbar.getByRole('button', { name: '撤销', exact: true })
   await expect(undoButton).toBeDisabled()
   const undoOpacity = Number(await undoButton.evaluate((button) => getComputedStyle(button).opacity))
@@ -2249,12 +2284,13 @@ test('freeform visual system uses approved runtime tokens and neutral stage rule
       overflowX: style.overflowX,
     }
   })
-  expect(mainColumns.columns.at(0)).toBe('152px')
+  expect(mainColumns.columns.at(0)).toBe('72px')
   expect(mainColumns.columns.at(-1)).toBe('248px')
   expect(mainColumns.gap).toBe('0px')
   expect(mainColumns.padding).toBe('0px')
   expect(mainColumns.overflowX).toBe('hidden')
-  await expect(page.locator('.freeform-stage-scroll')).toHaveCSS('background-image', 'none')
+  // The desk under the page is a quiet dot grid.
+  await expect(page.locator('.freeform-stage-scroll')).toHaveCSS('background-image', /radial-gradient/)
   // The active page is outlined on the page itself (2px accent drop-shadow ring), not the thumb button.
   await expect(page.locator('.freeform-thumb.on .freeform-thumb-art'))
     .toHaveCSS('filter', /drop-shadow\(rgb\([^)]*\) 2px 0px 0px\)/)
@@ -2263,46 +2299,7 @@ test('freeform visual system uses approved runtime tokens and neutral stage rule
   await expect(page.getByTestId('freeform-slide-meta')).toHaveCSS('clip-path', 'inset(50%)')
 })
 
-test('workspace tabs support arrow, Home, and End keyboard navigation', async ({ page }) => {
-  await page.goto('/#/edit')
-
-  const markdownTab = page.getByTestId('workspace-tab-markdown')
-  const freeformTab = page.getByTestId('workspace-tab-freeform')
-  const markdownPanel = page.getByRole('tabpanel', { name: 'Markdown 卡片' })
-  const freeformPanel = page.getByRole('tabpanel', { name: '自由编辑' })
-
-  await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
-  await expect(markdownTab).toHaveAttribute('tabindex', '0')
-  await expect(freeformTab).toHaveAttribute('tabindex', '-1')
-
-  await markdownTab.focus()
-  await page.keyboard.press('ArrowRight')
-  await expect(freeformTab).toBeFocused()
-  await expect(freeformTab).toHaveAttribute('aria-selected', 'true')
-  await expect(freeformTab).toHaveAttribute('tabindex', '0')
-  await expect(markdownTab).toHaveAttribute('tabindex', '-1')
-  await expect(freeformPanel).toBeVisible()
-
-  await page.keyboard.press('Home')
-  await expect(markdownTab).toBeFocused()
-  await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
-  await expect(markdownPanel).toBeVisible()
-
-  await page.keyboard.press('End')
-  await expect(freeformTab).toBeFocused()
-  await expect(freeformTab).toHaveAttribute('aria-selected', 'true')
-  await expect(freeformPanel).toBeVisible()
-
-  await page.keyboard.press('ArrowRight')
-  await expect(markdownTab).toBeFocused()
-  await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
-
-  await page.keyboard.press('ArrowLeft')
-  await expect(freeformTab).toBeFocused()
-  await expect(freeformTab).toHaveAttribute('aria-selected', 'true')
-})
-
-test('workspace tab arrow navigation does not nudge selected freeform elements', async ({ page }) => {
+test('arrow keys in the language menu do not nudge selected freeform elements', async ({ page }) => {
   await openFreeform(page)
   await insertShape(page)
   await setSelectedElementPosition(page, 240, 180)
@@ -2327,32 +2324,34 @@ test('workspace tab arrow navigation does not nudge selected freeform elements',
     )
   })
 
-  const freeformTab = page.getByTestId('workspace-tab-freeform')
-  await freeformTab.focus()
+  const languageMenu = page.getByTestId('language-menu')
+  await languageMenu.focus()
+  await page.keyboard.press('ArrowDown')
+  const menu = page.getByRole('menu', { name: '界面语言' })
+  await expect(menu).toBeVisible()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowUp')
   await page.keyboard.press('ArrowLeft')
-  await expect(page.getByTestId('workspace-tab-markdown')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await expect(languageMenu).toBeFocused()
   await expect(page.locator('html')).toHaveAttribute('data-workspace-tab-arrow-events', '0')
-
-  await freeformTab.click()
   await expect.poll(readPosition).toEqual(before)
 })
 
-test('account changes reset workspace draft identity', async ({ page }) => {
-  await page.goto('/#/edit')
+test('account changes reset the open project', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
   const accountSuffix = Date.now()
-  await page.getByTestId('workspace-tab-freeform').click()
   await insertText(page)
   await page.getByLabel('文本内容').fill('跨账户草稿内容')
 
-  await page.getByRole('button', { name: '保存草稿' }).click()
-  await registerUser(page, `draft-${accountSuffix}-a`)
-  await page.getByRole('button', { name: '保存草稿' }).click()
+  await signUpToSave(page, `draft-${accountSuffix}-a`)
 
-  const slideStatus = page.getByTestId('freeform-slide-meta')
-  await expect(slideStatus).toContainText('已保存')
+  const slideStatus = page.getByTestId('editor-save-state')
+  await expect(slideStatus).toHaveText('已保存')
   const userADraftIds = await page.evaluate(() =>
     Object.keys(localStorage)
       .filter((key) => key.startsWith('slicer.drafts.'))
@@ -2364,15 +2363,19 @@ test('account changes reset workspace draft identity', async ({ page }) => {
   )
   expect(userADraftIds).toHaveLength(1)
 
+  // Signing out leaves nothing of account A on screen: its work is saved, the canvas starts over.
+  await page.getByTestId('account-menu').click()
   await page.getByTestId('account-logout').click()
-  await expect(slideStatus).not.toContainText('已保存')
-  await expect(page.getByTestId('freeform-element')).toHaveCount(1)
-  await expect(page.getByLabel('文本内容')).toContainText('跨账户草稿内容')
+  await expect(slideStatus).toHaveText('登录后自动保存')
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await expect(page.getByTestId('editor-title')).toHaveText('未命名设计')
 
+  // Account B starts empty and gets nothing of A's until it edits.
   await page.getByTestId('account-login').click()
   await registerUser(page, `draft-${accountSuffix}-b`)
-  await page.getByRole('button', { name: '保存草稿' }).click()
-  await expect(slideStatus).toContainText('已保存')
+  await expect(page.getByTestId('account-menu')).toBeVisible()
+  await insertText(page)
+  await expect(slideStatus).toHaveText('已保存')
 
   const draftStores = await page.evaluate(() =>
     Object.keys(localStorage)
@@ -2382,6 +2385,8 @@ test('account changes reset workspace draft identity', async ({ page }) => {
         ids: (JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{ id: string }>).map(
           (draft) => draft.id,
         ),
+        texts: (JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{ document: { slides: Array<{ nodes: Array<{ text?: string }> }> } }>)
+          .flatMap((draft) => draft.document.slides.flatMap((slide) => slide.nodes.map((node) => node.text ?? ''))),
       })),
   )
   expect(draftStores).toHaveLength(2)
@@ -2389,15 +2394,15 @@ test('account changes reset workspace draft identity', async ({ page }) => {
   const allDraftIds = draftStores.flatMap((store) => store.ids)
   expect(allDraftIds).toContain(userADraftIds[0])
   expect(new Set(allDraftIds).size).toBe(allDraftIds.length)
+  expect(draftStores.filter((store) => store.texts.includes('跨账户草稿内容'))).toHaveLength(1)
 })
 
-test('drafts panel imports a freeform document JSON and opens it', async ({ page }) => {
+test('我的项目 imports a freeform document JSON and opens it', async ({ page }) => {
   await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
-  // Opening the drafts drawer without an account first opens the auth modal.
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
+  await page.getByTestId('account-login').click()
   await registerUser(page, `import-${Date.now()}`)
 
   const importedDocument = {
@@ -2435,49 +2440,48 @@ test('drafts panel imports a freeform document JSON and opens it', async ({ page
     ],
   }
 
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
-  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
-  await page.getByLabel('导入 JSON 文档').setInputFiles({
+  await page.goto('/#/projects')
+  await page.getByTestId('project-import-input').setInputFiles({
     name: 'ai-card.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(importedDocument)),
   })
 
-  await expect(page.getByTestId('drafts-drawer')).not.toBeVisible()
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
   await expect(page.getByTestId('freeform-element')).toHaveCount(1)
   await expect(page.getByTestId('freeform-textbox')).toContainText('AI 导入的标题')
 
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
-  await expect(page.getByTestId('drafts-drawer')).toContainText('AI 生成页')
-  await expect(page.getByTestId('drafts-drawer')).toContainText('自由编辑')
+  await page.getByTestId('editor-home').click()
+  await page.getByRole('link', { name: /^我的项目/ }).click()
+  await expect(page.getByTestId('project-card')).toContainText('AI 生成页')
+  await expect(page.getByTestId('project-card')).toContainText('自由编辑')
 })
 
-test('drafts panel import rejects invalid JSON with an error notice', async ({ page }) => {
+test('我的项目 import rejects invalid JSON with an error notice', async ({ page }) => {
   await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
+  await page.getByTestId('account-login').click()
   await registerUser(page, `import-bad-${Date.now()}`)
 
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
-  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
-  await page.getByLabel('导入 JSON 文档').setInputFiles({
+  await page.goto('/#/projects')
+  await page.getByTestId('project-import-input').setInputFiles({
     name: 'broken.json',
     mimeType: 'application/json',
     buffer: Buffer.from('不是 JSON'),
   })
 
-  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: '我的项目' })).toBeVisible()
   await expect(page.getByText('文件不是有效的 JSON')).toBeVisible()
 })
 
-test('drafts panel imports a v14 polyline document and renders its vertices', async ({ page }) => {
+test('我的项目 imports a v14 polyline document and renders its vertices', async ({ page }) => {
   await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
+  await page.getByTestId('account-login').click()
   await registerUser(page, `poly-${Date.now()}`)
 
   const importedDocument = {
@@ -2537,15 +2541,14 @@ test('drafts panel imports a v14 polyline document and renders its vertices', as
     ],
   }
 
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
-  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
-  await page.getByLabel('导入 JSON 文档').setInputFiles({
+  await page.goto('/#/projects')
+  await page.getByTestId('project-import-input').setInputFiles({
     name: 'polyline.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(importedDocument)),
   })
 
-  await expect(page.getByTestId('drafts-drawer')).not.toBeVisible()
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
   await expect(page.getByTestId('freeform-element')).toHaveCount(2)
   const polyline = page.getByTestId('freeform-polyline')
   await expect(polyline).toHaveAttribute(
@@ -2557,12 +2560,11 @@ test('drafts panel imports a v14 polyline document and renders its vertices', as
   // A vertex-less line keeps rendering the classic single <line> element.
   await expect(page.locator('.freeform-line', { has: page.getByTestId('freeform-polyline') })).toHaveCount(1)
   await expect(page.locator('.freeform-line line')).toHaveCount(1)
-
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  // Importing already made it a project.
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.reload()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await expect(page.getByTestId('freeform-polyline')).toHaveAttribute(
     'points',
     '0,260 150,40 300,240 450,20 600,220',
@@ -2575,7 +2577,7 @@ test('polyline vertex handles drag vertices and double-click edits them', async 
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
+  await page.getByTestId('account-login').click()
   await registerUser(page, `vertex-${Date.now()}`)
 
   const importedDocument = {
@@ -2616,14 +2618,13 @@ test('polyline vertex handles drag vertices and double-click edits them', async 
     ],
   }
 
-  await page.getByRole('button', { name: /^我的草稿/ }).click()
-  await expect(page.getByTestId('drafts-drawer')).toBeVisible()
-  await page.getByLabel('导入 JSON 文档').setInputFiles({
+  await page.goto('/#/projects')
+  await page.getByTestId('project-import-input').setInputFiles({
     name: 'vertex.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(importedDocument)),
   })
-  await expect(page.getByTestId('drafts-drawer')).not.toBeVisible()
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
 
   const polyline = page.getByTestId('freeform-polyline')
   const readPoints = async () => {
@@ -2711,8 +2712,7 @@ test('switches to the freeform workspace and edits a slide', async ({ page }) =>
 })
 
 test('inserts shapes and lines through accessible toolbar menus', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   const shapeTrigger = page.getByTestId('insert-shape')
   await expect(shapeTrigger).toHaveAttribute('aria-haspopup', 'menu')
@@ -2932,8 +2932,7 @@ test('keeps the page size popover open when clicking non-focusable content insid
 })
 
 test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   const shapeTrigger = page.getByTestId('insert-shape')
   await shapeTrigger.click()
@@ -2970,8 +2969,7 @@ test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
 })
 
 test('closes insert menus without recording history', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   const undo = page.getByRole('button', { name: '撤销' })
   const shapeTrigger = page.getByTestId('insert-shape')
@@ -2995,21 +2993,20 @@ test('closes insert menus without recording history', async ({ page }) => {
 
   await shapeTrigger.click()
   await expect(shapeMenu).toBeVisible()
-  const markdownTab = page.getByTestId('workspace-tab-markdown')
-  await markdownTab.click()
+  // Leaving for the other editor closes the menu without inserting anything.
+  await page.goto('/#/edit/md')
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
-  await expect(markdownTab).toBeFocused()
-  await page.getByTestId('workspace-tab-freeform').click()
+  await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
+  await page.goto('/#/edit/canvas')
   await expect(shapeMenu).toBeHidden()
   await expect(page.getByTestId('freeform-element')).toHaveCount(0)
   await expect(undo).toBeDisabled()
 })
 
 test('freeform inspector exposes styled paint controls instead of visible native color inputs', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   await expect(page.getByTestId('freeform-paint-field').first()).toBeVisible()
   await expect(page.locator('.freeform-inspector input[type="color"]:visible')).toHaveCount(0)
@@ -3017,8 +3014,7 @@ test('freeform inspector exposes styled paint controls instead of visible native
 })
 
 test('opens a custom color popover beside the inspector instead of the browser color picker', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   const inspector = page.locator('.freeform-inspector')
   await page.getByTestId('page-background-paint').getByTestId('paint-color-button').click()
@@ -3036,8 +3032,7 @@ test('opens a custom color popover beside the inspector instead of the browser c
 })
 
 test('uses styled range sliders in the freeform paint controls', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
   const range = page.getByTestId('paint-gradient-angle').first()
@@ -3047,8 +3042,7 @@ test('uses styled range sliders in the freeform paint controls', async ({ page }
 })
 
 test('uses styled scrollbars in the freeform workspace', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   for (const selector of ['.freeform-stage-scroll', '.freeform-rail', '.freeform-inspector']) {
     const scroller = page.locator(selector)
@@ -3680,8 +3674,7 @@ test('warms the selected web font before export is clicked', async ({ page }) =>
     }
   })
 
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await insertText(page)
   await page.getByTestId('freeform-element').first().click()
   await page.getByTestId('freeform-font-select').click()
@@ -3735,25 +3728,46 @@ test('pastes plain text into the freeform contenteditable textbox', async ({ pag
   await expect(textbox.locator('b')).toHaveCount(0)
 })
 
-test('compact saved freeform toolbar keeps controls from overlapping', async ({ page }) => {
+test('compact saved freeform top bar keeps controls from overlapping', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 })
-  await page.goto('/#/edit')
+  await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
 
-  await page.getByRole('button', { name: '保存草稿' }).click()
-  await registerUser(page, `c${Date.now().toString(36).slice(-6)}`)
-  await page.getByRole('button', { name: '保存草稿' }).click()
+  await insertText(page)
+  await signUpToSave(page, `c${Date.now().toString(36).slice(-6)}`)
 
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-  await expect(page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ })).toHaveText('我的草稿 · 1')
-  await expect(page.getByTestId('freeform-primary-export')).toBeVisible()
-  await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '我的草稿 · 1', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '打包导出', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '导出当前页', exact: true })).toBeVisible()
+  await expect(page.getByTestId('editor-title')).toBeVisible()
+  await expect(page.getByTestId('freeform-export')).toBeVisible()
+  await expect(page.getByTestId('account-menu')).toBeVisible()
+  await expect(page.getByRole('button', { name: '保存草稿' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^我的草稿/ })).toHaveCount(0)
   await expectVisibleFreeformToolbarButtonsToFit(page)
+
+  const header = await page.getByTestId('app-header').evaluate((bar) => {
+    const box = bar.getBoundingClientRect()
+    const controls = Array.from(bar.querySelectorAll<HTMLElement>('button, [data-testid="editor-save-state"]'))
+      .map((control) => ({ label: control.getAttribute('aria-label') ?? control.textContent ?? '', rect: control.getBoundingClientRect() }))
+      .filter((control) => control.rect.width > 0 && control.rect.height > 0)
+    const issues: string[] = []
+    for (const control of controls) {
+      if (control.rect.left < box.left - 0.5 || control.rect.right > box.right + 0.5) issues.push(`${control.label} leaves the bar`)
+    }
+    for (let first = 0; first < controls.length; first += 1) {
+      for (let second = first + 1; second < controls.length; second += 1) {
+        const a = controls[first].rect
+        const b = controls[second].rect
+        const inside = (outer: DOMRect, inner: DOMRect) => inner.left >= outer.left && inner.right <= outer.right
+          && inner.top >= outer.top && inner.bottom <= outer.bottom
+        if (inside(a, b) || inside(b, a)) continue
+        if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5) {
+          issues.push(`${controls[first].label} overlaps ${controls[second].label}`)
+        }
+      }
+    }
+    return issues
+  })
+  expect(header).toEqual([])
 })
 
 function extractCssSelectors(css: string) {
@@ -3851,7 +3865,7 @@ test('edits preset and custom page sizes from the toolbar popover', async ({ pag
     await page.getByTestId('theme-toggle').click()
   }
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   const trigger = page.getByTestId('page-size-trigger')
   const popover = page.getByTestId('page-size-popover')
@@ -3927,18 +3941,17 @@ test('edits preset and custom page sizes from the toolbar popover', async ({ pag
   await expect(selectedElement).toHaveAttribute('data-selected', 'true')
 
   await trigger.click()
-  const markdownTab = page.getByTestId('workspace-tab-markdown')
-  await markdownTab.click()
+  await page.goto('/#/edit/md')
   await expect(popover).toBeHidden()
-  await expect(markdownTab).toBeFocused()
+  await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
 
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await expect(popover).toBeHidden()
   await trigger.click()
   await expect(popover).toBeVisible()
   await widthInput.fill('1200')
   await heightInput.fill('1600')
-  await page.locator('.freeform-stage-head').click()
+  await page.locator('.freeform-stage-scroll').click({ position: { x: 6, y: 6 } })
   await expect(popover).toBeHidden()
   await expect(slideSize).toContainText('1080×1920px')
   await expect(trigger).toBeFocused()
@@ -3950,26 +3963,41 @@ test('edits preset and custom page sizes from the toolbar popover', async ({ pag
 })
 
 test('reapplying the current page size preserves history and saved state', async ({ page }) => {
-  await page.goto('/#/edit')
+  await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
 
   const toolbar = page.getByTestId('freeform-toolbar')
-  const slideMeta = page.getByTestId('freeform-slide-meta')
+  const slideMeta = page.getByTestId('editor-save-state')
   await expect(toolbar.locator('button:disabled')).toHaveCount(2)
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await page.getByTestId('account-login').click()
   await registerUser(page, `same-size-${Date.now()}`)
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(slideMeta).toContainText('已保存')
+  await expect(page.getByTestId('account-menu')).toBeVisible()
+  const slide = {
+    id: 'same-size-slide',
+    name: 'Same size',
+    width: 1080,
+    height: 1440,
+    background: { type: 'solid', color: '#ffffff' },
+    nodes: [],
+  }
+  await openStoredDrafts(page, [{
+    id: 'same-size-draft',
+    title: 'Same size',
+    schemaVersion: 2,
+    mode: 'freeform-slide',
+    updatedAt: Date.now(),
+    document: { documentVersion: 14, activeSlideId: slide.id, slides: [slide] },
+  }])
+  await expect(slideMeta).toHaveText('已保存')
   await expect(toolbar.locator('button:disabled')).toHaveCount(2)
 
   await page.getByTestId('page-size-trigger').click()
   await page.getByTestId('page-size-popover').getByRole('button', { name: '3:4', exact: true }).click()
 
   await expect(page.getByTestId('page-size-popover')).toBeHidden()
-  await expect(slideMeta).toContainText('已保存')
+  await expect(slideMeta).toHaveText('已保存')
   await expect(toolbar.locator('button:disabled')).toHaveCount(2)
 
   await page.getByTestId('page-size-trigger').click()
@@ -3978,13 +4006,12 @@ test('reapplying the current page size preserves history and saved state', async
   await page.getByRole('button', { name: '应用尺寸', exact: true }).click()
 
   await expect(page.getByTestId('page-size-popover')).toBeHidden()
-  await expect(slideMeta).toContainText('已保存')
+  await expect(slideMeta).toHaveText('已保存')
   await expect(toolbar.locator('button:disabled')).toHaveCount(2)
 })
 
 test('sets custom page size and new pages inherit it', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   const trigger = page.getByTestId('page-size-trigger')
   await trigger.click()
@@ -4018,7 +4045,7 @@ test('PowerPoint crop shows the full source around the crop frame', async ({ pag
   await page.goto('/#/edit')
   await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await page.locator('input.freeform-file').first().setInputFiles({
     name: 'wide-crop-source.svg',
     mimeType: 'image/svg+xml',
@@ -4673,11 +4700,11 @@ test('crop blocks document commands while editing', async ({ page }) => {
   await page.getByTestId('paint-image-fit-contain').evaluate((button) => (
     button as HTMLButtonElement
   ).click())
-  for (const name of ['保存草稿', '打包导出', '导出当前页']) {
-    await page.getByRole('button', { name, exact: true }).evaluate((button) => (
-      button as HTMLButtonElement
-    ).click())
-  }
+  await expect(page.getByTestId('freeform-export')).toBeDisabled()
+  await page.getByTestId('freeform-export').evaluate((button) => (
+    button as HTMLButtonElement
+  ).click())
+  await expect(page.getByTestId('freeform-export-options')).toHaveCount(0)
 
   await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
   expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(cropBeforeCommands)
@@ -5190,7 +5217,7 @@ test('crop transition settles pending frames without late writes', async ({ page
   await installCropDraftObserver(page)
   const transitionStart = await beginPendingCropPointerMove(page, dim, 922, { x: -40, y: 0 })
   expect(cropGeometryOf(await readCropOverlayDraft(page))).toEqual(beforeTransition)
-  await page.getByTestId('workspace-tab-markdown').click()
+  await page.goto('/#/edit/md')
   await expect(overlay).toHaveCount(0)
   await expect(page.locator('html')).toHaveAttribute('data-crop-frame-canceled', 'true')
   const transitionedDraft = await readObservedCropDraft(page)
@@ -5199,7 +5226,7 @@ test('crop transition settles pending frames without late writes', async ({ page
   await releaseLateCropFrame(page, 922, { x: transitionStart.x - 80, y: transitionStart.y })
   expect(await readObservedCropDraft(page)).toEqual(transitionedDraft)
 
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await imageElement.click()
   await cropButton.click()
   await expect(page.getByTestId('freeform-image-crop-overlay')).toBeVisible()
@@ -5430,7 +5457,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     sessionStorage.clear()
   })
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await insertImageElementAndShapeFill(page)
   await expectFreeformImagesDecoded(page)
 
@@ -5485,10 +5512,8 @@ test('persists shape framing and image crops through node copy, page copy, save,
   await page.getByRole('button', { name: '复制页面', exact: true }).click()
   await expect(page.locator('.freeform-thumb')).toHaveCount(2)
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await registerUser(page, `framing-persist-${Date.now()}`)
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await signUpToSave(page, `framing-persist-${Date.now()}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   const storedDocument = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
@@ -5541,9 +5566,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
 
   await page.evaluate(() => sessionStorage.removeItem('slicer.images.v1'))
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
-  await page.locator('.draft-item', { hasText: 'Page 1' }).click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await expectFreeformImagesDecoded(page)
 
   await page.getByRole('tab', { name: '图层', exact: true }).click()
@@ -5656,7 +5679,7 @@ test('image framing stays covered and unobstructed across viewport widths and th
   await page.goto('/#/edit')
   await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await insertImageElementAndShapeFill(page)
   const imageElement = page.getByTestId('freeform-element').filter({
     has: page.getByTestId('freeform-shape-image-fill'),
@@ -5858,8 +5881,8 @@ test('crop transition commits images while shape framing cancels across page and
   )
   const cropAfterWorkspace = cropGeometryOf(await readCropOverlayDraft(page))
 
-  await page.getByTestId('workspace-tab-markdown').click()
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/md')
+  await page.goto('/#/edit/canvas')
   await selectTransitionLayer('图片')
   await page.getByTestId('freeform-crop-image').click()
   const restoredAfterWorkspace = cropGeometryOf(await readCropOverlayDraft(page))
@@ -5879,8 +5902,8 @@ test('crop transition commits images while shape framing cancels across page and
     .toHaveAttribute('data-framing-zoom', '1')
 
   await setRangeValue(page.getByTestId('freeform-framing-zoom'), 180)
-  await page.getByTestId('workspace-tab-markdown').click()
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/md')
+  await page.goto('/#/edit/canvas')
   await selectTransitionLayer('形状')
   await page.getByTestId('freeform-adjust-framing').click()
   await expect(page.getByTestId('freeform-framing-surface'))
@@ -5888,18 +5911,14 @@ test('crop transition commits images while shape framing cancels across page and
   await page.getByTestId('freeform-framing-cancel').click()
 })
 
-test('crop transition commits images while shape framing cancels across draft switches', async ({ page }) => {
+test('crop transition commits images while shape framing cancels across project switches', async ({ page }) => {
   await openFreeform(page)
   await insertImageElementAndShapeFill(page)
   await expectFreeformImagesDecoded(page)
-  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
-  await registerUser(page, `crop-draft-transition-${Date.now()}`)
-  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('\u5df2\u4fdd\u5b58')
+  await signUpToSave(page, `crop-draft-transition-${Date.now()}`)
 
-  await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
-    if (!key) throw new Error('draft storage key missing')
+  const userId = await currentUserId(page)
+  const sourceId = await page.evaluate((key) => {
     const drafts = JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{
       id: string
       title: string
@@ -5907,66 +5926,58 @@ test('crop transition commits images while shape framing cancels across draft sw
     }>
     const source = structuredClone(drafts[0])
     if (!source) throw new Error('source draft missing')
+    const sourceId = source.id
     source.id = 'crop-draft-transition-target'
     source.title = 'Crop draft transition target'
     source.updatedAt += 1
     localStorage.setItem(key, JSON.stringify([...drafts, source]))
-  })
-  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
-  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).click()
-  await expect(page.locator('.draft-item', { hasText: 'Crop draft transition target' })).toBeVisible()
+    return sourceId
+  }, `slicer.drafts.${userId}`)
 
-  const selectLayer = async (name: '\u56fe\u7247' | '\u5f62\u72b6') => {
-    await page.getByRole('tab', { name: '\u56fe\u5c42', exact: true }).click()
-    await page.getByRole('tree', { name: '\u56fe\u5c42\u6811' })
+  const selectLayer = async (name: '图片' | '形状') => {
+    await page.getByRole('tab', { name: '图层', exact: true }).click()
+    await page.getByRole('tree', { name: '图层树' })
       .getByRole('treeitem', { name, exact: true })
       .click()
-    await page.getByRole('tab', { name: '\u5c5e\u6027', exact: true }).click()
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
   }
+  const openProject = async (id: string, title: string) => {
+    await page.goto(`/#/edit/canvas/${encodeURIComponent(id)}`)
+    await expect(page.getByTestId('editor-title')).toHaveText(title)
+  }
+  const sourceTitle = await page.getByTestId('editor-title').textContent()
 
-  await page.locator('.drawer').getByText('Page 1', { exact: true }).click()
-  await expect(page.locator('.drawer')).toHaveCount(0)
-  await selectLayer('\u56fe\u7247')
+  await selectLayer('图片')
   await page.getByTestId('freeform-crop-image').click()
   const cropBefore = cropGeometryOf(await readCropOverlayDraft(page))
   await dispatchCropPointerGesture(page, page.locator('[data-crop-handle="e"]'), 961, { x: -24, y: 0 })
   const cropChanged = cropGeometryOf(await readCropOverlayDraft(page))
   expect(cropChanged.frame.right).not.toBeCloseTo(cropBefore.frame.right, 4)
 
-  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).evaluate(
-    (button) => (button as HTMLButtonElement).click(),
-  )
-  await page.locator('.drawer').getByText('Crop draft transition target', { exact: true }).click()
+  // Opening another project mid-crop commits the crop into the project being left.
+  await openProject('crop-draft-transition-target', 'Crop draft transition target')
   await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
-  await selectLayer('\u56fe\u7247')
+  await selectLayer('图片')
   await page.getByTestId('freeform-crop-image').click()
   await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page)))
     .toEqual(cropBefore)
   await page.getByTestId('freeform-image-crop-done').click()
 
-  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).evaluate(
-    (button) => (button as HTMLButtonElement).click(),
-  )
-  await page.locator('.drawer').getByText('Page 1', { exact: true }).click()
-  await selectLayer('\u56fe\u7247')
+  await openProject(sourceId, sourceTitle ?? '')
+  await selectLayer('图片')
   await page.getByTestId('freeform-crop-image').click()
   await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page)))
-    .toEqual(cropBefore)
+    .toEqual(cropChanged)
   await page.getByTestId('freeform-image-crop-done').click()
 
-  await selectLayer('\u5f62\u72b6')
+  // Shape framing is cancelled instead: the zoom never reaches either project.
+  await selectLayer('形状')
   await page.getByTestId('freeform-adjust-framing').click()
   await setRangeValue(page.getByTestId('freeform-framing-zoom'), 180)
-  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).evaluate(
-    (button) => (button as HTMLButtonElement).click(),
-  )
-  await page.locator('.drawer').getByText('Crop draft transition target', { exact: true }).click()
+  await openProject('crop-draft-transition-target', 'Crop draft transition target')
   await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
-  await page.getByRole('button', { name: /^\u6211\u7684\u8349\u7a3f/ }).evaluate(
-    (button) => (button as HTMLButtonElement).click(),
-  )
-  await page.locator('.drawer').getByText('Page 1', { exact: true }).click()
-  await selectLayer('\u5f62\u72b6')
+  await openProject(sourceId, sourceTitle ?? '')
+  await selectLayer('形状')
   await page.getByTestId('freeform-adjust-framing').click()
   await expect(page.getByTestId('freeform-framing-surface')).toHaveAttribute('data-framing-zoom', '1')
   await page.getByTestId('freeform-framing-cancel').click()
@@ -5976,41 +5987,57 @@ test('crop transition commits images while shape framing cancels across account 
   await openFreeform(page)
   await insertImageElementAndShapeFill(page)
   await expectFreeformImagesDecoded(page)
-  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
-  await registerUser(page, `crop-account-transition-${Date.now()}`)
-  await page.getByRole('button', { name: '\u4fdd\u5b58\u8349\u7a3f', exact: true }).click()
+  const username = `crop-account-transition-${Date.now()}`
+  await signUpToSave(page, username)
 
-  const workspace = page.locator('.freeform-workspace')
-  const selectLayer = async (name: '\u56fe\u7247' | '\u5f62\u72b6') => {
-    await page.getByRole('tab', { name: '\u56fe\u5c42', exact: true }).click()
-    await page.getByRole('tree', { name: '\u56fe\u5c42\u6811' })
+  const selectLayer = async (name: '图片' | '形状') => {
+    await page.getByRole('tab', { name: '图层', exact: true }).click()
+    await page.getByRole('tree', { name: '图层树' })
       .getByRole('treeitem', { name, exact: true })
       .click()
-    await page.getByRole('tab', { name: '\u5c5e\u6027', exact: true }).click()
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
   }
-  await selectLayer('\u56fe\u7247')
+  const logOut = async () => {
+    await page.getByTestId('account-menu').click()
+    await page.getByTestId('account-logout').click()
+    await expect(page.getByTestId('account-login')).toBeVisible()
+  }
+  const logBackIn = async () => {
+    await page.getByTestId('account-login').click()
+    const dialog = page.getByRole('dialog', { name: '账户登录与注册' })
+    await dialog.getByLabel('用户名').fill(username)
+    await dialog.getByLabel('密码').fill('1234')
+    await dialog.getByRole('button', { name: '登录', exact: true }).last().click()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  }
+
+  await selectLayer('图片')
   await page.getByTestId('freeform-crop-image').click()
   const cropBefore = cropGeometryOf(await readCropOverlayDraft(page))
   await dispatchCropPointerGesture(page, page.locator('[data-crop-handle="e"]'), 971, { x: -28, y: 0 })
   const cropChanged = cropGeometryOf(await readCropOverlayDraft(page))
   expect(cropChanged.frame.right).not.toBeCloseTo(cropBefore.frame.right, 4)
-  const historyBeforeLogout = Number(await workspace.getAttribute('data-history-depth'))
 
-  await page.getByTestId('account-logout').click()
+  // Signing out mid-crop commits the crop to the account and clears the canvas.
+  await logOut()
   await expect(page.getByTestId('freeform-image-crop-overlay')).toHaveCount(0)
-  await expect(workspace).toHaveAttribute('data-history-depth', String(historyBeforeLogout + 1))
-  await selectLayer('\u56fe\u7247')
+  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await logBackIn()
+  await selectLayer('图片')
   await page.getByTestId('freeform-crop-image').click()
   await expect.poll(async () => cropGeometryOf(await readCropOverlayDraft(page))).toEqual(cropChanged)
   await page.getByTestId('freeform-image-crop-done').click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
-  await selectLayer('\u5f62\u72b6')
+  // Shape framing is cancelled on the way out.
+  await selectLayer('形状')
   await page.getByTestId('freeform-adjust-framing').click()
   await setRangeValue(page.getByTestId('freeform-framing-zoom'), 180)
-  await page.getByTestId('account-login').click()
-  await registerUser(page, `crop-account-transition-b-${Date.now()}`)
+  await logOut()
   await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
-  await selectLayer('\u5f62\u72b6')
+  await logBackIn()
+  await selectLayer('形状')
   await page.getByTestId('freeform-adjust-framing').click()
   await expect(page.getByTestId('freeform-framing-surface')).toHaveAttribute('data-framing-zoom', '1')
   await page.getByTestId('freeform-framing-cancel').click()
@@ -6023,7 +6050,7 @@ test('persists image element and shape fill through ImageStore', async ({ page }
     sessionStorage.clear()
   })
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
 
   await insertImageElementAndShapeFill(page)
   await expectFreeformImagesDecoded(page)
@@ -6034,10 +6061,8 @@ test('persists image element and shape fill through ImageStore', async ({ page }
   })
   expect(sessionImageKeys).toHaveLength(2)
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await registerUser(page, `image-store-${Date.now()}`)
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await signUpToSave(page, `image-store-${Date.now()}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   const persistedDrafts = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
@@ -6048,14 +6073,13 @@ test('persists image element and shape fill through ImageStore', async ({ page }
 
   await page.evaluate(() => sessionStorage.removeItem('slicer.images.v1'))
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
-  await page.locator('.draft-item', { hasText: 'Page 1' }).click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await expectFreeformImagesDecoded(page)
 
   const downloadPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '导出当前页', exact: true }).click()
+  await openExportMenu(page)
+  await page.getByTestId('freeform-primary-export').click()
   const download = await downloadPromise
   const downloadPath = await download.path()
   expect(downloadPath).toBeTruthy()
@@ -6063,13 +6087,13 @@ test('persists image element and shape fill through ImageStore', async ({ page }
 })
 
 test('exports the current slide as a PNG at slide dimensions', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await page.getByTestId('page-size-trigger').click()
   await page.getByRole('button', { name: '9:16', exact: true }).click()
 
   const downloadPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '导出当前页' }).click()
+  await openExportMenu(page)
+  await page.getByTestId('freeform-primary-export').click()
   const download = await downloadPromise
 
   expect(download.suggestedFilename()).toBe('slide-01.png')
@@ -6077,16 +6101,15 @@ test('exports the current slide as a PNG at slide dimensions', async ({ page }) 
   expect(path).toBeTruthy()
   const size = readPngSize(await readFile(path!))
   expect(size).toEqual({ width: 1080, height: 1920 })
-  await expect(page.getByRole('button', { name: '导出当前页' })).toBeEnabled()
+  await expect(page.getByTestId('freeform-primary-export')).toBeEnabled()
 })
 
 test('export options switch format, quality, scale, and persist', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await page.getByTestId('page-size-trigger').click()
   await page.getByRole('button', { name: '9:16', exact: true }).click()
 
-  await page.getByTestId('freeform-export-options-toggle').click()
+  await openExportMenu(page)
   const options = page.getByTestId('freeform-export-options')
   await expect(options).toBeVisible()
   // PNG by default: no quality slider.
@@ -6098,7 +6121,8 @@ test('export options switch format, quality, scale, and persist', async ({ page 
   await options.getByTestId('export-scale-2x').click()
 
   const jpegPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '导出当前页' }).click()
+  await openExportMenu(page)
+  await page.getByTestId('freeform-primary-export').click()
   const jpeg = await jpegPromise
   expect(jpeg.suggestedFilename()).toBe('slide-01.jpg')
   const jpegPath = await jpeg.path()
@@ -6110,8 +6134,8 @@ test('export options switch format, quality, scale, and persist', async ({ page 
   const jpegBlob = new Blob([jpegBytes])
 
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByTestId('freeform-export-options-toggle').click()
+  await page.goto('/#/edit/canvas')
+  await openExportMenu(page)
   const restored = page.getByTestId('freeform-export-options')
   await expect(restored.getByTestId('export-format-jpeg')).toHaveClass(/on/)
   await expect(restored.getByTestId('export-scale-2x')).toHaveClass(/on/)
@@ -6119,7 +6143,8 @@ test('export options switch format, quality, scale, and persist', async ({ page 
 
   await restored.getByTestId('export-format-png').click()
   const pngPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '导出当前页' }).click()
+  await openExportMenu(page)
+  await page.getByTestId('freeform-primary-export').click()
   const png = await pngPromise
   expect(png.suggestedFilename()).toBe('slide-01.png')
   const pngPath = await png.path()
@@ -6159,6 +6184,7 @@ test('framed image export waits for the current image decode', async ({ page }) 
   const downloads: string[] = []
   page.on('download', (download) => downloads.push(download.suggestedFilename()))
   const downloadPromise = page.waitForEvent('download')
+  await openExportMenu(page)
   await page.getByTestId('freeform-primary-export').click()
   await expect.poll(() => page.evaluate(() => Boolean(
     (window as typeof window & { __framedDecodeGate?: { called: boolean } })
@@ -6192,6 +6218,7 @@ test('framed image export reports decode failure without downloading', async ({ 
 
   const downloads: string[] = []
   page.on('download', (download) => downloads.push(download.suggestedFilename()))
+  await openExportMenu(page)
   await page.getByTestId('freeform-primary-export').click()
   await expect(page.getByRole('alert')).toContainText('图片加载失败，导出已取消')
   expect(downloads).toHaveLength(0)
@@ -6207,7 +6234,8 @@ test('exports current freeform slide with gradient pixels and without editor ui'
   await expect(page.getByTestId('freeform-element')).toHaveAttribute('data-selected', 'true')
 
   const downloadPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '导出当前页' }).click()
+  await openExportMenu(page)
+  await page.getByTestId('freeform-primary-export').click()
   const download = await downloadPromise
   const path = await download.path()
   expect(path).toBeTruthy()
@@ -6237,7 +6265,7 @@ test('exports identical artwork pixels across app themes and preview zooms', asy
   await page.goto('/#/edit')
   await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
   await insertText(page)
@@ -6250,6 +6278,7 @@ test('exports identical artwork pixels across app themes and preview zooms', asy
   await expect(page.getByTestId('freeform-element')).toHaveCount(3)
 
   async function downloadCurrent() {
+    await openExportMenu(page)
     const exportButton = page.getByTestId('freeform-primary-export')
     await expect(exportButton).toBeEnabled()
     const downloadPromise = page.waitForEvent('download')
@@ -6679,6 +6708,7 @@ test('nested group export stays identical across themes and preview zooms', asyn
   await openNestedV3Draft(page, `nested-group-export-${Date.now()}`)
 
   async function downloadCurrent() {
+    await openExportMenu(page)
     const exportButton = page.getByTestId('freeform-primary-export')
     await expect(exportButton).toBeEnabled()
     const downloadPromise = page.waitForEvent('download')
@@ -6708,28 +6738,22 @@ test('nested group export stays identical across themes and preview zooms', asyn
 })
 
 test('saves and restores a freeform draft', async ({ page }) => {
-  await page.goto('/#/edit')
+  await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
   await insertText(page)
   await page.getByLabel('文本内容').fill('保存恢复测试')
 
-  await page.getByRole('button', { name: '保存草稿' }).click()
-  await registerUser(page, `freeform-${Date.now()}`)
-  await page.getByRole('button', { name: '保存草稿' }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toHaveText(/已保存/)
+  await signUpToSave(page, `freeform-${Date.now()}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
-  await page.locator('.draft-item', { hasText: 'Page 1' }).click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await expect(page.getByLabel('文本内容')).toContainText('保存恢复测试')
 })
 
 test('exports mixed-size slides as a zip after warning', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   const trigger = page.getByTestId('page-size-trigger')
   await trigger.click()
   await page.getByRole('button', { name: '9:16', exact: true }).click()
@@ -6737,7 +6761,8 @@ test('exports mixed-size slides as a zip after warning', async ({ page }) => {
   await trigger.click()
   await page.getByRole('button', { name: '16:9', exact: true }).click()
 
-  await page.getByRole('button', { name: '打包导出' }).click()
+  await openExportMenu(page)
+  await page.getByTestId('freeform-export-all').click()
   await expect(page.getByRole('heading', { name: '包含不同尺寸页面' })).toBeVisible()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: '继续导出' }).click()
@@ -6757,15 +6782,18 @@ test('exports mixed-size slides as a zip after warning', async ({ page }) => {
 })
 
 test('shows progress while exporting multiple freeform slides', async ({ page }) => {
-  await page.goto('/#/edit')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
   await page.getByRole('button', { name: '新增页面' }).click()
   await page.getByRole('button', { name: '新增页面' }).click()
   await page.getByRole('button', { name: '新增页面' }).click()
 
   const downloadPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '打包导出' }).click()
-  await expect(page.getByRole('button', { name: /导出 \d+\/4/ })).toBeVisible()
+  await openExportMenu(page)
+  await expect(page.getByTestId('freeform-export-all')).toHaveText('打包下载全部 4 页')
+  await page.getByTestId('freeform-export-all').click()
+  // Progress shows on the trigger and on the button itself.
+  await expect(page.getByTestId('freeform-export')).toHaveText(/导出 \d+\/4/)
+  await expect(page.getByTestId('freeform-export-all')).toHaveText(/导出 \d+\/4/)
   await downloadPromise
 })
 
@@ -6794,9 +6822,11 @@ test('hidden freeform workspace does not handle Delete', async ({ page }) => {
   const elements = page.getByTestId('freeform-element')
   await expect(elements).toHaveCount(1)
   await elements.first().click()
-  await page.getByTestId('workspace-tab-markdown').click()
+  await page.goto('/#/edit/md')
+  await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
   await page.keyboard.press('Delete')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
   await expect(elements).toHaveCount(1)
 })
 
@@ -6805,9 +6835,11 @@ test('hidden freeform workspace does not handle undo', async ({ page }) => {
   await insertShape(page)
   const elements = page.getByTestId('freeform-element')
   await expect(elements).toHaveCount(1)
-  await page.getByTestId('workspace-tab-markdown').click()
+  await page.goto('/#/edit/md')
+  await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
   await page.keyboard.press('Control+z')
-  await page.getByTestId('workspace-tab-freeform').click()
+  await page.goto('/#/edit/canvas')
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
   await expect(elements).toHaveCount(1)
 })
 
@@ -7646,9 +7678,8 @@ test('layers selection resets when another draft opens in the same workspace mou
     }]
     localStorage.setItem(key, JSON.stringify([...drafts, source]))
   })
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
-  await page.locator('.draft-item', { hasText: 'Other freeform draft' }).click()
+  await page.goto('/#/edit/canvas/other-freeform-draft')
+  await expect(page.getByTestId('editor-title')).toHaveText('Other freeform draft')
 
   await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
   await expect(page.locator('[data-scene-node-id][data-selected="true"]')).toHaveCount(0)
@@ -7954,6 +7985,7 @@ test('hidden group export excludes hidden pixels while preserving tree managemen
     .toBe('Locked inner')
 
   const downloadPromise = page.waitForEvent('download')
+  await openExportMenu(page)
   await page.getByTestId('freeform-primary-export').click()
   const download = await downloadPromise
   const path = await download.path()
@@ -8074,9 +8106,8 @@ test('locks nested layers against editing and cancels an active IME composition'
   const rootLabels = await tree.locator('[role="treeitem"][aria-level="1"]').evaluateAll((items) =>
     items.map((item) => item.getAttribute('aria-label')),
   )
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-  const savedMeta = await page.getByTestId('freeform-slide-meta').textContent()
+  // Earlier edits in this test save themselves; locked rejections must not unsave anything.
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   const lockedHistory = await workspace.getAttribute('data-history-depth')
   await scaledRoot.focus()
   await page.keyboard.press('Alt+ArrowUp')
@@ -8120,7 +8151,7 @@ test('locks nested layers against editing and cancels an active IME composition'
     scaledStyle ?? '',
   )
   await expect(workspace).toHaveAttribute('data-history-depth', lockedHistory ?? '')
-  await expect(page.getByTestId('freeform-slide-meta')).toHaveText(savedMeta ?? '')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await page.getByRole('alert').getByRole('button', { name: '关闭提示' }).click()
 
   await page.getByRole('tab', { name: '图层', exact: true }).click()
@@ -8136,6 +8167,7 @@ test('locks nested layers against editing and cancels an active IME composition'
   )).toEqual(rootLabels)
   await expect(workspace).toHaveAttribute('data-history-depth', lockedHistory ?? '')
 
+  await openExportMenu(page)
   const downloadPromise = page.waitForEvent('download')
   await page.getByTestId('freeform-primary-export').click()
   const download = await downloadPromise
@@ -8278,12 +8310,9 @@ test('locked layer metadata remains manageable through inherited state and reloa
   expect(deepGeometry.nameRight).toBeLessThanOrEqual(deepGeometry.actionsLeft + 0.5)
   expect(deepGeometry.treeScrollWidth).toBeLessThanOrEqual(deepGeometry.treeClientWidth)
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
-  await page.locator('.draft-item', { hasText: 'Nested scene' }).click()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   const restoredTree = page.getByRole('tree', { name: '图层树' })
   const restored = restoredTree.getByRole('treeitem', { name: 'Protected caption' })
@@ -8497,8 +8526,7 @@ test('number inspector preserves precision when an unchanged field blurs', async
   await x.press('Enter')
   const historyAfterCommit = await workspace.getAttribute('data-history-depth')
   await expect(x).toHaveValue('495.12')
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   const storedX = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
     if (!key) throw new Error('draft storage key missing')
@@ -8660,10 +8688,7 @@ test('number inspector drops an old draft buffer when the draft identity changes
     localStorage.setItem(key, JSON.stringify([...drafts, source]))
   })
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).evaluate(
-    (button) => (button as HTMLButtonElement).click(),
-  )
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   await tree.getByRole('treeitem', { name: 'Scaled root leaf' }).click()
@@ -8671,10 +8696,11 @@ test('number inspector drops an old draft buffer when the draft identity changes
   const oldX = page.getByTestId('inspector-geometry').getByLabel('X', { exact: true })
   await oldX.fill('510')
 
-  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).evaluate(
-    (button) => (button as HTMLButtonElement).click(),
-  )
-  await page.locator('.draft-item', { hasText: 'Number buffer other draft' }).click()
+  // Open the other project without touching the focused field.
+  await page.evaluate(() => {
+    location.hash = '#/edit/canvas/number-buffer-other-draft'
+  })
+  await expect(page.getByTestId('editor-title')).toHaveText('Number buffer other draft')
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   await tree.getByRole('treeitem', { name: 'Scaled root leaf' }).click()
   await page.getByRole('tab', { name: '属性', exact: true }).click()
@@ -8797,8 +8823,6 @@ test('delayed shape image fill cannot write into another draft with the same sce
     source.updatedAt += 1
     localStorage.setItem(key, JSON.stringify([...drafts, source]))
   })
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ })).toContainText('2')
 
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   await page.getByRole('tree', { name: '图层树' })
@@ -8815,8 +8839,8 @@ test('delayed shape image fill cannot write into another draft with the same sce
   })
   await expectShapeFillFileReaderStarted(page)
 
-  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
-  await page.locator('.draft-item', { hasText: 'Shape fill race target' }).click()
+  await page.goto('/#/edit/canvas/shape-fill-race-target')
+  await expect(page.getByTestId('editor-title')).toHaveText('Shape fill race target')
   await releaseShapeFillFileReaderGate(page)
   await expect.poll(() => page.evaluate(() => {
     const images = JSON.parse(sessionStorage.getItem('slicer.images.v1') ?? '{}')
@@ -8853,16 +8877,24 @@ test('delayed shape image fill cannot write across account identity changes', as
   })
   await expectShapeFillFileReaderStarted(page)
 
+  await page.getByTestId('account-menu').click()
   await page.getByTestId('account-logout').click()
   await expect(page.getByTestId('account-login')).toBeVisible()
   await page.getByTestId('account-login').click()
   await registerUser(page, `shape-fill-user-race-${accountSuffix}-b`)
-  await expect(page.getByTestId('account-logout')).toBeVisible()
+  await expect(page.getByTestId('account-menu')).toBeVisible()
 
-  // B saves the same scene ids before A's pending read is released. A stale
-  // completion would therefore be visible in B's active document and draft.
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  // B opens a project with the same scene ids before A's pending read is released
+  // (no reload, so the read is still pending). A stale completion would therefore
+  // be visible in B's active document and draft.
+  await page.goto('/#/projects')
+  await page.getByTestId('project-import-input').setInputFiles({
+    name: 'same-scene.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(nestedV3Draft().document)),
+  })
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   const bFillBefore = await page.evaluate(() => {
     const userId = localStorage.getItem('slicer.session.v1')
     if (!userId) throw new Error('session user missing after registration')
@@ -8893,8 +8925,7 @@ test('delayed shape image fill cannot write across account identity changes', as
 
   // Save after release so a late reducer update cannot hide behind an unsaved
   // in-memory state; the persisted B draft must still contain the original fill.
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   const bFillAfter = await page.evaluate(() => {
     const userId = localStorage.getItem('slicer.session.v1')
     if (!userId) throw new Error('session user missing after release')
@@ -8912,11 +8943,10 @@ test('delayed shape image fill cannot write across account identity changes', as
 })
 
 test('delayed shape image fill survives the first save of the same document', async ({ page }) => {
-  await page.goto('/#/edit')
+  await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByTestId('workspace-tab-freeform').click()
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
+  await page.getByTestId('account-login').click()
   await registerUser(page, `shape-fill-first-save-${Date.now()}`)
   await insertShape(page)
 
@@ -8928,8 +8958,7 @@ test('delayed shape image fill survives the first save of the same document', as
   })
   await expectShapeFillFileReaderStarted(page)
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await releaseShapeFillFileReaderGate(page)
 
   await expect(page.getByTestId('freeform-shape-image-fill')).toBeVisible()
@@ -9135,7 +9164,8 @@ test('groups non-contiguous layers from the panel and ungroups promoted paths', 
   const historyBefore = Number(await workspace.getAttribute('data-history-depth'))
   await page.getByTestId('freeform-group-selection').click()
   await expect(workspace).toHaveAttribute('data-history-depth', String(historyBefore + 1))
-  await expect(page.getByTestId('freeform-slide-meta')).not.toContainText('已保存')
+  // The grouping is an edit, so it saves itself.
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   const selectedGroup = page.locator('.freeform-scene-group[data-selected="true"]')
   await expect(selectedGroup).toHaveCount(1)
@@ -9205,12 +9235,12 @@ test('grouping rejects locked selections and locked parent insertion without dir
   await lockedB.focus()
   await page.keyboard.press('Space')
   const historyBefore = await workspace.getAttribute('data-history-depth')
-  const savedMeta = await page.getByTestId('freeform-slide-meta').textContent()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.getByTestId('freeform-group-selection').click()
   await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
   await expect(page.getByRole('alert')).toContainText('锁定')
-  await expect(page.getByTestId('freeform-slide-meta')).toHaveText(savedMeta ?? '')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.keyboard.press('ControlOrMeta+g')
   await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
@@ -9282,7 +9312,7 @@ test('canvas group scope enters by double click or Enter and exits one level per
   await page.keyboard.press('Escape')
   await expect(canvas).toHaveAttribute('data-active-group-path', '')
   await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 })
 
 test('nested text consumes the first Escape before leaving its group scope', async ({ page }) => {
@@ -9476,9 +9506,23 @@ test('panel structure commands reject while a live pointer interaction is active
   })
 })
 
-test('save and export reject a transient live pointer snapshot', async ({ page }) => {
+test('autosave and export reject a transient live pointer snapshot', async ({ page }) => {
   await openFreeform(page)
   await insertShape(page)
+  await signUpToSave(page, `live-snapshot-${Date.now()}`)
+  // Signing in starts a new selection scope; pick the shape again.
+  await page.getByTestId('freeform-element').first().click()
+  await expect(page.getByTestId('freeform-selection-move')).toHaveCount(1)
+  const storedShape = () => page.evaluate(() => {
+    const userId = localStorage.getItem('slicer.session.v1')
+    const drafts = JSON.parse(localStorage.getItem(`slicer.drafts.${userId}`) ?? '[]') as Array<{
+      document: { slides: Array<{ nodes: Array<{ x: number; y: number }> }> }
+    }>
+    const node = drafts[0]?.document.slides[0]?.nodes[0]
+    return node ? { x: node.x, y: node.y } : null
+  })
+  const storedBefore = await storedShape()
+  expect(storedBefore).not.toBeNull()
   const workspace = page.locator('.freeform-workspace')
   const historyBefore = await workspace.getAttribute('data-history-depth')
   const before = await freeformElementBoxes(page)
@@ -9512,13 +9556,13 @@ test('save and export reject a transient live pointer snapshot', async ({ page }
     'move',
   )
 
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
-  await expect(page.getByRole('dialog', { name: '登录' })).toHaveCount(0)
+  // Well past the autosave pause, the half-dragged position is still not stored.
+  await page.waitForTimeout(1200)
+  expect(await storedShape()).toEqual(storedBefore)
 
-  await page.getByRole('button', { name: '关闭提示' }).click()
   const downloads: string[] = []
   page.on('download', (download) => downloads.push(download.suggestedFilename()))
+  await openExportMenu(page)
   await page.getByTestId('freeform-primary-export').click()
   await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
   await page.waitForTimeout(100)
@@ -9533,6 +9577,8 @@ test('save and export reject a transient live pointer snapshot', async ({ page }
     }))
   })
   await expect.poll(() => freeformElementBoxes(page)).toEqual(before)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  expect(await storedShape()).toEqual(storedBefore)
 })
 
 test('a second pointer cannot replace an active transform owner', async ({ page }) => {
@@ -9685,8 +9731,18 @@ test('layer tree reports structural read-only state for a group with locked desc
   await expect(workspace).toHaveAttribute('data-history-depth', historyBefore ?? '')
 })
 
-test('opening another draft cannot be rolled back by an old pointer cancellation', async ({ page }) => {
+test('opening another project cannot be rolled back by an old pointer cancellation', async ({ page }) => {
   await openNestedV3Draft(page, `group-live-open-${Date.now()}`, false, groupingDraft)
+  await page.evaluate(() => {
+    const userId = localStorage.getItem('slicer.session.v1')
+    const key = `slicer.drafts.${userId}`
+    const drafts = JSON.parse(localStorage.getItem(key) ?? '[]')
+    const other = structuredClone(drafts[0])
+    other.id = 'group-live-other'
+    other.title = 'Group live other'
+    other.updatedAt += 1
+    localStorage.setItem(key, JSON.stringify([...drafts, other]))
+  })
   const workspace = page.locator('.freeform-workspace')
   await page.getByRole('tab', { name: '图层', exact: true }).click()
   await page.getByRole('tree', { name: '图层树' })
@@ -9713,10 +9769,11 @@ test('opening another draft cannot be rolled back by an old pointer cancellation
     'move',
   )
 
-  await page.getByRole('button', { name: /^我的草稿(?: · \d+)?$/ }).click()
-  await page.locator('.draft-item', { hasText: 'Nested v3 scene' }).click()
+  await page.evaluate(() => {
+    location.hash = '#/edit/canvas/group-live-other'
+  })
   await expect(page.getByRole('alert')).toContainText('请先结束当前变换')
-  await expect(page.locator('.drawer')).toBeVisible()
+  await expect(page.getByTestId('editor-title')).toHaveText('Nested v3 scene')
   await expect(workspace).toHaveAttribute('data-history-depth', '0')
 
   await page.evaluate(() => {
@@ -10065,7 +10122,7 @@ test.describe('freeform canvas interaction polish', () => {
       node.scrollLeft = (node.scrollWidth - node.clientWidth) / 2
       node.scrollTop = (node.scrollHeight - node.clientHeight) / 2
     })
-    const value = page.locator('.freeform-stage-pane .zoom-value')
+    const value = page.getByTestId('freeform-zoom-value')
     await expect(value).toHaveText('200%')
 
     const stageBox = await stage.boundingBox()
@@ -10094,7 +10151,7 @@ test.describe('freeform canvas interaction polish', () => {
 
   test('ctrl +/-/0 keyboard shortcuts step and reset the canvas zoom', async ({ page }) => {
     await openFreeform(page)
-    const value = page.locator('.freeform-stage-pane .zoom-value')
+    const value = page.getByTestId('freeform-zoom-value')
     await expect(value).toHaveText('100%')
 
     await page.keyboard.press('Control+=')
@@ -10466,7 +10523,7 @@ test.describe('freeform layout efficiency', () => {
     // Off the page center so the recentering is observable, and mid-page so
     // the required scroll stays clear of the bottom clamp.
     await setSelectedElementBox(page, 150, 500, 500, 250)
-    const value = page.locator('.freeform-stage-pane .zoom-value')
+    const value = page.getByTestId('freeform-zoom-value')
     await expect(value).toHaveText('100%')
     const stage = page.locator('.freeform-stage-scroll')
     const stageBox = await stage.boundingBox()
@@ -10542,7 +10599,7 @@ test.describe('freeform layout efficiency', () => {
     await expect(menu.getByTestId('freeform-context-menu-paste-style')).toBeEnabled()
     await menu.getByTestId('freeform-context-menu-zoom-selection').click()
     await expect(menu).toHaveCount(0)
-    await expect(page.locator('.freeform-stage-pane .zoom-value')).not.toHaveText('100%')
+    await expect(page.getByTestId('freeform-zoom-value')).not.toHaveText('100%')
   })
 })
 
@@ -10559,13 +10616,13 @@ test.describe('freeform page management', () => {
 
     // The insertion indicator follows the pointer's half of the hovered thumb.
     const dragOver = (locator: import('@playwright/test').Locator, ratio: number) =>
-      locator.evaluate((node, y) => {
+      locator.evaluate((node, x) => {
         const bounds = node.getBoundingClientRect()
         node.dispatchEvent(new DragEvent('dragover', {
           bubbles: true,
           cancelable: true,
-          clientX: bounds.left + 20,
-          clientY: bounds.top + bounds.height * y,
+          clientX: bounds.left + bounds.width * x,
+          clientY: bounds.top + 20,
           dataTransfer: new DataTransfer(),
         }))
       }, ratio)
@@ -10590,7 +10647,7 @@ test.describe('freeform page management', () => {
     const target = await thumbs.nth(2).boundingBox()
     expect(target).toBeTruthy()
     await thumbs.first().dragTo(thumbs.nth(2), {
-      targetPosition: { x: 40, y: target!.height * 0.75 },
+      targetPosition: { x: target!.width * 0.75, y: 30 },
     })
     await expect(titles).toHaveText(['Page 2', 'Page 3', 'Page 1'])
     // Reordering never changes the active page.
@@ -11068,7 +11125,7 @@ test.describe('freeform selection completion', () => {
     // The preference survives a reload (the unsaved document does not, so a
     // fresh empty page starts with zero guides but the toggle stays off).
     await page.reload()
-    await page.getByTestId('workspace-tab-freeform').click()
+    await page.goto('/#/edit/canvas')
     await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
     await expect(page.getByTestId('freeform-guides-toggle')).toHaveAttribute('aria-pressed', 'false')
     await expect(guide).toHaveCount(0)
@@ -11256,7 +11313,7 @@ test.describe('freeform color history', () => {
     // The recents survive a reload (the unsaved shape does not).
     await page.keyboard.press('Escape')
     await page.reload()
-    await page.getByTestId('workspace-tab-freeform').click()
+    await page.goto('/#/edit/canvas')
     await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
     await insertShape(page)
     await page.getByTestId('shape-fill-paint').getByTestId('paint-color-button').click()
@@ -11514,53 +11571,50 @@ test.describe('freeform page rename', () => {
 
 test.describe('freeform reload restore', () => {
   test('reload restores the freeform workspace and its open draft', async ({ page }) => {
-    await page.goto('/#/edit')
+    await page.goto('/#/edit/canvas')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
-    await page.getByTestId('workspace-tab-freeform').click()
 
     await insertText(page)
     await page.getByLabel('文本内容').fill('刷新恢复的内容')
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await registerUser(page, `restore-${Date.now().toString(36)}`)
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await signUpToSave(page, `restore-${Date.now().toString(36)}`)
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
     await page.reload()
 
-    // 刷新后：工作区和草稿都自动恢复，无需再点标签或从抽屉打开。
-    await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    // 刷新后：编辑器和项目都自动恢复。
+    await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
     await expect(page.getByTestId('freeform-element')).toHaveCount(1)
     await expect(page.getByLabel('文本内容')).toContainText('刷新恢复的内容')
-    await expect(page.getByRole('button', { name: '我的草稿 · 1', exact: true })).toBeVisible()
+    await expect(page.getByTestId('editor-title')).toHaveText('未命名设计')
   })
 
   test('reload falls back to a fresh document when the recorded draft was deleted', async ({ page }) => {
-    await page.goto('/#/edit')
+    await page.goto('/#/edit/canvas')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
-    await page.getByTestId('workspace-tab-freeform').click()
 
     await insertText(page)
     await page.getByLabel('文本内容').fill('将被删除的内容')
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await registerUser(page, `restore-gone-${Date.now().toString(36)}`)
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
+    await signUpToSave(page, `restore-gone-${Date.now().toString(36)}`)
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
-    // 删除这份草稿（恢复记录随之清空），再刷新。
-    await page.getByRole('button', { name: '我的草稿 · 1', exact: true }).click()
-    await page.locator('.draft-item').first().getByRole('button', { name: '删除草稿' }).click()
-    await expect(page.getByTestId('drafts-drawer')).toBeVisible()
-    await expect(page.locator('.draft-item')).toHaveCount(0)
+    // 在工作台删掉这个项目（恢复记录随之清空），再回到编辑器刷新。
+    await page.getByTestId('editor-home').click()
+    const card = page.getByTestId('project-card')
+    await card.getByRole('button', { name: /更多操作/ }).click()
+    await page.getByRole('menuitem', { name: '删除' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
+    await expect(card).toHaveCount(0)
+    await page.goto('/#/edit/canvas')
     await page.reload()
 
-    // 工作区恢复，但草稿已不存在：回到空白文档而不是报错。
-    await expect(page.getByTestId('workspace-tab-freeform')).toHaveAttribute('aria-selected', 'true')
+    // 编辑器打开，但项目已不存在：回到空白文档而不是报错。
+    await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
     await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
     await expect(page.getByTestId('freeform-element')).toHaveCount(0)
-    await expect(page.getByTestId('freeform-slide-meta')).not.toContainText('已保存')
+    await expect(page.getByTestId('editor-save-state')).toHaveCount(0)
   })
 
   test('reload restores the markdown workspace and its open draft', async ({ page }) => {
@@ -11573,25 +11627,21 @@ test.describe('freeform reload restore', () => {
       view.dispatch({ changes: { from: 0, to: view.state.doc.toString().length, insert: '# 刷新恢复的文稿\n\n正文内容。' } })
     })
 
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await registerUser(page, `restore-md-${Date.now().toString(36)}`)
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.locator('.pane-sub')).toContainText('已保存')
+    await signUpToSave(page, `restore-md-${Date.now().toString(36)}`)
 
-    // 切到自由画布保存一份（让「上次工作区」指向自由画布），再回到 Markdown 保存。
-    await page.getByTestId('workspace-tab-freeform').click()
+    // 在自由编辑里也存一份（让「上次编辑器」指向自由编辑），再回到 Markdown。
+    await page.goto('/#/edit/canvas')
     await insertText(page)
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-    await page.getByTestId('workspace-tab-markdown').click()
-    await expect(page.locator('.pane-sub')).toContainText('已保存')
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+    await page.goto('/#/edit/md')
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
     await page.reload()
 
-    // 回到 Markdown 工作台，且草稿内容自动恢复。
-    await expect(page.getByTestId('workspace-tab-markdown')).toHaveAttribute('aria-selected', 'true')
+    // 刷新 Markdown 编辑器，项目内容自动恢复。
+    await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
     await page.waitForFunction(() => !!window.__cmView)
-    await expect(page.locator('.pane-sub')).toContainText('已保存')
+    await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
     await expect.poll(() =>
       page.evaluate(() => window.__cmView!.state.doc.toString()),
     ).toContain('刷新恢复的文稿')

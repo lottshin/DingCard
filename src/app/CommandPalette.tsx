@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Draft } from '../drafts'
 import type { TemplateDefinition } from '../templates/types'
-import { AssetsIcon, FreeformMarkIcon, MarkdownMarkIcon, MoonIcon, ProjectsIcon, SearchIcon, TemplatesIcon } from '../ui/icons'
+import { useT } from '../i18n'
+import { AssetsIcon, FreeformMarkIcon, LanguageIcon, MarkdownMarkIcon, MoonIcon, ProjectsIcon, SearchIcon, TemplatesIcon } from '../ui/icons'
 import { DocumentPreview } from './DocumentPreview'
 import { templatePreviewSource } from './LoginPage'
 import { projectSource, relativeTime } from './ProjectCard'
@@ -10,7 +11,7 @@ export interface PaletteAction {
   id: string
   label: string
   hint?: string
-  icon: 'markdown' | 'freeform' | 'projects' | 'templates' | 'assets' | 'theme'
+  icon: 'markdown' | 'freeform' | 'projects' | 'templates' | 'assets' | 'theme' | 'language'
   run: () => void
 }
 
@@ -35,6 +36,7 @@ const ACTION_ICONS = {
   templates: <TemplatesIcon />,
   assets: <AssetsIcon />,
   theme: <MoonIcon />,
+  language: <LanguageIcon />,
 }
 
 function matches(text: string, query: string) {
@@ -42,6 +44,7 @@ function matches(text: string, query: string) {
 }
 
 export function CommandPalette({ projects, templates, actions, onOpenProject, onUseTemplate, onClose }: CommandPaletteProps) {
+  const t = useT()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -51,16 +54,18 @@ export function CommandPalette({ projects, templates, actions, onOpenProject, on
   const groups = useMemo(() => {
     const projectItems: Item[] = projects.filter((draft) => matches(draft.title, q)).slice(0, 5)
       .map((draft) => ({ type: 'project', key: `p:${draft.id}`, draft }))
-    const templateItems: Item[] = templates.filter((template) => matches(`${template.title} ${template.tags.join(' ')}`, q)).slice(0, 4)
+    const templateItems: Item[] = templates
+      .filter((template) => matches(`${template.title} ${t(template.title)} ${template.tags.join(' ')} ${template.tags.map((tag) => t(tag)).join(' ')}`, q))
+      .slice(0, 4)
       .map((template) => ({ type: 'template', key: `t:${template.id}`, template }))
     const actionItems: Item[] = actions.filter((action) => matches(action.label, q))
       .map((action) => ({ type: 'action', key: `a:${action.id}`, action }))
     return [
-      { label: '项目', items: projectItems },
-      { label: '模板', items: templateItems },
-      { label: '操作', items: actionItems },
+      { label: t('项目'), items: projectItems },
+      { label: t('模板'), items: templateItems },
+      { label: t('操作'), items: actionItems },
     ].filter((group) => group.items.length > 0)
-  }, [actions, projects, q, templates])
+  }, [actions, projects, q, t, templates])
   const flat = groups.flatMap((group) => group.items)
 
   useEffect(() => {
@@ -99,15 +104,15 @@ export function CommandPalette({ projects, templates, actions, onOpenProject, on
   let cursor = -1
   return (
     <div className="palette-back" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="palette" role="dialog" aria-modal="true" aria-label="搜索与命令" onKeyDown={onKeyDown}>
+      <div className="palette" role="dialog" aria-modal="true" aria-label={t('搜索与命令')} onKeyDown={onKeyDown}>
         <div className="palette-input">
           <SearchIcon />
           <input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索项目、模板，或输入操作"
-            aria-label="搜索项目、模板和操作"
+            placeholder={t('搜索项目、模板，或输入操作')}
+            aria-label={t('搜索项目、模板和操作')}
             role="combobox"
             aria-expanded="true"
             aria-controls="palette-list"
@@ -115,7 +120,7 @@ export function CommandPalette({ projects, templates, actions, onOpenProject, on
           <kbd>Esc</kbd>
         </div>
         <div className="palette-list" id="palette-list" role="listbox" ref={listRef}>
-          {groups.length === 0 && <div className="palette-empty">没有找到“{q}”</div>}
+          {groups.length === 0 && <div className="palette-empty">{t('没有找到“{query}”', { query: q })}</div>}
           {groups.map((group) => (
             <div key={group.label} role="group" aria-label={group.label}>
               <div className="palette-group">{group.label}</div>
@@ -146,8 +151,8 @@ export function CommandPalette({ projects, templates, actions, onOpenProject, on
                       return (
                         <>
                           <span className="palette-thumb">{source && <DocumentPreview source={source} width={24} />}</span>
-                          <span className="palette-label">{item.template.title}</span>
-                          <small>{item.template.workspace === 'markdown' ? 'Markdown 卡片模板' : '自由编辑模板'}</small>
+                          <span className="palette-label">{t(item.template.title)}</span>
+                          <small>{item.template.workspace === 'markdown' ? t('Markdown 卡片模板') : t('自由编辑模板')}</small>
                         </>
                       )
                     })()}

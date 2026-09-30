@@ -221,7 +221,7 @@ function writeAll(userId: string, drafts: Draft[]) {
 }
 
 /** Derive a human title from the first non-empty line of the source. */
-function deriveMarkdownTitle(source: string): string {
+export function deriveMarkdownTitle(source: string): string {
   const line = source
     .split('\n')
     .map((l) => l.replace(/^#+\s*/, '').trim())

@@ -1,7 +1,6 @@
 /* ---------- Scrims ---------- */
 .modal-backdrop,
 .sheet-backdrop,
-.drawer-backdrop,
 .template-backdrop {
   background: var(--scrim);
   -webkit-backdrop-filter: none;
@@ -97,12 +96,6 @@
   margin-top: 24px;
 }
 
-.save-template-hint {
-  margin: -6px 0 0;
-  color: var(--text-3);
-  font-size: 12px;
-}
-
 /* ---------- Auth sheet ---------- */
 .sheet {
   width: 380px;
@@ -167,106 +160,12 @@
 }
 
 /* ---------- Drafts drawer ---------- */
-.drawer {
-  width: 380px;
-  border-left: 0;
-  background: var(--surface-pop);
-  box-shadow: var(--shadow-lg);
-  animation: ui-drawer 280ms var(--ease-out);
-}
 
 @keyframes ui-drawer {
   from {
     transform: translateX(24px);
     opacity: 0;
   }
-}
-
-.drawer.drag-over {
-  outline: none;
-}
-
-.drawer-head {
-  height: 56px;
-  padding: 0 12px 0 20px;
-  border-bottom: 1px solid var(--line);
-  font: 600 15px/1 var(--ui-font);
-}
-
-.drawer-import {
-  gap: 8px;
-  margin: 16px 16px 4px;
-  padding: 14px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 12px;
-  background: var(--surface-2);
-  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
-}
-
-.drawer.drag-over .drawer-import {
-  border-color: var(--accent);
-  background: var(--accent-weak);
-}
-
-.drawer-import-btn {
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  font: 500 12.5px/1 var(--ui-font);
-}
-
-.drawer-import-btn:hover {
-  border-color: var(--line-strong);
-  background: var(--surface);
-}
-
-.drawer-import-hint {
-  color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.drawer-empty {
-  padding: 40px 28px;
-  color: var(--text-3);
-  font-size: 13px;
-  line-height: 1.7;
-  text-align: center;
-}
-
-.draft-list {
-  padding: 8px;
-}
-
-.draft-item {
-  gap: 12px;
-  padding: 10px 8px 10px 12px;
-  border: 0;
-  border-radius: 10px;
-  transition: background-color var(--dur-fast) var(--ease-out);
-}
-
-.draft-item:hover {
-  background: var(--hover);
-}
-
-.draft-item.on {
-  border: 0;
-  background: var(--selected);
-}
-
-.draft-title {
-  color: var(--text);
-  font: 500 13.5px/1.35 var(--ui-font);
-}
-
-.draft-meta {
-  margin-top: 3px;
-  color: var(--text-3);
-  font: 400 12px/1.3 var(--ui-font);
 }
 
 .draft-del {
@@ -283,7 +182,6 @@
   color: var(--danger);
 }
 
-.drawer-import-btn:focus-visible,
 .draft-del:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -347,13 +245,6 @@
 .template-list {
   gap: 16px;
   padding: 20px 20px 28px 28px;
-}
-
-.template-list-group {
-  color: var(--text-2);
-  font: 600 12px/1 var(--ui-font);
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 .template-tile {
@@ -427,8 +318,7 @@
 }
 
 .template-use,
-.template-cancel,
-.template-delete {
+.template-cancel {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -463,22 +353,8 @@
   background: var(--surface-2);
 }
 
-.template-delete {
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line-2));
-  background: transparent;
-  color: var(--danger);
-  font-weight: 500;
-}
-
-.template-delete:hover,
-.template-delete:focus-visible {
-  border-color: var(--danger);
-  background: var(--danger-weak);
-}
-
 .template-use:focus-visible,
 .template-cancel:focus-visible,
-.template-delete:focus-visible,
 .template-close:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

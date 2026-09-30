@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { AVATAR_COLORS, type Profile } from './theme'
 import { CloseIcon } from './ui/icons'
+import { t } from './i18n'
 
 interface ProfileModalProps {
   profile: Profile
@@ -32,8 +33,8 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h3>个人资料</h3>
-          <button className="modal-x" onClick={onClose} aria-label="关闭">
+          <h3>{t('个人资料')}</h3>
+          <button className="modal-x" onClick={onClose} aria-label={t('关闭')}>
             <CloseIcon />
           </button>
         </div>
@@ -41,7 +42,7 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
         <div className="modal-row">
           <div className="avatar-preview" style={previewStyle} />
           <div className="avatar-picker">
-            <div className="field-label">头像颜色（或上传图片）</div>
+            <div className="field-label">{t('头像颜色（或上传图片）')}</div>
             <div className="swatches">
               {AVATAR_COLORS.map((c) => (
                 <button
@@ -54,13 +55,13 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
                     set('avatarColor', c)
                     set('avatarImage', null)
                   }}
-                  aria-label={`颜色 ${c}`}
+                  aria-label={t('颜色 {color}', { color: c })}
                 />
               ))}
               <button
                 className="swatch swatch-upload"
                 onClick={() => fileRef.current?.click()}
-                aria-label="上传图片"
+                aria-label={t('上传图片')}
               >
                 +
               </button>
@@ -76,7 +77,7 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
         </div>
 
         <label className="field">
-          <span className="field-label">昵称</span>
+          <span className="field-label">{t('昵称')}</span>
           <input
             className="text-input"
             value={draft.nickname}
@@ -85,7 +86,7 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
         </label>
 
         <label className="field">
-          <span className="field-label">@ 用户名（推特）</span>
+          <span className="field-label">{t('@ 用户名（推特）')}</span>
           <input
             className="text-input"
             value={draft.handle}
@@ -94,7 +95,7 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
         </label>
 
         <label className="field">
-          <span className="field-label">发布地点（微博/推特）</span>
+          <span className="field-label">{t('发布地点（微博/推特）')}</span>
           <input
             className="text-input"
             value={draft.location}
@@ -103,7 +104,7 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
         </label>
 
         <div className="field-inline">
-          <span className="field-label">显示认证标志</span>
+          <span className="field-label">{t('显示认证标志')}</span>
           <button
             className={draft.verified ? 'toggle on' : 'toggle'}
             onClick={() => set('verified', !draft.verified)}
@@ -115,7 +116,7 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
         </div>
 
         <div className="field-inline">
-          <span className="field-label">只在首页显示个人信息</span>
+          <span className="field-label">{t('只在首页显示个人信息')}</span>
           <button
             className={draft.headerFirstPageOnly ? 'toggle on' : 'toggle'}
             onClick={() => set('headerFirstPageOnly', !draft.headerFirstPageOnly)}
@@ -128,10 +129,10 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
 
         <div className="modal-foot">
           <button className="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </button>
           <button className="primary" onClick={() => onSave(draft)}>
-            保存
+            {t('保存')}
           </button>
         </div>
       </div>
