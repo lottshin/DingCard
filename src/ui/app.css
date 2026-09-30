@@ -732,22 +732,10 @@
 
 .wb-guest {
   display: grid;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: 0 0 0 1px var(--line);
-}
-
-.wb-guest p {
-  margin: 0;
-  color: var(--text-2);
-  font-size: 12.5px;
-  line-height: 1.5;
 }
 
 .wb-guest .accent {
-  height: 34px;
+  height: 36px;
   font-size: 13px;
 }
 
@@ -818,12 +806,6 @@
   .wb.is-collapsed .wb-me-btn {
     justify-content: center;
     padding: 6px 0;
-  }
-
-  .wb.is-collapsed .wb-guest {
-    padding: 0;
-    background: transparent;
-    box-shadow: none;
   }
 
   .wb.is-collapsed .wb-guest .accent {

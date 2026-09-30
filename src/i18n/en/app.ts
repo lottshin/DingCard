@@ -70,7 +70,6 @@ export const app: Record<string, Translation> = {
   '切换到中文': '切换到中文',
   '退出登录': 'Log out',
   '账号菜单（{name}）': 'Account menu ({name})',
-  '现在是访客模式，项目不会被保存。': 'You are browsing as a guest, so projects are not saved.',
   '打开导航': 'Open navigation',
   '切换深浅色': 'Toggle dark mode',
   '搜索项目、模板和操作': 'Search projects, templates and actions',

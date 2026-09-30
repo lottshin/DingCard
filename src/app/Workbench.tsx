@@ -401,7 +401,6 @@ export function Workbench({ route, user, theme, onToggleTheme, onLogout, editorM
             </div>
           ) : (
             <div className="wb-guest">
-              <p className="wb-text">{t('现在是访客模式，项目不会被保存。')}</p>
               <button
                 className="accent"
                 type="button"
