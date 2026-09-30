@@ -1,0 +1,167 @@
+/* Design tokens.
+   Warm paper neutrals, graphite ink, one terracotta accent used only for
+   focus, selection and small state indicators. Primary actions are solid ink.
+   Legacy rules read these same custom properties, so redefining them here
+   re-skins everything the ui layer doesn't restyle explicitly. */
+
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f5f4f1;
+  --bg-sink: #eeede9;
+  --surface: #ffffff;
+  --surface-2: #f8f7f5;
+  --surface-3: #f0efeb;
+  --surface-pop: #ffffff;
+
+  --text: #1a1917;
+  --text-2: #5a5751;
+  --text-3: #726f68;
+
+  --line: rgba(26, 25, 23, 0.08);
+  --line-2: rgba(26, 25, 23, 0.13);
+  --line-strong: rgba(26, 25, 23, 0.22);
+
+  --hover: rgba(26, 25, 23, 0.045);
+  --pressed: rgba(26, 25, 23, 0.085);
+  --selected: rgba(194, 65, 12, 0.07);
+  --track: #efeeea;
+  --thumb-on: #ffffff;
+  --thumb-on-shadow: 0 0 0 0.5px rgba(26, 25, 23, 0.08), 0 1px 2px rgba(26, 25, 23, 0.1),
+    0 1px 1px rgba(26, 25, 23, 0.04);
+  --field-bg: #ffffff;
+  --thumb-ring: inset 0 0 0 1px rgba(26, 25, 23, 0.08);
+  --sys-md: #e2531a;
+  --sys-ff: #3a5bff;
+
+  --accent: #c2410c;
+  --accent-text: #b13b0b;
+  --accent-weak: rgba(194, 65, 12, 0.08);
+  --accent-weak-2: rgba(194, 65, 12, 0.15);
+  --on-accent: #ffffff;
+
+  --danger: #b42318;
+  --danger-weak: rgba(180, 35, 24, 0.08);
+
+  --btn: #1a1917;
+  --btn-hover: #34322e;
+  --on-btn: #ffffff;
+  --btn-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 2px rgba(26, 25, 23, 0.24);
+
+  --shadow-sm: 0 1px 2px rgba(26, 25, 23, 0.06);
+  --shadow-md: 0 1px 2px rgba(26, 25, 23, 0.04), 0 6px 16px -4px rgba(26, 25, 23, 0.1);
+  --shadow-lg: 0 0 0 1px rgba(26, 25, 23, 0.05), 0 2px 6px rgba(26, 25, 23, 0.04),
+    0 28px 64px -16px rgba(26, 25, 23, 0.24);
+  --shadow-pop: 0 0 0 1px rgba(26, 25, 23, 0.07), 0 2px 4px rgba(26, 25, 23, 0.04),
+    0 12px 32px -8px rgba(26, 25, 23, 0.18);
+  --shadow-card: none;
+  --card-elevation: 0 0 0 0.5px rgba(26, 25, 23, 0.05), 0 1px 2px rgba(26, 25, 23, 0.06),
+    0 12px 28px -10px rgba(26, 25, 23, 0.16), 0 36px 72px -28px rgba(26, 25, 23, 0.22);
+  --scrim: rgba(24, 23, 21, 0.34);
+
+  --bar-bg: var(--surface);
+  --bar-blur: none;
+
+  --freeform-stage-sink: #e9e8e3;
+  --freeform-ruler-bg: #ffffff;
+  --freeform-ruler-tick: rgba(26, 25, 23, 0.2);
+  --freeform-ruler-label: #9a978f;
+  --freeform-guide: #e5488a;
+
+  /* Names the legacy stylesheet reads but never defined. */
+  --surface-raised: var(--surface);
+  --surface-sunken: var(--surface-2);
+  --surface-1: var(--surface);
+  --text-1: var(--text);
+  --text-muted: var(--text-2);
+  --ink-1: var(--text);
+  --ink-2: var(--text-2);
+  --line-1: var(--line-2);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #111110;
+  --bg-sink: #0b0b0a;
+  --surface: #191918;
+  --surface-2: #1f1f1e;
+  --surface-3: #272725;
+  --surface-pop: #222220;
+
+  --text: #edebe6;
+  --text-2: #a6a39c;
+  --text-3: #8c8982;
+
+  --line: rgba(255, 255, 255, 0.07);
+  --line-2: rgba(255, 255, 255, 0.11);
+  --line-strong: rgba(255, 255, 255, 0.2);
+
+  --hover: rgba(255, 255, 255, 0.05);
+  --pressed: rgba(255, 255, 255, 0.09);
+  --selected: rgba(255, 255, 255, 0.09);
+  --track: #111110;
+  --thumb-on: #2e2e2b;
+  --thumb-on-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.5);
+  --field-bg: #141413;
+  --thumb-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --sys-md: #ff7a3d;
+  --sys-ff: #8193ff;
+
+  --accent: #f0803f;
+  --accent-text: #f59a63;
+  --accent-weak: rgba(240, 128, 63, 0.12);
+  --accent-weak-2: rgba(240, 128, 63, 0.22);
+  --on-accent: #1a0e07;
+
+  --danger: #f47067;
+  --danger-weak: rgba(244, 112, 103, 0.12);
+
+  --btn: #edebe6;
+  --btn-hover: #ffffff;
+  --on-btn: #111110;
+  --btn-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 16px -4px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 28px 64px -16px rgba(0, 0, 0, 0.7);
+  --shadow-pop: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+  --shadow-card: none;
+  --card-elevation: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 14px 32px -10px rgba(0, 0, 0, 0.6),
+    0 40px 80px -28px rgba(0, 0, 0, 0.75);
+  --scrim: rgba(0, 0, 0, 0.56);
+
+  --bar-bg: var(--surface);
+  --bar-blur: none;
+
+  --freeform-stage-sink: #0f0e0c;
+  --freeform-ruler-bg: #191918;
+  --freeform-ruler-tick: rgba(255, 255, 255, 0.18);
+  --freeform-ruler-label: #6f6c66;
+  --freeform-guide: #f472b6;
+}
+
+:root {
+  --ui-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC', system-ui,
+    sans-serif;
+  --sans: var(--ui-font);
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Heights pinned by e2e: toolbar 50px, controls 32px. */
+  --app-header-height: 52px;
+  --workspace-toolbar-height: 50px;
+  --pane-head-height: 44px;
+  --control-height: 32px;
+
+  --control-radius: 8px;
+  --panel-radius: 10px;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+}

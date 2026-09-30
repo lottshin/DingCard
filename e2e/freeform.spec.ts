@@ -1019,7 +1019,7 @@ async function setSelectedElementBox(
 }
 
 async function openFreeform(page: import('@playwright/test').Page) {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 }
 
@@ -1029,7 +1029,7 @@ async function openNestedV3Draft(
   includeDeepLayer = false,
   createDraft: () => ReturnType<typeof nestedV3Draft> = nestedV3Draft,
 ) {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -1696,7 +1696,7 @@ test('inspector danger text remains readable in light and dark themes', async ({
 
 test('global header owns workspace tabs, theme, and account state', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
@@ -1740,7 +1740,7 @@ test('global header owns workspace tabs, theme, and account state', async ({ pag
 })
 
 test('malformed account storage falls back to a logged-out app shell', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => {
     localStorage.setItem('slicer.users.v1', '{}')
     localStorage.setItem('slicer.session.v1', 'broken-session')
@@ -1761,7 +1761,7 @@ test('blocked browser storage keeps the app shell and theme toggle usable', asyn
     Storage.prototype.setItem = blocked
     Storage.prototype.removeItem = blocked
   })
-  await page.goto('/')
+  await page.goto('/#/edit')
 
   const html = page.locator('html')
   await expect(page.getByTestId('app-header')).toBeVisible()
@@ -1774,7 +1774,7 @@ test('blocked browser storage keeps the app shell and theme toggle usable', asyn
 })
 
 test('only the active workspace contextual toolbar is exposed', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
 
   const markdownToolbar = page.getByTestId('markdown-toolbar')
   await expect(markdownToolbar).toBeVisible()
@@ -1898,7 +1898,7 @@ test('freeform layout stacks the stage above the panels on narrow viewports', as
 
 test.describe('fit-relative freeform zoom', () => {
   test('withholds the canvas until the first active fit measurement', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await expect(page.getByTestId('freeform-canvas')).toHaveCount(0)
 
     await page.getByTestId('workspace-tab-freeform').click()
@@ -2174,7 +2174,7 @@ test('freeform chrome provides visible pressed feedback', async ({ page }) => {
 
 test('reduced motion suppresses theme animation transitions', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => document.documentElement.classList.add('theme-anim'))
 
   const longestTransitionMs = await page.getByTestId('app-header').evaluate((element) => {
@@ -2255,14 +2255,16 @@ test('freeform visual system uses approved runtime tokens and neutral stage rule
   expect(mainColumns.padding).toBe('0px')
   expect(mainColumns.overflowX).toBe('hidden')
   await expect(page.locator('.freeform-stage-scroll')).toHaveCSS('background-image', 'none')
-  await expect(page.locator('.freeform-thumb.on')).toHaveCSS('border-top-width', '2px')
+  // The active page is outlined on the page itself (2px accent drop-shadow ring), not the thumb button.
+  await expect(page.locator('.freeform-thumb.on .freeform-thumb-art'))
+    .toHaveCSS('filter', /drop-shadow\(rgb\([^)]*\) 2px 0px 0px\)/)
 
   await page.setViewportSize({ width: 1024, height: 768 })
   await expect(page.getByTestId('freeform-slide-meta')).toHaveCSS('clip-path', 'inset(50%)')
 })
 
 test('workspace tabs support arrow, Home, and End keyboard navigation', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
 
   const markdownTab = page.getByTestId('workspace-tab-markdown')
   const freeformTab = page.getByTestId('workspace-tab-freeform')
@@ -2336,7 +2338,7 @@ test('workspace tab arrow navigation does not nudge selected freeform elements',
 })
 
 test('account changes reset workspace draft identity', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
@@ -2390,7 +2392,7 @@ test('account changes reset workspace draft identity', async ({ page }) => {
 })
 
 test('drafts panel imports a freeform document JSON and opens it', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
@@ -2451,7 +2453,7 @@ test('drafts panel imports a freeform document JSON and opens it', async ({ page
 })
 
 test('drafts panel import rejects invalid JSON with an error notice', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
@@ -2471,7 +2473,7 @@ test('drafts panel import rejects invalid JSON with an error notice', async ({ p
 })
 
 test('drafts panel imports a v14 polyline document and renders its vertices', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
@@ -2569,7 +2571,7 @@ test('drafts panel imports a v14 polyline document and renders its vertices', as
 })
 
 test('polyline vertex handles drag vertices and double-click edits them', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openFreeform(page)
@@ -2709,7 +2711,7 @@ test('switches to the freeform workspace and edits a slide', async ({ page }) =>
 })
 
 test('inserts shapes and lines through accessible toolbar menus', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   const shapeTrigger = page.getByTestId('insert-shape')
@@ -2930,7 +2932,7 @@ test('keeps the page size popover open when clicking non-focusable content insid
 })
 
 test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   const shapeTrigger = page.getByTestId('insert-shape')
@@ -2968,7 +2970,7 @@ test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
 })
 
 test('closes insert menus without recording history', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   const undo = page.getByRole('button', { name: '撤销' })
@@ -3006,7 +3008,7 @@ test('closes insert menus without recording history', async ({ page }) => {
 })
 
 test('freeform inspector exposes styled paint controls instead of visible native color inputs', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   await expect(page.getByTestId('freeform-paint-field').first()).toBeVisible()
@@ -3015,7 +3017,7 @@ test('freeform inspector exposes styled paint controls instead of visible native
 })
 
 test('opens a custom color popover beside the inspector instead of the browser color picker', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   const inspector = page.locator('.freeform-inspector')
@@ -3034,7 +3036,7 @@ test('opens a custom color popover beside the inspector instead of the browser c
 })
 
 test('uses styled range sliders in the freeform paint controls', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
@@ -3045,7 +3047,7 @@ test('uses styled range sliders in the freeform paint controls', async ({ page }
 })
 
 test('uses styled scrollbars in the freeform workspace', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   for (const selector of ['.freeform-stage-scroll', '.freeform-rail', '.freeform-inspector']) {
@@ -3430,7 +3432,7 @@ test('font menu closes on Tab without trapping focus and handles Space selection
 })
 
 test('font listbox keeps option identity across dynamic options and guards the empty state', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(async () => {
     const ReactModule = await import('/@id/react')
     const React = ReactModule.default ?? ReactModule
@@ -3559,7 +3561,7 @@ test('font listbox keeps option identity across dynamic options and guards the e
 })
 
 test('font listbox fully resets pending typeahead when unmounted', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(async () => {
     const ReactModule = await import('/@id/react')
     const React = ReactModule.default ?? ReactModule
@@ -3678,7 +3680,7 @@ test('warms the selected web font before export is clicked', async ({ page }) =>
     }
   })
 
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   await insertText(page)
   await page.getByTestId('freeform-element').first().click()
@@ -3735,7 +3737,7 @@ test('pastes plain text into the freeform contenteditable textbox', async ({ pag
 
 test('compact saved freeform toolbar keeps controls from overlapping', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 })
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -3844,7 +3846,7 @@ test('workspace chrome selectors stay scoped to workspace toolbar', async () => 
 
 test('edits preset and custom page sizes from the toolbar popover', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 })
-  await page.goto('/')
+  await page.goto('/#/edit')
   if ((await page.locator('html').getAttribute('data-theme')) !== 'light') {
     await page.getByTestId('theme-toggle').click()
   }
@@ -3948,7 +3950,7 @@ test('edits preset and custom page sizes from the toolbar popover', async ({ pag
 })
 
 test('reapplying the current page size preserves history and saved state', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -3981,7 +3983,7 @@ test('reapplying the current page size preserves history and saved state', async
 })
 
 test('sets custom page size and new pages inherit it', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   const trigger = page.getByTestId('page-size-trigger')
@@ -4013,7 +4015,7 @@ test('fills a shape with an image', async ({ page }) => {
 })
 
 test('PowerPoint crop shows the full source around the crop frame', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -5422,7 +5424,7 @@ test('image framing commits one history entry and cancel restores the saved fram
 })
 
 test('persists shape framing and image crops through node copy, page copy, save, and reload', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => {
     localStorage.clear()
     sessionStorage.clear()
@@ -5651,7 +5653,7 @@ test('image framing keyboard, buttons, drag cancel, and narrow controls stay det
 
 test('image framing stays covered and unobstructed across viewport widths and themes', async ({ page }) => {
   test.setTimeout(60_000)
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -6015,7 +6017,7 @@ test('crop transition commits images while shape framing cancels across account 
 })
 
 test('persists image element and shape fill through ImageStore', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => {
     localStorage.clear()
     sessionStorage.clear()
@@ -6061,7 +6063,7 @@ test('persists image element and shape fill through ImageStore', async ({ page }
 })
 
 test('exports the current slide as a PNG at slide dimensions', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   await page.getByTestId('page-size-trigger').click()
   await page.getByRole('button', { name: '9:16', exact: true }).click()
@@ -6079,7 +6081,7 @@ test('exports the current slide as a PNG at slide dimensions', async ({ page }) 
 })
 
 test('export options switch format, quality, scale, and persist', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   await page.getByTestId('page-size-trigger').click()
   await page.getByRole('button', { name: '9:16', exact: true }).click()
@@ -6232,7 +6234,7 @@ test('exports current freeform slide with gradient pixels and without editor ui'
 })
 
 test('exports identical artwork pixels across app themes and preview zooms', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.setItem('slicer.mode.v1', 'light'))
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -6706,7 +6708,7 @@ test('nested group export stays identical across themes and preview zooms', asyn
 })
 
 test('saves and restores a freeform draft', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -6726,7 +6728,7 @@ test('saves and restores a freeform draft', async ({ page }) => {
 })
 
 test('exports mixed-size slides as a zip after warning', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   const trigger = page.getByTestId('page-size-trigger')
   await trigger.click()
@@ -6755,7 +6757,7 @@ test('exports mixed-size slides as a zip after warning', async ({ page }) => {
 })
 
 test('shows progress while exporting multiple freeform slides', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   await page.getByRole('button', { name: '新增页面' }).click()
   await page.getByRole('button', { name: '新增页面' }).click()
@@ -8910,7 +8912,7 @@ test('delayed shape image fill cannot write across account identity changes', as
 })
 
 test('delayed shape image fill survives the first save of the same document', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -11512,7 +11514,7 @@ test.describe('freeform page rename', () => {
 
 test.describe('freeform reload restore', () => {
   test('reload restores the freeform workspace and its open draft', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await page.getByTestId('workspace-tab-freeform').click()
@@ -11535,7 +11537,7 @@ test.describe('freeform reload restore', () => {
   })
 
   test('reload falls back to a fresh document when the recorded draft was deleted', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await page.getByTestId('workspace-tab-freeform').click()
@@ -11562,7 +11564,7 @@ test.describe('freeform reload restore', () => {
   })
 
   test('reload restores the markdown workspace and its open draft', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await page.waitForFunction(() => !!window.__cmView)

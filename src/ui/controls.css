@@ -1,0 +1,524 @@
+/* Shared controls. Everything here is in the `ui` layer, so it beats legacy
+   rules of any specificity. Rule of thumb: shared classes (.ghost, .seg,
+   .text-input, …) get visual properties only; geometry is set per context,
+   because legacy sizes the same class differently in dialogs, the toolbar and
+   the inspector (and e2e pins several of those sizes). */
+
+@keyframes ui-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+}
+
+@keyframes ui-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+
+@keyframes ui-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Chrome buttons press down half a pixel; legacy also added an inset ring. */
+:where(.app-header, .workspace-toolbar, .freeform-rail, .freeform-stage-head, .freeform-inspector)
+  :where(button):active:not(:disabled) {
+  transform: translateY(0.5px);
+  box-shadow: none;
+}
+
+/* ---------- Toolbar buttons ---------- */
+.bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text-2);
+  font: 500 13px/1 var(--ui-font);
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.bar-btn:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--hover);
+  color: var(--text);
+}
+
+.bar-btn:active:not(:disabled) {
+  background: var(--pressed);
+}
+
+.bar-btn:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-3);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bar-btn svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.toolbar-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--control-height);
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: var(--btn);
+  color: var(--on-btn);
+  font: 600 13px/1 var(--ui-font);
+  letter-spacing: 0;
+  white-space: nowrap;
+  box-shadow: var(--btn-shadow);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+
+.toolbar-primary:hover:not(:disabled) {
+  background: var(--btn-hover);
+  box-shadow: var(--btn-shadow);
+  transform: none;
+}
+
+.toolbar-primary:active:not(:disabled) {
+  opacity: 0.88;
+  box-shadow: var(--btn-shadow);
+  transform: translateY(0.5px);
+}
+
+.toolbar-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- Segmented control ---------- */
+.seg {
+  border: 0;
+  background: var(--track);
+}
+
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--ui-font);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.seg-btn:hover:not(.on) {
+  color: var(--text);
+}
+
+.seg-btn.on {
+  background: var(--thumb-on);
+  color: var(--text);
+  box-shadow: var(--thumb-on-shadow);
+}
+
+.workspace-toolbar .seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--control-height);
+  padding: 2px;
+  border-radius: var(--control-radius);
+}
+
+.workspace-toolbar .seg-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* ---------- Select (custom dropdown) ---------- */
+.sel-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--control-height);
+  padding: 0 8px 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text);
+  font: 500 13px/1 var(--ui-font);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.sel-trigger:hover {
+  border-color: transparent;
+  background: var(--hover);
+}
+
+/* Open flyout triggers share one accent "expanded" state across toolbars. */
+.sel-trigger.open {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  box-shadow: none;
+}
+
+.sel-caret {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.sel-trigger.open .sel-caret {
+  color: var(--text-2);
+}
+
+.sel-content,
+.sel-option-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sel-value,
+.sel-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A theme swatch reads as a tiny portrait card: its background plus accent. */
+.sel-swatch {
+  display: inline-flex;
+  flex: none;
+  align-items: flex-end;
+  justify-content: flex-start;
+  width: 12px;
+  height: 15px;
+  padding: 3px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+}
+
+.sel-swatch-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+
+.sel-panel {
+  top: calc(100% + 6px);
+  min-width: max(100%, 184px);
+  max-height: 344px;
+  padding: 4px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+  animation: ui-pop var(--dur) var(--ease-out);
+}
+
+.sel-option {
+  gap: 16px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.sel-option.hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.sel-option.selected {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.sel-check {
+  color: var(--accent);
+}
+
+/* ---------- Form fields ---------- */
+.text-input {
+  border: 1px solid var(--line-2);
+  border-radius: var(--control-radius);
+  background: var(--field-bg);
+  color: var(--text);
+  font-family: var(--ui-font);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.text-input::placeholder {
+  color: var(--text-3);
+}
+
+.text-input:hover:not(:focus) {
+  border-color: var(--line-strong);
+}
+
+.text-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.field-label {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+/* ---------- Buttons used in dialogs and panels ---------- */
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.ghost:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.ghost:disabled {
+  color: var(--text-3);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.accent,
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: var(--btn);
+  color: var(--on-btn);
+  font-family: var(--ui-font);
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: var(--btn-shadow);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+
+.accent:hover:not(:disabled),
+.primary:hover:not(:disabled) {
+  background: var(--btn-hover);
+  box-shadow: var(--btn-shadow);
+  transform: none;
+}
+
+.accent:disabled,
+.primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+:is(.modal-foot, .sheet-foot) :is(.ghost, .accent, .primary) {
+  height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+
+.ghost:focus-visible,
+.accent:focus-visible,
+.primary:focus-visible,
+.modal-x:focus-visible,
+.toggle:focus-visible,
+.swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Switch ---------- */
+.toggle {
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background-color var(--dur) var(--ease-out);
+}
+
+.toggle.on {
+  background: var(--accent);
+}
+
+.toggle-knob {
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.toggle.on .toggle-knob {
+  transform: translateX(16px);
+}
+
+/* ---------- Colour swatches (profile avatar) ---------- */
+.swatch {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.swatch:hover {
+  transform: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1), 0 0 0 2px var(--surface-pop), 0 0 0 3px var(--line-strong);
+}
+
+.swatch.active {
+  border: 0;
+  box-shadow: 0 0 0 2px var(--surface-pop), 0 0 0 3.5px var(--text);
+}
+
+.swatch-upload {
+  border: 1px dashed var(--line-strong);
+  background: var(--surface-2);
+  color: var(--text-2);
+  box-shadow: none;
+}
+
+/* ---------- Menus & popovers ---------- */
+.ctx-menu,
+.freeform-toolbar .freeform-insert-menu,
+.freeform-context-menu {
+  padding: 4px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+  animation: ui-pop var(--dur) var(--ease-out);
+}
+
+.ctx-menu {
+  min-width: 188px;
+}
+
+.ctx-item,
+.freeform-toolbar .freeform-insert-menu-item,
+.freeform-context-menu-item {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font: 400 13px/1 var(--ui-font);
+}
+
+.ctx-item:hover,
+.freeform-toolbar .freeform-insert-menu-item:hover,
+.freeform-toolbar .freeform-insert-menu-item:focus-visible,
+.freeform-context-menu-item:hover:not(:disabled),
+.freeform-context-menu-item:focus-visible {
+  outline: none;
+  background: var(--hover);
+  color: var(--text);
+}
+
+.freeform-context-menu-item:disabled {
+  background: transparent;
+  color: var(--text-3);
+}
+
+.freeform-context-menu-separator {
+  margin: 4px 6px;
+  background: var(--line);
+}
+
+/* ---------- Recoverable notice (toast) ---------- */
+.operation-notice {
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 8px 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+  animation: ui-pop var(--dur) var(--ease-out);
+}
+
+.operation-notice-mark {
+  min-height: 28px;
+  background: var(--text-3);
+}
+
+.operation-notice--error .operation-notice-mark {
+  background: var(--danger);
+}
+
+.operation-notice-copy strong {
+  font: 600 13px/1.35 var(--ui-font);
+}
+
+.operation-notice-copy span {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.operation-notice-retry {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--accent-text);
+  font: 600 12px/1 var(--ui-font);
+}
+
+.operation-notice-dismiss {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-3);
+}
+
+.operation-notice-retry:hover,
+.operation-notice-dismiss:hover {
+  background: var(--hover);
+  color: var(--text);
+}

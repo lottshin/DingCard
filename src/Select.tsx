@@ -70,6 +70,8 @@ export interface SelectOption {
   label: string
   /** optional font-family applied to this option's label (font picker preview) */
   previewFont?: string
+  /** optional visual color swatch preview (e.g. for themes) */
+  swatch?: { bg: string; accent: string }
 }
 
 interface SelectProps {
@@ -272,15 +274,29 @@ export function Select({ value, options, onChange, title, testId, previewFonts }
         disabled={!hasOptions}
         data-testid={testId}
       >
-        <span
-          className="sel-value"
-          style={
-            previewFonts && selected
-              ? { fontFamily: selected.previewFont ?? selected.id }
-              : undefined
-          }
-        >
-          {selected?.label ?? '暂无选项'}
+        <span className="sel-content">
+          {selected?.swatch && (
+            <span
+              className="sel-swatch"
+              style={{ background: selected.swatch.bg }}
+              aria-hidden="true"
+            >
+              <span
+                className="sel-swatch-dot"
+                style={{ background: selected.swatch.accent }}
+              />
+            </span>
+          )}
+          <span
+            className="sel-value"
+            style={
+              previewFonts && selected
+                ? { fontFamily: selected.previewFont ?? selected.id }
+                : undefined
+            }
+          >
+            {selected?.label ?? '暂无选项'}
+          </span>
         </span>
         <svg className="sel-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden>
           <path
@@ -316,7 +332,21 @@ export function Select({ value, options, onChange, title, testId, previewFonts }
                 choose(i)
               }}
             >
-              {o.label}
+              <span className="sel-option-content">
+                {o.swatch && (
+                  <span
+                    className="sel-swatch"
+                    style={{ background: o.swatch.bg }}
+                    aria-hidden="true"
+                  >
+                    <span
+                      className="sel-swatch-dot"
+                      style={{ background: o.swatch.accent }}
+                    />
+                  </span>
+                )}
+                <span className="sel-option-label">{o.label}</span>
+              </span>
               {o.id === value && (
                 <svg className="sel-check" viewBox="0 0 14 14" width="14" height="14" aria-hidden>
                   <path

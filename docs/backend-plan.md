@@ -58,7 +58,7 @@
 
 ## 3. 数据库设计(SQLite)
 
-三张表就够。用 `better-sqlite3`(同步 API、单文件、零配置、速度快)。
+四张表就够。用 `better-sqlite3`(同步 API、单文件、零配置、速度快)。
 
 ```sql
 -- 用户
@@ -93,9 +93,21 @@ CREATE TABLE images (
   mime             TEXT NOT NULL,
   bytes            INTEGER NOT NULL,
   created_at       INTEGER NOT NULL,
-  lease_expires_at INTEGER NOT NULL          -- 到期后且无草稿引用才允许回收
+  lease_expires_at INTEGER NOT NULL          -- 到期后且无草稿、无素材引用才允许回收
 );
 CREATE INDEX idx_images_user ON images(user_id);
+
+-- 素材库(指向用户自己的一张托管图片,只要素材还在,GC 就不回收那张图)
+CREATE TABLE assets (
+  id          TEXT PRIMARY KEY,        -- uuid
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  image_path  TEXT NOT NULL,           -- 同 images.path,如 /uploads/<id>.jpg
+  name        TEXT NOT NULL,
+  width       INTEGER NOT NULL,
+  height      INTEGER NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX idx_assets_user ON assets(user_id, created_at DESC);
 ```
 
 要点:
@@ -151,19 +163,32 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 - **降采样仍在前端做**（现有 `downscaleDataUrl` 保留）：Markdown 粘图默认限制到 1200px，自由编辑图片与形状填充限制到 1800px，上传前先缩图以节省带宽和磁盘。
 - 图片按 `/uploads/<id>.jpg` 存盘,`url` 直接可作 `<img src>`。Fastify static 在开发、联调和生产都提供该路径。
 
+### 素材库
+```
+GET    /api/assets        → Asset[]   (只返回当前用户的,按 created_at 倒序)
+POST   /api/assets        { url, name, width, height }  → Asset
+PATCH  /api/assets/:id    { name }    → Asset
+DELETE /api/assets/:id    → { ok: true }
+```
+- `Asset` 为 `{ id, name, url, width, height, bytes, createdAt }`，`bytes` 取自对应的 `images` 行。
+- 上传仍走 `POST /api/images`；素材只是给用户自己的一张托管图片起名并登记。`url` 与 retain 的同源规则一致（根路径、同公开 origin 的绝对 URL 或协议相对 URL），外部 origin 与 data URL 返回 400。
+- 名称去掉首尾空白、合并空白、最多 60 个字符，空名返回 400；宽高必须是 1~20000 的整数，否则 400；图片不存在或不属于当前用户返回 409 + `ASSET_IMAGE_MISSING`；重命名不存在或不属于自己的素材返回 404。
+- GC 把素材的 `image_path` 和草稿里的托管 URL 同样视为引用：素材还在，图片就不回收。删除素材在同一把用户资源锁内触发 GC；仍被草稿引用、或租约未到期的图片继续保留，所以删除素材不会让已经用上它的项目丢图。
+- 本地模式没有这组接口：LocalStore 把素材存在浏览器 IndexedDB（`dingcard.assets`），插入项目时复制一份进文档，删除素材同样不影响项目。
+
 ### 状态码约定
 
 | 状态码 | 稳定语义 |
 |---|---|
 | 400 | 请求结构或字段无效，例如草稿信封、草稿 ID、retain 数组或 retain 数量上限不符合契约。 |
 | 401 | 公共登录请求凭据错误，或受保护请求的 JWT 缺失/无效/过期；只有后者满足当前 token 条件时才使客户端会话失效。 |
-| 404 | 草稿不存在，或调用者尝试读取/更新不属于自己的草稿；不泄露其他用户草稿是否存在。 |
-| 409 | 用户名冲突，或 retain 中至少一个托管图片不存在/不属于当前用户；retain 整批失败，不部分续租。 |
+| 404 | 草稿或素材不存在，或调用者尝试读取/更新不属于自己的草稿或素材；不泄露其他用户的数据是否存在。 |
+| 409 | 用户名冲突；retain 中至少一个托管图片不存在/不属于当前用户（整批失败，不部分续租）；或登记素材时图片不存在/不属于当前用户。 |
 | 413 | 单图超过上传上限，或用户图片配额不足。 |
 | 415 | 上传文件 MIME 不在 PNG/JPEG/WebP 白名单。 |
 | 429 | 全局或认证路由触发限流；注册、登录等认证请求需稍后重试。 |
 
-图片 retain 的机器可读错误码为 `INVALID_IMAGE_RETAIN_REQUEST`、`IMAGE_RETAIN_LIMIT_EXCEEDED`、`IMAGE_RETAIN_CONFLICT`；配额错误码为 `IMAGE_QUOTA_EXCEEDED`。
+图片 retain 的机器可读错误码为 `INVALID_IMAGE_RETAIN_REQUEST`、`IMAGE_RETAIN_LIMIT_EXCEEDED`、`IMAGE_RETAIN_CONFLICT`；配额错误码为 `IMAGE_QUOTA_EXCEEDED`；素材登记的图片缺失错误码为 `ASSET_IMAGE_MISSING`。
 
 ---
 
@@ -177,9 +202,10 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 
 | 文件 | 实际职责 |
 |---|---|
-| `src/storage/types.ts` | 定义 `AuthStore` / `DraftStore` / `ImageStore` / `Storage` 统一契约。 |
+| `src/storage/types.ts` | 定义 `AuthStore` / `DraftStore` / `ImageStore` / `AssetStore` / `Storage` 统一契约。 |
 | `src/storage/local.ts` | 包装现有 `auth.ts` / `drafts.ts` / `imageStore.ts`，保留浏览器本地数据与兼容逻辑。 |
-| `src/storage/remote.ts` | 封装 fetch、JWT、条件认证失效、草稿归一化、图片上传与 `/api/images/retain`；远程图片返回真实 URL。 |
+| `src/storage/remote.ts` | 封装 fetch、JWT、条件认证失效、草稿归一化、图片上传与 `/api/images/retain`、素材库 `/api/assets`；远程图片返回真实 URL。 |
+| `src/storage/localAssets.ts` | 本地素材库：IndexedDB 存储，按用户隔离，格式与尺寸校验和服务端一致。 |
 | `src/storage/index.ts` | 模块加载时读取 `VITE_API_BASE`，只在这里选择 LocalStore 或 RemoteStore。 |
 
 设计上刻意让**接口形状一致**，两套实现对 UI 基本无感。`AuthStore.onInvalidated` 在 LocalStore 中是空订阅，在 RemoteStore 中只对符合条件的受保护请求 401 发出通知；显式退出和较新的注册/登录请求还会使较早的成功响应失效，避免迟到响应恢复或覆盖会话。`ImageStore.retain` 在 LocalStore 中立即成功；RemoteStore 过滤空值、Data URL、`img:` 和外部 origin，把同源根路径候选交给服务端，由服务端按实际 `UPLOADS_PUBLIC_PATH` 判定托管图片，因此自定义 `/media/...` 前缀也不会被客户端静默漏掉。模式切换只改变之后的读写目标，**不会自动迁移**已有 localStorage 账号、草稿或图片；需要迁移时必须提供显式导入流程。

@@ -194,7 +194,7 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   const uniqueText = `验收旅程-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const username = `editor-acceptance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
 
@@ -321,7 +321,7 @@ test('editor acceptance preserves nested layer state through save, reload, and e
   const runtimeIssues = collectRuntimeIssues(page)
   const username = `layer-acceptance-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
 

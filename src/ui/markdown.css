@@ -1,0 +1,339 @@
+/* ---------- Markdown workspace: editor | preview ---------- */
+.body {
+  grid-template-columns: minmax(360px, min(44%, 660px)) minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.pane {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.pane-editor {
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.pane-preview {
+  background: var(--bg-sink);
+}
+
+.pane-head {
+  gap: 12px;
+  height: var(--pane-head-height);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 12px/1 var(--ui-font);
+  letter-spacing: 0;
+}
+
+.pane-preview .pane-head {
+  padding: 0 8px 0 16px;
+  background: var(--surface);
+}
+
+.pane-sub {
+  flex: none;
+  padding-right: 4px;
+  color: var(--text-3);
+  font: 400 12px/1 var(--ui-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Formatting strip in the editor head. */
+.md-format {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.md-format-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 12px/1 var(--ui-font);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.md-format-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.md-format-btn:active {
+  background: var(--pressed);
+}
+
+.md-format-btn svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.md-format-btn--label {
+  padding: 0 8px 0 6px;
+  font-weight: 500;
+}
+
+.md-format-sep {
+  flex: none;
+  width: 1px;
+  height: 14px;
+  margin: 0 5px;
+  background: var(--line-2);
+}
+
+.md-preview-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.md-preview-title {
+  color: var(--text);
+}
+
+.md-preview-spec {
+  overflow: hidden;
+  color: var(--text-3);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+.pane-preview .zoom-controls {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.pane-preview .zoom-btn,
+.pane-preview .zoom-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.pane-preview .zoom-btn {
+  width: 28px;
+}
+
+.pane-preview .zoom-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pane-preview .zoom-value {
+  min-width: 48px;
+  padding: 0 6px;
+  color: var(--text);
+  font: 500 12px/1 var(--ui-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.pane-preview .zoom-btn:hover:not(:disabled),
+.pane-preview .zoom-value:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.md-format-btn:focus-visible,
+.pane-preview .zoom-btn:focus-visible,
+.pane-preview .zoom-value:focus-visible,
+.md-dock button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- Stage ---------- */
+.stage {
+  padding: 40px 32px;
+}
+
+/* Elevation lives on the frame (not the exported .card) and follows the card
+   radius — including live corner drags, which set --card-radius on the frame. */
+.card-frame {
+  border-radius: var(--card-radius, 18px);
+  box-shadow: var(--card-elevation);
+}
+
+.img-handle {
+  border-color: #ffffff;
+}
+
+/* ---------- Page dock ---------- */
+.md-dock-row {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 16px 14px;
+}
+
+.md-dock {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+}
+
+.md-dock-btn,
+.md-dock-action {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.md-dock-btn {
+  width: 32px;
+}
+
+.md-dock-action {
+  gap: 6px;
+  padding: 0 10px 0 8px;
+  font: 500 12.5px/1 var(--ui-font);
+  white-space: nowrap;
+}
+
+.md-dock-btn svg,
+.md-dock-action svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.md-dock-btn:hover:not(:disabled),
+.md-dock-action:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.md-dock-btn:disabled,
+.md-dock-action:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.md-dock-sep {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--line-2);
+}
+
+.pager {
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.page-dot {
+  flex: none;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-3);
+  font: 500 12px/1 var(--ui-font);
+  font-variant-numeric: tabular-nums;
+  box-shadow: none;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.page-dot:hover {
+  background: var(--hover);
+  color: var(--text);
+  box-shadow: none;
+  transform: none;
+}
+
+.page-dot.active {
+  border: 0;
+  background: var(--btn);
+  color: var(--on-btn);
+  box-shadow: none;
+}
+
+.pager-hint {
+  padding: 0;
+  color: var(--text-3);
+  font: 400 11.5px/1.4 var(--ui-font);
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(300px, 46vh) auto;
+    overflow-y: auto;
+  }
+
+  .pane-editor {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* Room for a full 3:4 card plus head and dock; the body scrolls. */
+  .pane-preview {
+    min-height: 640px;
+  }
+
+  .stage {
+    padding: 16px 12px;
+  }
+
+  .pager-hint {
+    display: none;
+  }
+}

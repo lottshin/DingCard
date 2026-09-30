@@ -1,0 +1,275 @@
+/* ---------- App header ---------- */
+.app-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  height: var(--app-header-height);
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+.app-brand {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--text);
+  user-select: none;
+}
+
+.app-brand-logo {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.app-brand-name {
+  font: 600 14px/1 var(--ui-font);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.workspace-tabs {
+  justify-self: center;
+  gap: 2px;
+  height: 32px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: var(--track);
+}
+
+.workspace-tab {
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 13px/1 var(--ui-font);
+  letter-spacing: 0;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.workspace-tab:hover {
+  background: transparent;
+  color: var(--text);
+}
+
+.workspace-tab[aria-selected='true'] {
+  border: 0;
+  background: var(--thumb-on);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: var(--thumb-on-shadow);
+}
+
+.app-header-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 44px hit targets (pinned by e2e) that read as quiet 28px controls. */
+.app-header-icon,
+.app-account-user {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  box-shadow: none;
+  isolation: isolate;
+  cursor: pointer;
+}
+
+.app-header-icon::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 8px;
+  border-radius: 8px;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.app-header-icon:hover {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.app-header-icon:hover::before {
+  background: var(--hover);
+}
+
+.app-header-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.app-account-user:hover {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-account-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text);
+  font: 600 12px/1 var(--ui-font);
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.app-account-user:hover .app-account-avatar {
+  box-shadow: inset 0 0 0 1px var(--line), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--line-strong);
+}
+
+.app-account-login,
+.app-account-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  margin: 0 6px 0 4px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text);
+  font: 500 13px/1 var(--ui-font);
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.app-account-login:hover {
+  border-color: var(--line-strong);
+  background: var(--hover);
+  color: var(--text);
+}
+
+.app-account-status {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: default;
+}
+
+.app-account-status-retry {
+  border-color: transparent;
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.app-account-status-retry:hover {
+  border-color: transparent;
+  background: var(--accent-weak);
+}
+
+.app-header-icon:focus-visible,
+.app-account-user:focus-visible,
+.app-account-login:focus-visible,
+.app-account-status-retry:focus-visible,
+.workspace-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.workspace-tab:focus-visible {
+  outline-offset: 0;
+}
+
+/* ---------- Workspace toolbar ---------- */
+.workspace-toolbar {
+  gap: 4px;
+  height: var(--workspace-toolbar-height);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.toolbar-group,
+.toolbar-insert-tools {
+  gap: 2px;
+}
+
+.toolbar-group-right {
+  gap: 4px;
+}
+
+.toolbar-group-right .toolbar-primary {
+  margin-left: 6px;
+}
+
+.toolbar-divider {
+  flex: 0 0 1px;
+  width: 1px;
+  height: 16px;
+  margin: 0 6px;
+  background: var(--line-2);
+}
+
+.workspace-toolbar .seg {
+  margin: 0 4px;
+}
+
+@media (max-width: 1279px) {
+  .workspace-toolbar {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace-toolbar {
+    scrollbar-width: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 4px;
+    padding-inline: 10px 4px;
+  }
+
+  .app-brand-name {
+    display: none;
+  }
+
+  .workspace-tab {
+    padding-inline: 9px;
+    font-size: 12.5px;
+  }
+
+  .app-account-login,
+  .app-account-status {
+    margin: 0 4px 0 0;
+    padding-inline: 10px;
+  }
+}

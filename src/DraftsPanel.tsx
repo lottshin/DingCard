@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { draftSubtitle, draftTitle, type Draft } from './drafts'
+import { CloseIcon } from './ui/icons'
 
 interface DraftsPanelProps {
   drafts: Draft[]
@@ -72,7 +73,7 @@ export function DraftsPanel({
         <div className="drawer-head">
           <span>我的草稿</span>
           <button className="modal-x" onClick={onClose} aria-label="关闭">
-            ×
+            <CloseIcon />
           </button>
         </div>
 

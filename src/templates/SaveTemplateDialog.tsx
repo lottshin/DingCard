@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { CloseIcon } from '../ui/icons'
 
 interface SaveTemplateDialogProps {
   open: boolean
@@ -78,7 +79,7 @@ export function SaveTemplateDialog({
         <div className="modal-head">
           <h3 id="save-template-title">存为模板</h3>
           <button className="modal-x" type="button" aria-label="关闭" onClick={onClose}>
-            ×
+            <CloseIcon />
           </button>
         </div>
         <div className="modal-row save-template-row">

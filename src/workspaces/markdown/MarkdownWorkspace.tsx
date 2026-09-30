@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { EditorView } from '@codemirror/view'
 import { toPng } from 'html-to-image'
 import { buildFontEmbedCSS } from '../../fontEmbed'
 import { isLatestSaveForDraft } from '../../freeform/history'
@@ -22,10 +23,24 @@ import { downloadZip } from '../../exportZip'
 import { importDraftFromJson, type Draft } from '../../drafts'
 import { readLastSession, updateLastSession } from '../../lastSession'
 import { store } from '../../storage'
+import type { Asset } from '../../assets'
+import { assetDocumentSource, markdownImageAlt } from '../assetSource'
 import { OperationNotice } from '../OperationNotice'
-import { ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
+import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../types'
 import { useImageLease } from '../useImageLease'
+import {
+  BoldIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  DownloadIcon,
+  ItalicIcon,
+  ListIcon,
+  MinusIcon,
+  PageBreakIcon,
+  PlusIcon,
+  QuoteIcon,
+} from '../../ui/icons'
 import { TemplateGallery } from '../../templates/TemplateGallery'
 import { SaveTemplateDialog } from '../../templates/SaveTemplateDialog'
 import type { TemplateDefinition } from '../../templates/types'
@@ -69,7 +84,14 @@ const SAMPLE = `# 图文切片快速上手
 
 > 建议每张卡片只讲一个小观点，让读者更容易滑动阅读。
 
-完成后，点击右上角“下载全部分页”，即可打包导出所有图片。`
+完成后，点击右上角“打包下载”，即可导出所有卡片。`
+
+const NEW_DOCUMENT_SOURCE = `# 标题
+
+写下第一段。内容超出一张卡片会自动分页，也可以单独一行输入 --- 手动分页。`
+
+/** Exported PNGs are rendered at this multiple of the card's CSS size. */
+const EXPORT_PIXEL_RATIO = 3
 
 /** Position + target for the right-click "export this page" menu. */
 interface Ctx {
@@ -81,13 +103,14 @@ interface Ctx {
 interface WorkspaceNotice {
   title: string
   detail: string
+  tone?: 'info' | 'error'
 }
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback
 }
 
-export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShellProps) {
+export function MarkdownWorkspace({ isActive, user, requestAuth, request = null, onMetaChange }: WorkspaceShellProps) {
   const [source, setSource] = useState(SAMPLE)
   const [platformId, setPlatformId] = useState(PLATFORMS[0].id)
   const [themeId, setThemeId] = useState(THEMES[0].id)
@@ -111,6 +134,9 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [drafts, setDrafts] = useState<Draft[]>([])
   // 刷新恢复：每账号只尝试一次；openDraftRef 让恢复 effect 不必依赖 openDraft 的函数身份。
   const restoreAttemptedUserIdRef = useRef<string | null>(null)
+  // Bumped whenever the document is replaced, so a slow session restore can't overwrite it.
+  const restoreGenerationRef = useRef(0)
+  const handledRequestRef = useRef(0)
   const openDraftRef = useRef<(draft: Draft) => void>(() => {})
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -133,9 +159,12 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setDraftId(nextDraftId)
   }, [])
 
+  const [dirty, setDirty] = useState(false)
+
   const markDraftDirty = useCallback(() => {
     draftRevisionRef.current += 1
     setSavedAt(null)
+    setDirty(true)
   }, [])
 
   const platform = PLATFORMS.find((p) => p.id === platformId)!
@@ -152,7 +181,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   const showOperationError = useCallback(
     (title: string, error: unknown, fallback: string) => {
-      setOperationNotice({ title, detail: errorMessage(error, fallback) })
+      setOperationNotice({ title, detail: errorMessage(error, fallback), tone: 'error' })
     },
     [],
   )
@@ -189,10 +218,49 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     return () => cancelAnimationFrame(frame)
   }, [blocks, config, profile.headerFirstPageOnly])
 
+  const editorViewRef = useRef<EditorView | null>(null)
+
   // Stable identity so the memoized MarkdownEditor never re-renders on typing.
   const handleEditorChange = useCallback((next: string) => {
     setSource(next)
     markDraftDirty()
+  }, [markDraftDirty])
+
+  const handleInsertSnippet = useCallback((before: string, after = '', placeholder = '') => {
+    const view = editorViewRef.current
+    if (view) {
+      const selection = view.state.selection.main
+      const selectedText = view.state.sliceDoc(selection.from, selection.to)
+      const textToInsert = selectedText || placeholder
+      const replacement = before + textToInsert + after
+      view.dispatch({
+        changes: { from: selection.from, to: selection.to, insert: replacement },
+        selection: {
+          anchor: selection.from + before.length,
+          head: selection.from + before.length + textToInsert.length,
+        },
+      })
+      view.focus()
+    } else {
+      setSource((prev) => prev + '\n\n' + before + placeholder + after)
+      markDraftDirty()
+    }
+  }, [markDraftDirty])
+
+  const handleInsertPageBreak = useCallback(() => {
+    const view = editorViewRef.current
+    if (view) {
+      const selection = view.state.selection.main
+      const breakText = '\n\n---\n\n'
+      view.dispatch({
+        changes: { from: selection.to, insert: breakText },
+        selection: { anchor: selection.to + breakText.length },
+      })
+      view.focus()
+    } else {
+      setSource((prev) => prev + '\n\n---\n\n')
+      markDraftDirty()
+    }
   }, [markDraftDirty])
 
   const loadDrafts = useCallback(
@@ -256,9 +324,10 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const draftId = readLastSession(user.id).markdownDraftId
     if (!draftId) return
     const uid = user.id
+    const generation = ++restoreGenerationRef.current
     void store.drafts.list(uid).then(
       (list) => {
-        if (activeUserIdRef.current !== uid) return
+        if (activeUserIdRef.current !== uid || restoreGenerationRef.current !== generation) return
         const target = list.find((draft) => draft.id === draftId && draft.mode === 'markdown-card')
         if (target) openDraftRef.current(target)
       },
@@ -322,7 +391,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const node = cardRef.current
     if (!node) return null
     return toPng(node, {
-      pixelRatio: 3,
+      pixelRatio: EXPORT_PIXEL_RATIO,
       width: config.width,
       height: config.height,
       // Reuse a precomputed font-embed CSS so we don't re-scan and re-fetch the
@@ -519,6 +588,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       updateDraftId(saved.id)
       updateLastSession(uid, { markdownDraftId: saved.id })
       setSavedAt(draftRevisionRef.current === revisionSnapshot ? saved.updatedAt : null)
+      if (draftRevisionRef.current === revisionSnapshot) setDirty(false)
       setDrafts((current) => [saved, ...current.filter((draft) => draft.id !== saved.id)])
       refreshDrafts()
     } catch (error) {
@@ -553,6 +623,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setRadius(document.radius)
     updateDraftId(d.id)
     setSavedAt(d.updatedAt)
+    setDirty(false)
     setActive(0)
     setShowDrafts(false)
     if (user) updateLastSession(user.id, { markdownDraftId: d.id })
@@ -690,8 +761,10 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     if (!document) return
     saveGenerationRef.current += 1
     draftRevisionRef.current += 1
+    restoreGenerationRef.current += 1
     updateDraftId(null)
     setSavedAt(null)
+    setDirty(false)
     setSource(document.source)
     setPlatformId(document.platformId)
     setThemeId(resolveTheme(document.themeId).id)
@@ -703,6 +776,95 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setShowTemplates(false)
   }
 
+  function startNewDocument(nextPlatformId: string | null) {
+    saveGenerationRef.current += 1
+    draftRevisionRef.current += 1
+    restoreGenerationRef.current += 1
+    updateDraftId(null)
+    setSavedAt(null)
+    setDirty(false)
+    setSource(NEW_DOCUMENT_SOURCE)
+    if (nextPlatformId && PLATFORMS.some((candidate) => candidate.id === nextPlatformId)) setPlatformId(nextPlatformId)
+    setActive(0)
+    setShowDrafts(false)
+    setShowTemplates(false)
+  }
+
+  const documentTitle = saveTemplateDefaultName || '未命名'
+  useEffect(() => {
+    onMetaChange?.({ title: documentTitle, draftId, dirty })
+  }, [documentTitle, draftId, dirty, onMetaChange])
+
+  async function insertAsset(asset: Asset) {
+    // The user is editing this document now; a late last-session restore must not replace it.
+    restoreGenerationRef.current += 1
+    try {
+      const snippet = `![${markdownImageAlt(asset.name)}](${await assetDocumentSource(asset)})`
+      const view = editorViewRef.current
+      if (view) {
+        const { from, to } = view.state.selection.main
+        const before = from > 0 && view.state.doc.sliceString(from - 1, from) !== '\n' ? '\n' : ''
+        const insert = `${before}${snippet}\n`
+        view.dispatch({
+          changes: { from, to, insert },
+          selection: { anchor: from + insert.length },
+          scrollIntoView: true,
+        })
+        view.focus()
+      } else {
+        setSource((prev) => `${prev}\n\n${snippet}\n`)
+        markDraftDirty()
+      }
+    } catch (error) {
+      showOperationError('图片插入失败', error, '暂时无法插入这张图片，请稍后重试')
+    }
+  }
+
+  // One-shot instructions from the workbench (open / new / template / removed)
+  // and the asset drawer (insert-asset).
+  useEffect(() => {
+    if (!request || handledRequestRef.current === request.nonce) return
+    if (request.kind === 'insert-asset') {
+      handledRequestRef.current = request.nonce
+      void insertAsset(request.asset)
+      return
+    }
+    if (request.kind === 'open' && !user) return
+    handledRequestRef.current = request.nonce
+    restoreGenerationRef.current += 1
+    if (user) restoreAttemptedUserIdRef.current = user.id
+    if (request.kind === 'new') {
+      startNewDocument(request.platformId)
+    } else if (request.kind === 'template') {
+      applyMarkdownTemplate(request.template)
+    } else if (request.kind === 'removed') {
+      setDrafts((current) => current.filter((draft) => draft.id !== request.draftId))
+      if (currentDraftIdRef.current === request.draftId) {
+        saveGenerationRef.current += 1
+        updateDraftId(null)
+        setSavedAt(null)
+        setDirty(true)
+      }
+    } else if (user && currentDraftIdRef.current !== request.draftId) {
+      const uid = user.id
+      const id = request.draftId
+      const known = drafts.find((draft) => draft.id === id)
+      if (known) {
+        openDraft(known)
+      } else {
+        void store.drafts.list(uid).then(
+          (list) => {
+            if (activeUserIdRef.current !== uid) return
+            const target = list.find((draft) => draft.id === id && draft.mode === 'markdown-card')
+            if (target) openDraft(target)
+            else setOperationNotice({ title: '没有找到这个项目', detail: '它可能已经被删除了', tone: 'error' })
+          },
+          (error: unknown) => showOperationError('项目打开失败', error, '暂时无法读取项目，请稍后重试'),
+        )
+      }
+    }
+  }, [request, user])
+
   return (
     <div className="app">
       <WorkspaceToolbar testId="markdown-toolbar" label="Markdown 卡片工具栏">
@@ -710,6 +872,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
           <button className='bar-btn' data-testid='markdown-template-button' onClick={() => setShowTemplates(true)}>
             模板
           </button>
+          <ToolbarDivider />
           <div className="seg" role="tablist" aria-label="平台">
             {PLATFORMS.map((p) => (
               <button
@@ -734,7 +897,11 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
               markDraftDirty()
             }}
             title="主题"
-            options={themesForPicker(themeId).map((t) => ({ id: t.id, label: t.label }))}
+            options={themesForPicker(themeId).map((t) => ({
+              id: t.id,
+              label: t.label,
+              swatch: { bg: t.background, accent: t.accent },
+            }))}
           />
 
           <Select
@@ -749,6 +916,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
             options={FONTS.map((f) => ({ id: f.id, label: f.label }))}
           />
 
+          <ToolbarDivider />
           <button className="bar-btn" onClick={() => setShowProfile(true)}>
             个人资料
           </button>
@@ -788,6 +956,7 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
         <OperationNotice
           title={operationNotice.title}
           detail={operationNotice.detail}
+          tone={operationNotice.tone}
           onDismiss={() => setOperationNotice(null)}
         />
       )}
@@ -796,11 +965,79 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       <div className="body">
         <section className="pane pane-editor">
           <div className="pane-head">
-            <span>Markdown</span>
+            <div className="md-format" role="toolbar" aria-label="Markdown 格式">
+              <button
+                type="button"
+                className="md-format-btn"
+                aria-label="一级标题"
+                title="一级标题"
+                onClick={() => handleInsertSnippet('# ', '\n', '大标题')}
+              >
+                H1
+              </button>
+              <button
+                type="button"
+                className="md-format-btn"
+                aria-label="二级标题"
+                title="二级标题"
+                onClick={() => handleInsertSnippet('## ', '\n', '小标题')}
+              >
+                H2
+              </button>
+              <span className="md-format-sep" aria-hidden="true" />
+              <button
+                type="button"
+                className="md-format-btn"
+                aria-label="加粗"
+                title="加粗"
+                onClick={() => handleInsertSnippet('**', '**', '重点文字')}
+              >
+                <BoldIcon />
+              </button>
+              <button
+                type="button"
+                className="md-format-btn"
+                aria-label="斜体"
+                title="斜体"
+                onClick={() => handleInsertSnippet('*', '*', '斜体文字')}
+              >
+                <ItalicIcon />
+              </button>
+              <span className="md-format-sep" aria-hidden="true" />
+              <button
+                type="button"
+                className="md-format-btn"
+                aria-label="引用"
+                title="引用"
+                onClick={() => handleInsertSnippet('> ', '\n', '引用金句或核心观点')}
+              >
+                <QuoteIcon />
+              </button>
+              <button
+                type="button"
+                className="md-format-btn"
+                aria-label="列表"
+                title="列表"
+                onClick={() => handleInsertSnippet('- ', '\n', '列表要点')}
+              >
+                <ListIcon />
+              </button>
+              <span className="md-format-sep" aria-hidden="true" />
+              <button
+                type="button"
+                className="md-format-btn md-format-btn--label"
+                title="插入分页（---）"
+                onClick={handleInsertPageBreak}
+              >
+                <PageBreakIcon />
+                分页
+              </button>
+            </div>
             <span className="pane-sub">
               {source.length} 字 · {pages.length} 页{savedAt ? ' · 已保存' : ''}
             </span>
           </div>
+
           {editorMounted ? (
             <Suspense fallback={<div className="cm-host" aria-hidden="true" />}>
               <MarkdownEditor
@@ -809,6 +1046,9 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 fontFamily={config.fontFamily}
                 beforeImageUpload={store.remote ? retainNow : undefined}
                 onImageError={handleImageError}
+                onViewReady={(v) => {
+                  editorViewRef.current = v
+                }}
               />
             </Suspense>
           ) : (
@@ -818,42 +1058,45 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
         <section className="pane pane-preview" style={cssVars}>
           <div className="pane-head">
-            <span>
-              预览 · 第 {active + 1}/{pages.length} 页
-            </span>
+            <div className="md-preview-meta">
+              <span className="md-preview-title">预览</span>
+              <span className="md-preview-spec">
+                {platform.label} · {config.width * EXPORT_PIXEL_RATIO} × {config.height * EXPORT_PIXEL_RATIO}
+              </span>
+            </div>
             <div className="zoom-controls" aria-label="预览缩放">
               <button
+                type="button"
                 className="zoom-btn"
+                aria-label="缩小预览"
+                title="缩小预览"
                 onClick={() => setPreviewScale((s) => Math.max(0.75, Number((s - 0.1).toFixed(2))))}
                 disabled={previewScale <= 0.75}
-                title="缩小预览"
               >
-                −
+                <MinusIcon />
               </button>
-              <button className="zoom-value" onClick={() => setPreviewScale(1)} title="重置为 100%">
+              <button
+                type="button"
+                className="zoom-value"
+                title="恢复 100%"
+                onClick={() => setPreviewScale(1)}
+              >
                 {Math.round(previewScale * 100)}%
               </button>
               <button
+                type="button"
                 className="zoom-btn"
+                aria-label="放大预览"
+                title="放大预览"
                 onClick={() => setPreviewScale((s) => Math.min(1.75, Number((s + 0.1).toFixed(2))))}
                 disabled={previewScale >= 1.75}
-                title="放大预览"
               >
-                +
+                <PlusIcon />
               </button>
             </div>
           </div>
 
           <div className="stage-wrap">
-            <button
-              className="nav-arrow nav-prev"
-              onClick={() => setActive((i) => Math.max(0, i - 1))}
-              disabled={active === 0}
-              aria-label="上一页"
-            >
-              ‹
-            </button>
-
             <div className="stage">
               <div className="card-zoom-box">
                 <div
@@ -882,30 +1125,58 @@ export function MarkdownWorkspace({ isActive, user, requestAuth }: WorkspaceShel
                 </div>
               </div>
             </div>
-
-            <button
-              className="nav-arrow nav-next"
-              onClick={() => setActive((i) => Math.min(pages.length - 1, i + 1))}
-              disabled={active >= pages.length - 1}
-              aria-label="下一页"
-            >
-              ›
-            </button>
           </div>
 
-          <div className="pager">
-            {pages.map((_, i) => (
+          <div className="md-dock-row">
+            <div className="md-dock">
               <button
-                key={i}
-                className={i === active ? 'page-dot active' : 'page-dot'}
-                onClick={() => setActive(i)}
-                title={`第 ${i + 1} 页`}
+                type="button"
+                className="md-dock-btn"
+                aria-label="上一页"
+                title="上一页"
+                onClick={() => setActive((i) => Math.max(0, i - 1))}
+                disabled={active === 0}
               >
-                {i + 1}
+                <ChevronLeftIcon />
               </button>
-            ))}
+              <div className="pager" role="group" aria-label="页码">
+                {pages.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={i === active ? 'page-dot active' : 'page-dot'}
+                    aria-current={i === active ? 'page' : undefined}
+                    title={`第 ${i + 1} 页`}
+                    onClick={() => setActive(i)}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="md-dock-btn"
+                aria-label="下一页"
+                title="下一页"
+                onClick={() => setActive((i) => Math.min(pages.length - 1, i + 1))}
+                disabled={active >= pages.length - 1}
+              >
+                <ChevronRightIcon />
+              </button>
+              <span className="md-dock-sep" aria-hidden="true" />
+              <button
+                type="button"
+                className="md-dock-action"
+                title="导出当前页为 PNG"
+                onClick={() => exportOne(active)}
+                disabled={exporting}
+              >
+                <DownloadIcon />
+                导出本页
+              </button>
+            </div>
+            <div className="pager-hint">右键卡片导出单页 · 拖动卡片四角调整圆角 · 拖动图片右下角调整宽度</div>
           </div>
-          <div className="pager-hint">左右箭头翻页 · 右键卡片导出当前页 · 顶栏打包下载全部</div>
         </section>
       </div>
 

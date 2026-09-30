@@ -1,0 +1,15 @@
+/* 叮卡 UI entry.
+   styles.css stays the structural base (layout, freeform internals, the exported
+   card) and sits in the lower `legacy` layer; the design system lives in `ui`
+   and wins regardless of selector specificity. */
+@layer legacy, ui;
+
+@import '../styles.css' layer(legacy);
+@import './tokens.css' layer(ui);
+@import './base.css' layer(ui);
+@import './controls.css' layer(ui);
+@import './shell.css' layer(ui);
+@import './markdown.css' layer(ui);
+@import './freeform.css' layer(ui);
+@import './overlays.css' layer(ui);
+@import './app.css' layer(ui);

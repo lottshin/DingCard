@@ -46,6 +46,19 @@ export function createDatabase(appConfig = defaultConfig) {
         lease_expires_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_images_user ON images(user_id);
+
+      -- A library asset is a named pointer at one of the user's managed uploads.
+      -- Image GC treats every asset path as referenced.
+      CREATE TABLE IF NOT EXISTS assets (
+        id          TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        image_path  TEXT NOT NULL,
+        name        TEXT NOT NULL,
+        width       INTEGER NOT NULL,
+        height      INTEGER NOT NULL,
+        created_at  INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_assets_user ON assets(user_id, created_at DESC);
     `)
 
     ensureImageLeaseSchema(database, Date.now(), appConfig.imageLeaseMs)
@@ -107,6 +120,27 @@ export function createDatabase(appConfig = defaultConfig) {
       userImageBytes: database.prepare(
         'SELECT COALESCE(SUM(bytes), 0) AS total FROM images WHERE user_id = ?',
       ),
+
+      listAssets: database.prepare(`
+        SELECT assets.*, images.bytes AS bytes
+        FROM assets
+        LEFT JOIN images ON images.user_id = assets.user_id AND images.path = assets.image_path
+        WHERE assets.user_id = ?
+        ORDER BY assets.created_at DESC
+      `),
+      assetById: database.prepare(`
+        SELECT assets.*, images.bytes AS bytes
+        FROM assets
+        LEFT JOIN images ON images.user_id = assets.user_id AND images.path = assets.image_path
+        WHERE assets.id = ? AND assets.user_id = ?
+      `),
+      insertAsset: database.prepare(`
+        INSERT INTO assets (id, user_id, image_path, name, width, height, created_at)
+        VALUES (@id, @user_id, @image_path, @name, @width, @height, @created_at)
+      `),
+      renameAsset: database.prepare('UPDATE assets SET name = ? WHERE id = ? AND user_id = ?'),
+      deleteAsset: database.prepare('DELETE FROM assets WHERE id = ? AND user_id = ?'),
+      listAssetPaths: database.prepare('SELECT image_path FROM assets WHERE user_id = ?'),
     }
 
     return { db: database, stmts }

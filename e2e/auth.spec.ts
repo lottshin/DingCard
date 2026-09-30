@@ -6,7 +6,7 @@ test.beforeEach(async ({ context }) => {
 })
 
 test('header auth dialog exposes modal semantics, traps focus, and restores its trigger on Escape', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
@@ -88,7 +88,7 @@ test('header auth dialog exposes modal semantics, traps focus, and restores its 
 })
 
 test('auth modal isolates existing background notices and renders above them', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
@@ -130,16 +130,16 @@ test('auth modal isolates existing background notices and renders above them', a
     noticeAriaHidden: document
       .querySelector<HTMLElement>('[data-testid="auth-coexisting-notice"]')!
       .getAttribute('aria-hidden'),
-    headerInert: document.querySelector<HTMLElement>('[data-testid="app-header"]')!.hasAttribute('inert'),
+    headerInert: document.querySelector<HTMLElement>('[data-testid="app-header"]')!.closest('[inert]') !== null,
     headerAriaHidden: document
       .querySelector<HTMLElement>('[data-testid="app-header"]')!
-      .getAttribute('aria-hidden'),
+      .closest('[aria-hidden]')?.getAttribute('aria-hidden') ?? null,
     workspaceInert: document
       .querySelector<HTMLElement>('#workspace-panel-markdown')!
-      .hasAttribute('inert'),
+      .closest('[inert]') !== null,
     workspaceAriaHidden: document
       .querySelector<HTMLElement>('#workspace-panel-markdown')!
-      .getAttribute('aria-hidden'),
+      .closest('[aria-hidden]')?.getAttribute('aria-hidden') ?? null,
   }))
 
   expect.soft(modalState.backdrop).toBeGreaterThan(modalState.notice)
@@ -162,10 +162,10 @@ test('auth modal isolates existing background notices and renders above them', a
     noticeAriaHidden: document
       .querySelector<HTMLElement>('[data-testid="auth-coexisting-notice"]')!
       .getAttribute('aria-hidden'),
-    headerInert: document.querySelector<HTMLElement>('[data-testid="app-header"]')!.hasAttribute('inert'),
+    headerInert: document.querySelector<HTMLElement>('[data-testid="app-header"]')!.closest('[inert]') !== null,
     headerAriaHidden: document
       .querySelector<HTMLElement>('[data-testid="app-header"]')!
-      .getAttribute('aria-hidden'),
+      .closest('[aria-hidden]')?.getAttribute('aria-hidden') ?? null,
   }))
   expect(restoredState).toEqual({
     noticeInert: false,
@@ -176,7 +176,7 @@ test('auth modal isolates existing background notices and renders above them', a
 })
 
 test('auth dialog recaptures late external focus before Tab or Escape can bypass it', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
@@ -210,7 +210,7 @@ test('auth dialog recaptures late external focus before Tab or Escape can bypass
 })
 
 test('auth request remembers a click invoker without DOM focus and ignores repeated requests', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
@@ -240,7 +240,7 @@ test('auth request remembers a click invoker without DOM focus and ignores repea
 
 test('invalid auth openers fall back to the selected workspace tab', async ({ page }) => {
   for (const invalidState of ['hidden', 'disabled', 'disconnected'] as const) {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
 
@@ -261,7 +261,7 @@ test('invalid auth openers fall back to the selected workspace tab', async ({ pa
 })
 
 test('auth dialog includes visible control types and skips hidden or inert sentinels in both directions', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByTestId('account-login').click()
@@ -376,7 +376,7 @@ test('auth dialog includes visible control types and skips hidden or inert senti
 })
 
 test('freeform save restores its own button after cancel, Escape, and backdrop close', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByTestId('workspace-tab-freeform').click()
@@ -434,7 +434,7 @@ test('busy and failed local login keep only enabled controls in the dialog focus
     })
   })
 
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => {
     localStorage.clear()
     localStorage.setItem(
@@ -489,7 +489,7 @@ test('busy and failed local login keep only enabled controls in the dialog focus
 })
 
 test('existing local registration and login flows still succeed', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 

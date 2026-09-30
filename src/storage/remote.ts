@@ -4,6 +4,7 @@
 // UI-facing contract identical to LocalStore while adding conditional session
 // invalidation, draft normalization, and managed-image lease renewal.
 
+import { isAsset, normalizeAssetName, type Asset } from '../assets'
 import type { User } from '../auth'
 import { normalizeDraftForRead, normalizeDraftForWrite } from '../drafts'
 import type { SaveDraftInput } from '../drafts'
@@ -11,7 +12,7 @@ import {
   collectFreeformImageSources,
   uploadInlineFreeformImages,
 } from '../freeform/imageAssets'
-import type { AuthStore, DraftStore, ImageStore, Storage } from './types'
+import type { AssetStore, AuthStore, DraftStore, ImageStore, Storage } from './types'
 
 const TOKEN_KEY = 'slicer.token.v1'
 const invalidationListeners = new Set<() => void>()
@@ -307,6 +308,59 @@ export function createRemoteStore(apiBase: string): Storage {
     },
   }
 
+  function toAsset(raw: unknown): Asset | null {
+    if (!isRecord(raw) || typeof raw.url !== 'string' || raw.url.trim() === '') return null
+    const asset = {
+      id: raw.id,
+      name: raw.name,
+      src: publicImageUrl(raw.url),
+      width: raw.width,
+      height: raw.height,
+      bytes: typeof raw.bytes === 'number' ? raw.bytes : 0,
+      createdAt: raw.createdAt,
+    }
+    return isAsset(asset) ? asset : null
+  }
+
+  function requireAsset(raw: unknown, status: number): Asset {
+    const asset = toAsset(raw)
+    if (!asset) throw new ApiError('服务器返回了无效素材', status)
+    return asset
+  }
+
+  // An asset is a named pointer at one of the user's managed uploads; the
+  // server keeps that upload out of image GC for as long as the asset exists.
+  const assets: AssetStore = {
+    async list() {
+      const { data, status } = await api<unknown>('/api/assets')
+      if (!Array.isArray(data)) throw new ApiError('服务器返回了无效素材列表', status)
+      return data.map(toAsset).filter((asset): asset is Asset => asset !== null)
+    },
+    async add(_userId, input) {
+      const url = await images.put(input.dataUrl)
+      const { data, status } = await api<unknown>('/api/assets', {
+        method: 'POST',
+        body: JSON.stringify({
+          url,
+          name: normalizeAssetName(input.name),
+          width: input.width,
+          height: input.height,
+        }),
+      })
+      return requireAsset(data, status)
+    },
+    async rename(_userId, id, name) {
+      const { data, status } = await api<unknown>(`/api/assets/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: normalizeAssetName(name) }),
+      })
+      return requireAsset(data, status)
+    },
+    async remove(_userId, id) {
+      await api(`/api/assets/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
+  }
+
   const drafts: DraftStore = {
     async list() {
       const { data, status } = await api<unknown>('/api/drafts')
@@ -342,5 +396,5 @@ export function createRemoteStore(apiBase: string): Storage {
     },
   }
 
-  return { auth, drafts, images, remote: true }
+  return { auth, drafts, images, assets, remote: true }
 }

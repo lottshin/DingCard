@@ -9,6 +9,7 @@
 // must do network I/O — fits the same shape as the local one. The local
 // implementation just wraps its synchronous work in resolved promises.
 
+import type { Asset, NewAssetInput } from '../assets'
 import type { Draft, SaveDraftInput } from '../drafts'
 import type { User } from '../auth'
 
@@ -54,11 +55,25 @@ export interface ImageStore {
   retain(hrefs: readonly string[]): Promise<void>
 }
 
+/**
+ * Per-user image library, reused across projects. Assets outlive the projects
+ * that use them, and deleting an asset never breaks a project.
+ */
+export interface AssetStore {
+  /** Newest first. */
+  list(userId: string): Promise<Asset[]>
+  add(userId: string, input: NewAssetInput): Promise<Asset>
+  rename(userId: string, id: string, name: string): Promise<Asset>
+  /** Idempotent: removing a missing asset resolves. */
+  remove(userId: string, id: string): Promise<void>
+}
+
 /** The full storage surface the app depends on. */
 export interface Storage {
   auth: AuthStore
   drafts: DraftStore
   images: ImageStore
+  assets: AssetStore
   /** true when backed by a real server (enables login UI, sync messaging). */
   readonly remote: boolean
 }

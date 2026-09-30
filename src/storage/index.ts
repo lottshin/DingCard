@@ -14,4 +14,4 @@ const API_BASE = (import.meta.env.VITE_API_BASE ?? '').trim()
 
 export const store: Storage = API_BASE ? createRemoteStore(API_BASE) : createLocalStore()
 
-export type { Storage, AuthStore, DraftStore, ImageStore } from './types'
+export type { Storage, AuthStore, DraftStore, ImageStore, AssetStore } from './types'

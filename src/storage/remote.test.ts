@@ -1029,3 +1029,126 @@ describe('RemoteStore draft normalization and image retention', () => {
     expect(draftPostCount).toBe(2)
   })
 })
+
+describe('RemoteStore asset library', () => {
+  let values: Map<string, string>
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.resetModules()
+    values = new Map([[TOKEN_KEY, 'asset-token']])
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+      removeItem: vi.fn((key: string) => values.delete(key)),
+    })
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  async function createStore() {
+    const { createRemoteStore } = await import('./remote')
+    return createRemoteStore(API_BASE)
+  }
+
+  const serverAsset = {
+    id: 'asset-1',
+    name: '雨夜街道',
+    url: '/uploads/street.jpg',
+    width: 1200,
+    height: 800,
+    bytes: 2048,
+    createdAt: 50,
+  }
+
+  it('uploads the image first, then registers it as an asset with absolute URLs', async () => {
+    const events: string[] = []
+    let registered: Record<string, unknown> | undefined
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      const url = requestUrl(args)
+      if (url === INLINE_IMAGE) return responseForDataUrl()
+      if (url === `${API_BASE}/api/images`) {
+        events.push('upload')
+        return jsonResponse({ ref: 'img:street', url: '/uploads/street.jpg' })
+      }
+      if (url === `${API_BASE}/api/assets`) {
+        events.push('register')
+        registered = jsonRequestBody(args)
+        expect(requestHeaders(args).get('authorization')).toBe('Bearer asset-token')
+        return jsonResponse(serverAsset)
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const store = await createStore()
+
+    const asset = await store.assets.add('user-1', {
+      dataUrl: INLINE_IMAGE,
+      name: '  雨夜街道 ',
+      width: 1200,
+      height: 800,
+    })
+
+    expect(events).toEqual(['upload', 'register'])
+    expect(registered).toEqual({
+      url: `${API_BASE}/uploads/street.jpg`,
+      name: '雨夜街道',
+      width: 1200,
+      height: 800,
+    })
+    expect(asset).toEqual({
+      id: 'asset-1',
+      name: '雨夜街道',
+      src: `${API_BASE}/uploads/street.jpg`,
+      width: 1200,
+      height: 800,
+      bytes: 2048,
+      createdAt: 50,
+    })
+  })
+
+  it('drops malformed list items and rejects a non-array list', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([
+      serverAsset,
+      { ...serverAsset, id: 'no-url', url: '' },
+      { ...serverAsset, id: 'bad-size', width: -1 },
+      { ...serverAsset, id: 'no-bytes', bytes: undefined },
+    ]))
+    const store = await createStore()
+
+    expect((await store.assets.list('user-1')).map((asset) => [asset.id, asset.bytes])).toEqual([
+      ['asset-1', 2048],
+      ['no-bytes', 0],
+    ])
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ assets: [] }))
+    await expectApiError(store.assets.list('user-1'), 200, '服务器返回了无效素材列表')
+  })
+
+  it('renames with PATCH and deletes by id', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ ...serverAsset, name: '新名字' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+    const store = await createStore()
+
+    expect(await store.assets.rename('user-1', 'asset/1', ' 新名字 ')).toMatchObject({ name: '新名字' })
+    await store.assets.remove('user-1', 'asset/1')
+
+    const [renameCall, removeCall] = fetchMock.mock.calls as FetchCall[]
+    expect(requestUrl(renameCall)).toBe(`${API_BASE}/api/assets/asset%2F1`)
+    expect(renameCall[1]?.method).toBe('PATCH')
+    expect(jsonRequestBody(renameCall)).toEqual({ name: '新名字' })
+    expect(requestUrl(removeCall)).toBe(`${API_BASE}/api/assets/asset%2F1`)
+    expect(removeCall[1]?.method).toBe('DELETE')
+  })
+
+  it('reports an invalid asset response instead of returning a broken asset', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'asset-1' }))
+    const store = await createStore()
+
+    await expectApiError(store.assets.rename('user-1', 'asset-1', '名字'), 200, '服务器返回了无效素材')
+  })
+})

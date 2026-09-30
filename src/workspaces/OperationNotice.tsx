@@ -4,6 +4,7 @@ interface OperationNoticeProps {
   onDismiss: () => void
   onRetry?: () => void
   retryLabel?: string
+  tone?: 'info' | 'error'
   className?: string
 }
 
@@ -13,11 +14,12 @@ export function OperationNotice({
   onDismiss,
   onRetry,
   retryLabel = '重试',
+  tone = 'info',
   className = '',
 }: OperationNoticeProps) {
   return (
     <div
-      className={`operation-notice ${className}`.trim()}
+      className={`operation-notice operation-notice--${tone} ${className}`.trim()}
       role="alert"
       aria-atomic="true"
     >

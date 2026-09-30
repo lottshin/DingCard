@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, SetStateAction } from 'react'
 import { toCanvas } from 'html-to-image'
+import type { Asset } from '../assets'
 import { DraftsPanel } from '../DraftsPanel'
 import { Select } from '../Select'
 import { type Draft, importDraftFromJson } from '../drafts'
@@ -10,6 +11,7 @@ import { downscaleDataUrl } from '../imageStore'
 import { readLastSession, updateLastSession } from '../lastSession'
 import { store } from '../storage'
 import { FONTS } from '../theme'
+import { assetDocumentSource } from '../workspaces/assetSource'
 import { OperationNotice } from '../workspaces/OperationNotice'
 import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/WorkspaceToolbar'
 import type { WorkspaceShellProps } from '../workspaces/types'
@@ -24,10 +26,11 @@ import {
   userTemplateToDefinition,
   type UserTemplate,
 } from '../templates/userTemplates'
-import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE } from './constants'
+import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE, PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
 import { collectTextAutoSize } from './textAutoSize'
 import {
   createFreeformDocument,
+  createSlide,
   createImageElement,
   createLineElement,
   createShapeElement,
@@ -454,6 +457,24 @@ function activeSlideOf(doc: FreeformDocument): FreeformSlide {
   return slide
 }
 
+/** Resize a new image element to its picture's aspect ratio, never upscaling it. */
+function withNaturalAspect(
+  element: FreeformImageElement,
+  slide: FreeformSlide,
+  natural: { width: number; height: number },
+): FreeformImageElement {
+  const scale = Math.min(1, element.width / natural.width, (slide.height * 0.7) / natural.height)
+  const width = Math.max(1, Math.round(natural.width * scale))
+  const height = Math.max(1, Math.round(natural.height * scale))
+  return {
+    ...element,
+    x: Math.round((slide.width - width) / 2),
+    y: Math.round((slide.height - height) / 2),
+    width,
+    height,
+  }
+}
+
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -852,7 +873,7 @@ function ShadowField({
   )
 }
 
-export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShellProps) {
+export function FreeformWorkspace({ isActive, user, requestAuth, request = null, onMetaChange }: WorkspaceShellProps) {
   const [history, setHistory] = useState<HistoryState<FreeformDocument>>(() =>
     createHistory(createFreeformDocument()),
   )
@@ -926,6 +947,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
   const [saving, setSaving] = useState(false)
   // 刷新恢复：每账号只尝试一次；openDraftRef 让恢复 effect 不必依赖 openDraft 的函数身份。
   const restoreAttemptedUserIdRef = useRef<string | null>(null)
+  // Bumped whenever the document is replaced, so a slow session restore can't overwrite it.
+  const restoreGenerationRef = useRef(0)
+  const handledRequestRef = useRef(0)
   const openDraftRef = useRef<(draft: Draft) => void>(() => {})
   const [operationNotice, setOperationNotice] = useState<string | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
@@ -1563,9 +1587,10 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     const draftId = readLastSession(user.id).freeformDraftId
     if (!draftId) return
     const uid = user.id
+    const generation = ++restoreGenerationRef.current
     void store.drafts.list(uid).then(
       (list) => {
-        if (currentUserIdRef.current !== uid) return
+        if (currentUserIdRef.current !== uid || restoreGenerationRef.current !== generation) return
         const target = list.find((draft) => draft.id === draftId && draft.mode === 'freeform-slide')
         if (target) openDraftRef.current(target)
       },
@@ -2527,16 +2552,17 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     insertNewElement(createLineElement(activeSlide, lineKind))
   }
 
-  async function addImageFromFile(file: File) {
+  async function insertImageElement(
+    loadSource: () => Promise<string>,
+    alt: string,
+    natural?: { width: number; height: number },
+  ) {
     if (blockDocumentMutationDuringInteraction()) return
     const targetIdentityGeneration = documentIdentityGenerationRef.current
     const targetUserId = currentUserIdRef.current
     const targetSlideId = activeSlide.id
     const targetParentPath = [...activeGroupPath]
-    if (store.remote) await retainImagesNow()
-    const raw = await readFileAsDataUrl(file)
-    const downscaled = await downscaleDataUrl(raw, 1800)
-    const src = await store.images.put(downscaled)
+    const src = await loadSource()
     if (
       targetIdentityGeneration !== documentIdentityGenerationRef.current ||
       targetUserId !== currentUserIdRef.current
@@ -2544,8 +2570,9 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     if (blockDocumentMutationDuringInteraction()) return
     const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
     if (!currentSlide) return
+    const created = createImageElement(currentSlide, src, alt)
     const element = centerNewElementInScope(
-      createImageElement(currentSlide, src, file.name),
+      natural ? withNaturalAspect(created, currentSlide, natural) : created,
       currentSlide.nodes,
       targetParentPath,
     )
@@ -2562,6 +2589,25 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
       showLockedOperationNotice()
     } else {
       setOperationNotice(sceneStructureFailureMessage('insert', 'invalid-selection'))
+    }
+  }
+
+  async function addImageFromFile(file: File) {
+    await insertImageElement(async () => {
+      if (store.remote) await retainImagesNow()
+      const raw = await readFileAsDataUrl(file)
+      const downscaled = await downscaleDataUrl(raw, 1800)
+      return store.images.put(downscaled)
+    }, file.name)
+  }
+
+  async function addImageFromAsset(asset: Asset) {
+    // The user is editing this document now; a late last-session restore must not replace it.
+    restoreGenerationRef.current += 1
+    try {
+      await insertImageElement(() => assetDocumentSource(asset), asset.name, asset)
+    } catch (error) {
+      showOperationError(error, '图片插入失败，请稍后重试')
     }
   }
 
@@ -4888,10 +4934,16 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
 
   function applyFreeformTemplate(template: TemplateDefinition) {
     if (template.workspace !== 'freeform') return
-    cancelFramingBeforeTransition()
-    if (blockDocumentMutationDuringInteraction()) return
     const document = template.createFreeform?.()
     if (!document) return
+    startFreshDocument(document)
+  }
+
+  /** Replace the canvas with an unsaved document (a template, or a blank page). */
+  function startFreshDocument(document: FreeformDocument) {
+    cancelFramingBeforeTransition()
+    if (blockDocumentMutationDuringInteraction()) return
+    restoreGenerationRef.current += 1
     documentIdentityGenerationRef.current += 1
     inspectorNumberResetGenerationRef.current += 1
     shapeFillOperationTokensRef.current.clear()
@@ -4916,6 +4968,60 @@ export function FreeformWorkspace({ isActive, user, requestAuth }: WorkspaceShel
     setShowDrafts(false)
     setShowTemplates(false)
   }
+
+  const documentTitle = drafts.find((draft) => draft.id === draftId)?.title ?? doc.slides[0]?.name ?? '未命名'
+  const documentDirty = savedAt === null && history.past.length > 0
+  useEffect(() => {
+    onMetaChange?.({ title: documentTitle, draftId, dirty: documentDirty })
+  }, [documentTitle, draftId, documentDirty, onMetaChange])
+
+  // One-shot instructions from the workbench (open / new / template / removed)
+  // and the asset drawer (insert-asset).
+  useEffect(() => {
+    if (!request || handledRequestRef.current === request.nonce) return
+    if (request.kind === 'insert-asset') {
+      handledRequestRef.current = request.nonce
+      void addImageFromAsset(request.asset)
+      return
+    }
+    if (request.kind === 'open' && !user) return
+    handledRequestRef.current = request.nonce
+    restoreGenerationRef.current += 1
+    if (user) restoreAttemptedUserIdRef.current = user.id
+    if (request.kind === 'new') {
+      const clamp = (value: number | null) =>
+        value === null ? undefined : Math.min(PAGE_SIZE_MAX, Math.max(PAGE_SIZE_MIN, value))
+      const slide = createSlide({ width: clamp(request.width), height: clamp(request.height) })
+      startFreshDocument({ ...createFreeformDocument(), activeSlideId: slide.id, slides: [slide] })
+    } else if (request.kind === 'template') {
+      applyFreeformTemplate(request.template)
+    } else if (request.kind === 'removed') {
+      setDrafts((current) => current.filter((draft) => draft.id !== request.draftId))
+      if (currentDraftIdRef.current === request.draftId) {
+        saveGenerationRef.current += 1
+        successfulSaveRef.current = null
+        updateDraftId(null)
+        setSavedAt(null)
+      }
+    } else if (user && currentDraftIdRef.current !== request.draftId) {
+      const uid = user.id
+      const id = request.draftId
+      const known = drafts.find((draft) => draft.id === id)
+      if (known) {
+        openDraft(known)
+      } else {
+        void store.drafts.list(uid).then(
+          (list) => {
+            if (currentUserIdRef.current !== uid) return
+            const target = list.find((draft) => draft.id === id && draft.mode === 'freeform-slide')
+            if (target) openDraft(target)
+            else setOperationNotice('没有找到这个项目，它可能已经被删除了')
+          },
+          (error: unknown) => showOperationError(error, '暂时无法读取项目，请稍后重试'),
+        )
+      }
+    }
+  }, [request, user])
 
   const framingRenderTarget = framingSession
     ? currentTargetForFramingSession(framingSession)

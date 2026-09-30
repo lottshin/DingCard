@@ -37,9 +37,9 @@ const TEST_PNG = Buffer.from(
   'base64',
 )
 
-// The drafts toolbar button reads "草稿" or "草稿 · N" — match from the start so
+// The drafts toolbar button reads "我的草稿" or "我的草稿 · N" — match from the start so
 // it never collides with the "保存草稿" (save) button.
-const draftsButton = /^草稿/
+const draftsButton = /^我的草稿/
 
 test.beforeEach(async ({ context }) => {
   await installOfflineFontRoutes(context)
@@ -386,7 +386,7 @@ test.describe('remote backend integration', () => {
   test('registers, saves a markdown draft to the server, and restores it after reload', async ({
     page,
   }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
 
     // A token from a previous run must not leak in; start signed-out.
     await page.evaluate(() => localStorage.clear())
@@ -401,8 +401,8 @@ test.describe('remote backend integration', () => {
 
     // Save. In remote mode this POSTs to /api/drafts.
     await page.getByRole('button', { name: '保存草稿' }).click()
-    // The editor pane footer shows "· 已保存" once the save resolves.
-    await expect(page.getByText('已保存')).toBeVisible()
+    // The editor pane footer shows "· 已保存" once the save resolves (the header shows it too).
+    await expect(page.locator('.pane-sub')).toContainText('已保存')
 
     // The draft list (opened from the toolbar) should show our new draft.
     await page.getByRole('button', { name: draftsButton }).click()
@@ -427,7 +427,7 @@ test.describe('remote backend integration', () => {
       }
     })
 
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -474,7 +474,7 @@ test.describe('remote backend integration', () => {
     browser,
     page,
   }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     const username = uniqueName()
@@ -521,7 +521,7 @@ test.describe('remote backend integration', () => {
     const secondContext = await browser.newContext()
     await installOfflineFontRoutes(secondContext)
     const secondPage = await secondContext.newPage()
-    await secondPage.goto('/')
+    await secondPage.goto('/#/edit')
     await secondPage.getByTestId('account-login').click()
     await secondPage.getByLabel('用户名').fill(username)
     await secondPage.getByLabel('密码').fill('1234')
@@ -545,7 +545,7 @@ test.describe('remote backend integration', () => {
   })
 
   test('migrates a nested v3 image frame and persists it as v4', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -634,7 +634,7 @@ test.describe('remote backend integration', () => {
       }
     }>
     const saved = savedDrafts.find((draft) => draft.id === created.id)
-    expect(saved?.document.documentVersion).toBe(5)
+    expect(saved?.document.documentVersion).toBe(14)
     const group = saved?.document.slides[0].nodes.find((node) => node.id === 'remote-hidden-group')
     const savedImage = group?.children?.find((node) => node.id === 'remote-image')
     expect(savedImage).toBeDefined()
@@ -696,7 +696,7 @@ test.describe('remote backend integration', () => {
       }
     }>
     const reloaded = reloadedDrafts.find((draft) => draft.id === created.id)
-    expect(reloaded?.document.documentVersion).toBe(4)
+    expect(reloaded?.document.documentVersion).toBe(14)
     const reloadedGroup = reloaded?.document.slides[0].nodes
       .find((node) => node.id === 'remote-hidden-group')
     const reloadedImage = reloadedGroup?.children?.find((node) => node.id === 'remote-image')
@@ -711,7 +711,7 @@ test.describe('remote backend integration', () => {
   })
 
   test('keeps a newer draft at root scope when an older nested save resolves late', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -731,7 +731,7 @@ test.describe('remote backend integration', () => {
 
     await page.reload()
     await page.getByTestId('workspace-tab-freeform').click()
-    await expect(page.getByRole('button', { name: /^草稿 · 2$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^我的草稿 · 2$/ })).toBeVisible()
     await page.getByRole('button', { name: draftsButton }).click()
     await page.locator('.draft-item', { hasText: draftA.title }).click()
     await page.locator('[data-scene-node-id="authority-a-leaf"]').dblclick()
@@ -769,7 +769,7 @@ test.describe('remote backend integration', () => {
   })
 
   test('keeps remote save authority coherent across pointerup and pointercancel', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -889,7 +889,7 @@ test.describe('remote backend integration', () => {
     const ctxA = await browser.newContext()
     await installOfflineFontRoutes(ctxA)
     const pageA = await ctxA.newPage()
-    await pageA.goto('/')
+    await pageA.goto('/#/edit')
     await pageA.evaluate(() => localStorage.clear())
     await pageA.reload()
 
@@ -898,7 +898,7 @@ test.describe('remote backend integration', () => {
     const marker = `跨设备 ${Date.now()}`
     await setEditorDoc(pageA, `# ${marker}`)
     await pageA.getByRole('button', { name: '保存草稿' }).click()
-    await expect(pageA.getByText('已保存')).toBeVisible()
+    await expect(pageA.locator('.pane-sub')).toContainText('已保存')
     await ctxA.close()
 
     // Second context: totally fresh storage (simulates another device). Logging
@@ -906,7 +906,7 @@ test.describe('remote backend integration', () => {
     const ctxB = await browser.newContext()
     await installOfflineFontRoutes(ctxB)
     const pageB = await ctxB.newPage()
-    await pageB.goto('/')
+    await pageB.goto('/#/edit')
 
     await pageB.getByTestId('account-login').click()
     // This account already exists — the modal opens on the 登录 tab by default,
@@ -924,7 +924,7 @@ test.describe('remote backend integration', () => {
   })
 
   test('keeps the opened Markdown draft identity when an older save resolves late', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -935,7 +935,7 @@ test.describe('remote backend integration', () => {
 
     await page.reload()
     await expect(page.getByTestId('account-logout')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^草稿 · 1$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^我的草稿 · 1$/ })).toBeVisible()
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
     let markSaveCaptured: () => void = () => {}
@@ -985,7 +985,7 @@ test.describe('remote backend integration', () => {
   })
 
   test('keeps a newly opened Markdown draft active when an older delete resolves late', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -997,7 +997,7 @@ test.describe('remote backend integration', () => {
 
     await page.reload()
     await expect(page.getByTestId('account-logout')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^草稿 · 2$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^我的草稿 · 2$/ })).toBeVisible()
     await page.getByRole('button', { name: draftsButton }).click()
     await page.locator('.draft-item', { hasText: '删除中的草稿 A' }).click()
 
@@ -1041,7 +1041,7 @@ test.describe('remote backend integration', () => {
   })
 
   test('serializes Markdown saves and keeps the saved marker tied to the full document', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -1051,7 +1051,7 @@ test.describe('remote backend integration', () => {
 
     await page.reload()
     await expect(page.getByTestId('account-logout')).toBeVisible()
-    await page.getByRole('button', { name: /^草稿 · 1$/ }).click()
+    await page.getByRole('button', { name: /^我的草稿 · 1$/ }).click()
     await page.locator('.draft-item', { hasText: '串行保存草稿' }).click()
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
@@ -1115,7 +1115,7 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -1124,7 +1124,7 @@ test.describe('remote backend integration', () => {
 
     await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-    await expect(page.getByRole('button', { name: /^草稿 · 1$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^我的草稿 · 1$/ })).toBeVisible()
 
     await Promise.all(staleListRoutes.map((route) => route.fulfill({
       status: 200,
@@ -1135,11 +1135,11 @@ test.describe('remote backend integration', () => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     }))
 
-    await expect(page.getByRole('button', { name: /^草稿 · 1$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^我的草稿 · 1$/ })).toBeVisible()
   })
 
   test('ignores a freeform save failure after another draft is opened', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -1168,7 +1168,7 @@ test.describe('remote backend integration', () => {
     await page.reload()
     await expect(page.getByTestId('account-logout')).toBeVisible()
     await page.getByTestId('workspace-tab-freeform').click()
-    await expect(page.getByRole('button', { name: /^草稿 · 2$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^我的草稿 · 2$/ })).toBeVisible()
     await page.getByRole('button', { name: draftsButton }).click()
     await page.locator('.draft-item', { hasText: draftA.title }).click()
 
@@ -1200,7 +1200,7 @@ test.describe('remote backend integration', () => {
   })
 
   test('serializes freeform saves so a newer document cannot be overwritten by an older request', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -1260,7 +1260,7 @@ test.describe('remote backend integration', () => {
       documentVersion: unknown
       slides: Array<{ nodes: unknown[]; elements?: unknown }>
     }
-    expect(secondDocument.documentVersion).toBe(4)
+    expect(secondDocument.documentVersion).toBe(14)
     expect(secondDocument.slides[0]).not.toHaveProperty('elements')
     expect(secondDocument.slides[0].nodes).toHaveLength(2)
 
@@ -1270,13 +1270,13 @@ test.describe('remote backend integration', () => {
         slides: Array<{ nodes: unknown[]; elements?: unknown }>
       }
     }
-    expect(secondSavedDraft.document.documentVersion).toBe(4)
+    expect(secondSavedDraft.document.documentVersion).toBe(14)
     expect(secondSavedDraft.document.slides[0]).not.toHaveProperty('elements')
     expect(secondSavedDraft.document.slides[0].nodes).toHaveLength(2)
   })
 
   test('clears the saved marker after deleting the active freeform draft', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -1285,14 +1285,14 @@ test.describe('remote backend integration', () => {
     await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     const slideMeta = page.getByTestId('freeform-slide-meta')
     await expect(slideMeta).toContainText('已保存')
-    await page.getByRole('button', { name: /^草稿 · 1$/ }).click()
+    await page.getByRole('button', { name: /^我的草稿 · 1$/ }).click()
     await page
       .locator('.draft-item', { hasText: 'Page 1' })
       .getByRole('button', { name: '删除草稿' })
       .click()
 
     await expect(slideMeta).not.toContainText('已保存')
-    await expect(page.getByRole('button', { name: /^草稿$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^我的草稿$/ })).toBeVisible()
   })
 
   test('retains active images and blocks a new upload when pre-retain fails', async ({ page }) => {
@@ -1318,7 +1318,7 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -1348,7 +1348,7 @@ test.describe('remote backend integration', () => {
 
     await page.getByRole('button', { name: '保存草稿', exact: true }).click()
     await expect(page.getByTestId('freeform-slide-meta')).toContainText('已保存')
-    await expect(page.getByRole('button', { name: /^草稿 · 1$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^我的草稿 · 1$/ })).toBeVisible()
 
     failRetain = true
     const imagePostsBeforeBlockedUpload = imagePosts.length
@@ -1419,7 +1419,7 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await register(page, uniqueName())
@@ -1438,7 +1438,7 @@ test.describe('remote backend integration', () => {
     await notice.getByRole('button', { name: /关闭/ }).click()
     draftFailure = null
     await page.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(page.getByText('已保存')).toBeVisible()
+    await expect(page.locator('.pane-sub')).toContainText('已保存')
     await page.getByRole('button', { name: draftsButton }).click()
     await expect(page.getByText(marker).first()).toBeVisible()
 
@@ -1458,7 +1458,7 @@ test.describe('remote backend integration', () => {
   test('invalidates expired session after a recoverable auth check failure', async ({ page }) => {
     const pageErrors = collectPageErrors(page)
 
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     const registeredUser = await register(page, uniqueName())
@@ -1498,6 +1498,46 @@ test.describe('remote backend integration', () => {
     await expect(page.getByRole('alert')).toHaveCount(1)
     await expect(page.getByRole('alert')).toContainText('登录已过期')
     expect(await page.evaluate(() => localStorage.getItem('slicer.token.v1'))).toBeNull()
+    expect(pageErrors).toEqual([])
+  })
+
+  test('keeps library uploads through image GC until the asset is deleted', async ({ page }) => {
+    const pageErrors = collectPageErrors(page)
+
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    const login = page.getByTestId('login-page')
+    await expect(login).toContainText('账号保存在你部署的服务器上')
+    await login.getByRole('button', { name: '注册', exact: true }).click()
+    await login.getByLabel('用户名').fill(uniqueName())
+    await login.getByLabel('密码').fill('1234')
+    await page.getByTestId('login-submit').click()
+    await expect(page.getByTestId('workbench')).toBeVisible()
+
+    await page.getByRole('link', { name: /^素材库/ }).click()
+    const cards = page.getByTestId('asset-card')
+    await page.getByTestId('asset-file-input').setInputFiles({ name: '封面.png', mimeType: 'image/png', buffer: TEST_PNG })
+    await expect(cards).toHaveCount(1)
+    const coverSrc = await cards.first().locator('img').getAttribute('src')
+    expect(coverSrc).toMatch(new RegExp(`^${API_BASE}/uploads/`))
+
+    // Leases last 500 ms in this suite, and every upload runs image GC first.
+    await page.waitForTimeout(700)
+    await page.getByTestId('asset-file-input').setInputFiles({ name: '第二张.png', mimeType: 'image/png', buffer: TEST_PNG })
+    await expect(cards).toHaveCount(2)
+    expect((await page.request.get(coverSrc!)).status()).toBe(200)
+
+    await page.reload()
+    await expect(cards).toHaveCount(2)
+
+    const cover = cards.filter({ has: page.locator('.asset-name', { hasText: '封面' }) })
+    await cover.getByRole('button', { name: /更多操作/ }).click()
+    await page.getByRole('menuitem', { name: '删除' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
+    await expect(cards).toHaveCount(1)
+    // Deleting the asset runs GC: the upload is past its lease and no draft uses it.
+    await expect.poll(async () => (await page.request.get(coverSrc!)).status()).toBe(404)
     expect(pageErrors).toEqual([])
   })
 })

@@ -37,7 +37,7 @@ async function setDoc(page: import('@playwright/test').Page, text: string) {
 }
 
 test('Markdown workspace is the default workspace', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   const markdownTab = page.getByRole('tab', { name: 'Markdown 卡片' })
   await expect(markdownTab).toHaveAttribute('data-testid', 'workspace-tab-markdown')
   await expect(markdownTab).toHaveAttribute('aria-selected', 'true')
@@ -51,7 +51,7 @@ test('Markdown workspace is the default workspace', async ({ page }) => {
 
 test.describe('IME input in Markdown editor', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/#/edit')
     await page.waitForFunction(() => !!window.__cmView)
     await page.locator('.cm-content').click()
   })

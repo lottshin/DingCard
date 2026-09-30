@@ -31,10 +31,10 @@
     <!-- Critical first-paint background. Inlined so the correct color is up
          before the external stylesheet (loaded via the JS module) arrives,
          which is what caused the light-mode flash-to-black on reload. Keep the
-         values in sync with :root in styles.css. -->
+         values in sync with --bg in src/ui/tokens.css. -->
     <style>
-      html { background: #f4f4f5; }
-      html[data-theme='dark'] { background: #0b0b0d; }
+      html { background: #f5f4f1; }
+      html[data-theme='dark'] { background: #111110; }
       html { transition: background 0.3s ease; }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

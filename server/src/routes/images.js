@@ -38,26 +38,31 @@ function requestOrigin(request) {
   }
 }
 
+/** The managed upload path behind a root-relative or same-origin URL, or null. */
+export function requestManagedImagePath(value, request, uploadsPublicPath, origin = requestOrigin(request)) {
+  if (typeof value !== 'string') return null
+  const input = value.trim()
+  if (input === '' || /^data:/i.test(input)) return null
+
+  if (/^https?:\/\//i.test(input) || input.startsWith('//')) {
+    try {
+      if (!origin || new URL(input, origin).origin !== origin) return null
+    } catch {
+      return null
+    }
+  } else if (!input.startsWith('/')) {
+    return null
+  }
+
+  return normalizeManagedImagePath(input, uploadsPublicPath)
+}
+
 function retainedPaths(urls, request, uploadsPublicPath) {
   const origin = requestOrigin(request)
   const paths = new Set()
 
   for (const value of urls) {
-    if (typeof value !== 'string') continue
-    const input = value.trim()
-    if (input === '' || /^data:/i.test(input)) continue
-
-    if (/^https?:\/\//i.test(input) || input.startsWith('//')) {
-      try {
-        if (!origin || new URL(input, origin).origin !== origin) continue
-      } catch {
-        continue
-      }
-    } else if (!input.startsWith('/')) {
-      continue
-    }
-
-    const managedPath = normalizeManagedImagePath(input, uploadsPublicPath)
+    const managedPath = requestManagedImagePath(value, request, uploadsPublicPath, origin)
     if (!managedPath) continue
     paths.add(managedPath)
     if (paths.size > MAX_RETAINED_PATHS) return null

@@ -42,7 +42,7 @@ test.beforeEach(async ({ context }) => {
 })
 
 test('Markdown gallery renders three design systems and applies a complete document', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('markdown-template-button').click()
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
@@ -71,7 +71,7 @@ test('Markdown gallery renders three design systems and applies a complete docum
 })
 
 test('Markdown cancel keeps the current unsaved content intact', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   const weiboButton = page.getByRole('tablist', { name: '平台' })
     .getByRole('button', { name: '微博', exact: true })
   await weiboButton.click()
@@ -97,7 +97,7 @@ test('Markdown cancel keeps the current unsaved content intact', async ({ page }
 
   await useButton.click()
   await expect(confirm).toBeVisible()
-  await page.locator('.template-confirm-backdrop').click({ position: { x: 2, y: 2 } })
+  await page.locator('.template-confirm-backdrop').click({ position: { x: 24, y: 24 } })
   await expect(confirm).toBeHidden()
   await expect(useButton).toBeFocused()
   await expect(weiboButton).toHaveClass(/on/)
@@ -105,7 +105,7 @@ test('Markdown cancel keeps the current unsaved content intact', async ({ page }
 })
 
 test('gallery closes with keyboard or backdrop and restores the trigger focus', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   const trigger = page.getByTestId('markdown-template-button')
   await trigger.click()
 
@@ -122,7 +122,7 @@ test('gallery closes with keyboard or backdrop and restores the trigger focus', 
 })
 
 test('Freeform gallery renders real layers and starts a fresh history', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   await page.getByTestId('freeform-template-button').click()
 
@@ -172,7 +172,7 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
 })
 
 test('Freeform sidebar mounts scene nodes only near the visible thumbnails', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
   await page.getByTestId('freeform-template-button').click()
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
@@ -218,7 +218,9 @@ test('Freeform template exports keep full-bleed corners sealed', async ({ page }
   ]
 
   for (const scenario of scenarios) {
-    await page.goto('/')
+    // A hash-only goto keeps the current document, so leave the app to get a fresh editor.
+    await page.goto('about:blank')
+    await page.goto('/#/edit')
     await page.getByTestId('workspace-tab-freeform').click()
     await page.getByTestId('freeform-template-button').click()
     const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
@@ -244,7 +246,7 @@ test('Freeform template exports keep full-bleed corners sealed', async ({ page }
 
 test('gallery stays inside desktop and narrow viewports', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('markdown-template-button').click()
 
   for (const viewport of [
@@ -277,7 +279,7 @@ async function registerUser(page: import('@playwright/test').Page, username: str
 }
 
 test('Freeform work saves a user template, reuses it, and deletes it', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.getByTestId('workspace-tab-freeform').click()
 
   await expect(page.getByTestId('freeform-element')).toHaveCount(0)
@@ -334,7 +336,7 @@ test('Freeform work saves a user template, reuses it, and deletes it', async ({ 
 })
 
 test('Markdown work saves a user template with the live source and reuses it', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/edit')
   const editor = page.locator('.cm-content')
   await editor.click()
   await page.keyboard.press('ControlOrMeta+a')

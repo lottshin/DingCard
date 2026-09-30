@@ -21,6 +21,7 @@ function image(overrides = {}) {
 function createDeps(overrides = {}) {
   return {
     listDraftDocuments: async () => [],
+    listAssetPaths: async () => [],
     listImages: async () => [],
     removeFile: async () => undefined,
     deleteImage: async () => undefined,
@@ -52,6 +53,21 @@ test('reclaimExpiredImages preserves expired images referenced by relative or ab
   })
   assert.deepEqual(removed, [])
   assert.deepEqual(deleted, [])
+})
+
+test('reclaimExpiredImages preserves expired images kept in the asset library', async () => {
+  const removed = []
+  const deps = createDeps({
+    listAssetPaths: async () => [{ image_path: '/uploads/image-1.png' }, { image_path: 'not-managed' }],
+    listImages: async () => [image(), image({ id: 'image-2', path: '/uploads/image-2.png', bytes: 7 })],
+    removeFile: async (diskPath) => removed.push(path.basename(diskPath)),
+  })
+
+  assert.deepEqual(await reclaimExpiredImages(deps, 'user-1', 100), {
+    reclaimedBytes: 7,
+    aborted: false,
+  })
+  assert.deepEqual(removed, ['image-2.png'])
 })
 
 test('reclaimExpiredImages preserves unreferenced images with a valid lease', async () => {
@@ -252,6 +268,10 @@ test('reclaimExpiredImages rejects invalid calls with stable errors', async () =
   await assert.rejects(reclaimExpiredImages(null, 'user-1', 100), {
     name: 'TypeError',
     message: 'deps must be an object',
+  })
+  await assert.rejects(reclaimExpiredImages({ ...deps, listAssetPaths: undefined }, 'user-1', 100), {
+    name: 'TypeError',
+    message: 'deps.listAssetPaths must be a function',
   })
   await assert.rejects(reclaimExpiredImages({ ...deps, removeFile: null }, 'user-1', 100), {
     name: 'TypeError',

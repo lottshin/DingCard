@@ -245,7 +245,7 @@ const baseTheme = EditorView.theme({
     fontFamily: 'var(--editor-font)',
     fontSize: '15px',
     lineHeight: '1.9',
-    padding: '22px 26px 44px',
+    padding: '24px 28px 64px',
     overflow: 'auto',
   },
   '.cm-content': { caretColor: 'var(--accent)', maxWidth: '100%' },
@@ -265,7 +265,7 @@ const baseTheme = EditorView.theme({
   '.cm-md-code': {
     fontFamily: 'var(--mono)',
     fontSize: '0.9em',
-    background: 'rgba(127,127,127,0.15)',
+    background: 'var(--surface-3)',
     padding: '1px 5px',
     borderRadius: '4px',
   },
@@ -277,7 +277,7 @@ const baseTheme = EditorView.theme({
   '.cm-md-codeblock': {
     fontFamily: 'var(--mono)',
     fontSize: '0.9em',
-    background: 'rgba(127,127,127,0.12)',
+    background: 'var(--surface-3)',
     padding: '0 14px',
   },
   '.cm-md-link': { color: 'var(--accent-text)', textDecoration: 'underline' },
@@ -356,6 +356,7 @@ interface Props {
   fontFamily: string
   beforeImageUpload?: () => Promise<void>
   onImageError?: (error: unknown) => void
+  onViewReady?: (view: EditorView) => void
 }
 
 /**
@@ -371,6 +372,7 @@ export function MarkdownEditor({
   fontFamily,
   beforeImageUpload,
   onImageError,
+  onViewReady,
 }: Props) {
   const extensions = useMemo(
     () => [
@@ -414,6 +416,7 @@ export function MarkdownEditor({
       onCreateEditor={(view) => {
         // Expose the EditorView for automated tests (dev only).
         if (import.meta.env.DEV) (window as unknown as { __cmView?: EditorView }).__cmView = view
+        onViewReady?.(view)
       }}
     />
   )

@@ -1,38 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="叮卡">
   <title>叮卡</title>
   <defs>
-    <linearGradient id="tile" x1="6" y1="2" x2="58" y2="62" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#e2570f"/>
-      <stop offset="1" stop-color="#9a3208"/>
+    <linearGradient id="fav-base" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1c1917"/>
+      <stop offset="100%" stop-color="#09090b"/>
     </linearGradient>
-    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="30" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    <linearGradient id="fav-amber" x1="20" y1="12" x2="48" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#ea580c"/>
     </linearGradient>
-    <linearGradient id="glass" x1="24" y1="18" x2="44" y2="47" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.66"/>
-    </linearGradient>
-    <radialGradient id="spark" cx="0.35" cy="0.3" r="0.8">
-      <stop offset="0" stop-color="#fff7ed"/>
-      <stop offset="1" stop-color="#fcd9b6"/>
-    </radialGradient>
-    <clipPath id="coinClip"><circle cx="32" cy="32" r="32"/></clipPath>
   </defs>
 
-  <!-- Round coin base (tab favicon reads best as a circle). -->
-  <circle cx="32" cy="32" r="32" fill="url(#tile)"/>
-  <g clip-path="url(#coinClip)">
-    <rect width="64" height="64" fill="url(#sheen)"/>
-    <!-- Fanned deck. -->
-    <rect x="22" y="17" width="20" height="29" rx="4.5"
-          fill="#fdefdd" opacity="0.42" transform="rotate(-13 32 44)"/>
-    <g transform="rotate(10 32 44)">
-      <rect x="24" y="18" width="20" height="29" rx="4.5" fill="url(#glass)"/>
-      <rect x="24" y="18" width="20" height="29" rx="4.5"
-            fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1"/>
-      <circle cx="44" cy="18" r="6.5" fill="url(#tile)"/>
-      <circle cx="44" cy="18" r="4.5" fill="url(#spark)"/>
-    </g>
+  <!-- 圆形基底更适合浏览器标签页 -->
+  <circle cx="32" cy="32" r="32" fill="url(#fav-base)"/>
+  <circle cx="32" cy="32" r="31" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+
+  <!-- 负空间几何切片字标 "D" -->
+  <g transform="translate(2, 0)">
+    <!-- 左侧卡片主轴 (Spine) -->
+    <rect x="15" y="14" width="7" height="36" rx="3.5" fill="#f4f4f5"/>
+
+    <!-- 右侧上半切片 (Amber Slice) -->
+    <path d="M26 14H35C42.732 14 49 20.268 49 28C49 29.5 48.7 30.9 48.1 32.2L36.5 20.6C35.7 19.8 34.6 19.3 33.4 19.3H26V14Z" fill="url(#fav-amber)"/>
+
+    <!-- 右侧下半切片 (Light Slice) -->
+    <path d="M26 26.5L43.5 44H35C30.0294 44 26 39.9706 26 35V26.5Z" fill="#f4f4f5" fill-opacity="0.95"/>
+
+    <!-- 裁切缝微光核心 (Spark) -->
+    <circle cx="37" cy="27" r="2.5" fill="#ffffff"/>
   </g>
 </svg>

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Card } from '../Card'
 import { FreeformSlidePreview } from '../freeform/FreeformSlidePreview'
-import { parseBlocks } from '../markdown'
 import { buildConfig, DEFAULT_PROFILE, FONTS, PLATFORMS, resolveTheme } from '../theme'
-import { resolveMarkdownPageRole } from './markdownPresentation'
+import { CloseIcon } from '../ui/icons'
+import { markdownFirstPage, previewStyle } from './previewModel'
 import { templatesForWorkspace } from './registry'
-import type { MarkdownTemplateDocument, TemplateDefinition, TemplateWorkspace } from './types'
+import type { TemplateDefinition, TemplateWorkspace } from './types'
 
 interface TemplateGalleryProps {
   open: boolean
@@ -18,43 +18,6 @@ interface TemplateGalleryProps {
   onDeleteUserTemplate?: (id: string) => void
   onClose: () => void
   onApply: (template: TemplateDefinition) => void
-}
-
-function markdownFirstPage(document: MarkdownTemplateDocument) {
-  const blocks = parseBlocks(document.source)
-  const firstPage = [] as typeof blocks
-  for (const block of blocks) {
-    if (block.isBreak) break
-    firstPage.push(block)
-  }
-  const lastContentBlock = [...blocks].reverse().find((block) => !block.isBreak)
-  return {
-    html: firstPage.map((block) => block.html).join(''),
-    role: resolveMarkdownPageRole({
-      themeId: document.themeId,
-      blocks: firstPage,
-      pageIndex: 0,
-      includesLastContentBlock:
-        lastContentBlock !== undefined && firstPage.includes(lastContentBlock),
-    }),
-  }
-}
-
-function previewStyle(scale: number, radius: number, config: ReturnType<typeof buildConfig>): CSSProperties {
-  return {
-    '--card-w': `${config.width}px`,
-    '--card-h': `${config.height}px`,
-    '--card-pad': `${config.padding}px`,
-    '--card-bg': config.background,
-    '--card-fg': config.color,
-    '--card-accent': config.accent,
-    '--card-font': config.fontFamily,
-    '--card-fs': `${config.fontSize}px`,
-    '--card-lh': String(config.lineHeight),
-    '--card-gap': `${config.blockGap}px`,
-    '--card-radius': `${radius}px`,
-    '--template-scale': String(scale),
-  } as CSSProperties
 }
 
 function MarkdownTemplatePreview({ template, detail = false }: { template: TemplateDefinition; detail?: boolean }) {
@@ -248,7 +211,7 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, userTempla
             <h2 id='template-gallery-title'>从一套成品开始</h2>
             <p className='template-dialog-subtitle'>样式和内容都可以继续改，先选一套接近你想法的。</p>
           </div>
-          <button className='template-close' type='button' aria-label='关闭模板中心' title='关闭' onClick={onClose}>×</button>
+          <button className='template-close' type='button' aria-label='关闭模板中心' title='关闭' onClick={onClose}><CloseIcon /></button>
         </header>
 
         <div className='template-dialog-body'>

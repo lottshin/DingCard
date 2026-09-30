@@ -12,6 +12,7 @@ import { config as defaultConfig } from './config.js'
 import { createDatabase } from './db.js'
 import { reclaimExpiredImages } from './imageGc.js'
 import authPlugin from './plugins/auth.js'
+import assetRoutes from './routes/assets.js'
 import authRoutes from './routes/auth.js'
 import draftRoutes from './routes/drafts.js'
 import imageRoutes from './routes/images.js'
@@ -46,6 +47,7 @@ export async function buildApp({
     const reclaimImages = (userId) => reclaimExpiredImages(
       {
         listDraftDocuments: (ownerId) => appStmts.listDraftDocuments.all(ownerId),
+        listAssetPaths: (ownerId) => appStmts.listAssetPaths.all(ownerId),
         listImages: (ownerId) => appStmts.listImages.all(ownerId),
         removeFile: fs.unlink,
         deleteImage: (imageId, ownerId) => appStmts.deleteImage.run(imageId, ownerId),
@@ -98,6 +100,14 @@ export async function buildApp({
     })
     await app.register(imageRoutes, {
       prefix: '/api/images',
+      assetLock,
+      config: appConfig,
+      stmts: appStmts,
+      reclaimImages,
+    })
+
+    await app.register(assetRoutes, {
+      prefix: '/api/assets',
       assetLock,
       config: appConfig,
       stmts: appStmts,

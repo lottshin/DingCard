@@ -10,6 +10,7 @@ import * as draftsImpl from '../drafts'
 import type { SaveDraftInput } from '../drafts'
 import { materializeLocalFreeformImages } from '../freeform/imageAssets'
 import * as imagesImpl from '../imageStore'
+import { createLocalAssetStore } from './localAssets'
 import type { AuthStore, DraftStore, ImageStore, Storage } from './types'
 
 const auth: AuthStore = {
@@ -56,5 +57,5 @@ const drafts: DraftStore = {
 }
 
 export function createLocalStore(): Storage {
-  return { auth, drafts, images, remote: false }
+  return { auth, drafts, images, assets: createLocalAssetStore(), remote: false }
 }

@@ -33,7 +33,7 @@ function validateInputs(deps, userId, now) {
     throw new TypeError('now must be a finite number')
   }
 
-  for (const name of ['listDraftDocuments', 'listImages', 'removeFile', 'deleteImage']) {
+  for (const name of ['listDraftDocuments', 'listAssetPaths', 'listImages', 'removeFile', 'deleteImage']) {
     requireFunction(deps, name)
   }
   for (const name of ['uploadsDir', 'uploadsPublicPath']) {
@@ -98,6 +98,12 @@ export async function reclaimExpiredImages(deps, userId, now) {
     for (const pathname of collectManagedImagePaths(document, deps.uploadsPublicPath)) {
       referencedPaths.add(pathname)
     }
+  }
+
+  // Library assets keep their uploads alive exactly like draft references do.
+  for (const row of await deps.listAssetPaths(userId)) {
+    const pathname = normalizeManagedImagePath(row?.image_path, deps.uploadsPublicPath)
+    if (pathname) referencedPaths.add(pathname)
   }
 
   const images = await deps.listImages(userId)

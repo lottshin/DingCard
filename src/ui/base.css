@@ -1,0 +1,33 @@
+html {
+  background: var(--bg);
+}
+
+body {
+  font-family: var(--ui-font);
+  font-feature-settings: 'kern';
+  color: var(--text);
+  background: var(--bg);
+}
+
+::selection {
+  background: var(--accent-weak-2);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* The exported card must render exactly as it does without the new chrome:
+   pin the font its social header inherits, and keep shadow off the node that
+   html-to-image snapshots (a shadow there bleeds into the PNG's rounded
+   corners and would vary with the app theme). The preview frame carries the
+   elevation instead. */
+.card {
+  font-family: 'Instrument Sans', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  box-shadow: none;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

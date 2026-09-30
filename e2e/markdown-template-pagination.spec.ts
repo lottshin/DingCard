@@ -13,7 +13,7 @@ declare global {
 
 test.beforeEach(async ({ context, page }) => {
   await installOfflineFontRoutes(context)
-  await page.goto('/')
+  await page.goto('/#/edit')
   await page.waitForFunction(() => !!window.__cmView)
 })
 
@@ -226,7 +226,9 @@ test('editorial and theatre templates use the v20 masthead on every social page'
   ]
 
   for (const template of templates) {
-    await page.goto('/')
+    // A hash-only goto keeps the current document, so leave the app to get a fresh editor.
+    await page.goto('about:blank')
+    await page.goto('/#/edit')
     await page.waitForFunction(() => !!window.__cmView)
     await applyTemplate(page, template.name)
     const platformButtons = page.locator('.seg[role="tablist"]').first().locator('button')
@@ -373,7 +375,9 @@ test('public-theatre quote keeps its signal clear of supporting text on every pl
 
 test('social template headers contain long profile text without changing height', async ({ page }) => {
   for (const templateName of ['编辑档案', '公共剧场', '议题封面']) {
-    await page.goto('/')
+    // A hash-only goto keeps the current document, so leave the app to get a fresh editor.
+    await page.goto('about:blank')
+    await page.goto('/#/edit')
     await page.waitForFunction(() => !!window.__cmView)
     await applyTemplate(page, templateName)
     await page.getByRole('button', { name: '个人资料', exact: true }).click()

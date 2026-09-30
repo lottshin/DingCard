@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { AVATAR_COLORS, type Profile } from './theme'
+import { CloseIcon } from './ui/icons'
 
 interface ProfileModalProps {
   profile: Profile
@@ -33,7 +34,7 @@ export function ProfileModal({ profile, onSave, onClose }: ProfileModalProps) {
         <div className="modal-head">
           <h3>个人资料</h3>
           <button className="modal-x" onClick={onClose} aria-label="关闭">
-            ×
+            <CloseIcon />
           </button>
         </div>
 
