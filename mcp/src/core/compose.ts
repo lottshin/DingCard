@@ -238,7 +238,81 @@ function freeRoom(node: FreeformTextElement, siblings: readonly FreeformSceneNod
   return { top: Math.min(top, own.y), bottom: Math.max(bottom, own.y + own.height) }
 }
 
-function fillSlide(slide: FreeformSlide, slots: SlideSlots, fill: SlideFill): FilledSlide {
+/** Every text a page's slots fill. */
+function slotTexts(slots: SlideSlots): string[] {
+  const names: string[] = typeof slots.title === 'string' ? [slots.title] : [...slots.title]
+  const add = (item: SlotItem | undefined) => {
+    if (!item) return
+    names.push(item.text)
+    if (item.note) names.push(item.note)
+  }
+  if (slots.lead) names.push(slots.lead)
+  slots.items?.forEach(add)
+  if (slots.list) names.push(slots.list)
+  add(slots.quote)
+  slots.toc?.items?.forEach(add)
+  if (slots.toc?.list) names.push(slots.toc.list)
+  return names
+}
+
+/**
+ * A slot's box, kept clear of the texts it overlaps. Templates sometimes draw
+ * a box over the item beside it or the note under it (their samples are short
+ * enough not to meet), and copy filling the whole box would run into that
+ * text: the box ends where a text under it begins, and where a text beside it
+ * begins on the side its lines grow toward (both boxes' padding still keeps
+ * the words apart). Only texts starting past its middle count, so it keeps at
+ * least half of each side.
+ */
+function clearOfTexts(node: FreeformTextElement, siblings: readonly FreeformSceneNode[]): FreeformTextElement {
+  if (node.vertical) return node
+  const middleX = node.x + node.width / 2
+  const middleY = node.y + node.height / 2
+  let left = node.x
+  let right = node.x + node.width
+  let bottom = node.y + node.height
+  for (const sibling of siblings) {
+    if (sibling === node || sibling.type !== 'text' || sibling.hidden) continue
+    const rowOverlap = Math.min(node.y + node.height, sibling.y + sibling.height) - Math.max(node.y, sibling.y)
+    const columnOverlap = Math.min(node.x + node.width, sibling.x + sibling.width) - Math.max(node.x, sibling.x)
+    if (rowOverlap <= 0 || columnOverlap <= 0) continue
+    const sameRow = rowOverlap >= Math.min(node.height, sibling.height) / 2
+    if (sameRow && sibling.x > middleX) {
+      if (node.align !== 'right') right = Math.min(right, sibling.x)
+    } else if (sameRow && sibling.x + sibling.width < middleX) {
+      if (node.align !== 'left') left = Math.max(left, sibling.x + sibling.width)
+    } else if (columnOverlap >= Math.min(node.width, sibling.width) / 2 && sibling.y > middleY) {
+      bottom = Math.min(bottom, sibling.y)
+    }
+  }
+  if (node.align === 'center') {
+    const half = Math.min(middleX - left, right - middleX)
+    left = middleX - half
+    right = middleX + half
+  }
+  if (left === node.x && right === node.x + node.width && bottom === node.y + node.height) return node
+  const x = Math.round(left)
+  return { ...node, x, width: Math.round(right) - x, height: Math.round(bottom) - node.y }
+}
+
+function fillSlide(template: FreeformSlide, slots: SlideSlots, fill: SlideFill): FilledSlide {
+  // Sample copy that is always removed is nothing to keep clear of.
+  const alwaysRemoved = new Set(slots.remove?.flatMap((item) => [item.text, ...(item.note ? [item.note] : []), ...(item.extras ?? [])]))
+  const staying = template.nodes.filter((node) => !alwaysRemoved.has(node.name))
+  const slotNames = new Set(slotTexts(slots))
+  const cleared = new Set<string>()
+  const slide: FreeformSlide = {
+    ...template,
+    nodes: template.nodes.map((node) => {
+      if (node.type !== 'text' || !slotNames.has(node.name)) return node
+      const clear = clearOfTexts(node, staying)
+      if (clear !== node) cleared.add(node.name)
+      return clear
+    }),
+  }
+  const kept = slide.nodes.filter((node) => !alwaysRemoved.has(node.name))
+  /** The sample that lends a box its room (see textFits); a cleared box has only the room it shows. */
+  const sampleOf = (node: FreeformTextElement) => (cleared.has(node.name) ? undefined : node.text)
   const texts = new Map<string, string>()
   const remove = new Set<string>()
   const dropItem = (item: SlotItem | undefined) => {
@@ -273,12 +347,23 @@ function fillSlide(slide: FreeformSlide, slots: SlideSlots, fill: SlideFill): Fi
   }
 
   const numbered = (index: number, text: string) => (slots.numberedItems ? `${pad(index + 1)}\n${text}` : text)
+  /**
+   * Whether a text can take `text`: at the smallest size copy shrinks to, in
+   * its box or in the free room the box may grow into (as fitting it does).
+   */
+  const canHold = (node: FreeformTextElement, text: string) => {
+    const size = node.fontSize * MIN_FIT_SCALE
+    if (textFits(node, text, size, sampleOf(node))) return true
+    if (node.vertical) return false
+    const room = freeRoom(node, kept, slide)
+    return textFits({ ...node, y: room.top, height: room.bottom - room.top }, text, size, sampleOf(node))
+  }
   /** A point as an item shows it: its own words, or split into the item's two lines. */
   const itemParts = (item: SlotItem, point: string, index: number): [string, string | null] => {
     let [text, note] = item.note ? splitNote(point) : [point, null]
     const textNode = textNodeNamed(slide, item.text)
     if (item.note && note === null && textNode
-      && !textFits(textNode, numbered(index, text), textNode.fontSize * MIN_FIT_SCALE, textNode.text)) {
+      && !textFits(textNode, numbered(index, text), textNode.fontSize * MIN_FIT_SCALE, sampleOf(textNode))) {
       const comma = /[，,；;]/.exec(point)
       if (comma && comma.index > 0 && comma.index < point.length - 1) {
         text = point.slice(0, comma.index).trim()
@@ -290,9 +375,9 @@ function fillSlide(slide: FreeformSlide, slots: SlideSlots, fill: SlideFill): Fi
   const itemFits = (item: SlotItem, point: string, index: number) => {
     const [text, note] = itemParts(item, point, index)
     const textNode = textNodeNamed(slide, item.text)
-    if (!textNode || !textFits(textNode, text, textNode.fontSize * MIN_FIT_SCALE, textNode.text)) return false
+    if (!textNode || !canHold(textNode, text)) return false
     const noteNode = item.note && note ? textNodeNamed(slide, item.note) : null
-    return !noteNode || textFits(noteNode, note!, noteNode.fontSize * MIN_FIT_SCALE, noteNode.text)
+    return !noteNode || canHold(noteNode, note!)
   }
 
   const shown = points.slice(0, items.length)
@@ -405,7 +490,8 @@ function fillSlide(slide: FreeformSlide, slots: SlideSlots, fill: SlideFill): Fi
   const overflowing: FilledSlide['overflowing'] = []
   for (const [index, node] of nodes.entries()) {
     if (node.type !== 'text' || !texts.has(node.name)) continue
-    const sample = textNodeNamed(slide, node.name)?.text
+    const drawn = textNodeNamed(slide, node.name)
+    const sample = drawn ? sampleOf(drawn) : undefined
     if (textFits(node, node.text, node.fontSize, sample)) continue
     let fitted: FreeformTextElement = node
     if (!node.vertical) {

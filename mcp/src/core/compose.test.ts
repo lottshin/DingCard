@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import type { FreeformDocument, FreeformTextElement } from '../../../src/freeform/types'
 import { composeDeck, normalizeDeckContent, type DeckContent } from './compose'
 import { templateMarks } from './layoutIssues'
-import { freeformTemplateIds } from './templates'
+import { freeformTemplateIds, instantiateTemplate } from './templates'
 
 const CJK = /[㐀-鿿]/
 
@@ -15,6 +15,22 @@ const RICH: DeckContent = {
     { title: '周三：南瓜小米粥', body: '暖胃又顶饱。', points: ['南瓜切块', '小米洗净', '一起煮二十分钟', '最后焖五分钟'] },
   ],
   ending: { title: '明天吃什么？', body: '把这一周存下来。', points: ['收藏这一套', '周末备好食材'], quote: '吃好早餐 —— 编辑部' },
+}
+
+/** Points long enough to need more than one line in most items. */
+const LONG: DeckContent = {
+  title: '日落前十分钟的街头摄影',
+  subtitle: '一台手机就够，关键是等光',
+  pages: [
+    { title: '光线最好的时候', points: ['低角度的暖光：轮廓最清楚', '天空还有颜色，别急着收工', '路灯刚亮的那几分钟最好看'] },
+    {
+      title: '霓虹下的第一条街道',
+      body: '先找一面会反光的墙，再等人走进画面。',
+      points: ['把最亮的招牌拍成一整页的主角：注释说明一下为什么', '雨后的路面会反光，倒影比招牌更好看：低一点机位'],
+    },
+    { title: '构图', points: ['人物放在三分线上，留出他要走去的方向', '前景压一点暗部，画面更有层次'], quote: '等光比找角度更重要 —— 一位老摄影师' },
+  ],
+  ending: { title: '出门前检查一下', points: ['电量和存储空间都够吗', '镜头擦干净了吗', '想好今天只拍一种光'] },
 }
 
 function allTexts(document: FreeformDocument): FreeformTextElement[] {
@@ -110,6 +126,58 @@ describe('composeDeck', () => {
 
     const huge = compose('editorial-freeform', { title: '标题', pages: [{ title: '太长', body: long.repeat(12) }] })
     expect(huge.summary.overflowing.map((item) => item.node)).toContain('导语')
+  })
+
+  test('never runs the copy it writes into another text', () => {
+    const overlap = (a: FreeformTextElement, b: FreeformTextElement) =>
+      Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
+      && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y)
+    for (const templateId of freeformTemplateIds()) {
+      const instance = instantiateTemplate(templateId)
+      if (instance.workspace !== 'freeform') continue
+      for (const content of [RICH, LONG]) {
+        const { document, summary } = compose(templateId, content)
+        document.slides.forEach((slide, index) => {
+          const role = summary.pages[index].role
+          const drawn = instance.document.slides[role === 'cover' ? 0 : role === 'section' ? 1 : 2]
+          // Texts the template itself draws over each other are its own choice.
+          const untouched = (node: FreeformTextElement) => drawn.nodes.some((other) =>
+            other.type === 'text' && other.name === node.name && other.text === node.text
+            && other.x === node.x && other.y === node.y && other.width === node.width && other.height === node.height)
+          const texts = slide.nodes.filter((node): node is FreeformTextElement => node.type === 'text')
+          texts.forEach((a, at) => texts.slice(at + 1).forEach((b) => {
+            if (!overlap(a, b)) return
+            expect(untouched(a) && untouched(b), `${templateId} p${index + 1}: ${a.name} / ${b.name}`).toBe(true)
+          }))
+        })
+      }
+    }
+  })
+
+  test('keeps a long step in its own column, and a sign title off the note under it', () => {
+    const steps = compose('editorial-freeform', LONG).document.slides[1].nodes
+      .filter((node): node is FreeformTextElement => node.type === 'text' && node.name.startsWith('步骤'))
+    expect(steps.map((node) => node.text)).toEqual(['01\n低角度的暖光：轮廓最清楚', '02\n天空还有颜色，别急着收工', '03\n路灯刚亮的那几分钟最好看'])
+    // The template draws each step's box over the next one; the columns still start where they did.
+    expect(steps.map((node) => node.x)).toEqual([72, 366, 714])
+    expect(steps[0].x + steps[0].width).toBeLessThanOrEqual(steps[1].x)
+    expect(steps[1].x + steps[1].width).toBeLessThanOrEqual(steps[2].x)
+
+    const neon = compose('neon-freeform', LONG).document.slides[2].nodes
+    const title = neon.find((node) => node.name === '灯牌标题二') as FreeformTextElement
+    const note = neon.find((node) => node.name === '灯牌注释二') as FreeformTextElement
+    const card = neon.find((node) => node.name === '灯牌底板二')!
+    expect([title.text, note.text]).toEqual(['把最亮的招牌拍成一整页的主角', '注释说明一下为什么'])
+    expect(title.y + title.height).toBeLessThanOrEqual(note.y)
+    expect(title.y).toBeGreaterThanOrEqual(card.y)
+  })
+
+  test('keeps points in the items when they fit the room the items can grow into', () => {
+    const page = compose('signal-freeform', LONG).document.slides[3].nodes
+      .filter((node): node is FreeformTextElement => node.type === 'text')
+    expect(page.find((node) => node.name === '证据一')?.text).toBe('人物放在三分线上，留出他要走去的方向')
+    expect(page.find((node) => node.name === '证据二')?.text).toBe('前景压一点暗部，画面更有层次')
+    expect(page.some((node) => node.name === '左栏正文')).toBe(false)
   })
 
   test('rejects content it cannot place', () => {
