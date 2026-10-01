@@ -1,8 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import { insertFreeformText, startWithSettingsPanelOpen } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
   await installOfflineFontRoutes(context)
+  await startWithSettingsPanelOpen(page)
 })
 
 /**
@@ -53,8 +55,7 @@ async function selectTextRange(page: Page, start: number, end: number) {
 test('rich text spans: select, bold, color, survive edits, and delete', async ({ page }) => {
   await page.goto('/#/edit/canvas')
 
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   const textbox = page.getByTestId('freeform-textbox')
   await expect(textbox).toBeVisible()
   await textbox.click()
@@ -62,8 +63,9 @@ test('rich text spans: select, bold, color, survive edits, and delete', async ({
   await page.keyboard.type('重点加粗内容')
   await expect(textbox).toHaveText('重点加粗内容')
 
+  // The span tools appear once part of the text is selected.
   const spansSection = page.getByTestId('inspector-rich-spans')
-  await expect(spansSection).toBeVisible()
+  await expect(spansSection).toHaveCount(0)
 
   // Bold the first two characters.
   await selectTextRange(page, 0, 2)

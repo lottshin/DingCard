@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { t } from '../i18n'
 import { isFocusablePointerTarget } from './focusTarget'
 
@@ -7,8 +7,6 @@ export interface FreeformInsertMenuOption<T extends string> {
   label: string
   icon?: ReactNode
   testId?: string
-  /** List menus: how the label itself is set, as a preview of what gets inserted. */
-  labelStyle?: CSSProperties
 }
 
 export interface FreeformInsertMenuProps<T extends string> {
@@ -18,10 +16,6 @@ export interface FreeformInsertMenuProps<T extends string> {
   options: Array<FreeformInsertMenuOption<T>>
   onSelect: (id: T) => void
   onEscape?: () => void
-  /** `rail`: an icon-over-label tool in the vertical insert rail, opening a menu beside it. */
-  variant?: 'toolbar' | 'rail'
-  /** How a rail menu lays out its options: a grid of tiles, or rows that preview themselves. */
-  layout?: 'tiles' | 'list'
   icon?: ReactNode
 }
 
@@ -32,8 +26,6 @@ export function FreeformInsertMenu<T extends string>({
   options,
   onSelect,
   onEscape,
-  variant = 'toolbar',
-  layout = 'tiles',
   icon,
 }: FreeformInsertMenuProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -119,7 +111,7 @@ export function FreeformInsertMenu<T extends string>({
   }, [open, isActive])
 
   return (
-    <div className={variant === 'rail' ? 'freeform-insert-menu-control is-rail' : 'freeform-insert-menu-control'} ref={rootRef}>
+    <div className="freeform-insert-menu-control" ref={rootRef}>
       <button
         ref={triggerRef}
         className="freeform-insert-trigger"
@@ -133,16 +125,14 @@ export function FreeformInsertMenu<T extends string>({
       >
         {icon}
         <span>{t(label)}</span>
-        {variant === 'toolbar' && (
-          <svg viewBox="0 0 12 12" aria-hidden="true">
-            <path d="m3 4.5 3 3 3-3" />
-          </svg>
-        )}
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <path d="m3 4.5 3 3 3-3" />
+        </svg>
       </button>
 
       {open && (
         <div
-          className={variant === 'rail' ? `freeform-insert-menu is-${layout}` : 'freeform-insert-menu'}
+          className="freeform-insert-menu"
           id={menuId}
           role="menu"
           aria-label={t(label)}
@@ -188,7 +178,7 @@ export function FreeformInsertMenu<T extends string>({
               onClick={() => selectOption(option.id)}
             >
               {option.icon}
-              <span style={option.labelStyle}>{t(option.label)}</span>
+              <span>{t(option.label)}</span>
             </button>
           ))}
         </div>

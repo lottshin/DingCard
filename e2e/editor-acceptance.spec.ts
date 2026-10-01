@@ -1,12 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { performance } from 'node:perf_hooks'
+import { insertFreeformShape, insertFreeformText, startWithSettingsPanelOpen } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
   await installOfflineFontRoutes(context)
+  await startWithSettingsPanelOpen(page)
 })
 
 interface RuntimeIssue {
@@ -143,7 +145,7 @@ async function expectEditorLayout(page: Page) {
         }
         const toolbarControls = Array.from(
           document.querySelectorAll<HTMLElement>(
-            '[data-testid="app-header"] button, [data-testid="freeform-toolbar"] button, .freeform-stage-head button, .freeform-zoom-controls button',
+            '[data-testid="app-header"] button, [data-testid="freeform-toolbar"] button, .freeform-stage-head button, .freeform-zoom button',
           ),
         )
           .filter((control) => {
@@ -191,10 +193,7 @@ async function expectEditorLayout(page: Page) {
 }
 
 async function insertAcceptanceShape(page: Page, name: '矩形' | '圆形' | '三角形') {
-  await page.getByTestId('insert-shape').click()
-  await page.getByRole('menu', { name: '形状' })
-    .getByRole('menuitem', { name, exact: true })
-    .click()
+  await insertFreeformShape(page, name)
 }
 
 test('editor acceptance preserves styled artwork through auth, draft restore, responsive layout, and export', async ({ page }, testInfo) => {
@@ -223,8 +222,7 @@ test('editor acceptance preserves styled artwork through auth, draft restore, re
   await page.getByTestId('page-background-paint').getByTestId('paint-mode-linear-gradient').click()
   await expect(page.getByTestId('freeform-canvas')).toHaveCSS('background-image', /linear-gradient/)
 
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   const textElement = page.getByTestId('freeform-element').last()
   const textBox = page.getByTestId('freeform-textbox').last()
   await textBox.fill(uniqueText)

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
+import { duplicateCurrentPage, insertFreeformText, openFreeformTemplateGallery } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
 async function samplePngPixel(
@@ -123,7 +124,7 @@ test('gallery closes with keyboard or backdrop and restores the trigger focus', 
 
 test('Freeform gallery renders real layers and starts a fresh history', async ({ page }) => {
   await page.goto('/#/edit/canvas')
-  await page.getByTestId('freeform-template-button').click()
+  await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
   await expect(dialog.locator('.template-tile')).toHaveCount(8)
@@ -160,7 +161,7 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   expect(documentOverflow).toBeLessThanOrEqual(1)
   await page.setViewportSize({ width: 1440, height: 900 })
 
-  await page.getByTestId('freeform-template-button').click()
+  await openFreeformTemplateGallery(page)
   const reopenedDialog = page.getByRole('dialog', { name: '从一套成品开始' })
   await reopenedDialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
   const confirm = page.getByRole('alertdialog', { name: '用这套模板新建项目？' })
@@ -172,13 +173,13 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
 
 test('Freeform sidebar mounts scene nodes only near the visible thumbnails', async ({ page }) => {
   await page.goto('/#/edit/canvas')
-  await page.getByTestId('freeform-template-button').click()
+  await openFreeformTemplateGallery(page)
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
 
-  // The strip shows thumbnails side by side, so it takes more pages to run off-screen.
+  // Enough pages to run well past the page list's visible stretch.
   for (let index = 0; index < 22; index += 1) {
-    await page.getByRole('button', { name: '复制页面', exact: true }).click()
+    await duplicateCurrentPage(page)
   }
 
   const thumbnails = page.locator('.freeform-thumb')
@@ -220,7 +221,7 @@ test('Freeform template exports keep full-bleed corners sealed', async ({ page }
     // A hash-only goto keeps the current document, so leave the app to get a fresh editor.
     await page.goto('about:blank')
     await page.goto('/#/edit/canvas')
-    await page.getByTestId('freeform-template-button').click()
+    await openFreeformTemplateGallery(page)
     const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
     await dialog.locator('.template-tile-preview').nth(scenario.templateIndex).click()
     await dialog.locator('.template-use').click()
@@ -282,9 +283,8 @@ async function registerUser(page: import('@playwright/test').Page, username: str
 test('templates come from the repository only; the editors offer no way to save one', async ({ page }) => {
   await page.goto('/#/edit/canvas')
   await expect(page.getByRole('button', { name: '存为模板' })).toHaveCount(0)
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
-  await page.getByTestId('freeform-template-button').click()
+  await insertFreeformText(page)
+  await openFreeformTemplateGallery(page)
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
   await expect(gallery.locator('.template-tile')).toHaveCount(8)
   await expect(gallery.getByText('我的模板')).toHaveCount(0)
@@ -308,11 +308,10 @@ test('a signed-in template swap keeps the saved project and opens the template a
   await page.goto('/#/edit/canvas')
   await page.getByTestId('account-login').click()
   await registerUser(page, `tpl-swap-${Date.now()}`)
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
-  await page.getByTestId('freeform-template-button').click()
+  await openFreeformTemplateGallery(page)
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
   await gallery.getByRole('button', { name: '使用这套模板', exact: true }).click()
   const confirm = page.getByRole('alertdialog', { name: '用这套模板新建项目？' })
@@ -322,8 +321,7 @@ test('a signed-in template swap keeps the saved project and opens the template a
   await expect(page.getByTestId('editor-title')).toHaveText('编辑部')
   // The template is not a project until it is edited.
   await expect(page.getByTestId('editor-save-state')).toHaveCount(0)
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await page.getByTestId('editor-home').click()

@@ -53,6 +53,14 @@ describe('freeform view prefs', () => {
     expect(loadViewPrefs()).toEqual({ ...DEFAULT_VIEW_PREFS, guidesVisible: false })
   })
 
+  it('keeps the settings panel closed until it is opened, then remembers it', () => {
+    expect(DEFAULT_VIEW_PREFS.panelOpen).toBe(false)
+    saveViewPrefs({ ...DEFAULT_VIEW_PREFS, panelOpen: true })
+    expect(loadViewPrefs().panelOpen).toBe(true)
+    localStorage.setItem('slicer.freeform.prefs.v1', '{"panelOpen":"yes"}')
+    expect(loadViewPrefs().panelOpen).toBe(false)
+  })
+
   it('round-trips export options', () => {
     const prefs = {
       ...DEFAULT_VIEW_PREFS,

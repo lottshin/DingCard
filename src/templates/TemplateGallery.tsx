@@ -17,6 +17,8 @@ interface TemplateGalleryProps {
   currentIsSaved: boolean
   onClose: () => void
   onApply: (template: TemplateDefinition) => void
+  /** The template shown first when the gallery opens (a tile picked elsewhere). */
+  initialTemplateId?: string
 }
 
 function MarkdownTemplatePreview({ template, detail = false }: { template: TemplateDefinition; detail?: boolean }) {
@@ -42,15 +44,20 @@ function MarkdownTemplatePreview({ template, detail = false }: { template: Templ
   )
 }
 
-function FreeformTemplatePreview({ template, detail = false }: { template: TemplateDefinition; detail?: boolean }) {
+export function FreeformTemplatePreview({ template, detail = false, frame }: {
+  template: TemplateDefinition
+  detail?: boolean
+  /** Frame size for previews outside the gallery, such as the editor's templates panel. */
+  frame?: { width: number; height: number }
+}) {
   const document = useMemo(() => template.createFreeform?.(), [template])
   const slide = document?.slides[0]
   if (!slide) return null
   return (
     <FreeformSlidePreview
       slide={slide}
-      frameWidth={detail ? 224 : 162}
-      frameHeight={detail ? 299 : 216}
+      frameWidth={frame?.width ?? (detail ? 224 : 162)}
+      frameHeight={frame?.height ?? (detail ? 299 : 216)}
       className={detail ? 'template-freeform-preview detail' : 'template-freeform-preview'}
       artboardClassName='template-freeform-artboard'
     />
@@ -69,7 +76,7 @@ function focusableElements(dialog: HTMLElement): HTMLElement[] {
   ))
 }
 
-export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsSaved, onClose, onApply }: TemplateGalleryProps) {
+export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsSaved, onClose, onApply, initialTemplateId }: TemplateGalleryProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const pendingReturnFocusRef = useRef<HTMLElement | null>(null)
@@ -81,6 +88,11 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0]
   pendingRef.current = pending
   onCloseRef.current = onClose
+
+  useEffect(() => {
+    if (!open || !initialTemplateId) return
+    if (templates.some((template) => template.id === initialTemplateId)) setSelectedId(initialTemplateId)
+  }, [open, initialTemplateId])
 
   useEffect(() => {
     if (!open) return

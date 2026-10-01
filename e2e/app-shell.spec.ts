@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { insertFreeformText } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
 test.beforeEach(async ({ context }) => {
@@ -76,8 +77,7 @@ test('signing up offers to move the guest\'s work into the account', async ({ pa
   await page.goto('/')
   await page.getByTestId('login-guest').click()
   await page.getByTestId('system-freeform').getByRole('button', { name: '3:4', exact: true }).click()
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存到本机')
 
   const username = uniqueName('mover')
@@ -184,8 +184,7 @@ test('new projects carry their platform and page size and save themselves once e
   await page.getByTestId('system-freeform').getByRole('button', { name: '9:16', exact: true }).click()
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
   await expect(page.getByTestId('freeform-slide-size')).toHaveText('9:16 · 1080×1920px')
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
 
   await backToWorkbench(page)
@@ -208,10 +207,8 @@ test('new projects carry their platform and page size and save themselves once e
 test('edits made right before leaving the editor still reach the project', async ({ page }) => {
   await registerOnLoginPage(page)
   await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
+  await insertFreeformText(page)
   // Leave before the autosave pause runs out.
   await backToWorkbench(page)
   await page.getByRole('link', { name: /^我的项目/ }).click()
@@ -251,8 +248,7 @@ test('projects are renamed from the editor title or the project card', async ({ 
   // The open editor follows the rename instead of writing the old name back.
   await card.getByRole('button', { name: /^打开/ }).click()
   await expect(page.getByTestId('editor-title')).toHaveText('春季海报 · 终稿')
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await backToWorkbench(page)
   await expect(page.getByTestId('project-card')).toContainText('春季海报 · 终稿')
@@ -320,8 +316,7 @@ test('signed-in edits are already saved, so a new project opens without asking',
 test('projects can be duplicated and deleted from the workbench', async ({ page }) => {
   await registerOnLoginPage(page)
   await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await backToWorkbench(page)
 
@@ -341,8 +336,7 @@ test('projects can be duplicated and deleted from the workbench', async ({ page 
 test('deleting the open project clears the editor instead of saving it back', async ({ page }) => {
   await registerOnLoginPage(page)
   await page.getByTestId('system-freeform').getByRole('button', { name: '1:1', exact: true }).click()
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await insertFreeformText(page)
   await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
   await backToWorkbench(page)
 

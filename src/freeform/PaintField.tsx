@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   DEFAULT_PAGE_PAINT,
   isHexColor,
@@ -17,6 +17,7 @@ import {
 } from './recentColors'
 import type { ColorPaint, GradientStop, ShapeFill, SlideBackground } from './types'
 import { t } from '../i18n'
+import { MinusIcon } from '../ui/icons'
 
 export type PaintMode = 'solid' | 'linear-gradient' | 'radial-gradient' | 'transparent' | 'image'
 
@@ -73,6 +74,10 @@ interface ColorButtonProps {
   label: string
   color: string
   onChange: (color: string) => void
+  /** Test id of the swatch button (the popover keeps its own). */
+  testId?: string
+  /** `text`: an "A" underlined in the colour, for a text colour control. */
+  variant?: 'swatch' | 'text'
 }
 
 function clampChannel(value: number): number {
@@ -122,7 +127,7 @@ function eyeDropperConstructor(): EyeDropperConstructor | null {
   return typeof ctor === 'function' ? ctor : null
 }
 
-export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) {
+export function ColorPickerButton({ label, color, onChange, testId = 'paint-color-button', variant = 'swatch' }: ColorButtonProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
@@ -132,6 +137,8 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
   // when the popover closes (channel-slider noise never lands in the list).
   const sessionColorRef = useRef<string | null>(null)
   const rgb = hexToRgb(color)
+  // No colour: drawn as a slashed chip, like "none" in a design tool.
+  const empty = color === 'transparent'
 
   function openPopover() {
     // Re-read storage so parallel popovers (fill, gradient stops, stroke)
@@ -204,14 +211,23 @@ export function ColorPickerButton({ label, color, onChange }: ColorButtonProps) 
       <button
         ref={triggerRef}
         type="button"
-        className="paint-color-button"
-        data-testid="paint-color-button"
+        className={`paint-color-button${empty ? ' is-empty' : ''}${variant === 'text' ? ' is-text' : ''}`}
+        data-testid={testId}
         aria-label={label}
         aria-haspopup="dialog"
         aria-expanded={open}
-        style={{ background: color }}
+        style={variant === 'text'
+          ? ({ '--paint-color': color } as CSSProperties)
+          : empty ? undefined : { background: color }}
         onClick={() => (open ? closePopover() : openPopover())}
-      />
+      >
+        {variant === 'text' && (
+          <>
+            <span className="paint-color-letter" aria-hidden="true">A</span>
+            <span className="paint-color-bar" aria-hidden="true" />
+          </>
+        )}
+      </button>
       {open && (
         <div className="paint-popover" data-testid="paint-popover" role="dialog" aria-label={t('{label} 色板', { label })}>
           <div className="paint-popover-head">
@@ -460,7 +476,7 @@ export function PaintField({
           {isStopsGradient(gradient) ? (
             <div className="paint-stops" data-testid="paint-stops-list">
               {gradient.stops.map((stop, index) => (
-                <div className="paint-row" key={index}>
+                <div className="paint-row paint-stop-row" key={index}>
                   <ColorPickerButton
                     label={t('{label} 色标 {n} 颜色', { label, n: index + 1 })}
                     color={stop.color}
@@ -489,13 +505,14 @@ export function PaintField({
                   />
                   <button
                     type="button"
-                    className="ghost"
+                    className="paint-stop-remove"
                     data-testid={`paint-stop-${index}-remove`}
                     disabled={gradient.stops.length <= GRADIENT_STOPS_MIN}
                     onClick={() => removeStop(index)}
                     aria-label={t('{label} 删除色标 {n}', { label, n: index + 1 })}
+                    title={t('删除色标')}
                   >
-                    {t('删除')}
+                    <MinusIcon />
                   </button>
                 </div>
               ))}

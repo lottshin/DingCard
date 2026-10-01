@@ -283,6 +283,16 @@ export function SidebarIcon(props: IconProps) {
   )
 }
 
+/** A panel docked on the right: the editor's settings panel. */
+export function PanelRightIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2" />
+      <path d="M9.75 2.75v10.5" />
+    </Icon>
+  )
+}
+
 export function LanguageIcon(props: IconProps) {
   return (
     <Icon {...props}>

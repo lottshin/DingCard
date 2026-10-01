@@ -10,10 +10,31 @@ import {
   transformVector,
 } from '../src/freeform/sceneTransform'
 import type { FreeformSceneNode } from '../src/freeform/types'
+import {
+  duplicateCurrentPage,
+  fitFreeformCanvas,
+  openPageMenu,
+  openZoomMenu,
+  toggleViewOption,
+  viewOption,
+} from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
   await installOfflineFontRoutes(context)
+  // The settings panel opens on demand; these tests work in it, so it starts open
+  // (e2e/freeform-layout.spec.ts covers the closed default).
+  await page.addInitScript(() => {
+    const key = 'slicer.freeform.prefs.v1'
+    try {
+      const current = JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, unknown>
+      if (typeof current.panelOpen !== 'boolean') {
+        localStorage.setItem(key, JSON.stringify({ ...current, panelOpen: true }))
+      }
+    } catch {
+      localStorage.setItem(key, JSON.stringify({ panelOpen: true }))
+    }
+  })
 })
 
 const TEST_PNG = Buffer.from(
@@ -1078,22 +1099,34 @@ async function openNestedV3Draft(
   await openStoredDrafts(page, [draft])
 }
 
+/** Opens an insert panel from the tool rail, inserts from it, and closes it again. */
+async function withToolPanel(
+  page: import('@playwright/test').Page,
+  tool: 'text' | 'elements',
+  insert: (panel: import('@playwright/test').Locator) => Promise<void>,
+) {
+  const trigger = page.getByTestId(`freeform-${tool}-tool`)
+  const panel = page.getByTestId(`freeform-${tool}-drawer`)
+  if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
+  await expect(panel).toBeVisible()
+  await insert(panel)
+  await trigger.click()
+  await expect(panel).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+}
+
 async function insertText(page: import('@playwright/test').Page) {
-  await page.getByTestId('freeform-text-tool').click()
-  await page.getByTestId('insert-text').click()
+  await withToolPanel(page, 'text', (panel) => panel.getByTestId('insert-text').click())
 }
 
 async function insertShape(
   page: import('@playwright/test').Page,
-  label: '矩形' | '圆形' | '三角形' = '矩形',
+  label: '矩形' | '圆形' | '三角形' | '五角星' | '六边形' = '矩形',
 ) {
-  const trigger = page.getByTestId('insert-shape')
-  const menu = page.getByRole('menu', { name: '形状' })
-  await trigger.click()
-  await menu.getByRole('menuitem', { name: label, exact: true }).click()
-  await expect(menu).toHaveCount(0)
-  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  await expect(trigger).toBeFocused()
+  await withToolPanel(page, 'elements', (panel) => panel
+    .getByRole('group', { name: '形状' })
+    .getByRole('button', { name: label, exact: true })
+    .click())
 }
 
 async function insertImageElementAndShapeFill(page: import('@playwright/test').Page) {
@@ -1162,13 +1195,10 @@ async function insertLine(
   page: import('@playwright/test').Page,
   label: '直线' | '箭头',
 ) {
-  const trigger = page.getByTestId('insert-line')
-  const menu = page.getByRole('menu', { name: '线条' })
-  await trigger.click()
-  await menu.getByRole('menuitem', { name: label, exact: true }).click()
-  await expect(menu).toHaveCount(0)
-  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  await expect(trigger).toBeFocused()
+  await withToolPanel(page, 'elements', (panel) => panel
+    .getByRole('group', { name: '线条' })
+    .getByRole('button', { name: label, exact: true })
+    .click())
 }
 
 async function insertTwoSelectedRectangles(page: import('@playwright/test').Page) {
@@ -1213,7 +1243,8 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await openFreeform(page)
 
   await expect(page.getByTestId('inspector-page')).toBeVisible()
-  await expect(inspector.locator('.inspector-empty')).toContainText('选择')
+  // Nothing selected: the page settings, and no explanatory copy.
+  await expect(inspector.locator('.inspector-empty')).toHaveCount(0)
   await expectSections(['page'])
   const pagePaint = page.getByTestId('page-background-paint')
   await expect(pagePaint.getByTestId('paint-mode-solid')).toBeVisible()
@@ -1230,7 +1261,8 @@ test('inspector hierarchy shows only context-relevant sections in contract order
 
   await insertText(page)
   await setSelectedElementPosition(page, 420, 180)
-  await expectSections(['geometry', 'typography', 'rich-spans', 'fill', 'appearance', 'arrange', 'danger'])
+  // Text spans only show up once part of the text is selected.
+  await expectSections(['geometry', 'typography', 'fill', 'appearance', 'arrange', 'danger'])
   const textFill = page.getByTestId('text-fill-paint')
   await expect(textFill.getByTestId('paint-mode-solid')).toBeVisible()
   await expect(textFill.getByTestId('paint-mode-linear-gradient')).toBeVisible()
@@ -1262,7 +1294,6 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await page.getByTestId('freeform-canvas').click({ position: { x: 10, y: 10 } })
   await expect(selectedFreeformElements(page)).toHaveCount(0)
   await expect(page.getByTestId('inspector-page')).toBeVisible()
-  await expect(inspector.locator('.inspector-empty')).toHaveText('选择对象以编辑属性。')
   await expect(inspector.locator('input[type="number"]')).toHaveCount(0)
   await expect(page.getByTestId('line-stroke-color')).toHaveCount(0)
   await expectSections(['page'])
@@ -1851,7 +1882,7 @@ test('only the open editor exposes its toolbar, with one primary action in the t
   await expect(page.getByTestId('freeform-export')).toBeVisible()
   await expect(page.locator('.workspace-panel:not([hidden]) .toolbar-primary')).toHaveCount(1)
   const tools = page.getByRole('navigation', { name: '插入' })
-  for (const testId of ['freeform-template-button', 'freeform-text-tool', 'freeform-images-tool', 'insert-shape', 'insert-line']) {
+  for (const testId of ['freeform-template-button', 'freeform-text-tool', 'freeform-images-tool', 'freeform-elements-tool', 'freeform-layers-tool']) {
     await expect(tools.getByTestId(testId)).toBeVisible()
     const box = await tools.getByTestId(testId).boundingBox()
     expect(box!.width).toBeGreaterThanOrEqual(44)
@@ -1863,8 +1894,9 @@ test('only the open editor exposes its toolbar, with one primary action in the t
 })
 
 for (const viewport of [
-  { name: 'wide', width: 1440, height: 900, toolsWidth: 72, inspectorWidth: 248 },
-  { name: 'compact', width: 1024, height: 768, toolsWidth: 64, inspectorWidth: 224 },
+  // The settings panel is 21% of the window, between 256px and 304px.
+  { name: 'wide', width: 1440, height: 900, toolsWidth: 72, inspectorWidth: 302.4 },
+  { name: 'compact', width: 1024, height: 768, toolsWidth: 64, inspectorWidth: 256 },
 ]) {
   test(`freeform chrome fits the ${viewport.name} desktop viewport`, async ({ page }) => {
     await page.setViewportSize(viewport)
@@ -1885,14 +1917,17 @@ for (const viewport of [
 
     const toolsBox = await page.locator('.freeform-tools').boundingBox()
     const stageBox = await page.locator('.freeform-stage-pane').boundingBox()
-    const stripBox = await page.locator('.freeform-rail').boundingBox()
+    const pagesBox = await page.locator('.freeform-rail').boundingBox()
     const inspectorBox = await page.locator('.freeform-inspector').boundingBox()
     expect(toolsBox?.width).toBeCloseTo(viewport.toolsWidth, 0)
     expect(inspectorBox?.width).toBeCloseTo(viewport.inspectorWidth, 0)
-    // The page strip runs under the stage, exactly as wide.
-    expect(stripBox?.width).toBeCloseTo(stageBox!.width, 0)
-    expect(stripBox!.y).toBeGreaterThanOrEqual(stageBox!.y + stageBox!.height - 1)
-    await expect(page.locator('.freeform-slide-list')).toHaveCSS('overflow-x', 'auto')
+    // The page list runs down between the tools and the stage, as tall as the stage;
+    // nothing sits under the stage.
+    expect(pagesBox!.x).toBeCloseTo(toolsBox!.x + toolsBox!.width, 0)
+    expect(pagesBox!.x + pagesBox!.width).toBeCloseTo(stageBox!.x, 0)
+    expect(pagesBox!.height).toBeCloseTo(stageBox!.height, 0)
+    expect(stageBox!.y + stageBox!.height).toBeCloseTo(viewport.height, 0)
+    await expect(page.locator('.freeform-slide-list')).toHaveCSS('overflow-y', 'auto')
     await expect(page.locator('.freeform-stage-scroll')).toHaveCSS('overflow-y', 'auto')
     await expect(page.locator('.freeform-inspector')).toHaveCSS('overflow-y', 'auto')
 
@@ -1951,9 +1986,10 @@ test.describe('fit-relative freeform zoom', () => {
     await expect(page.getByTestId('freeform-export')).toBeEnabled()
   })
 
+  // The bottom edge keeps room for the zoom control in the corner.
   for (const viewport of [
-    { name: 'wide', width: 1440, height: 900, padding: 32 },
-    { name: 'compact', width: 1024, height: 768, padding: 24 },
+    { name: 'wide', width: 1440, height: 900, padding: 32, paddingBottom: 72 },
+    { name: 'compact', width: 1024, height: 768, padding: 24, paddingBottom: 72 },
   ]) {
     test(`fits common ratios at 100% in the ${viewport.name} stage`, async ({ page }) => {
       await page.setViewportSize(viewport)
@@ -1966,7 +2002,7 @@ test.describe('fit-relative freeform zoom', () => {
         expect(metrics.paddingLeft).toBeCloseTo(viewport.padding, 3)
         expect(metrics.paddingRight).toBeCloseTo(viewport.padding, 3)
         expect(metrics.paddingTop).toBeCloseTo(viewport.padding, 3)
-        expect(metrics.paddingBottom).toBeCloseTo(viewport.padding, 3)
+        expect(metrics.paddingBottom).toBeCloseTo(viewport.paddingBottom, 3)
       }
     })
 
@@ -1992,8 +2028,7 @@ test.describe('fit-relative freeform zoom', () => {
     const half = await expectFreeformCanvasMatchesZoom(page, 50, true)
     expect(half.renderedHeight).toBeCloseTo(fitted.renderedHeight / 2, 0)
 
-    await page.getByTestId('freeform-zoom-value').click()
-    await expect(page.getByTestId('freeform-zoom-value')).toHaveText('100%')
+    await fitFreeformCanvas(page)
     await setFreeformZoom(page, 110)
     await expect
       .poll(async () => {
@@ -2037,7 +2072,7 @@ test.describe('fit-relative freeform zoom', () => {
     expect(Math.abs(atRight.canvasRight - (atRight.stageRight - atRight.paddingRight))).toBeLessThanOrEqual(0.5)
   })
 
-  test('enforces zoom bounds and resets the middle control to 100%', async ({ page }) => {
+  test('enforces zoom bounds and fits the page again from the zoom menu', async ({ page }) => {
     await openFreeform(page)
     const shrink = page.getByRole('button', { name: '缩小画布', exact: true })
     const enlarge = page.getByRole('button', { name: '放大画布', exact: true })
@@ -2051,7 +2086,7 @@ test.describe('fit-relative freeform zoom', () => {
     await expect(enlarge).toBeDisabled()
     await expect(shrink).toBeEnabled()
 
-    await value.click()
+    await fitFreeformCanvas(page)
     await expect(value).toHaveText('100%')
     await expect(shrink).toBeEnabled()
     await expect(enlarge).toBeEnabled()
@@ -2138,24 +2173,22 @@ test('dark mode keeps freeform chrome controls and popovers legible', async ({ p
   expect(undoOpacity).toBeLessThan(1)
   await expect(undoButton).toHaveCSS('cursor', 'not-allowed')
 
-  const deletePageButton = page.getByRole('button', { name: '删除页面', exact: true })
-  await expect(deletePageButton).toBeDisabled()
-  expect(
-    Number(await deletePageButton.evaluate((button) => getComputedStyle(button).opacity)),
-  ).toBeLessThan(1)
-  await expect(deletePageButton).toHaveCSS('cursor', 'not-allowed')
+  // The only page can't be deleted; its menu says so by greying the entry out.
+  const pageMenu = await openPageMenu(page, 0)
+  const deletePageItem = pageMenu.getByTestId('freeform-slide-context-menu-delete')
+  await expect(deletePageItem).toBeDisabled()
+  const enabledColor = await pageMenu.getByTestId('freeform-slide-context-menu-duplicate')
+    .evaluate((item) => getComputedStyle(item).color)
+  await expect(deletePageItem).not.toHaveCSS('color', enabledColor)
+  await page.keyboard.press('Escape')
+  await expect(pageMenu).toHaveCount(0)
 
-  const pageNumberColors = await page.locator('.freeform-thumb-number').evaluate((element) => ({
+  const pageTitleColors = await page.locator('.freeform-thumb-title').evaluate((element) => ({
     foreground: getComputedStyle(element).color,
     background: getComputedStyle(element.closest('.freeform-rail')!).backgroundColor,
   }))
-  expect(contrastRatio(pageNumberColors.foreground, pageNumberColors.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(pageTitleColors.foreground, pageTitleColors.background)).toBeGreaterThanOrEqual(4.5)
 
-  const emptyHintColors = await page.locator('.freeform-inspector .inspector-empty').evaluate((element) => ({
-    foreground: getComputedStyle(element).color,
-    background: getComputedStyle(element.closest('.freeform-inspector')!).backgroundColor,
-  }))
-  expect(contrastRatio(emptyHintColors.foreground, emptyHintColors.background)).toBeGreaterThanOrEqual(4.5)
 
   await page.getByTestId('page-size-trigger').click()
   const pageSizePopover = page.getByTestId('page-size-popover')
@@ -2167,15 +2200,15 @@ test('dark mode keeps freeform chrome controls and popovers legible', async ({ p
   expect(contrastRatio(pageSizeColors.foreground, pageSizeColors.background)).toBeGreaterThanOrEqual(4.5)
   await page.keyboard.press('Escape')
 
-  await page.getByTestId('insert-shape').click()
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
-  const rectangle = shapeMenu.getByRole('menuitem', { name: '矩形' })
-  const menuColors = await rectangle.evaluate((element) => ({
+  await page.getByTestId('freeform-elements-tool').click()
+  const rectangle = page.getByTestId('freeform-elements-drawer').getByRole('button', { name: '矩形', exact: true })
+  const tileColors = await rectangle.evaluate((element) => ({
     foreground: getComputedStyle(element).color,
-    background: getComputedStyle(element.closest('[role="menu"]')!).backgroundColor,
+    background: getComputedStyle(element).backgroundColor,
   }))
-  expect(contrastRatio(menuColors.foreground, menuColors.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(tileColors.foreground, tileColors.background)).toBeGreaterThanOrEqual(4.5)
   await rectangle.click()
+  await page.getByTestId('freeform-elements-tool').click()
 
   const inspectorTitle = page.getByTestId('inspector-geometry').locator('.inspector-section-title')
   const inspectorColors = await inspectorTitle.evaluate((element) => ({
@@ -2205,7 +2238,7 @@ test('dark mode keeps freeform chrome controls and popovers legible', async ({ p
 
 test('freeform chrome provides visible pressed feedback', async ({ page }) => {
   await openFreeform(page)
-  const trigger = page.getByTestId('insert-shape')
+  const trigger = page.getByTestId('freeform-elements-tool')
   const box = await trigger.boundingBox()
   expect(box).toBeTruthy()
   const idleTransform = await trigger.evaluate((element) => getComputedStyle(element).transform)
@@ -2296,7 +2329,7 @@ test('freeform visual system uses approved runtime tokens and neutral stage rule
     }
   })
   expect(mainColumns.columns.at(0)).toBe('72px')
-  expect(mainColumns.columns.at(-1)).toBe('248px')
+  expect(Number.parseFloat(mainColumns.columns.at(-1)!)).toBeCloseTo(302.4, 0)
   expect(mainColumns.gap).toBe('0px')
   expect(mainColumns.padding).toBe('0px')
   expect(mainColumns.overflowX).toBe('hidden')
@@ -2305,9 +2338,6 @@ test('freeform visual system uses approved runtime tokens and neutral stage rule
   // The active page is outlined on the page itself (2px accent drop-shadow ring), not the thumb button.
   await expect(page.locator('.freeform-thumb.on .freeform-thumb-art'))
     .toHaveCSS('filter', /drop-shadow\(rgb\([^)]*\) 2px 0px 0px\)/)
-
-  await page.setViewportSize({ width: 1024, height: 768 })
-  await expect(page.getByTestId('freeform-slide-meta')).toHaveCSS('clip-path', 'inset(50%)')
 })
 
 test('arrow keys in the language menu do not nudge selected freeform elements', async ({ page }) => {
@@ -2707,13 +2737,13 @@ test('polyline vertex handles drag vertices and double-click edits them', async 
 test('switches to the freeform workspace and edits a slide', async ({ page }) => {
   await openFreeform(page)
 
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('1页')
+  await expect(page.getByTestId('freeform-thumb')).toHaveCount(1)
   await expect(page.getByTestId('freeform-slide-size')).toContainText('1080×1440px')
   await expect(page.getByTestId('freeform-canvas')).toBeVisible()
 
   await page.getByTestId('page-size-trigger').click()
   await page.getByRole('button', { name: '16:9', exact: true }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('1页')
+  await expect(page.getByTestId('freeform-thumb')).toHaveCount(1)
   await expect(page.getByTestId('freeform-slide-size')).toContainText('1920×1080px')
 
   await insertText(page)
@@ -2723,31 +2753,29 @@ test('switches to the freeform workspace and edits a slide', async ({ page }) =>
   await expect(page.getByTestId('freeform-shape')).toBeVisible()
 })
 
-test('inserts shapes and lines through accessible toolbar menus', async ({ page }) => {
+test('inserts shapes and lines from the elements panel', async ({ page }) => {
   await page.goto('/#/edit/canvas')
 
-  const shapeTrigger = page.getByTestId('insert-shape')
-  await expect(shapeTrigger).toHaveAttribute('aria-haspopup', 'menu')
-  await expect(shapeTrigger).not.toHaveClass(/bar-btn/)
-  await shapeTrigger.click()
-  await expect(shapeTrigger).toHaveAttribute('aria-expanded', 'true')
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
-  await expect(shapeMenu).toBeVisible()
-  await shapeMenu.getByRole('menuitem', { name: '矩形' }).click()
-  await expect(shapeTrigger).toHaveAttribute('aria-expanded', 'false')
+  const elementsTool = page.getByTestId('freeform-elements-tool')
+  const panel = page.getByRole('complementary', { name: '元素' })
+  await expect(elementsTool).toHaveAttribute('aria-expanded', 'false')
+  await elementsTool.click()
+  await expect(elementsTool).toHaveAttribute('aria-expanded', 'true')
+  await expect(panel).toBeVisible()
+  await panel.getByRole('group', { name: '形状' }).getByRole('button', { name: '矩形', exact: true }).click()
   await expect(page.getByTestId('freeform-shape')).toHaveCount(1)
+  // The panel stays open for the next insert, like Canva's.
+  await expect(panel).toBeVisible()
+  await panel.getByRole('group', { name: '线条' }).getByRole('button', { name: '直线', exact: true }).click()
+  await expect(page.getByTestId('freeform-line')).toHaveCount(1)
 
-  const lineTrigger = page.getByTestId('insert-line')
-  await lineTrigger.click()
-  const lineMenu = page.getByRole('menu', { name: '线条' })
-  await expect(lineMenu).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(lineMenu).toBeHidden()
-  await expect(lineTrigger).toHaveAttribute('aria-expanded', 'false')
-  await expect(lineTrigger).toBeFocused()
+  await expect(panel).toHaveCount(0)
+  await expect(elementsTool).toHaveAttribute('aria-expanded', 'false')
+  await expect(elementsTool).toBeFocused()
 })
 
-test('an open insert menu turns its rail icon ink in the dark theme', async ({ page }) => {
+test('an open insert panel turns its rail icon ink in the dark theme', async ({ page }) => {
   await openFreeform(page)
   if ((await page.locator('html').getAttribute('data-theme')) !== 'dark') {
     await page.getByTestId('theme-toggle').click()
@@ -2768,56 +2796,40 @@ test('an open insert menu turns its rail icon ink in the dark theme', async ({ p
     return colors
   })
 
-  const shapeTrigger = page.getByTestId('insert-shape')
-  const icon = shapeTrigger.locator('svg')
-  await shapeTrigger.click()
-  await expect(shapeTrigger).toHaveAttribute('aria-expanded', 'true')
+  const elementsTool = page.getByTestId('freeform-elements-tool')
+  const icon = elementsTool.locator('svg')
+  await elementsTool.click()
+  await expect(elementsTool).toHaveAttribute('aria-expanded', 'true')
   await expect(icon).toHaveCSS('background-color', inkColors.background)
   await expect(icon).toHaveCSS('color', inkColors.color)
 })
 
-test('switches insert menus without returning focus to the previous trigger', async ({ page }) => {
+test('rail panels open one at a time and insert styled text', async ({ page }) => {
   await openFreeform(page)
 
-  const shapeTrigger = page.getByTestId('insert-shape')
-  const lineTrigger = page.getByTestId('insert-line')
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
-  const lineMenu = page.getByRole('menu', { name: '线条' })
-
-  await shapeTrigger.click()
-  await expect(shapeMenu.getByRole('menuitem', { name: '矩形' })).toBeFocused()
-  await lineTrigger.click()
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
-
-  await expect(shapeMenu).toBeHidden()
-  await expect(lineMenu).toBeVisible()
-  await expect(lineMenu.getByRole('menuitem', { name: '直线' })).toBeFocused()
-})
-
-test('hands focus to the next rail tool when an open insert menu closes', async ({ page }) => {
-  await openFreeform(page)
-
-  const shapeTrigger = page.getByTestId('insert-shape')
+  const elementsTool = page.getByTestId('freeform-elements-tool')
   const textTool = page.getByTestId('freeform-text-tool')
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
-  const textMenu = page.getByRole('menu', { name: '文字' })
+  const elementsPanel = page.getByTestId('freeform-elements-drawer')
+  const textPanel = page.getByTestId('freeform-text-drawer')
 
-  await shapeTrigger.click()
-  await expect(shapeMenu).toBeVisible()
+  await elementsTool.click()
+  await expect(elementsPanel).toBeVisible()
   await textTool.click()
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
+  await expect(elementsPanel).toHaveCount(0)
+  await expect(textPanel).toBeVisible()
+  await expect(elementsTool).toHaveAttribute('aria-expanded', 'false')
+  await expect(textTool).toHaveAttribute('aria-expanded', 'true')
 
-  await expect(shapeMenu).toBeHidden()
-  await expect(textMenu.getByTestId('insert-text')).toBeFocused()
-  await textMenu.getByTestId('insert-text-heading').click()
-  await expect(textMenu).toBeHidden()
-  await expect(textTool).toBeFocused()
+  await textPanel.getByTestId('insert-text-heading').click()
   await expect(page.getByTestId('freeform-textbox')).toHaveCount(1)
   await expect(page.getByTestId('freeform-textbox')).toContainText('添加标题')
+  // Each default style shows itself the way it lands on the page.
+  const headingSize = await textPanel.getByTestId('insert-text-heading').evaluate((node) => parseFloat(getComputedStyle(node).fontSize))
+  const bodySize = await textPanel.getByTestId('insert-text-body').evaluate((node) => parseFloat(getComputedStyle(node).fontSize))
+  expect(headingSize).toBeGreaterThan(bodySize)
+
+  await textPanel.getByRole('button', { name: '关闭面板' }).click()
+  await expect(textPanel).toHaveCount(0)
 })
 
 test('keeps focus on an outside toolbar button when closing the page size popover', async ({ page }) => {
@@ -2829,113 +2841,93 @@ test('keeps focus on an outside toolbar button when closing the page size popove
 
   await pageSizeTrigger.click()
   await expect(pageSizePopover).toBeVisible()
-  await page.getByTestId('freeform-rulers-toggle').click()
+  const zoomIn = page.getByRole('button', { name: '放大画布', exact: true })
+  await zoomIn.click()
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
 
   await expect(pageSizePopover).toBeHidden()
-  await expect(page.getByTestId('freeform-rulers-toggle')).toBeFocused()
-  await expect(page.getByTestId('freeform-rulers-toggle')).toHaveAttribute('aria-pressed', 'true')
+  await expect(zoomIn).toBeFocused()
+  await expect(page.getByTestId('freeform-zoom-value')).toHaveText('110%')
   await expect(templateButton).toBeVisible()
 })
 
-test('hands focus from the page size popover to an insert menu', async ({ page }) => {
+test('opening an insert panel closes the page size popover without inserting', async ({ page }) => {
   await openFreeform(page)
 
   const undo = page.getByRole('button', { name: '撤销' })
   const pageSizeTrigger = page.getByTestId('page-size-trigger')
   const pageSizePopover = page.getByTestId('page-size-popover')
-  const shapeTrigger = page.getByTestId('insert-shape')
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
-  const rectangle = shapeMenu.getByRole('menuitem', { name: '矩形' })
+  const elementsTool = page.getByTestId('freeform-elements-tool')
 
   await expect(undo).toBeDisabled()
   await pageSizeTrigger.click()
   await expect(pageSizePopover).toBeVisible()
-  await shapeTrigger.click()
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
+  await elementsTool.click()
 
   await expect(pageSizePopover).toBeHidden()
-  await expect(shapeMenu).toBeVisible()
-  await expect(rectangle).toBeFocused()
+  await expect(page.getByTestId('freeform-elements-drawer')).toBeVisible()
   await expect(page.getByTestId('freeform-element')).toHaveCount(0)
   await expect(undo).toBeDisabled()
-})
 
-test('hands focus from an insert menu to the page size popover', async ({ page }) => {
-  await openFreeform(page)
-
-  const undo = page.getByRole('button', { name: '撤销' })
-  const pageSizeTrigger = page.getByTestId('page-size-trigger')
-  const pageSizePopover = page.getByTestId('page-size-popover')
-  const selectedPreset = pageSizePopover.getByRole('button', { name: '3:4', exact: true })
-  const shapeTrigger = page.getByTestId('insert-shape')
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
-
-  await expect(undo).toBeDisabled()
-  await shapeTrigger.click()
-  await expect(shapeMenu).toBeVisible()
+  // The panel is docked, so the popover opens beside it.
   await pageSizeTrigger.click()
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
-
-  await expect(shapeMenu).toBeHidden()
   await expect(pageSizePopover).toBeVisible()
-  await expect(selectedPreset).toBeFocused()
-  await expect(page.getByTestId('freeform-element')).toHaveCount(0)
+  await expect(pageSizePopover.getByRole('button', { name: '3:4', exact: true })).toBeFocused()
+  await expect(page.getByTestId('freeform-elements-drawer')).toBeVisible()
   await expect(undo).toBeDisabled()
 })
 
-test('closes an insert menu when tabbing to another toolbar trigger', async ({ page }) => {
+test('closes a toolbar menu when tabbing to the next toolbar trigger', async ({ page }) => {
   await openFreeform(page)
+  await insertShape(page)
 
-  const shapeTrigger = page.getByTestId('insert-shape')
-  const lineTrigger = page.getByTestId('insert-line')
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
-  const lineMenu = page.getByRole('menu', { name: '线条' })
+  const bar = page.getByTestId('freeform-context-toolbar')
+  const alignTrigger = bar.getByTestId('ctx-align-menu')
+  const orderTrigger = bar.getByTestId('ctx-order-menu')
+  const alignMenu = page.getByRole('menu', { name: '位置' })
+  const orderMenu = page.getByRole('menu', { name: '层级' })
 
-  await shapeTrigger.click()
-  await expect(shapeMenu.getByRole('menuitem', { name: '矩形' })).toBeFocused()
+  await alignTrigger.click()
+  await expect(alignMenu.getByRole('menuitem').first()).toBeFocused()
   await page.keyboard.press('Tab')
 
-  await expect(lineTrigger).toBeFocused()
-  await expect(shapeMenu).toBeHidden()
+  await expect(orderTrigger).toBeFocused()
+  await expect(alignMenu).toBeHidden()
   await page.keyboard.press('Enter')
-  await expect(lineMenu).toBeVisible()
+  await expect(orderMenu).toBeVisible()
   await expect(page.getByRole('menu')).toHaveCount(1)
 })
 
-test('closes the page size popover before keyboard-opening an insert menu', async ({ page }) => {
+test('closes the page size popover before keyboard-opening a toolbar menu', async ({ page }) => {
   await openFreeform(page)
+  await insertShape(page)
 
   const pageSizeTrigger = page.getByTestId('page-size-trigger')
   const pageSizePopover = page.getByTestId('page-size-popover')
-  const shapeTrigger = page.getByTestId('insert-shape')
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const orderTrigger = page.getByTestId('ctx-order-menu')
+  const orderMenu = page.getByRole('menu', { name: '层级' })
 
   await pageSizeTrigger.click()
   await expect(pageSizePopover).toBeVisible()
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (await shapeTrigger.evaluate((element) => element === document.activeElement)) break
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (await orderTrigger.evaluate((element) => element === document.activeElement)) break
     await page.keyboard.press('Tab')
   }
 
-  await expect(shapeTrigger).toBeFocused()
+  await expect(orderTrigger).toBeFocused()
   await page.keyboard.press('Enter')
 
   await expect(pageSizePopover).toBeHidden()
-  await expect(shapeMenu).toBeVisible()
-  await expect(shapeMenu.getByRole('menuitem', { name: '矩形' })).toBeFocused()
+  await expect(orderMenu).toBeVisible()
+  await expect(orderMenu.getByRole('menuitem', { name: '置于顶层' })).toBeFocused()
   await expect(page.getByRole('menu')).toHaveCount(1)
 
   await page.keyboard.press('Escape')
-  await expect(shapeMenu).toBeHidden()
-  await expect(shapeTrigger).toBeFocused()
+  await expect(orderMenu).toBeHidden()
+  await expect(orderTrigger).toBeFocused()
 })
 
 test('keeps the page size popover open when clicking non-focusable content inside it', async ({ page }) => {
@@ -2951,12 +2943,14 @@ test('keeps the page size popover open when clicking non-focusable content insid
   await expect(pageSizePopover).toBeVisible()
 })
 
-test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
+test('supports cyclic keyboard selection in toolbar menus', async ({ page }) => {
   await page.goto('/#/edit/canvas')
+  await insertShape(page)
 
-  const shapeTrigger = page.getByTestId('insert-shape')
+  const shapeTrigger = page.getByTestId('ctx-shape-menu')
+  const element = page.getByTestId('freeform-element')
   await shapeTrigger.click()
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
+  const shapeMenu = page.getByRole('menu', { name: '矩形' })
   const rectangle = shapeMenu.getByRole('menuitem', { name: '矩形' })
   const ellipse = shapeMenu.getByRole('menuitem', { name: '圆形' })
   const triangle = shapeMenu.getByRole('menuitem', { name: '三角形' })
@@ -2977,50 +2971,42 @@ test('supports cyclic keyboard selection in insert menus', async ({ page }) => {
   await page.keyboard.press('Space')
 
   await expect(shapeMenu).toBeHidden()
-  await expect(page.getByTestId('freeform-shape')).toHaveCount(1)
+  await expect(shapeTrigger).toHaveText('五角星')
   await expect(shapeTrigger).toBeFocused()
+  await expect(element).toHaveCount(1)
 
   await shapeTrigger.click()
-  await expect(rectangle).toBeFocused()
+  await expect(page.getByRole('menu', { name: '五角星' }).getByRole('menuitem', { name: '矩形' })).toBeFocused()
   await page.keyboard.press('Enter')
-  await expect(shapeMenu).toBeHidden()
-  await expect(page.getByTestId('freeform-shape')).toHaveCount(2)
+  await expect(shapeTrigger).toHaveText('矩形')
   await expect(shapeTrigger).toBeFocused()
 })
 
-test('closes insert menus without recording history', async ({ page }) => {
+test('opening and closing insert panels records no history', async ({ page }) => {
   await page.goto('/#/edit/canvas')
 
   const undo = page.getByRole('button', { name: '撤销' })
-  const shapeTrigger = page.getByTestId('insert-shape')
-  const lineTrigger = page.getByTestId('insert-line')
-  const shapeMenu = page.getByRole('menu', { name: '形状' })
-  const lineMenu = page.getByRole('menu', { name: '线条' })
+  const textTool = page.getByTestId('freeform-text-tool')
+  const elementsTool = page.getByTestId('freeform-elements-tool')
 
   await expect(undo).toBeDisabled()
-  await shapeTrigger.click()
+  await textTool.click()
+  await page.getByTestId('insert-text').focus()
   await page.keyboard.press('Escape')
-  await expect(shapeMenu).toBeHidden()
+  await expect(page.getByTestId('freeform-text-drawer')).toHaveCount(0)
+  await expect(textTool).toBeFocused()
   await expect(page.getByTestId('freeform-element')).toHaveCount(0)
   await expect(undo).toBeDisabled()
 
-  await lineTrigger.click()
+  await elementsTool.click()
   await page.getByTestId('freeform-canvas').click({ position: { x: 8, y: 8 } })
-  await expect(lineMenu).toBeHidden()
-  await expect(lineTrigger).toBeFocused()
   await expect(page.getByTestId('freeform-element')).toHaveCount(0)
   await expect(undo).toBeDisabled()
 
-  await shapeTrigger.click()
-  await expect(shapeMenu).toBeVisible()
-  // Leaving for the other editor closes the menu without inserting anything.
+  // Leaving for the other editor and coming back inserts nothing either.
   await page.goto('/#/edit/md')
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
   await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
   await page.goto('/#/edit/canvas')
-  await expect(shapeMenu).toBeHidden()
   await expect(page.getByTestId('freeform-element')).toHaveCount(0)
   await expect(undo).toBeDisabled()
 })
@@ -4045,7 +4031,7 @@ test('sets custom page size and new pages inherit it', async ({ page }) => {
   await expect(page.getByTestId('freeform-slide-size')).toHaveText(/自定义 · 1200×1600px/)
 
   await page.getByRole('button', { name: '新增页面' }).click()
-  await expect(page.getByTestId('freeform-slide-meta')).toContainText('2页')
+  await expect(page.getByTestId('freeform-thumb')).toHaveCount(2)
   await expect(page.getByTestId('freeform-slide-size')).toHaveText(/1200×1600px/)
 })
 
@@ -5546,7 +5532,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
   await page.keyboard.press('ControlOrMeta+C')
   await page.keyboard.press('ControlOrMeta+V')
   await expect(imageElements).toHaveCount(2)
-  await page.getByRole('button', { name: '复制页面', exact: true }).click()
+  await duplicateCurrentPage(page)
   await expect(page.locator('.freeform-thumb')).toHaveCount(2)
 
   await signUpToSave(page, `framing-persist-${Date.now()}`)
@@ -7687,7 +7673,7 @@ test('layers selection reconciles after delete, undo, and switching the active p
   await expect(tree.getByRole('treeitem', { name: 'Scope text' })).toBeVisible()
   await expect(page.locator('[data-scene-node-id="scope-text"][data-selected="true"]')).toHaveCount(0)
 
-  await page.getByRole('button', { name: '复制页面', exact: true }).click()
+  await duplicateCurrentPage(page)
   await expect(page.getByTestId('freeform-canvas')).toHaveAttribute('data-active-group-path', '')
   await expect(page.locator('[data-scene-node-id="scope-text"][data-selected="true"]')).toHaveCount(0)
 })
@@ -9926,8 +9912,7 @@ test('inserts all new scene nodes under the active group path', async ({ page })
   await expect(directLeaves()).toHaveCount(2)
   await insertShape(page)
   await expect(directLeaves()).toHaveCount(3)
-  await page.getByTestId('insert-line').click()
-  await page.getByRole('menu', { name: '线条' }).getByRole('menuitem', { name: '直线', exact: true }).click()
+  await insertLine(page, '直线')
   await expect(directLeaves()).toHaveCount(4)
   await page.locator('input.freeform-file').first().setInputFiles({
     name: 'nested-image.png',
@@ -10470,7 +10455,7 @@ test.describe('freeform context menu', () => {
 
     await canvas.click({ position: { x: 20, y: 20 }, button: 'right' })
     await expect(menu).toBeVisible()
-    await page.locator('.freeform-inspector .inspector-empty').click()
+    await page.getByTestId('inspector-page').locator('.inspector-section-title').click()
     await expect(menu).toHaveCount(0)
 
     await canvas.click({ position: { x: 20, y: 20 }, button: 'right' })
@@ -10490,12 +10475,15 @@ test.describe('freeform context menu', () => {
     await expect(menu).toBeVisible()
     await menu.getByTestId('freeform-context-menu-lock').click()
     await expect(menu).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^解锁/ })).toBeVisible()
+    // Both the inspector's lock note and the bar above the canvas offer to unlock.
+    const unlock = page.getByRole('button', { name: /^解锁/ })
+    await expect(page.getByTestId('freeform-lock-banner').getByRole('button', { name: /^解锁/ })).toBeVisible()
+    await expect(page.getByTestId('freeform-context-toolbar').getByRole('button', { name: '解锁对象' })).toBeVisible()
 
     await element.click({ button: 'right' })
     await expect(page.getByTestId('freeform-context-menu-lock')).toHaveText('解锁')
     await page.getByTestId('freeform-context-menu-lock').click()
-    await expect(page.getByRole('button', { name: /^解锁/ })).toHaveCount(0)
+    await expect(unlock).toHaveCount(0)
 
     await element.click({ button: 'right' })
     await page.getByTestId('freeform-context-menu-visibility').click()
@@ -10654,18 +10642,21 @@ test.describe('freeform page management', () => {
     await addPage.click()
     const thumbs = page.getByTestId('freeform-thumb')
     const titles = page.locator('.freeform-thumb-title')
+    const slideOrder = () => thumbs.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-slide-id')))
     await expect(thumbs).toHaveCount(3)
-    await expect(titles).toHaveText(['Page 1', 'Page 2', 'Page 3'])
+    await expect(titles).toHaveText(['第 1 页', '第 2 页', '第 3 页'])
+    const [first, second, third] = await slideOrder()
 
-    // The insertion indicator follows the pointer's half of the hovered thumb.
+    // The insertion indicator follows the pointer's half of the hovered thumb
+    // (upper or lower: the list runs down the side).
     const dragOver = (locator: import('@playwright/test').Locator, ratio: number) =>
-      locator.evaluate((node, x) => {
+      locator.evaluate((node, y) => {
         const bounds = node.getBoundingClientRect()
         node.dispatchEvent(new DragEvent('dragover', {
           bubbles: true,
           cancelable: true,
-          clientX: bounds.left + bounds.width * x,
-          clientY: bounds.top + 20,
+          clientX: bounds.left + bounds.width / 2,
+          clientY: bounds.top + bounds.height * y,
           dataTransfer: new DataTransfer(),
         }))
       }, ratio)
@@ -10690,14 +10681,17 @@ test.describe('freeform page management', () => {
     const target = await thumbs.nth(2).boundingBox()
     expect(target).toBeTruthy()
     await thumbs.first().dragTo(thumbs.nth(2), {
-      targetPosition: { x: target!.width * 0.75, y: 30 },
+      targetPosition: { x: target!.width / 2, y: target!.height * 0.75 },
     })
-    await expect(titles).toHaveText(['Page 2', 'Page 3', 'Page 1'])
+    await expect.poll(slideOrder).toEqual([second, third, first])
+    // Pages nobody named are called by where they sit now.
+    await expect(titles).toHaveText(['第 1 页', '第 2 页', '第 3 页'])
     // Reordering never changes the active page.
-    await expect(page.locator('.freeform-thumb.on .freeform-thumb-title')).toHaveText('Page 3')
+    await expect(page.locator('.freeform-thumb.on')).toHaveAttribute('data-slide-id', third!)
+    await expect(page.locator('.freeform-thumb.on .freeform-thumb-title')).toHaveText('第 2 页')
 
     await page.keyboard.press('Control+z')
-    await expect(titles).toHaveText(['Page 1', 'Page 2', 'Page 3'])
+    await expect.poll(slideOrder).toEqual([first, second, third])
   })
 
   test('thumbnail context menu duplicates, deletes, and moves pages', async ({ page }) => {
@@ -10705,7 +10699,9 @@ test.describe('freeform page management', () => {
     await page.getByRole('button', { name: '新增页面' }).click()
     const thumbs = page.getByTestId('freeform-thumb')
     const titles = page.locator('.freeform-thumb-title')
-    await expect(titles).toHaveText(['Page 1', 'Page 2'])
+    const slideOrder = () => thumbs.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-slide-id')))
+    await expect(titles).toHaveText(['第 1 页', '第 2 页'])
+    const [first, second] = await slideOrder()
 
     await thumbs.nth(1).click({ button: 'right' })
     const menu = page.getByTestId('freeform-slide-context-menu')
@@ -10717,27 +10713,30 @@ test.describe('freeform page management', () => {
     await expect(menu.getByTestId('freeform-slide-context-menu-delete')).toBeEnabled()
     await menu.getByTestId('freeform-slide-context-menu-up').click()
     await expect(menu).toHaveCount(0)
-    await expect(titles).toHaveText(['Page 2', 'Page 1'])
+    await expect.poll(slideOrder).toEqual([second, first])
 
     await thumbs.first().click({ button: 'right' })
     await page.getByTestId('freeform-slide-context-menu-back').click()
-    await expect(titles).toHaveText(['Page 1', 'Page 2'])
+    await expect.poll(slideOrder).toEqual([first, second])
 
     await thumbs.nth(1).click({ button: 'right' })
     await page.getByTestId('freeform-slide-context-menu-duplicate').click()
     await expect(thumbs).toHaveCount(3)
-    await expect(titles).toHaveText(['Page 1', 'Page 2', 'Page 2 copy'])
-    await expect(page.locator('.freeform-thumb.on .freeform-thumb-title')).toHaveText('Page 2 copy')
+    const copy = (await slideOrder())[2]
+    expect([first, second]).not.toContain(copy)
+    await expect(titles).toHaveText(['第 1 页', '第 2 页', '第 3 页'])
+    await expect(page.locator('.freeform-thumb.on')).toHaveAttribute('data-slide-id', copy!)
 
     await thumbs.nth(2).click({ button: 'right' })
     await page.getByTestId('freeform-slide-context-menu-delete').click()
     await expect(thumbs).toHaveCount(2)
-    await expect(titles).toHaveText(['Page 1', 'Page 2'])
+    await expect.poll(slideOrder).toEqual([first, second])
 
     await thumbs.first().click({ button: 'right' })
     await page.getByTestId('freeform-slide-context-menu-delete').click()
     await expect(thumbs).toHaveCount(1)
-    await expect(titles).toHaveText(['Page 2'])
+    await expect.poll(slideOrder).toEqual([second])
+    await expect(titles).toHaveText(['第 1 页'])
 
     await thumbs.first().click({ button: 'right' })
     await expect(page.getByTestId('freeform-slide-context-menu-delete')).toBeDisabled()
@@ -10892,7 +10891,7 @@ async function dragGuideFromRuler(
   worldPosition: number,
 ) {
   if (await page.getByTestId('freeform-ruler-x').count() === 0) {
-    await page.getByTestId('freeform-rulers-toggle').click()
+    await toggleViewOption(page, 'freeform-rulers-toggle')
   }
   await page.getByTestId('freeform-ruler-x').waitFor({ state: 'attached' })
   const geometry = await stageGeometry(page)
@@ -10917,7 +10916,10 @@ test.describe('freeform rulers and guides', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       const key = 'slicer.freeform.prefs.v1'
-      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ rulersVisible: true }))
+      const current = JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, unknown>
+      if (typeof current.rulersVisible !== 'boolean') {
+        localStorage.setItem(key, JSON.stringify({ ...current, rulersVisible: true }))
+      }
     })
   })
 
@@ -10929,12 +10931,17 @@ test.describe('freeform rulers and guides', () => {
       }
     })
     await openFreeform(page)
-    const toggle = page.getByTestId('freeform-rulers-toggle')
     await expect(page.getByTestId('freeform-canvas')).toBeVisible()
     await expect(page.getByTestId('freeform-ruler-x')).toHaveCount(0)
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    const toggle = await viewOption(page, 'freeform-rulers-toggle')
+    await expect(toggle).toHaveAttribute('role', 'menuitemcheckbox')
+    await expect(toggle).toHaveAttribute('aria-checked', 'false')
     await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('freeform-zoom-menu')).toHaveCount(0)
+    await expect(page.getByTestId('freeform-zoom-value')).toBeFocused()
+    await expect(await viewOption(page, 'freeform-rulers-toggle')).toHaveAttribute('aria-checked', 'true')
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('freeform-zoom-menu')).toHaveCount(0)
     await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
     await page.reload()
     await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
@@ -11190,10 +11197,10 @@ test.describe('freeform selection completion', () => {
     const guide = page.getByTestId('freeform-guide')
     await expect(guide).toHaveCount(1)
 
-    const toggle = page.getByTestId('freeform-guides-toggle')
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
-    await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await expect(await viewOption(page, 'freeform-guides-toggle')).toHaveAttribute('aria-checked', 'true')
+    await toggleViewOption(page, 'freeform-guides-toggle')
+    await expect(await viewOption(page, 'freeform-guides-toggle')).toHaveAttribute('aria-checked', 'false')
+    await page.keyboard.press('Escape')
     await expect(guide).toHaveCount(0)
 
     // The preference survives a reload, and so does the guest's page (saved on
@@ -11201,12 +11208,14 @@ test.describe('freeform selection completion', () => {
     await page.reload()
     await page.goto('/#/edit/canvas')
     await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
-    await expect(page.getByTestId('freeform-guides-toggle')).toHaveAttribute('aria-pressed', 'false')
+    await expect(await viewOption(page, 'freeform-guides-toggle')).toHaveAttribute('aria-checked', 'false')
+    await page.keyboard.press('Escape')
     await expect(guide).toHaveCount(0)
 
     // Dragging a fresh guide from the ruler re-enables visibility.
     await dragGuideFromRuler(page, 'x', 500)
-    await expect(page.getByTestId('freeform-guides-toggle')).toHaveAttribute('aria-pressed', 'true')
+    await expect(await viewOption(page, 'freeform-guides-toggle')).toHaveAttribute('aria-checked', 'true')
+    await page.keyboard.press('Escape')
     await expect(guide).toHaveCount(2)
   })
 
@@ -11223,7 +11232,7 @@ test.describe('freeform selection completion', () => {
     expect(box).toBeTruthy()
 
     // With snapping off the shape lands 3 world px left of the guide.
-    await page.getByTestId('freeform-snap-toggle').click()
+    await toggleViewOption(page, 'freeform-snap-toggle')
     const dragDistance = (417 - 300) * scale
     const startX = box!.x + box!.width / 2
     const startY = box!.y + box!.height / 2
@@ -11237,7 +11246,7 @@ test.describe('freeform selection completion', () => {
     expect(boxes[0].x).toBe(417)
 
     // Re-enabling snapping pulls the same drag onto the guide.
-    await page.getByTestId('freeform-snap-toggle').click()
+    await toggleViewOption(page, 'freeform-snap-toggle')
     const box2 = await element.boundingBox()
     await page.mouse.move(box2!.x + box2!.width / 2, box2!.y + box2!.height / 2)
     await page.mouse.down()
@@ -11543,7 +11552,7 @@ test.describe('freeform clipboard completion', () => {
     await setSelectedElementBox(page, 480, 640, 120, 80)
     await page.keyboard.press('Control+c')
 
-    await page.getByLabel('新增页面').click()
+    await page.getByRole('button', { name: '新增页面' }).click()
     await expect(page.getByTestId('freeform-thumb')).toHaveCount(2)
 
     // Normal paste offsets the copy by 16px.
@@ -11592,12 +11601,12 @@ test.describe('freeform page rename', () => {
     await insertShape(page)
 
     const title = page.getByTestId('freeform-thumb-title').first()
-    await expect(title).toHaveText('Page 1')
+    await expect(title).toHaveText('第 1 页')
     await title.dblclick()
 
     const input = page.getByTestId('freeform-thumb-rename')
     await expect(input).toBeFocused()
-    await expect(input).toHaveValue('Page 1')
+    await expect(input).toHaveValue('第 1 页')
     await input.fill('封面页')
     await input.press('Enter')
     await expect(page.getByTestId('freeform-thumb-rename')).toHaveCount(0)
@@ -11624,7 +11633,7 @@ test.describe('freeform page rename', () => {
 
   test('the slide context menu renames the right-clicked page', async ({ page }) => {
     await openFreeform(page)
-    await page.getByLabel('新增页面').click()
+    await page.getByRole('button', { name: '新增页面' }).click()
     await expect(page.getByTestId('freeform-thumb')).toHaveCount(2)
 
     // Right-click the second thumbnail and rename it.
@@ -11635,11 +11644,32 @@ test.describe('freeform page rename', () => {
 
     const input = page.getByTestId('freeform-thumb-rename')
     await expect(input).toBeFocused()
-    await expect(input).toHaveValue('Page 2')
+    await expect(input).toHaveValue('第 2 页')
     await input.fill('结尾页')
     await input.press('Enter')
     await expect(page.getByTestId('freeform-thumb-title').nth(1)).toHaveText('结尾页')
-    await expect(page.getByTestId('freeform-thumb-title').nth(0)).toHaveText('Page 1')
+    await expect(page.getByTestId('freeform-thumb-title').nth(0)).toHaveText('第 1 页')
+  })
+
+  test('confirming an automatic page name keeps it following the page', async ({ page }) => {
+    await openFreeform(page)
+    await page.getByRole('button', { name: '新增页面' }).click()
+    const titles = page.getByTestId('freeform-thumb-title')
+    await titles.nth(1).dblclick()
+    const input = page.getByTestId('freeform-thumb-rename')
+    await expect(input).toHaveValue('第 2 页')
+    await input.press('Enter')
+    await expect(input).toHaveCount(0)
+
+    await page.getByRole('tab', { name: '历史', exact: true }).click()
+    await expect(page.getByTestId('freeform-history-item').filter({ hasText: '重命名页面' })).toHaveCount(0)
+    await page.getByRole('tab', { name: '属性', exact: true }).click()
+
+    // Moved to the front, it is 「第 1 页」 now.
+    await (await openPageMenu(page, 1)).getByTestId('freeform-slide-context-menu-up').click()
+    await expect(page.getByTestId('freeform-thumb').first()).toHaveAttribute('aria-current', 'page')
+    await expect(titles).toHaveText(['第 1 页', '第 2 页'])
+    await expect(page.getByTestId('inspector-page').getByLabel('页面名称')).toHaveValue('第 1 页')
   })
 })
 
@@ -11773,5 +11803,217 @@ test.describe('freeform text auto size', () => {
       return box.scrollWidth - box.clientWidth
     })
     expect(overflow).toBeLessThanOrEqual(0)
+  })
+})
+
+test.describe('freeform editing chrome', () => {
+  test('the bar above the canvas follows the selection', async ({ page }) => {
+    // Wide enough for the whole text row beside the page list and the open panel.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openFreeform(page)
+    const bar = page.getByRole('toolbar', { name: '对象工具条' })
+    await expect(bar).toHaveAttribute('data-subject', 'page')
+    await expect(bar.getByTestId('ctx-page-background')).toBeVisible()
+
+    await insertText(page)
+    await expect(bar).toHaveAttribute('data-subject', 'text')
+    const size = bar.getByLabel('文字大小', { exact: true })
+    const inspectorSize = page.getByTestId('inspector-typography').getByLabel('字号', { exact: true })
+    await expect(size).toHaveValue('48')
+    // − / + walk the usual sizes, and the inspector shows the same value.
+    await bar.getByRole('button', { name: '放大字号' }).click()
+    await expect(size).toHaveValue('56')
+    await expect(inspectorSize).toHaveValue('56')
+    await bar.getByRole('button', { name: '缩小字号' }).click()
+    await expect(inspectorSize).toHaveValue('48')
+
+    const bold = bar.getByRole('button', { name: '加粗文字' })
+    await expect(bold).toHaveAttribute('aria-pressed', 'true')
+    await bold.click()
+    await expect(bold).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('text-weight-toggle')).toHaveAttribute('aria-pressed', 'false')
+    await bar.getByRole('button', { name: '文字居中' }).click()
+    await expect(bar.getByRole('button', { name: '文字居中' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('inspector-typography').getByRole('button', { name: '文字居中' }))
+      .toHaveAttribute('aria-pressed', 'true')
+
+    await insertShape(page)
+    await expect(bar).toHaveAttribute('data-subject', 'shape')
+    const shapeMenu = bar.getByTestId('ctx-shape-menu')
+    await expect(shapeMenu).toHaveText('矩形')
+    await shapeMenu.click()
+    await page.getByRole('menu', { name: '矩形' }).getByRole('menuitem', { name: '圆形', exact: true }).click()
+    await expect(shapeMenu).toHaveText('圆形')
+    await expect(page.getByTestId('inspector-geometry').getByRole('button', { name: '圆形', exact: true }))
+      .toHaveClass(/\bon\b/)
+
+    const elements = page.getByTestId('freeform-element')
+    await expect(elements).toHaveCount(2)
+    await bar.getByTestId('ctx-duplicate').click()
+    await expect(elements).toHaveCount(3)
+    await bar.getByTestId('ctx-delete').click()
+    await expect(elements).toHaveCount(2)
+    await expect(bar).toHaveAttribute('data-subject', 'page')
+  })
+
+  test('colour pickers and menus in the bar open over the canvas', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await setSelectedElementBox(page, 100, 100, 100, 100)
+    await insertShape(page)
+    const bar = page.getByRole('toolbar', { name: '对象工具条' })
+
+    await bar.getByTestId('ctx-shape-fill').click()
+    const popover = bar.getByTestId('paint-popover')
+    await expect(popover).toBeVisible()
+    // The bar never scrolls, so nothing clips what opens from it.
+    const popoverBox = (await popover.boundingBox())!
+    expect(await locatorOwnsPoint(popover, popoverBox.x + popoverBox.width / 2, popoverBox.y + popoverBox.height - 12))
+      .toBe(true)
+    await page.keyboard.press('Escape')
+    await expect(popover).toHaveCount(0)
+
+    const layerOrder = () => page.getByTestId('freeform-element')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-scene-node-id')))
+    const [below, above] = await layerOrder()
+    await bar.getByTestId('ctx-order-menu').click()
+    const orderMenu = page.getByRole('menu', { name: '层级' })
+    await expect(orderMenu).toBeVisible()
+    const menuBox = (await orderMenu.boundingBox())!
+    expect(await locatorOwnsPoint(orderMenu, menuBox.x + menuBox.width / 2, menuBox.y + menuBox.height - 8)).toBe(true)
+    await orderMenu.getByRole('menuitem', { name: '移到底层' }).click()
+    await expect.poll(layerOrder).toEqual([above, below])
+  })
+
+  test('the bar locks, unlocks and groups the selection', async ({ page }) => {
+    await insertTwoSelectedRectangles(page)
+    const bar = page.getByRole('toolbar', { name: '对象工具条' })
+    await expect(bar).toHaveAttribute('data-subject', 'multi')
+    await expect(bar.getByTestId('freeform-context-subject')).toHaveText('2 个对象')
+    await bar.getByRole('button', { name: '编成一组' }).click()
+    await expect(bar).toHaveAttribute('data-subject', 'group')
+    await bar.getByRole('button', { name: '取消编组' }).click()
+    await expect(bar).toHaveAttribute('data-subject', 'multi')
+
+    await page.keyboard.press('Escape')
+    await expect(selectedFreeformElements(page)).toHaveCount(0)
+    await page.getByTestId('freeform-element').nth(1).click()
+    await expect(bar).toHaveAttribute('data-subject', 'shape')
+    await bar.getByTestId('ctx-lock').click()
+    await expect(bar).toHaveAttribute('data-subject', 'locked')
+    await expect(bar.getByTestId('ctx-lock')).toHaveAccessibleName('解锁对象')
+    await expect(bar.getByTestId('ctx-delete')).toHaveCount(0)
+    await bar.getByTestId('ctx-lock').click()
+    await expect(bar).toHaveAttribute('data-subject', 'shape')
+    await expect(bar.getByTestId('ctx-lock')).toHaveAccessibleName('锁定对象')
+  })
+
+  test('each page\'s 「…」 button opens its menu from the keyboard too', async ({ page }) => {
+    await openFreeform(page)
+    const thumbs = page.getByTestId('freeform-thumb')
+    const menuButtons = page.getByTestId('freeform-thumb-menu')
+    const menu = page.getByTestId('freeform-slide-context-menu')
+    const slideOrder = () => thumbs.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-slide-id')))
+
+    // Only the current page shows its button until the pointer comes by.
+    await page.getByRole('button', { name: '新增页面' }).click()
+    await expect(menuButtons.nth(1)).toHaveCSS('opacity', '1')
+    await expect(menuButtons.nth(0)).toHaveCSS('opacity', '0')
+    await thumbs.nth(0).hover()
+    await expect(menuButtons.nth(0)).toHaveCSS('opacity', '1')
+    await expect(menuButtons.nth(1)).toHaveAccessibleName('第 2 页 的页面操作')
+
+    // Enter opens the menu on its first entry; the arrows walk it; Escape hands focus back.
+    const [first, second] = await slideOrder()
+    await menuButtons.nth(1).focus()
+    await page.keyboard.press('Enter')
+    await expect(menu).toBeVisible()
+    await expect(menuButtons.nth(1)).toHaveAttribute('aria-expanded', 'true')
+    await expect(menu.getByTestId('freeform-slide-context-menu-rename')).toBeFocused()
+    await page.keyboard.press('ArrowDown')
+    await expect(menu.getByTestId('freeform-slide-context-menu-duplicate')).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+    await expect(menuButtons.nth(1)).toBeFocused()
+
+    // Clicking the button again closes the menu it opened.
+    await menuButtons.nth(1).click()
+    await expect(menu).toBeVisible()
+    await menuButtons.nth(1).click()
+    await expect(menu).toHaveCount(0)
+
+    // An entry runs and focus stays on the moved page's button.
+    await (await openPageMenu(page, 1)).getByTestId('freeform-slide-context-menu-up').click()
+    await expect.poll(slideOrder).toEqual([second, first])
+    await expect(menuButtons.nth(0)).toBeFocused()
+    await expect(thumbs.nth(0)).toHaveAttribute('aria-current', 'page')
+
+    // A copy of a named page carries the name.
+    await page.getByTestId('inspector-page').getByLabel('页面名称').fill('结尾')
+    await duplicateCurrentPage(page)
+    await expect(thumbs).toHaveCount(3)
+    await expect(page.getByTestId('freeform-thumb-title')).toHaveText(['结尾', '结尾 副本', '第 3 页'])
+  })
+
+  test('pictures dropped on the canvas land where they fall', async ({ page }) => {
+    await openFreeform(page)
+
+    const viewport = page.locator('.freeform-stage-viewport')
+    const canvasBox = (await page.getByTestId('freeform-canvas').boundingBox())!
+    const scale = await freeformCanvasScale(page)
+    // Pointer events carry whole pixels; aim at the one nearest page point (300, 400).
+    const point = {
+      clientX: Math.round(canvasBox.x + 300 * scale),
+      clientY: Math.round(canvasBox.y + 400 * scale),
+    }
+    const target = { x: (point.clientX - canvasBox.x) / scale, y: (point.clientY - canvasBox.y) / scale }
+    const pictures = await page.evaluateHandle((base64) => {
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([bytes], 'dropped.png', { type: 'image/png' }))
+      return transfer
+    }, TEST_PNG.toString('base64'))
+    await viewport.dispatchEvent('dragenter', { dataTransfer: pictures, ...point })
+    await viewport.dispatchEvent('dragover', { dataTransfer: pictures, ...point })
+    await expect(page.getByTestId('freeform-drop-overlay')).toBeVisible()
+    await viewport.dispatchEvent('drop', { dataTransfer: pictures, ...point })
+    await expect(page.getByTestId('freeform-drop-overlay')).toHaveCount(0)
+
+    const image = page.getByTestId('freeform-element').filter({ has: page.locator('.freeform-image') })
+    await expect(image).toHaveCount(1)
+    const placed = await image.evaluate((element) => {
+      const node = element as HTMLElement
+      return {
+        centerX: Number.parseFloat(node.style.left) + node.offsetWidth / 2,
+        centerY: Number.parseFloat(node.style.top) + node.offsetHeight / 2,
+      }
+    })
+    expect(Math.abs(placed.centerX - target.x)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.centerY - target.y)).toBeLessThanOrEqual(1)
+
+    // Anything that isn't a picture is turned away.
+    const note = await page.evaluateHandle(() => {
+      const transfer = new DataTransfer()
+      transfer.items.add(new File(['hi'], 'note.txt', { type: 'text/plain' }))
+      return transfer
+    })
+    await viewport.dispatchEvent('drop', { dataTransfer: note, ...point })
+    await expect(page.getByRole('alert')).toContainText('这里只能放图片')
+    await expect(page.getByTestId('freeform-element')).toHaveCount(1)
+  })
+
+  test('canvas menu items show their shortcuts without changing their names', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    const element = page.getByTestId('freeform-element').first()
+    await element.click({ button: 'right' })
+    const menu = page.getByTestId('freeform-context-menu')
+    await expect(menu).toBeVisible()
+    const duplicate = menu.getByRole('menuitem', { name: '原位复制', exact: true })
+    await expect(duplicate).toBeVisible()
+    await expect(duplicate.locator('kbd')).toHaveAttribute('aria-hidden', 'true')
+    await expect(duplicate.locator('kbd')).toHaveText(/D$/)
+    await expect(menu.getByTestId('freeform-context-menu-front').locator('kbd')).toHaveText(']')
+    await expect(menu.getByTestId('freeform-context-menu-lock').locator('kbd')).toHaveCount(0)
   })
 })

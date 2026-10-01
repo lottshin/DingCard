@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { insertFreeformShape, insertFreeformText, startWithSettingsPanelOpen } from '../e2e/freeformTools'
 import { installOfflineFontRoutes } from '../e2e/offlineFonts'
 import { API_BASE } from './ports'
 
@@ -37,8 +38,9 @@ const TEST_PNG = Buffer.from(
   'base64',
 )
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
   await installOfflineFontRoutes(context)
+  await startWithSettingsPanelOpen(page)
 })
 
 async function register(page: import('@playwright/test').Page, username: string) {
@@ -164,11 +166,7 @@ async function insertRemoteImageElementAndShapeFill(page: import('@playwright/te
   })
   await expect(page.locator('.freeform-image')).toHaveCount(1)
 
-  await page.getByTestId('insert-shape').click()
-  await page
-    .getByRole('menu', { name: '形状' })
-    .getByRole('menuitem', { name: '矩形', exact: true })
-    .click()
+  await insertFreeformShape(page, '矩形')
   await page.locator('input.freeform-file').nth(1).setInputFiles({
     name: 'remote-shape-fill.png',
     mimeType: 'image/png',
@@ -560,6 +558,7 @@ test.describe('remote backend integration', () => {
     const secondContext = await browser.newContext()
     await installOfflineFontRoutes(secondContext)
     const secondPage = await secondContext.newPage()
+    await startWithSettingsPanelOpen(secondPage)
     await secondPage.goto('/#/edit/canvas')
     await signIn(secondPage, username)
     await openServerDraft(secondPage, 'Nested remote scene')
@@ -768,8 +767,7 @@ test.describe('remote backend integration', () => {
     await page.locator('[data-scene-node-id="authority-a-leaf"]').dblclick()
     await expect(page.getByTestId('freeform-canvas'))
       .toHaveAttribute('data-active-group-path', 'authority-a-outer')
-    await page.getByTestId('freeform-text-tool').click()
-    await page.getByTestId('insert-text').click()
+    await insertFreeformText(page)
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
     await page.route(`${API_BASE}/api/drafts`, async (route) => {
@@ -817,8 +815,7 @@ test.describe('remote backend integration', () => {
     await page.locator('[data-scene-node-id="history-authority-leaf"]').dblclick()
     await expect(page.getByTestId('freeform-canvas'))
       .toHaveAttribute('data-active-group-path', 'history-authority-outer')
-    await page.getByTestId('freeform-text-tool').click()
-    await page.getByTestId('insert-text').click()
+    await insertFreeformText(page)
 
     const heldSaveRoutes: import('@playwright/test').Route[] = []
     await page.route(`${API_BASE}/api/drafts`, async (route) => {
@@ -1135,8 +1132,7 @@ test.describe('remote backend integration', () => {
     await page.reload()
     await register(page, uniqueName())
     await page.goto('/#/edit/canvas')
-    await page.getByTestId('freeform-text-tool').click()
-    await page.getByTestId('insert-text').click()
+    await insertFreeformText(page)
     await expectSaved(page)
 
     const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
@@ -1176,8 +1172,7 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
-    await page.getByTestId('freeform-text-tool').click()
-    await page.getByTestId('insert-text').click()
+    await insertFreeformText(page)
     await saveCaptured
     await openServerDraft(page, '另一个自由编辑草稿 B')
 
@@ -1195,8 +1190,7 @@ test.describe('remote backend integration', () => {
     await page.reload()
     await register(page, uniqueName())
     await page.goto('/#/edit/canvas')
-    await page.getByTestId('freeform-text-tool').click()
-    await page.getByTestId('insert-text').click()
+    await insertFreeformText(page)
     await expectSaved(page)
 
     let delayedSaveRoute: import('@playwright/test').Route | null = null
@@ -1219,13 +1213,11 @@ test.describe('remote backend integration', () => {
       await route.continue()
     })
 
-    await page.getByTestId('insert-shape').click()
-    await page.getByRole('menuitem', { name: '矩形', exact: true }).click()
+    await insertFreeformShape(page, '矩形')
     await saveCaptured
 
     // A newer edit while that request is out waits for it rather than racing it.
-    await page.getByTestId('insert-shape').click()
-    await page.getByRole('menuitem', { name: '圆形', exact: true }).click()
+    await insertFreeformShape(page, '圆形')
     await page.waitForTimeout(1_200)
     expect(postBodies).toHaveLength(1)
     await expect(page.getByTestId('editor-save-state')).toHaveText('保存中…')
@@ -1274,8 +1266,7 @@ test.describe('remote backend integration', () => {
     await register(page, uniqueName())
     await page.goto('/#/edit/canvas')
 
-    await page.getByTestId('freeform-text-tool').click()
-    await page.getByTestId('insert-text').click()
+    await insertFreeformText(page)
     await expectSaved(page)
     await openProjectsPage(page)
     const card = page.getByTestId('project-card')

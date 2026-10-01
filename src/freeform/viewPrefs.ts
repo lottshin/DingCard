@@ -1,6 +1,6 @@
 // Per-user editor view preferences for the freeform canvas (rulers, guide
-// visibility, object snapping, and PNG/JPEG export options), persisted so the
-// toggles survive reloads. Storage failures degrade to the defaults — blocked
+// visibility, object snapping, the settings panel, and PNG/JPEG export
+// options), persisted so the toggles survive reloads. Storage failures degrade to the defaults — blocked
 // storage must never break the app.
 
 export type ExportFormat = 'png' | 'jpeg'
@@ -15,6 +15,8 @@ export interface FreeformViewPrefs {
   exportQuality: number
   /** Export pixel ratio; 2 doubles the output resolution. */
   exportScale: 1 | 2
+  /** The settings panel beside the canvas (properties, layers, history); closed until asked for. */
+  panelOpen: boolean
 }
 
 const KEY = 'slicer.freeform.prefs.v1'
@@ -26,6 +28,7 @@ export const DEFAULT_VIEW_PREFS: FreeformViewPrefs = {
   exportFormat: 'png',
   exportQuality: 0.92,
   exportScale: 1,
+  panelOpen: false,
 }
 
 function isExportFormat(value: unknown): value is ExportFormat {
@@ -61,6 +64,9 @@ export function loadViewPrefs(): FreeformViewPrefs {
         ? record.exportQuality
         : DEFAULT_VIEW_PREFS.exportQuality,
       exportScale: record.exportScale === 2 ? 2 : 1,
+      panelOpen: typeof record.panelOpen === 'boolean'
+        ? record.panelOpen
+        : DEFAULT_VIEW_PREFS.panelOpen,
     }
   } catch {
     return { ...DEFAULT_VIEW_PREFS }

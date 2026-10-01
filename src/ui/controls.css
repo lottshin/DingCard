@@ -467,6 +467,25 @@
   color: var(--text-3);
 }
 
+.freeform-context-menu {
+  min-width: 196px;
+}
+
+/* The shortcut sits at the far end of its item, quieter than the action. */
+.freeform-context-menu-shortcut {
+  margin-left: auto;
+  padding: 0 0 0 20px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: 400 12px/1 var(--ui-font);
+  letter-spacing: 0.04em;
+}
+
+.freeform-context-menu-item:disabled .freeform-context-menu-shortcut {
+  opacity: 0.6;
+}
+
 .freeform-context-menu-separator {
   margin: 4px 6px;
   background: var(--line);

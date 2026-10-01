@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { CSSProperties, SetStateAction } from 'react'
 import { toCanvas } from 'html-to-image'
 import { AssetPanel } from '../app/AssetDrawer'
+import { imageFiles } from '../app/assetFiles'
 import { navigate, routes } from '../app/router'
 import type { Asset } from '../assets'
 import { Select } from '../Select'
@@ -15,16 +16,15 @@ import { FONTS } from '../theme'
 import { assetDocumentSource } from '../workspaces/assetSource'
 import {
   CloseIcon,
-  CopyIcon,
   ImageIcon,
-  LineToolIcon,
+  LayersIcon,
+  MoreIcon,
   PlusIcon,
   RedoIcon,
   ShapePreviewIcon,
   ShapesIcon,
   TemplatesIcon,
   TextIcon,
-  TrashIcon,
   UndoIcon,
   UploadIcon,
 } from '../ui/icons'
@@ -34,7 +34,8 @@ import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/Wo
 import type { WorkspaceShellProps } from '../workspaces/types'
 import { useImageLease } from '../workspaces/useImageLease'
 import { useProjectAutosave } from '../workspaces/useProjectAutosave'
-import { TemplateGallery } from '../templates/TemplateGallery'
+import { FreeformTemplatePreview, TemplateGallery } from '../templates/TemplateGallery'
+import { templatesForWorkspace } from '../templates/registry'
 import type { TemplateDefinition } from '../templates/types'
 import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE, PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
 import { collectTextAutoSize } from './textAutoSize'
@@ -50,12 +51,15 @@ import {
 import { insertRichTextSpan } from './richText'
 import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
 import { FreeformExportMenu } from './FreeformExportMenu'
-import { FreeformInsertMenu, type FreeformInsertMenuOption } from './FreeformInsertMenu'
+import { FreeformContextToolbar, type ContextToolbarSubject } from './FreeformContextToolbar'
+import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorGlyph } from './InspectorGlyph'
+import { isDefaultPageName, slideDisplayName } from './pageNames'
+import { DELETE_KEY, shortcutLabel } from './shortcutLabels'
 import { InspectorNumberInput } from './InspectorNumberInput'
 import { FreeformLayersPanel, layerLabel } from './FreeformLayersPanel'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
-import { FreeformRightPanel } from './FreeformRightPanel'
+import { FreeformRightPanel, type FreeformRightPanelTab } from './FreeformRightPanel'
 import {
   FreeformSceneNodeView,
   type SceneNodePointerState,
@@ -67,6 +71,7 @@ import {
   type ImageCropSession,
 } from './useImageCropSession'
 import { FreeformSlidePreview } from './FreeformSlidePreview'
+import { FreeformZoomControl } from './FreeformZoomControl'
 import {
   FreeformSelectionOverlay,
   RESIZE_HANDLE_AXES,
@@ -225,6 +230,7 @@ import {
 } from './viewportScale'
 import { copyStylePatch, pasteStylePatch } from './styleClipboard'
 import { t } from '../i18n'
+import { useMediaQuery } from '../useMediaQuery'
 
 const FIT_SCALE_EPSILON = 0.0001
 const EXPORT_IMAGE_WAIT_MS = 3_500
@@ -286,15 +292,31 @@ const LINES: Array<{ id: FreeformLineElement['lineKind']; label: string }> = [
   { id: 'arrow', label: '箭头' },
 ]
 
-const SHAPE_TILES = SHAPES.map((shape) => ({ ...shape, icon: <ShapePreviewIcon shape={shape.id} /> }))
-const LINE_TILES = LINES.map((line) => ({ ...line, icon: <ShapePreviewIcon shape={line.id} /> }))
+type ToolDrawer = 'templates' | 'text' | 'images' | 'elements'
 
-/** Page strip thumbnails share one height; width follows each page's ratio.
- *  The strip stays as short as the old stage header so the canvas keeps its size. */
-const THUMB_HEIGHT = 40
-function thumbFrameWidth(slide: FreeformSlide): number {
+const FREEFORM_TEMPLATES = templatesForWorkspace('freeform')
+/** Two columns in the 288px templates panel. */
+const TEMPLATE_TILE_FRAME = { width: 122, height: 163 }
+
+/** Page list thumbnails share one width (smaller in narrow windows and the
+ *  phone strip); the height follows each page's ratio, within bounds. */
+function thumbFrame(slide: FreeformSlide, compact: boolean): { width: number; height: number } {
+  const maxWidth = compact ? 52 : 80
+  const maxHeight = compact ? 72 : 120
   const ratio = slide.width > 0 && slide.height > 0 ? slide.width / slide.height : 1
-  return Math.round(Math.min(72, Math.max(24, THUMB_HEIGHT * ratio)))
+  const height = Math.min(maxHeight, maxWidth / ratio)
+  return { width: Math.round(Math.min(maxWidth, height * ratio)), height: Math.round(height) }
+}
+
+/** Whether a dragged page lands before or after the hovered one: the list runs
+ *  down the side on desktop and across under the stage on phones. */
+function slideDropPosition(event: React.DragEvent<HTMLElement>): 'before' | 'after' {
+  const bounds = event.currentTarget.getBoundingClientRect()
+  const list = event.currentTarget.closest('.freeform-slide-list')
+  const across = list !== null && getComputedStyle(list).flexDirection === 'row'
+  return across
+    ? (event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after')
+    : (event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after')
 }
 
 const FITS: Array<{ id: 'cover' | 'contain'; label: string }> = [
@@ -914,13 +936,24 @@ const ALIGN_ACTIONS = [
   { id: 'bottom', testId: 'bottom', label: '底对齐', icon: 'M3 16h14M6.5 4v9M13.5 7.5V13' },
 ] as const
 
+/** Files taken from one drop; the rest are ignored. */
+const MAX_DROPPED_IMAGES = 10
+/** Page units between images dropped together, so each one stays visible. */
+const DROPPED_IMAGE_CASCADE = 32
+
+/** A menu item's keyboard shortcut; hidden from the accessible name, which stays the action. */
+function MenuShortcut({ keys }: { keys: string }) {
+  return <kbd className="freeform-context-menu-shortcut" aria-hidden="true">{keys}</kbd>
+}
+
 type TextPresetId = 'box' | 'heading' | 'subheading' | 'body'
 
-const TEXT_PRESETS: Array<FreeformInsertMenuOption<TextPresetId>> = [
-  { id: 'box', testId: 'insert-text', label: '添加文本框', icon: <PlusIcon /> },
-  { id: 'heading', testId: 'insert-text-heading', label: '添加标题', labelStyle: { fontSize: 22, fontWeight: 700 } },
-  { id: 'subheading', testId: 'insert-text-subheading', label: '添加副标题', labelStyle: { fontSize: 16.5, fontWeight: 600 } },
-  { id: 'body', testId: 'insert-text-body', label: '添加一段正文', labelStyle: { fontSize: 13.5, fontWeight: 400 } },
+/** The text panel's entries; `box` is its primary button, the rest are styles. */
+const TEXT_PRESETS: Array<{ id: TextPresetId; testId: string; label: string }> = [
+  { id: 'box', testId: 'insert-text', label: '添加文本框' },
+  { id: 'heading', testId: 'insert-text-heading', label: '添加标题' },
+  { id: 'subheading', testId: 'insert-text-subheading', label: '添加副标题' },
+  { id: 'body', testId: 'insert-text-body', label: '添加一段正文' },
 ]
 
 const TEXT_PRESET_STYLES: Record<Exclude<TextPresetId, 'box'>, {
@@ -958,15 +991,6 @@ const LAYER_ORDER_ACTIONS = [
   { id: 'back', label: '置底', icon: 'M10 4v9M6.5 9.5 10 13l3.5-3.5M5 16.5h10' },
 ] as const
 
-const DEFAULT_PAGE_NAME = /^Page \d+$/
-
-/** "第 2 页", plus the page's own name when someone gave it one. */
-function pageLabel(index: number, name: string): string {
-  const number = t('第 {n} 页', { n: index + 1 })
-  const trimmed = name.trim()
-  return trimmed && !DEFAULT_PAGE_NAME.test(trimmed) ? `${number} · ${trimmed}` : number
-}
-
 export function FreeformWorkspace({
   isActive,
   user,
@@ -982,6 +1006,7 @@ export function FreeformWorkspace({
   )
   const doc = history.current
   const activeSlide = activeSlideOf(doc)
+  const activeSlideIndex = doc.slides.indexOf(activeSlide)
   const selectedElementIds = useRef<string[]>([])
   const initialSceneIdentity: SceneUiIdentity = {
     activeSlideId: activeSlide.id,
@@ -1024,8 +1049,14 @@ export function FreeformWorkspace({
     slideId: string
     x: number
     y: number
+    /** Opened from the thumbnail's 「…」 button, so the keyboard lands in the menu. */
+    fromButton?: boolean
   } | null>(null)
   const slideContextMenuRef = useRef<HTMLDivElement>(null)
+  const slideMenuButtonRef = useRef<HTMLButtonElement | null>(null)
+  const slideListRef = useRef<HTMLDivElement>(null)
+  // Narrow windows get smaller page thumbnails (the same width as the CSS breakpoint).
+  const compactPageStrip = useMediaQuery('(max-width: 1100px)')
   const dragSlideIdRef = useRef<string | null>(null)
   const [slideDropTarget, setSlideDropTarget] = useState<{
     slideId: string
@@ -1035,7 +1066,10 @@ export function FreeformWorkspace({
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [toolDrawer, setToolDrawer] = useState<'images' | null>(null)
+  const [galleryTemplateId, setGalleryTemplateId] = useState<string | undefined>(undefined)
+  /** The insert panel docked beside the tool rail; one at a time. */
+  const [toolDrawer, setToolDrawer] = useState<ToolDrawer | null>(null)
+  const [panelTab, setPanelTab] = useState<FreeformRightPanelTab>('properties')
   const [textSelection, setTextSelection] = useState<{
     path: ScenePath
     start: number
@@ -1053,6 +1087,8 @@ export function FreeformWorkspace({
   const handledRequestRef = useRef(0)
   const openDraftRef = useRef<(draft: Draft) => void>(() => {})
   const [operationNotice, setOperationNotice] = useState<string | null>(null)
+  const [fileDragActive, setFileDragActive] = useState(false)
+  const fileDragDepthRef = useRef(0)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
   const [dragMeasurements, setDragMeasurements] = useState<DragMeasurement[]>([])
@@ -1065,6 +1101,20 @@ export function FreeformWorkspace({
       saveViewPrefs(next)
       return next
     })
+  }
+
+  /** Opens the settings panel on `tab`; asking again for the tab on show closes it. */
+  function togglePanel(tab: FreeformRightPanelTab) {
+    if (viewPrefs.panelOpen && panelTab === tab) {
+      updateViewPrefs({ panelOpen: false })
+      return
+    }
+    setPanelTab(tab)
+    if (!viewPrefs.panelOpen) updateViewPrefs({ panelOpen: true })
+  }
+
+  function toggleToolDrawer(drawer: ToolDrawer) {
+    setToolDrawer((current) => (current === drawer ? null : drawer))
   }
   const [activeInteraction, setActiveInteraction] = useState<SelectionOverlayInteraction>(null)
   const activeInteractionRef = useRef<SelectionOverlayInteraction>(null)
@@ -1620,6 +1670,28 @@ export function FreeformWorkspace({
     else setContextMenu({ x, y })
   }, [contextMenu, slideContextMenu])
 
+  // The current page stays in view in the page list. Only the list scrolls, so
+  // the phone layout doesn't jump to its page strip.
+  useLayoutEffect(() => {
+    const list = slideListRef.current
+    const thumb = list?.querySelector<HTMLElement>(`.freeform-thumb[data-slide-id="${CSS.escape(activeSlide.id)}"]`)
+    if (!list || !thumb) return
+    const area = list.getBoundingClientRect()
+    const box = thumb.getBoundingClientRect()
+    const margin = 8
+    if (box.top < area.top) list.scrollTop -= area.top - box.top + margin
+    else if (box.bottom > area.bottom) list.scrollTop += box.bottom - area.bottom + margin
+    if (box.left < area.left) list.scrollLeft -= area.left - box.left + margin
+    else if (box.right > area.right) list.scrollLeft += box.right - area.right + margin
+  }, [activeSlide.id, doc.slides.length])
+
+  useEffect(() => {
+    if (!slideContextMenu?.fromButton) return
+    slideContextMenuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+      ?.focus({ preventScroll: true })
+  }, [slideContextMenu?.slideId, slideContextMenu?.fromButton])
+
   // Clicking anywhere outside the open context menus dismisses them.
   useEffect(() => {
     if (!contextMenu && !slideContextMenu) return
@@ -1629,6 +1701,7 @@ export function FreeformWorkspace({
         contextMenuRef.current?.contains(target)
         || slideContextMenuRef.current?.contains(target)
       )) return
+      if (target instanceof Element && target.closest('.freeform-thumb-menu')) return
       setContextMenu(null)
       setSlideContextMenu(null)
     }
@@ -2561,11 +2634,11 @@ export function FreeformWorkspace({
   const slideRenameInputRef = useRef<HTMLInputElement>(null)
 
   function beginSlideRename(slideId: string) {
-    const slide = doc.slides.find((candidate) => candidate.id === slideId)
-    if (!slide) return
+    const index = doc.slides.findIndex((candidate) => candidate.id === slideId)
+    if (index < 0) return
     slideRenameCompositionRef.current = false
     setRenamingSlideId(slideId)
-    setSlideRenameValue(slide.name)
+    setSlideRenameValue(slideDisplayName(doc.slides[index].name, index))
     requestAnimationFrame(() => {
       slideRenameInputRef.current?.focus()
       slideRenameInputRef.current?.select()
@@ -2576,10 +2649,12 @@ export function FreeformWorkspace({
   function commitSlideRename() {
     slideRenameCompositionRef.current = false
     const slideId = renamingSlideId
-    const slide = doc.slides.find((candidate) => candidate.id === slideId)
+    const index = doc.slides.findIndex((candidate) => candidate.id === slideId)
+    const slide = doc.slides[index]
     if (slideId && slide) {
+      // Confirming the name as shown (「第 2 页」 for an automatic one) is no rename.
       const nextName = slideRenameValue.trim()
-      if (nextName && nextName !== slide.name) {
+      if (nextName && nextName !== slide.name && nextName !== slideDisplayName(slide.name, index)) {
         applyAction({ type: 'slide/update', slideId, patch: { name: nextName } })
       }
     }
@@ -2612,6 +2687,26 @@ export function FreeformWorkspace({
     if (sourceIndex < 0 || targetSlideIndex < 0) return null
     const insertion = after ? targetSlideIndex + 1 : targetSlideIndex
     return insertion > sourceIndex ? insertion - 1 : insertion
+  }
+
+  function toggleSlideMenu(event: React.MouseEvent<HTMLButtonElement>, slideId: string) {
+    if (framingSessionRef.current || imageCropSessionRef.current) return
+    event.stopPropagation()
+    if (slideContextMenu?.slideId === slideId) {
+      setSlideContextMenu(null)
+      return
+    }
+    if (slideId !== activeSlide.id) selectSlide(slideId)
+    const bounds = event.currentTarget.getBoundingClientRect()
+    slideMenuButtonRef.current = event.currentTarget
+    setContextMenu(null)
+    setSlideContextMenu({ slideId, x: bounds.left, y: bounds.bottom + 4, fromButton: true })
+  }
+
+  function closeSlideMenu(returnFocus: boolean) {
+    const opener = slideContextMenu?.fromButton ? slideMenuButtonRef.current : null
+    setSlideContextMenu(null)
+    if (returnFocus && opener?.isConnected) opener.focus({ preventScroll: true })
   }
 
   function onSlideThumbContextMenu(event: React.MouseEvent<HTMLButtonElement>, slideId: string) {
@@ -2696,6 +2791,8 @@ export function FreeformWorkspace({
     loadSource: () => Promise<string>,
     alt: string,
     natural?: { width: number; height: number },
+    /** Page point the image is centred on (a drop); otherwise it lands in the middle. */
+    placeAt?: { x: number; y: number },
   ) {
     if (blockDocumentMutationDuringInteraction()) return
     const targetIdentityGeneration = documentIdentityGenerationRef.current
@@ -2711,11 +2808,14 @@ export function FreeformWorkspace({
     const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
     if (!currentSlide) return
     const created = createImageElement(currentSlide, src, alt)
-    const element = centerNewElementInScope(
-      natural ? withNaturalAspect(created, currentSlide, natural) : created,
-      currentSlide.nodes,
-      targetParentPath,
-    )
+    const sized = natural ? withNaturalAspect(created, currentSlide, natural) : created
+    const element = placeAt && targetParentPath.length === 0
+      ? {
+          ...sized,
+          x: Math.round(Math.max(0, Math.min(placeAt.x - sized.width / 2, currentSlide.width - sized.width))),
+          y: Math.round(Math.max(0, Math.min(placeAt.y - sized.height / 2, currentSlide.height - sized.height))),
+        }
+      : centerNewElementInScope(sized, currentSlide.nodes, targetParentPath)
     if (applyAction({
       type: 'node/insert-children',
       slideId: targetSlideId,
@@ -2732,14 +2832,70 @@ export function FreeformWorkspace({
     }
   }
 
-  async function addImageFromFile(file: File) {
+  async function addImageFromFile(file: File, placeAt?: { x: number; y: number }) {
     const images = ownerStore
     await insertImageElement(async () => {
       if (images.remote) await retainImagesNow()
       const raw = await readFileAsDataUrl(file)
       const downscaled = await downscaleDataUrl(raw, 1800)
       return images.images.put(downscaled)
-    }, file.name)
+    }, file.name, undefined, placeAt)
+  }
+
+  function carriesFiles(event: React.DragEvent) {
+    return Array.from(event.dataTransfer.types).includes('Files')
+  }
+
+  // Picture files dragged in from the desktop land where they are dropped.
+  // Every file drag is claimed, so a stray drop never opens the file in the tab.
+  function onStageFileDragEnter(event: React.DragEvent<HTMLDivElement>) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    fileDragDepthRef.current += 1
+    if (!framingSessionRef.current && !imageCropSessionRef.current) setFileDragActive(true)
+  }
+
+  function onStageFileDragOver(event: React.DragEvent<HTMLDivElement>) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = framingSessionRef.current || imageCropSessionRef.current ? 'none' : 'copy'
+  }
+
+  function onStageFileDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    if (!carriesFiles(event)) return
+    fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1)
+    if (fileDragDepthRef.current === 0) setFileDragActive(false)
+  }
+
+  function onStageFileDrop(event: React.DragEvent<HTMLDivElement>) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    fileDragDepthRef.current = 0
+    setFileDragActive(false)
+    if (framingSessionRef.current || imageCropSessionRef.current) return
+    const files = imageFiles(event.dataTransfer.files).slice(0, MAX_DROPPED_IMAGES)
+    if (files.length === 0) {
+      setOperationNotice(t('这里只能放图片'))
+      return
+    }
+    const point = rawArtboardPointFromClient(event.clientX, event.clientY)
+    const onPage = point !== null
+      && point.x >= 0 && point.y >= 0
+      && point.x <= activeSlide.width && point.y <= activeSlide.height
+    void insertDroppedImages(files, onPage ? point : null)
+  }
+
+  async function insertDroppedImages(files: readonly File[], point: { x: number; y: number } | null) {
+    for (const [index, file] of files.entries()) {
+      try {
+        await addImageFromFile(file, point
+          ? { x: point.x + index * DROPPED_IMAGE_CASCADE, y: point.y + index * DROPPED_IMAGE_CASCADE }
+          : undefined)
+      } catch (error) {
+        showOperationError(error, t('图片插入失败，请稍后重试'))
+        return
+      }
+    }
   }
 
   async function addImageFromAsset(asset: Asset) {
@@ -5082,6 +5238,53 @@ export function FreeformWorkspace({
     }
   }, [request, ownerId])
 
+  const contextSubject: ContextToolbarSubject = (() => {
+    if (liveSelection.length === 0) {
+      return { kind: 'page', background: activeSlide.background, width: activeSlide.width, height: activeSlide.height }
+    }
+    if (effectiveLockedSelection) return { kind: 'locked', name: layerLabel(effectiveLockedSelection.unlockName) }
+    if (lockedDescendantSelection) return { kind: 'locked', name: layerLabel(lockedDescendantSelection.sourceName) }
+    if (liveSelection.length > 1) return { kind: 'multi', count: liveSelection.length }
+    if (!selectedElement) {
+      const group = selectedPath ? findNodeAtPath(activeSlide.nodes, selectedPath) : undefined
+      return { kind: 'group', name: layerLabel(group?.name ?? '组') }
+    }
+    const leafProperties = selectedProperties?.kind === 'leaf' ? selectedProperties : null
+    if (selectedElement.type === 'text') {
+      return { kind: 'text', node: selectedElement, fontSize: leafProperties?.fontSize ?? selectedElement.fontSize }
+    }
+    if (selectedElement.type === 'shape') {
+      return {
+        kind: 'shape',
+        node: selectedElement,
+        strokeWidth: leafProperties?.strokeWidth ?? selectedElement.strokeWidth,
+        canFrame: canAdjustSelectedFraming && selectedImageTarget?.targetKind === 'shape-fill',
+        frameDisabledReason: selectedFramingDisabledReason,
+      }
+    }
+    if (selectedElement.type === 'line') {
+      return { kind: 'line', node: selectedElement, strokeWidth: leafProperties?.strokeWidth ?? selectedElement.strokeWidth }
+    }
+    return {
+      kind: 'image',
+      node: selectedElement,
+      canCrop: canCropSelectedImage,
+      cropDisabledReason: selectedFramingDisabledReason,
+    }
+  })()
+
+  function toggleSelectionLock() {
+    if (effectiveLockedSelection) {
+      setLayerLocked(effectiveLockedSelection.unlockPath, false)
+      return
+    }
+    if (lockedDescendantSelection) {
+      setLayerLocked(lockedDescendantSelection.sourcePath, false)
+      return
+    }
+    for (const path of selectionPaths) setLayerLocked(path, true)
+  }
+
   const framingRenderTarget = framingSession
     ? currentTargetForFramingSession(framingSession)
     : null
@@ -5192,12 +5395,6 @@ export function FreeformWorkspace({
                     height={activeSlide.height}
                     onApply={applySlideSize}
                   />
-                  <span
-                    className="freeform-page-meta toolbar-collapsible-label"
-                    data-testid="freeform-slide-meta"
-                  >
-                    {t('{n}页', { n: doc.slides.length })}
-                  </span>
                 </div>
               </ToolbarGroup>
             </WorkspaceToolbar>
@@ -5224,7 +5421,7 @@ export function FreeformWorkspace({
         />
       )}
 
-      <main className={toolDrawer ? 'freeform-main has-drawer' : 'freeform-main'}>
+      <main className={`freeform-main${toolDrawer ? ' has-drawer' : ''}${viewPrefs.panelOpen ? ' has-panel' : ''}`}>
         <nav
           className="freeform-tools"
           aria-label={t('插入')}
@@ -5238,53 +5435,57 @@ export function FreeformWorkspace({
             className="freeform-tool"
             type="button"
             data-testid="freeform-template-button"
-            title={t('从模板开始')}
-            onClick={() => setShowTemplates(true)}
+            aria-expanded={toolDrawer === 'templates'}
+            aria-controls="freeform-templates-drawer"
+            onClick={() => toggleToolDrawer('templates')}
           >
             <TemplatesIcon />
             <span>{t('模板')}</span>
           </button>
           <span className="freeform-tools-sep" aria-hidden="true" />
-          <FreeformInsertMenu
-            isActive={isActive}
-            testId="freeform-text-tool"
-            label={t('文字')}
-            variant="rail"
-            layout="list"
-            icon={<TextIcon />}
-            options={TEXT_PRESETS}
-            onSelect={addTextPreset}
-          />
+          <button
+            className="freeform-tool"
+            type="button"
+            data-testid="freeform-text-tool"
+            aria-expanded={toolDrawer === 'text'}
+            aria-controls="freeform-text-drawer"
+            onClick={() => toggleToolDrawer('text')}
+          >
+            <TextIcon />
+            <span>{t('文字')}</span>
+          </button>
           <button
             className="freeform-tool"
             type="button"
             data-testid="freeform-images-tool"
             aria-expanded={toolDrawer === 'images'}
             aria-controls="freeform-images-drawer"
-            title={t('上传图片或从素材库选择')}
-            onClick={() => setToolDrawer((current) => (current === 'images' ? null : 'images'))}
+            onClick={() => toggleToolDrawer('images')}
           >
             <ImageIcon />
             <span>{t('图片')}</span>
           </button>
-          <FreeformInsertMenu
-            isActive={isActive}
-            testId="insert-shape"
-            label={t('形状')}
-            variant="rail"
-            icon={<ShapesIcon />}
-            options={SHAPE_TILES}
-            onSelect={addShape}
-          />
-          <FreeformInsertMenu
-            isActive={isActive}
-            testId="insert-line"
-            label={t('线条')}
-            variant="rail"
-            icon={<LineToolIcon />}
-            options={LINE_TILES}
-            onSelect={addLine}
-          />
+          <button
+            className="freeform-tool"
+            type="button"
+            data-testid="freeform-elements-tool"
+            aria-expanded={toolDrawer === 'elements'}
+            aria-controls="freeform-elements-drawer"
+            onClick={() => toggleToolDrawer('elements')}
+          >
+            <ShapesIcon />
+            <span>{t('元素')}</span>
+          </button>
+          <button
+            className="freeform-tool freeform-tool-end"
+            type="button"
+            data-testid="freeform-layers-tool"
+            aria-pressed={viewPrefs.panelOpen && panelTab === 'layers'}
+            onClick={() => togglePanel('layers')}
+          >
+            <LayersIcon />
+            <span>{t('图层')}</span>
+          </button>
           <input
             ref={imageInputRef}
             className="freeform-file"
@@ -5293,6 +5494,156 @@ export function FreeformWorkspace({
             onChange={(event) => handleImageInput(event.currentTarget.files)}
           />
         </nav>
+
+        {toolDrawer === 'templates' && (
+          <aside
+            className="freeform-drawer is-scroll"
+            id="freeform-templates-drawer"
+            aria-label={t('模板')}
+            data-testid="freeform-templates-drawer"
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape' || event.defaultPrevented) return
+              event.preventDefault()
+              setToolDrawer(null)
+              requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="freeform-template-button"]')?.focus())
+            }}
+          >
+            <div className="freeform-drawer-head">
+              <h2>{t('模板')}</h2>
+              <button className="icon-btn" type="button" aria-label={t('关闭面板')} onClick={() => setToolDrawer(null)}>
+                <CloseIcon />
+              </button>
+            </div>
+            <button
+              className="accent freeform-drawer-upload"
+              type="button"
+              data-testid="freeform-templates-browse"
+              onClick={() => {
+                setGalleryTemplateId(undefined)
+                setShowTemplates(true)
+              }}
+            >
+              <TemplatesIcon />
+              {t('浏览全部模板')}
+            </button>
+            <div className="freeform-template-tiles">
+              {FREEFORM_TEMPLATES.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className="freeform-template-tile"
+                  data-testid={`freeform-template-tile-${template.id}`}
+                  aria-label={t('预览{title}', { title: t(template.title) })}
+                  onClick={() => {
+                    setGalleryTemplateId(template.id)
+                    setShowTemplates(true)
+                  }}
+                >
+                  <FreeformTemplatePreview template={template} frame={TEMPLATE_TILE_FRAME} />
+                  <span className="freeform-template-tile-title">{t(template.title)}</span>
+                  <span className="freeform-template-tile-meta">{t('{n} 页', { n: template.pageCount })}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
+
+        {toolDrawer === 'text' && (
+          <aside
+            className="freeform-drawer is-scroll"
+            id="freeform-text-drawer"
+            aria-label={t('文字')}
+            data-testid="freeform-text-drawer"
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape' || event.defaultPrevented) return
+              event.preventDefault()
+              setToolDrawer(null)
+              requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="freeform-text-tool"]')?.focus())
+            }}
+          >
+            <div className="freeform-drawer-head">
+              <h2>{t('文字')}</h2>
+              <button className="icon-btn" type="button" aria-label={t('关闭面板')} onClick={() => setToolDrawer(null)}>
+                <CloseIcon />
+              </button>
+            </div>
+            <button
+              className="accent freeform-drawer-upload"
+              type="button"
+              data-testid="insert-text"
+              onClick={() => addTextPreset('box')}
+            >
+              <PlusIcon />
+              {t('添加文本框')}
+            </button>
+            <div className="freeform-drawer-section">{t('默认文字样式')}</div>
+            <div className="freeform-text-presets">
+              {TEXT_PRESETS.filter((preset) => preset.id !== 'box').map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`freeform-text-preset is-${preset.id}`}
+                  data-testid={preset.testId}
+                  onClick={() => addTextPreset(preset.id)}
+                >
+                  {t(preset.label)}
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
+
+        {toolDrawer === 'elements' && (
+          <aside
+            className="freeform-drawer is-scroll"
+            id="freeform-elements-drawer"
+            aria-label={t('元素')}
+            data-testid="freeform-elements-drawer"
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape' || event.defaultPrevented) return
+              event.preventDefault()
+              setToolDrawer(null)
+              requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="freeform-elements-tool"]')?.focus())
+            }}
+          >
+            <div className="freeform-drawer-head">
+              <h2>{t('元素')}</h2>
+              <button className="icon-btn" type="button" aria-label={t('关闭面板')} onClick={() => setToolDrawer(null)}>
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="freeform-drawer-section">{t('形状')}</div>
+            <div className="freeform-element-tiles" role="group" aria-label={t('形状')}>
+              {SHAPES.map((shape) => (
+                <button
+                  key={shape.id}
+                  type="button"
+                  className="freeform-element-tile"
+                  data-testid={`insert-shape-${shape.id}`}
+                  onClick={() => addShape(shape.id)}
+                >
+                  <ShapePreviewIcon shape={shape.id} />
+                  <span>{t(shape.label)}</span>
+                </button>
+              ))}
+            </div>
+            <div className="freeform-drawer-section">{t('线条')}</div>
+            <div className="freeform-element-tiles" role="group" aria-label={t('线条')}>
+              {LINES.map((line) => (
+                <button
+                  key={line.id}
+                  type="button"
+                  className="freeform-element-tile"
+                  data-testid={`insert-line-${line.id}`}
+                  onClick={() => addLine(line.id)}
+                >
+                  <ShapePreviewIcon shape={line.id} />
+                  <span>{t(line.label)}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
 
         {toolDrawer === 'images' && (
           <aside
@@ -5322,7 +5673,6 @@ export function FreeformWorkspace({
               <UploadIcon />
               {t('上传图片')}
             </button>
-            <p className="freeform-drawer-hint">{t('直接放进当前页。常用的图片存进素材库，所有项目都能用。')}</p>
             <div className="freeform-drawer-section">{t('素材库')}</div>
             <AssetPanel
               ownerId={ownerId}
@@ -5331,6 +5681,162 @@ export function FreeformWorkspace({
             />
           </aside>
         )}
+
+        <aside className="freeform-rail" aria-label={t('页面列表')} data-testid="freeform-page-strip">
+          <div
+            ref={slideListRef}
+            className="freeform-slide-list"
+            role="list"
+            onDragOver={(event) => {
+              if (!dragSlideIdRef.current) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+            }}
+            onDrop={(event) => {
+              const sourceId = dragSlideIdRef.current
+              if (!sourceId) return
+              event.preventDefault()
+              dragSlideIdRef.current = null
+              setSlideDropTarget(null)
+              reorderSlide(sourceId, doc.slides.length - 1)
+            }}
+          >
+            {doc.slides.map((slide, index) => {
+              const frame = thumbFrame(slide, compactPageStrip)
+              const name = slideDisplayName(slide.name, index)
+              const menuOpen = slideContextMenu?.slideId === slide.id && Boolean(slideContextMenu.fromButton)
+              return (
+              <div
+                key={slide.id}
+                className={`freeform-thumb-wrap${slide.id === activeSlide.id ? ' is-active' : ''}`}
+                role="listitem"
+              >
+                <button
+                  type="button"
+                  draggable
+                  className={`freeform-thumb${slide.id === activeSlide.id ? ' on' : ''}${
+                    slideDropTarget?.slideId === slide.id
+                      ? slideDropTarget.position === 'before' ? ' drop-before' : ' drop-after'
+                      : ''
+                  }`}
+                  aria-current={slide.id === activeSlide.id ? 'page' : undefined}
+                  data-testid="freeform-thumb"
+                  data-slide-id={slide.id}
+                  onClick={() => selectSlide(slide.id)}
+                  onDragStart={(event) => {
+                    dragSlideIdRef.current = slide.id
+                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.setData('text/plain', slide.id)
+                  }}
+                  onDragEnd={() => {
+                    dragSlideIdRef.current = null
+                    setSlideDropTarget(null)
+                  }}
+                  onDragOver={(event) => {
+                    if (!dragSlideIdRef.current || dragSlideIdRef.current === slide.id) return
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                    const position = slideDropPosition(event)
+                    setSlideDropTarget((current) =>
+                      current && current.slideId === slide.id && current.position === position
+                        ? current
+                        : { slideId: slide.id, position },
+                    )
+                  }}
+                  onDragLeave={() => {
+                    setSlideDropTarget((current) =>
+                      current?.slideId === slide.id ? null : current,
+                    )
+                  }}
+                  onDrop={(event) => {
+                    const sourceId = dragSlideIdRef.current
+                    if (!sourceId || sourceId === slide.id) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    dragSlideIdRef.current = null
+                    setSlideDropTarget(null)
+                    const after = slideDropPosition(event) === 'after'
+                    const targetIndex = slideDropTargetIndex(sourceId, slide.id, after)
+                    if (targetIndex !== null) reorderSlide(sourceId, targetIndex)
+                  }}
+                  onContextMenu={(event) => onSlideThumbContextMenu(event, slide.id)}
+                >
+                  <FreeformSlidePreview
+                    slide={slide}
+                    frameWidth={frame.width}
+                    frameHeight={frame.height}
+                    className="freeform-thumb-art"
+                    deferOffscreen={slide.id !== activeSlide.id}
+                  />
+                  <span className="freeform-thumb-caption">
+                    <span
+                      className="freeform-thumb-title"
+                      data-testid="freeform-thumb-title"
+                      title={name}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation()
+                        event.preventDefault()
+                        beginSlideRename(slide.id)
+                      }}
+                    >
+                      {name}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="freeform-thumb-menu"
+                  data-testid="freeform-thumb-menu"
+                  aria-label={t('{name} 的页面操作', { name })}
+                  title={t('页面操作')}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  onClick={(event) => toggleSlideMenu(event, slide.id)}
+                >
+                  <MoreIcon />
+                </button>
+                {renamingSlideId === slide.id && (
+                  <input
+                    ref={slideRenameInputRef}
+                    className="freeform-thumb-rename"
+                    data-testid="freeform-thumb-rename"
+                    aria-label={t('重命名页面')}
+                    value={slideRenameValue}
+                    onChange={(event) => setSlideRenameValue(event.currentTarget.value)}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onBlur={() => commitSlideRename()}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                      if (event.key === 'Enter') {
+                        if (event.nativeEvent.isComposing || slideRenameCompositionRef.current) return
+                        event.preventDefault()
+                        commitSlideRename()
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelSlideRename()
+                      }
+                    }}
+                    onCompositionStart={() => {
+                      slideRenameCompositionRef.current = true
+                    }}
+                    onCompositionEnd={() => {
+                      slideRenameCompositionRef.current = false
+                    }}
+                  />
+                )}
+              </div>
+              )
+            })}
+          </div>
+          <button
+            className="freeform-add-page"
+            type="button"
+            onClick={addSlide}
+          >
+            <PlusIcon />
+            <span>{t('新增页面')}</span>
+          </button>
+        </aside>
 
         <section className="freeform-stage-pane" aria-label={t('自由画布')}>
           {(imageCropSession || framingSession) && (
@@ -5389,9 +5895,50 @@ export function FreeformWorkspace({
             </div>
           )}
 
+          {!hasImageEditSession && (
+            <FreeformContextToolbar
+              isActive={isActive}
+              subject={contextSubject}
+              resetKey={inspectorNumberResetKey}
+              canAlign={canUseLogicalAlignment}
+              canDistribute={selectionPaths.length >= 3}
+              canGroup={selectionPaths.length >= 2}
+              onStyle={(patch) => { updateSelectedStyle(patch) }}
+              onProperty={(edit) => { commitSceneProperty(edit) }}
+              onFontFamily={(fontFamily) => {
+                if (selectedElement?.type === 'text') {
+                  void buildFontEmbedCSS(selectedElement.text, fontFamily, [selectedElement.fontWeight]).catch(() => undefined)
+                }
+                updateSelectedStyle({ fontFamily })
+              }}
+              onShapeFill={(fill) => { updateSelectedShapeFill(fill) }}
+              onPageBackground={(background) => applyAction({
+                type: 'slide/update',
+                slideId: activeSlide.id,
+                patch: { background },
+              })}
+              onAlign={alignSelection}
+              onDistribute={distributeSelection}
+              onOrder={reorderSelection}
+              onGroup={() => { groupSelection() }}
+              onUngroup={() => { ungroupSelection() }}
+              onCrop={() => { if (selectedPath) startImageCrop(selectedPath) }}
+              onDuplicate={duplicateSelection}
+              onToggleLock={toggleSelectionLock}
+              onDelete={deleteSelection}
+              onAdjustFraming={() => { if (selectedPath) startImageFraming(selectedPath) }}
+              panelOpen={viewPrefs.panelOpen && panelTab === 'properties'}
+              onTogglePanel={() => togglePanel('properties')}
+            />
+          )}
+
           <div
             ref={stageViewportRef}
             className={`freeform-stage-viewport${viewPrefs.rulersVisible ? ' has-rulers' : ''}${guideDrag ? ` guide-dragging-${guideDrag.axis}` : ''}`}
+            onDragEnter={onStageFileDragEnter}
+            onDragOver={onStageFileDragOver}
+            onDragLeave={onStageFileDragLeave}
+            onDrop={onStageFileDrop}
           >
             {rulerView && viewPrefs.rulersVisible && (
               <>
@@ -5460,9 +6007,6 @@ export function FreeformWorkspace({
                   height: activeSlide.height * renderScale,
                 }}
               >
-                <span className="freeform-ui-only freeform-page-label" data-testid="freeform-page-label" aria-hidden="true">
-                  {pageLabel(doc.slides.indexOf(activeSlide), activeSlide.name)}
-                </span>
                 <div
                   ref={artboardRef}
                   className="freeform-artboard"
@@ -5661,6 +6205,11 @@ export function FreeformWorkspace({
               </div>
             )}
             </div>
+            {fileDragActive && (
+              <div className="freeform-drop-overlay" data-testid="freeform-drop-overlay" aria-hidden="true">
+                <div><UploadIcon /><b>{t('松开，把图片放进这一页')}</b></div>
+              </div>
+            )}
           </div>
           {framingRenderTarget && (
             <div className="freeform-framing-zoom" role="group" aria-label={t('图片缩放')}>
@@ -5704,253 +6253,34 @@ export function FreeformWorkspace({
             </div>
           )}
 
+          {!imageCropSession && !framingSession && (
+            <FreeformZoomControl
+              isActive={isActive}
+              zoomPercent={zoomPercent}
+              canZoomOut={zoomPercent > MIN_ZOOM_PERCENT}
+              canZoomIn={zoomPercent < MAX_ZOOM_PERCENT}
+              canZoomToSelection={selectionPaths.length > 0}
+              view={{
+                rulersVisible: viewPrefs.rulersVisible,
+                guidesVisible: viewPrefs.guidesVisible,
+                snappingEnabled: viewPrefs.snappingEnabled,
+              }}
+              onZoomOut={() => setZoomPercent((value) => clampZoomPercent(value - ZOOM_STEP))}
+              onZoomIn={() => setZoomPercent((value) => clampZoomPercent(value + ZOOM_STEP))}
+              onFit={() => setZoomPercent(DEFAULT_ZOOM_PERCENT)}
+              onZoomToSelection={zoomToSelectionBounds}
+              onToggleView={(toggle) => updateViewPrefs({ [toggle]: !viewPrefs[toggle] })}
+            />
+          )}
         </section>
 
-        <aside className="freeform-rail" aria-label={t('页面列表')} data-testid="freeform-page-strip">
-          <div
-            className="freeform-slide-list"
-            onDragOver={(event) => {
-              if (!dragSlideIdRef.current) return
-              event.preventDefault()
-              event.dataTransfer.dropEffect = 'move'
-            }}
-            onDrop={(event) => {
-              const sourceId = dragSlideIdRef.current
-              if (!sourceId) return
-              event.preventDefault()
-              dragSlideIdRef.current = null
-              setSlideDropTarget(null)
-              reorderSlide(sourceId, doc.slides.length - 1)
-            }}
-          >
-            {doc.slides.map((slide, index) => (
-              <div key={slide.id} className="freeform-thumb-wrap">
-                <button
-                  type="button"
-                  draggable
-                  className={`freeform-thumb${slide.id === activeSlide.id ? ' on' : ''}${
-                    slideDropTarget?.slideId === slide.id
-                      ? slideDropTarget.position === 'before' ? ' drop-before' : ' drop-after'
-                      : ''
-                  }`}
-                  aria-current={slide.id === activeSlide.id ? 'page' : undefined}
-                  data-testid="freeform-thumb"
-                  onClick={() => selectSlide(slide.id)}
-                  onDragStart={(event) => {
-                    dragSlideIdRef.current = slide.id
-                    event.dataTransfer.effectAllowed = 'move'
-                    event.dataTransfer.setData('text/plain', slide.id)
-                  }}
-                  onDragEnd={() => {
-                    dragSlideIdRef.current = null
-                    setSlideDropTarget(null)
-                  }}
-                  onDragOver={(event) => {
-                    if (!dragSlideIdRef.current || dragSlideIdRef.current === slide.id) return
-                    event.preventDefault()
-                    event.dataTransfer.dropEffect = 'move'
-                    const bounds = event.currentTarget.getBoundingClientRect()
-                    const position: 'before' | 'after' =
-                      event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after'
-                    setSlideDropTarget((current) =>
-                      current && current.slideId === slide.id && current.position === position
-                        ? current
-                        : { slideId: slide.id, position },
-                    )
-                  }}
-                  onDragLeave={() => {
-                    setSlideDropTarget((current) =>
-                      current?.slideId === slide.id ? null : current,
-                    )
-                  }}
-                  onDrop={(event) => {
-                    const sourceId = dragSlideIdRef.current
-                    if (!sourceId || sourceId === slide.id) return
-                    event.preventDefault()
-                    event.stopPropagation()
-                    dragSlideIdRef.current = null
-                    setSlideDropTarget(null)
-                    const bounds = event.currentTarget.getBoundingClientRect()
-                    const after = event.clientX >= bounds.left + bounds.width / 2
-                    const targetIndex = slideDropTargetIndex(sourceId, slide.id, after)
-                    if (targetIndex !== null) reorderSlide(sourceId, targetIndex)
-                  }}
-                  onContextMenu={(event) => onSlideThumbContextMenu(event, slide.id)}
-                >
-                  <FreeformSlidePreview
-                    slide={slide}
-                    frameWidth={thumbFrameWidth(slide)}
-                    frameHeight={THUMB_HEIGHT}
-                    className="freeform-thumb-art"
-                    deferOffscreen={slide.id !== activeSlide.id}
-                  />
-                  <span className="freeform-thumb-caption">
-                    <span className="freeform-thumb-number">{String(index + 1).padStart(2, '0')}</span>
-                    <span
-                      className="freeform-thumb-title"
-                      data-testid="freeform-thumb-title"
-                      title={slide.name}
-                      onDoubleClick={(event) => {
-                        event.stopPropagation()
-                        event.preventDefault()
-                        beginSlideRename(slide.id)
-                      }}
-                    >
-                      {slide.name}
-                    </span>
-                  </span>
-                </button>
-                {renamingSlideId === slide.id && (
-                  <input
-                    ref={slideRenameInputRef}
-                    className="freeform-thumb-rename"
-                    data-testid="freeform-thumb-rename"
-                    aria-label={t('重命名页面')}
-                    value={slideRenameValue}
-                    onChange={(event) => setSlideRenameValue(event.currentTarget.value)}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onBlur={() => commitSlideRename()}
-                    onKeyDown={(event) => {
-                      event.stopPropagation()
-                      if (event.key === 'Enter') {
-                        if (event.nativeEvent.isComposing || slideRenameCompositionRef.current) return
-                        event.preventDefault()
-                        commitSlideRename()
-                      } else if (event.key === 'Escape') {
-                        event.preventDefault()
-                        cancelSlideRename()
-                      }
-                    }}
-                    onCompositionStart={() => {
-                      slideRenameCompositionRef.current = true
-                    }}
-                    onCompositionEnd={() => {
-                      slideRenameCompositionRef.current = false
-                    }}
-                  />
-                )}
-              </div>
-            ))}
-            <button
-              className="freeform-add-page"
-              type="button"
-              aria-label={t('新增页面')}
-              title={t('新增页面')}
-              onClick={addSlide}
-            >
-              <PlusIcon />
-            </button>
-          </div>
-          <div className="freeform-rail-actions">
-            <button
-              className="freeform-page-action"
-              type="button"
-              aria-label={t('复制页面')}
-              title={t('复制页面')}
-              onClick={() => duplicateSlide()}
-            >
-              <CopyIcon />
-            </button>
-            <button
-              className="freeform-page-action"
-              type="button"
-              aria-label={t('删除页面')}
-              title={t('删除页面')}
-              onClick={() => deleteSlide()}
-              disabled={doc.slides.length <= 1}
-            >
-              <TrashIcon />
-            </button>
-          </div>
-          {!imageCropSession && !framingSession && (
-            <div className="freeform-zoom-controls">
-              <div className="zoom-controls" aria-label={t('画布设置')}>
-                <button
-                  className="zoom-btn"
-                  type="button"
-                  data-testid="freeform-rulers-toggle"
-                  aria-label={t('显示标尺')}
-                  title={t('显示标尺')}
-                  aria-pressed={viewPrefs.rulersVisible}
-                  onClick={() => updateViewPrefs({ rulersVisible: !viewPrefs.rulersVisible })}
-                >
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M3.5 7.5h13v5h-13z" />
-                    <path d="M6.5 7.5v2M9.5 7.5v2.75M12.5 7.5v2M15.5 7.5v2.75" />
-                  </svg>
-                </button>
-                <button
-                  className="zoom-btn"
-                  type="button"
-                  data-testid="freeform-guides-toggle"
-                  aria-label={t('显示参考线')}
-                  title={t('显示参考线')}
-                  aria-pressed={viewPrefs.guidesVisible}
-                  onClick={() => updateViewPrefs({ guidesVisible: !viewPrefs.guidesVisible })}
-                >
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M7 2.5v15M2.5 13h15" strokeDasharray="2 2" />
-                    <rect x="4.5" y="4.5" width="11" height="11" rx="1.5" />
-                  </svg>
-                </button>
-                <button
-                  className="zoom-btn"
-                  type="button"
-                  data-testid="freeform-snap-toggle"
-                  aria-label={t('对象吸附')}
-                  title={t('对象吸附')}
-                  aria-pressed={viewPrefs.snappingEnabled}
-                  onClick={() => updateViewPrefs({ snappingEnabled: !viewPrefs.snappingEnabled })}
-                >
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M5.5 3.5v6.25a4.5 4.5 0 0 0 9 0V3.5" />
-                    <path d="M5.5 6.75h3M11.5 6.75h3" />
-                  </svg>
-                </button>
-              </div>
-              <div className="zoom-controls" aria-label={t('预览缩放')}>
-                <button
-                  className="zoom-btn"
-                  type="button"
-                  aria-label={t('缩小画布')}
-                  title={t('缩小画布')}
-                  disabled={zoomPercent <= MIN_ZOOM_PERCENT}
-                  onClick={() => setZoomPercent((value) => clampZoomPercent(value - ZOOM_STEP))}
-                >
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M4 10h12" />
-                  </svg>
-                </button>
-                <button
-                  className="zoom-value"
-                  data-testid="freeform-zoom-value"
-                  type="button"
-                  title={t('适应画布（恢复 100%）')}
-                  onClick={() => setZoomPercent(DEFAULT_ZOOM_PERCENT)}
-                >
-                  {zoomPercent}%
-                </button>
-                <button
-                  className="zoom-btn"
-                  type="button"
-                  aria-label={t('放大画布')}
-                  title={t('放大画布')}
-                  disabled={zoomPercent >= MAX_ZOOM_PERCENT}
-                  onClick={() => setZoomPercent((value) => clampZoomPercent(value + ZOOM_STEP))}
-                >
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M10 4v12M4 10h12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
-        </aside>
-
-
+        {viewPrefs.panelOpen && (
         <FreeformRightPanel
           propertiesTabRef={propertiesTabRef}
           disabled={hasImageEditSession}
+          activeTab={panelTab}
+          onTabChange={setPanelTab}
+          onClose={() => updateViewPrefs({ panelOpen: false })}
           layers={(
             <FreeformLayersPanel
               nodes={activeSlide.nodes}
@@ -5974,7 +6304,6 @@ export function FreeformWorkspace({
               data-testid="freeform-history-panel"
               data-history-count={historyRows.length}
             >
-              <p className="freeform-history-hint">{t('点击任意步骤，在时间线上前后跳转；新编辑会清空重做步骤。')}</p>
               <ol className="freeform-history-list" aria-label={t('编辑历史')}>
                 {historyRows.map((row) => {
                   const { kind, index } = row
@@ -6053,7 +6382,9 @@ export function FreeformWorkspace({
                   <span className="field-label">{t('页面名称')}</span>
                   <input
                     className="text-input"
-                    value={activeSlide.name}
+                    value={isDefaultPageName(activeSlide.name)
+                      ? slideDisplayName(activeSlide.name, activeSlideIndex)
+                      : activeSlide.name}
                     onChange={(event) =>
                       applyAction({
                         type: 'slide/update',
@@ -6079,7 +6410,6 @@ export function FreeformWorkspace({
                   />
                 </div>
               </InspectorSection>
-              <div className="inspector-empty">{t('选择对象以编辑属性。')}</div>
             </>
           ) : (
             <>
@@ -6443,40 +6773,37 @@ export function FreeformWorkspace({
                     </InspectorSection>
                   )}
 
-                  {isTextElement(selectedElement) && (
+                  {isTextElement(selectedElement) && (activeTextRange || (selectedElement.spans?.length ?? 0) > 0) && (
                     <InspectorSection title={t('文字片段')} testId="inspector-rich-spans">
-                      <div className="rich-span-apply" data-testid="rich-span-apply">
-                        {activeTextRange ? (
+                      {activeTextRange && (
+                        <div className="rich-span-apply" data-testid="rich-span-apply">
                           <span className="rich-span-hint">
                             {t('已选 {n} 字', { n: activeTextRange.end - activeTextRange.start })}
                           </span>
-                        ) : (
-                          <span className="rich-span-hint muted">{t('双击文本后选中一段文字')}</span>
-                        )}
-                        <button
-                          className="ghost"
-                          type="button"
-                          data-testid="rich-span-bold"
-                          disabled={!activeTextRange}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => applySelectedTextSpan({ bold: true })}
-                        >
-                          {t('加粗')}
-                        </button>
-                        {RICH_SPAN_COLORS.map((color) => (
                           <button
-                            key={color}
-                            className="rich-span-swatch"
+                            className="ghost"
                             type="button"
-                            aria-label={t('标色 {color}', { color })}
-                            title={color}
-                            style={{ background: color }}
-                            disabled={!activeTextRange}
+                            data-testid="rich-span-bold"
                             onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => applySelectedTextSpan({ color })}
-                          />
-                        ))}
-                      </div>
+                            onClick={() => applySelectedTextSpan({ bold: true })}
+                          >
+                            {t('加粗')}
+                          </button>
+                          <span className="rich-span-label">{t('标色')}</span>
+                          {RICH_SPAN_COLORS.map((color) => (
+                            <button
+                              key={color}
+                              className="rich-span-swatch"
+                              type="button"
+                              aria-label={t('标色 {color}', { color })}
+                              title={color}
+                              style={{ background: color }}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => applySelectedTextSpan({ color })}
+                            />
+                          ))}
+                        </div>
+                      )}
                       {selectedElement.spans && selectedElement.spans.length > 0 && (
                         <ul className="rich-span-list" data-testid="rich-span-list">
                           {selectedElement.spans.map((span, index) => (
@@ -6828,6 +7155,7 @@ export function FreeformWorkspace({
             </>
           )}
         </FreeformRightPanel>
+        )}
       </main>
 
 
@@ -6837,6 +7165,7 @@ export function FreeformWorkspace({
         hasCurrentContent={draftId !== null || history.past.length > 0 || doc.slides.length > 1 || doc.slides.some((slide) => slide.nodes.length > 0)}
         currentIsSaved={ownerId !== null && !unsaved}
         onClose={() => setShowTemplates(false)}
+        initialTemplateId={galleryTemplateId}
         onApply={applyFreeformTemplate}
       />
 
@@ -6884,6 +7213,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); copySelection() }}
           >
             {t('复制')}
+            <MenuShortcut keys={shortcutLabel('C', { mod: true })} />
           </button>
           <button
             type="button"
@@ -6894,6 +7224,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); duplicateSelection() }}
           >
             {t('原位复制')}
+            <MenuShortcut keys={shortcutLabel('D', { mod: true })} />
           </button>
           <button
             type="button"
@@ -6904,6 +7235,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); cutSelection() }}
           >
             {t('剪切')}
+            <MenuShortcut keys={shortcutLabel('X', { mod: true })} />
           </button>
           <button
             type="button"
@@ -6914,6 +7246,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); pasteClipboard() }}
           >
             {t('粘贴')}
+            <MenuShortcut keys={shortcutLabel('V', { mod: true })} />
           </button>
           <button
             type="button"
@@ -6924,6 +7257,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); pasteClipboard(true) }}
           >
             {t('原位粘贴')}
+            <MenuShortcut keys={shortcutLabel('V', { mod: true, shift: true })} />
           </button>
           <button
             type="button"
@@ -6934,6 +7268,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); deleteSelection() }}
           >
             {t('删除')}
+            <MenuShortcut keys={DELETE_KEY} />
           </button>
           <div className="freeform-context-menu-separator" role="separator" />
           <button
@@ -6945,6 +7280,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); reorderSelection('forward') }}
           >
             {t('上移一层')}
+            <MenuShortcut keys={shortcutLabel(']', { mod: true })} />
           </button>
           <button
             type="button"
@@ -6955,6 +7291,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); reorderSelection('backward') }}
           >
             {t('下移一层')}
+            <MenuShortcut keys={shortcutLabel('[', { mod: true })} />
           </button>
           <button
             type="button"
@@ -6965,6 +7302,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); reorderSelection('front') }}
           >
             {t('置于顶层')}
+            <MenuShortcut keys="]" />
           </button>
           <button
             type="button"
@@ -6975,6 +7313,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); reorderSelection('back') }}
           >
             {t('移到底层')}
+            <MenuShortcut keys="[" />
           </button>
           <div className="freeform-context-menu-separator" role="separator" />
           <button
@@ -6986,6 +7325,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); groupSelection() }}
           >
             {t('编组')}
+            <MenuShortcut keys={shortcutLabel('G', { mod: true })} />
           </button>
           <button
             type="button"
@@ -6996,6 +7336,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); ungroupSelection() }}
           >
             {t('解组')}
+            <MenuShortcut keys={shortcutLabel('G', { mod: true, shift: true })} />
           </button>
           <div className="freeform-context-menu-separator" role="separator" />
           <button
@@ -7034,6 +7375,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); copySelectionStyle() }}
           >
             {t('复制样式')}
+            <MenuShortcut keys={shortcutLabel('C', { mod: true, alt: true })} />
           </button>
           <button
             type="button"
@@ -7044,6 +7386,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); pasteStyleToSelection() }}
           >
             {t('粘贴样式')}
+            <MenuShortcut keys={shortcutLabel('V', { mod: true, alt: true })} />
           </button>
           <button
             type="button"
@@ -7054,6 +7397,7 @@ export function FreeformWorkspace({
             onClick={() => { closeContextMenu(); zoomToSelectionBounds() }}
           >
             {t('缩放到选区')}
+            <MenuShortcut keys={shortcutLabel('2', { shift: true })} />
           </button>
         </div>
       )}
@@ -7066,6 +7410,28 @@ export function FreeformWorkspace({
           role="menu"
           aria-label={t('页面操作')}
           style={{ left: slideContextMenu.x, top: slideContextMenu.y }}
+          onKeyDown={(event) => {
+            const items = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'),
+            )
+            const index = items.findIndex((item) => item === document.activeElement)
+            let next: number | null = null
+            if (event.key === 'ArrowDown') next = index + 1
+            else if (event.key === 'ArrowUp') next = index < 0 ? items.length - 1 : index - 1
+            else if (event.key === 'Home') next = 0
+            else if (event.key === 'End') next = items.length - 1
+            if (next !== null && items.length > 0) {
+              event.preventDefault()
+              event.stopPropagation()
+              items[(next + items.length) % items.length].focus()
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              event.stopPropagation()
+              closeSlideMenu(true)
+            } else if (event.key === 'Tab') {
+              closeSlideMenu(false)
+            }
+          }}
         >
           <button
             type="button"
@@ -7074,7 +7440,7 @@ export function FreeformWorkspace({
             data-testid="freeform-slide-context-menu-rename"
             onClick={() => {
               const slideId = slideContextMenu.slideId
-              setSlideContextMenu(null)
+              closeSlideMenu(false)
               beginSlideRename(slideId)
             }}
           >
@@ -7087,7 +7453,7 @@ export function FreeformWorkspace({
             data-testid="freeform-slide-context-menu-duplicate"
             disabled={doc.slides.length >= MAX_FREEFORM_SLIDES}
             onClick={() => {
-              setSlideContextMenu(null)
+              closeSlideMenu(true)
               duplicateSlide(slideContextMenu.slideId)
             }}
           >
@@ -7100,7 +7466,7 @@ export function FreeformWorkspace({
             data-testid="freeform-slide-context-menu-delete"
             disabled={doc.slides.length <= 1}
             onClick={() => {
-              setSlideContextMenu(null)
+              closeSlideMenu(true)
               deleteSlide(slideContextMenu.slideId)
             }}
           >
@@ -7114,7 +7480,7 @@ export function FreeformWorkspace({
             data-testid="freeform-slide-context-menu-up"
             disabled={slideMenuIndex === 0}
             onClick={() => {
-              setSlideContextMenu(null)
+              closeSlideMenu(true)
               reorderSlide(slideContextMenu.slideId, slideMenuIndex - 1)
             }}
           >
@@ -7127,7 +7493,7 @@ export function FreeformWorkspace({
             data-testid="freeform-slide-context-menu-down"
             disabled={slideMenuIndex === doc.slides.length - 1}
             onClick={() => {
-              setSlideContextMenu(null)
+              closeSlideMenu(true)
               reorderSlide(slideContextMenu.slideId, slideMenuIndex + 1)
             }}
           >
@@ -7140,7 +7506,7 @@ export function FreeformWorkspace({
             data-testid="freeform-slide-context-menu-front"
             disabled={slideMenuIndex === 0}
             onClick={() => {
-              setSlideContextMenu(null)
+              closeSlideMenu(true)
               reorderSlide(slideContextMenu.slideId, 0)
             }}
           >
@@ -7153,7 +7519,7 @@ export function FreeformWorkspace({
             data-testid="freeform-slide-context-menu-back"
             disabled={slideMenuIndex === doc.slides.length - 1}
             onClick={() => {
-              setSlideContextMenu(null)
+              closeSlideMenu(true)
               reorderSlide(slideContextMenu.slideId, doc.slides.length - 1)
             }}
           >

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react'
 import { t } from '../i18n'
+import { CloseIcon } from '../ui/icons'
 
 export type FreeformRightPanelTab = 'properties' | 'layers' | 'history'
 
@@ -9,6 +10,10 @@ export interface FreeformRightPanelProps {
   history: ReactNode
   propertiesTabRef?: Ref<HTMLButtonElement>
   disabled?: boolean
+  /** The tab on show; the editor opens the panel on a given tab. */
+  activeTab: FreeformRightPanelTab
+  onTabChange: (tab: FreeformRightPanelTab) => void
+  onClose: () => void
 }
 
 const TABS: Array<{ id: FreeformRightPanelTab; label: string }> = [
@@ -17,17 +22,24 @@ const TABS: Array<{ id: FreeformRightPanelTab; label: string }> = [
   { id: 'history', label: '历史' },
 ]
 
-/** Right-side properties/layers/history switcher. Tab state is intentionally UI-only. */
+/** The settings panel beside the canvas: properties, layers and history, opened on demand. */
 export function FreeformRightPanel({
   children,
   layers,
   history,
   propertiesTabRef,
   disabled = false,
+  activeTab,
+  onTabChange,
+  onClose,
 }: FreeformRightPanelProps) {
   const rootRef = useRef<HTMLElement>(null)
-  const [activeTab, setActiveTab] = useState<FreeformRightPanelTab>('properties')
-  const [focusedTab, setFocusedTab] = useState<FreeformRightPanelTab>('properties')
+  const [focusedTab, setFocusedTab] = useState<FreeformRightPanelTab>(activeTab)
+  const setActiveTab = onTabChange
+
+  useEffect(() => {
+    setFocusedTab(activeTab)
+  }, [activeTab])
   const baseId = useId().replace(/:/g, '')
   const tabId = (tab: FreeformRightPanelTab) => `freeform-${baseId}-${tab}-tab`
   const panelId = (tab: FreeformRightPanelTab) => `freeform-${baseId}-${tab}-panel`
@@ -62,6 +74,7 @@ export function FreeformRightPanel({
       aria-label={t('属性和图层面板')}
       aria-disabled={disabled || undefined}
     >
+      <div className="freeform-right-head">
       <div className="freeform-right-tabs" role="tablist" aria-label={t('自由编辑面板')}>
         {TABS.map((tab) => (
           <button
@@ -84,6 +97,17 @@ export function FreeformRightPanel({
             {t(tab.label)}
           </button>
         ))}
+      </div>
+      <button
+        type="button"
+        className="icon-btn freeform-right-close"
+        data-testid="freeform-panel-close"
+        aria-label={t('收起面板')}
+        title={t('收起面板')}
+        onClick={onClose}
+      >
+        <CloseIcon />
+      </button>
       </div>
       <div
         id={panelId('properties')}
