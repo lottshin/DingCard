@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 15
+  documentVersion: 16
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -43,9 +43,19 @@ export type ColorPaint =
   /** The v12 centered radial gradient; the radius is the box's farthest corner. */
   | { type: 'radial-gradient'; stops: GradientStop[] }
 
+/** A picture filling its box, framed like an image node: shape fills, and page backgrounds (v16). */
+export interface ImagePaint {
+  type: 'image'
+  src: string
+  fit: 'cover' | 'contain'
+  framing: ImageFraming
+}
+
 export type SlideBackground =
   | ColorPaint
   | { type: 'transparent' }
+  /** A picture filling the page (v16), under everything on it. */
+  | ImagePaint
 
 export interface SceneNodeState {
   id: string
@@ -113,13 +123,17 @@ export interface FreeformElementBase extends SceneNodeState {
 /**
  * Additive styling for a character range [start, end) inside a text
  * element's plain `text`. Canonical spans are sorted, non-overlapping, and
- * carry at least one of bold/color.
+ * carry at least one of bold/color/highlight/underline.
  */
 export interface RichTextSpan {
   start: number
   end: number
   bold?: true
   color?: string
+  /** Highlight colour behind the characters (v16). */
+  highlight?: string
+  /** Underlined characters (v16). */
+  underline?: true
 }
 
 export interface FreeformTextElement extends FreeformElementBase {
@@ -449,4 +463,4 @@ export type ShapeFill =
   | ColorPaint
   /** The v11 no-fill variant: an outline-only shape. */
   | { type: 'transparent' }
-  | { type: 'image'; src: string; fit: 'cover' | 'contain'; framing: ImageFraming }
+  | ImagePaint

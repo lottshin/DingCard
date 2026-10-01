@@ -4,7 +4,7 @@
 // MCP surface has exactly the same validation and reducer semantics as the
 // in-app editor:
 //
-//   - normalizeFreeformDocument: strict v15 validation (+ v1–v14 migration)
+//   - normalizeFreeformDocument: strict v16 validation (+ v1–v15 migration)
 //   - reduceFreeformDocument:    the exact action reducer the UI dispatches to
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
@@ -22,7 +22,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v15 校验：需要 documentVersion=1–15 之一（旧版自动迁移为 v15）、非空 slides、'
+  '文档未通过自由画布 v16 校验：需要 documentVersion=1–16 之一（旧版自动迁移为 v16）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -71,6 +71,10 @@ export type InspectResult =
 
 function describeBackground(background: SlideBackground): string {
   if (background.type === 'transparent') return 'transparent'
+  if (background.type === 'image') {
+    const src = background.src.startsWith('data:') ? `${background.src.slice(0, 30)}…` : background.src
+    return `image ${src} (${background.fit})`
+  }
   if (background.type === 'solid') return `solid ${background.color}`
   if (background.type === 'radial-gradient') {
     const stops = background.stops.map((stop) => `${stop.color} @ ${Math.round(stop.offset * 100)}%`)
@@ -176,7 +180,7 @@ export function applyActions(value: unknown, actions: unknown): ApplyActionsResu
   }
   const finalCheck = normalizeFreeformDocument(document)
   if (!finalCheck) {
-    return { ok: false, error: '应用动作后文档未通过 v15 校验（不应发生，请反馈）' }
+    return { ok: false, error: '应用动作后文档未通过 v16 校验（不应发生，请反馈）' }
   }
   return { ok: true, document: finalCheck, changes }
 }

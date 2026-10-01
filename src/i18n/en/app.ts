@@ -161,8 +161,6 @@ export const app: Record<string, Translation> = {
   '写好正文就能套用，封面、正文、金句、收尾按内容自动分配。':
     'Apply one to finished text: the cover, body, quote and closing pages are assigned from your content.',
   '每个元素都能拖动、改色、换图，多页一起调整。': 'Drag, recolor and swap images on every element, across all pages.',
-  '每套模板都是排好版的完整示例，文字、配色和字体都可以继续改。':
-    'Each template is a finished example. Text, colors and fonts all stay editable.',
   '预览{title}': 'Preview {title}',
   '从一套成品开始': 'Start from a finished design',
   '样式和内容都可以继续改，先选一套接近你想法的。': 'Style and content stay editable, so pick the one closest to your idea.',
@@ -208,8 +206,6 @@ export const app: Record<string, Translation> = {
   '点一下，插入到光标所在的位置': 'Click to insert at the cursor',
   '点一下，放到当前页的中央': 'Click to place in the middle of the page',
   '关闭素材库': 'Close Assets',
-  '上传一次，Markdown 卡片和自由编辑的项目都能用。删掉素材不会影响已经用上它的项目。':
-    'Upload once, use it in Markdown Cards and Freeform. Deleting an asset never affects projects that already use it.',
   '按名称搜索': 'Search by name',
   '{n} 张 · {size}': plural('{n} picture · {size}', '{n} pictures · {size}'),
   '排序': 'Sort',

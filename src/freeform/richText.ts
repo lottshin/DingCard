@@ -2,13 +2,42 @@
 // validator, the action reducer, and the text renderers.
 //
 // A span marks a character range [start, end) inside a text element's plain
-// `text` with additive styling: bold and/or a solid color. Canonical spans
-// are sorted by start, non-overlapping, non-empty, and within text bounds.
+// `text` with additive styling: bold, a solid color, and (v16) a highlight
+// colour behind the characters and an underline. Canonical spans are sorted
+// by start, non-overlapping, non-empty, and within text bounds.
 
 import { isHexColor } from './paint'
 import type { RichTextSpan } from './types'
 
-const SPAN_KEYS = new Set(['start', 'end', 'bold', 'color'])
+const SPAN_KEYS = new Set(['start', 'end', 'bold', 'color', 'highlight', 'underline'])
+
+/** A span's styling without its range. */
+export type RichTextStyle = Omit<RichTextSpan, 'start' | 'end'>
+
+/** The styles a span can carry, in a fixed order (also the order of `RichTextStyle` keys in output). */
+const STYLE_KEYS = ['bold', 'color', 'highlight', 'underline'] as const
+
+function hasStyle(style: RichTextStyle): boolean {
+  return STYLE_KEYS.some((key) => style[key] !== undefined)
+}
+
+function styleOf(span: RichTextStyle): RichTextStyle {
+  const style: RichTextStyle = {}
+  if (span.bold) style.bold = true
+  if (span.color !== undefined) style.color = span.color
+  if (span.highlight !== undefined) style.highlight = span.highlight
+  if (span.underline) style.underline = true
+  return style
+}
+
+function sameStyle(a: RichTextStyle, b: RichTextStyle): boolean {
+  return STYLE_KEYS.every((key) => a[key] === b[key])
+}
+
+/** Spans using the v16 styles (highlight, underline), which older documents can't hold. */
+export function usesV16SpanStyles(spans: readonly RichTextSpan[]): boolean {
+  return spans.some((span) => span.highlight !== undefined || span.underline !== undefined)
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -28,7 +57,9 @@ function isSpanShape(value: unknown): value is RichTextSpan {
   }
   if ('bold' in value && value.bold !== true) return false
   if ('color' in value && !isHexColor(value.color)) return false
-  return 'bold' in value || 'color' in value
+  if ('highlight' in value && !isHexColor(value.highlight)) return false
+  if ('underline' in value && value.underline !== true) return false
+  return 'bold' in value || 'color' in value || 'highlight' in value || 'underline' in value
 }
 
 /**
@@ -45,7 +76,7 @@ export function normalizeRichTextSpans(
   for (const raw of value) {
     if (!isSpanShape(raw)) return null
     if (raw.end > textLength) return null
-    spans.push(raw)
+    spans.push({ start: raw.start, end: raw.end, ...styleOf(raw) })
   }
   spans.sort((a, b) => a.start - b.start)
   for (let index = 1; index < spans.length; index += 1) {
@@ -103,8 +134,7 @@ export function remapRichTextSpans(
       if (
         previous
         && previous.end === segment.start
-        && previous.bold === span.bold
-        && previous.color === span.color
+        && sameStyle(previous, span)
       ) {
         previous.end = segment.end
       } else {
@@ -116,33 +146,72 @@ export function remapRichTextSpans(
 }
 
 /**
- * Add a span to a set, subtracting its range from any existing span it
- * overlaps (a straddling span keeps its surviving head and tail). Returns
- * null when the incoming span is invalid for the text.
+ * Restyle the characters in [range.start, range.end): each one's current
+ * style (none where no span covers it) goes through `change`, and the result
+ * is merged back into canonical spans — neighbours with equal styles join,
+ * unstyled stretches drop out. Styles outside the range are untouched, so
+ * underlining a bold word keeps it bold. Null when the range is invalid.
  */
-export function insertRichTextSpan(
-  existing: RichTextSpan[] | undefined,
-  span: RichTextSpan,
+export function restyleRichTextRange(
+  existing: readonly RichTextSpan[] | undefined,
+  range: { start: number; end: number },
+  change: (style: RichTextStyle) => RichTextStyle,
   textLength: number,
 ): RichTextSpan[] | null {
-  if (!isSpanShape(span) || span.end > textLength) return null
-  const trimmed: RichTextSpan[] = []
-  for (const current of existing ?? []) {
-    if (current.start < span.start) {
-      trimmed.push({ ...current, end: Math.min(current.end, span.start) })
-    }
-    if (current.end > span.end) {
-      trimmed.push({ ...current, start: Math.max(current.start, span.end) })
+  const { start, end } = range
+  if (
+    !Number.isInteger(start) || !Number.isInteger(end)
+    || start < 0 || end > textLength || start >= end
+  ) {
+    return null
+  }
+  const spans = existing ?? []
+  const cuts = new Set([start, end])
+  for (const span of spans) {
+    cuts.add(span.start)
+    cuts.add(span.end)
+  }
+  const points = [...cuts].sort((a, b) => a - b)
+  const out: RichTextSpan[] = []
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const from = points[index]
+    const to = points[index + 1]
+    const covering = spans.find((span) => span.start <= from && span.end >= to)
+    const current = covering ? styleOf(covering) : {}
+    const style = from >= start && to <= end ? styleOf(change(current)) : current
+    if (!hasStyle(style)) continue
+    const previous = out[out.length - 1]
+    if (previous && previous.end === from && sameStyle(previous, style)) {
+      previous.end = to
+    } else {
+      out.push({ start: from, end: to, ...style })
     }
   }
-  const kept = trimmed.filter((candidate) => candidate.end > candidate.start)
-  return [...kept, span].sort((a, b) => a.start - b.start)
+  return out
+}
+
+/** Whether every character in the range has the style `test` looks for. */
+export function rangeHasRichTextStyle(
+  spans: readonly RichTextSpan[] | undefined,
+  range: { start: number; end: number },
+  test: (style: RichTextStyle) => boolean,
+): boolean {
+  let cursor = range.start
+  for (const span of [...(spans ?? [])].sort((a, b) => a.start - b.start)) {
+    if (span.end <= cursor) continue
+    if (span.start > cursor || !test(span)) return false
+    cursor = span.end
+    if (cursor >= range.end) return true
+  }
+  return cursor >= range.end
 }
 
 export interface TextRun {
   text: string
   bold?: true
   color?: string
+  highlight?: string
+  underline?: true
 }
 
 /** Split a text into styled runs at span boundaries, in display order. */
@@ -152,12 +221,37 @@ export function splitTextRuns(text: string, spans: RichTextSpan[] | undefined): 
   let cursor = 0
   for (const span of spans) {
     if (span.start > cursor) runs.push({ text: text.slice(cursor, span.start) })
-    const styled: TextRun = { text: text.slice(span.start, span.end) }
-    if (span.bold) styled.bold = span.bold
-    if (span.color) styled.color = span.color
-    runs.push(styled)
+    runs.push({ text: text.slice(span.start, span.end), ...styleOf(span) })
     cursor = span.end
   }
   if (cursor < text.length) runs.push({ text: text.slice(cursor) })
   return runs.filter((run) => run.text.length > 0)
+}
+
+/** Whether a run carries any styling of its own. */
+export function isStyledRun(run: TextRun): boolean {
+  return hasStyle(run)
+}
+
+/**
+ * The CSS a styled run draws with (camelCase, for React styles and DOM
+ * `style` alike). Gradient text (`solidFallback` given) has see-through
+ * glyphs that show the text's gradient, so a coloured run fills its glyphs
+ * with its own colour, a highlighted one (whose background would cover the
+ * gradient) with the solid fallback, and underlines take that colour rather
+ * than the invisible text colour.
+ */
+export function textRunStyle(run: TextRun, solidFallback?: string): Record<string, string> {
+  const style: Record<string, string> = {}
+  if (run.bold) style.fontWeight = '700'
+  if (run.color) style.color = run.color
+  if (run.highlight) style.backgroundColor = run.highlight
+  if (solidFallback && (run.color || run.highlight)) {
+    style.WebkitTextFillColor = run.color ?? solidFallback
+  }
+  if (run.underline) {
+    style.textDecorationLine = 'underline'
+    if (solidFallback) style.textDecorationColor = run.color ?? solidFallback
+  }
+  return style
 }

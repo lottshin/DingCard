@@ -27,7 +27,6 @@ export function TemplatesPage({ system, onUseTemplate }: TemplatesPageProps) {
       <div className="page-head">
         <div>
           <h1>{t('模板中心')}</h1>
-          <p>{t('每套模板都是排好版的完整示例，文字、配色和字体都可以继续改。')}</p>
         </div>
         <div className="tabs" role="group" aria-label={t('按系统筛选')}>
           <button type="button" aria-pressed={!system} onClick={() => navigate(routes.templates())}>{t('全部')} <span className="tnum">{markdown.length + freeform.length}</span></button>

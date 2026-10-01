@@ -136,7 +136,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 15,
+    documentVersion: 16,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -365,16 +365,42 @@ function shapeFillEquals(left: ShapeFill, right: ShapeFill): boolean {
 }
 
 function cloneSlideBackground(background: SlideBackground): SlideBackground {
-  return background.type === 'transparent'
-    ? { type: 'transparent' }
-    : cloneColorPaint(background)
+  if (background.type === 'transparent') return { type: 'transparent' }
+  if (background.type === 'image') {
+    return {
+      type: 'image',
+      src: background.src,
+      fit: background.fit,
+      framing: cloneImageFraming(background.framing),
+    }
+  }
+  return cloneColorPaint(background)
 }
+
+const IMAGE_BACKGROUND_KEYS = new Set(['type', 'src', 'fit', 'framing'])
 
 function validSlideBackground(value: unknown): value is SlideBackground {
   if (isRecord(value) && value.type === 'transparent') {
     return hasExactKeys(value, new Set(['type']))
   }
+  // A picture filling the page (v16), framed like an image node.
+  if (isRecord(value) && value.type === 'image') {
+    return hasExactKeys(value, IMAGE_BACKGROUND_KEYS)
+      && typeof value.src === 'string'
+      && (value.fit === 'cover' || value.fit === 'contain')
+      && isValidImageFraming(value.framing)
+  }
   return isValidSceneColorPaint(value)
+}
+
+function slideBackgroundEquals(left: SlideBackground, right: SlideBackground): boolean {
+  if (left.type === 'image' || right.type === 'image') {
+    return left.type === 'image' && right.type === 'image'
+      && left.src === right.src
+      && left.fit === right.fit
+      && imageFramingEquals(left.framing, right.framing)
+  }
+  return paintEquals(left, right)
 }
 
 function withSlide(
@@ -652,6 +678,8 @@ function richTextSpansEqual(
       && span.end === other.end
       && span.bold === other.bold
       && span.color === other.color
+      && span.highlight === other.highlight
+      && span.underline === other.underline
   })
 }
 
@@ -1380,7 +1408,7 @@ export function reduceFreeformDocument(
         return withSlide(document, action.slideId, (slide) => {
           const name = action.patch.name ?? slide.name
           const background = action.patch.background ?? slide.background
-          if (name === slide.name && paintEquals(background, slide.background)) return slide
+          if (name === slide.name && slideBackgroundEquals(background, slide.background)) return slide
           return {
             ...slide,
             name,

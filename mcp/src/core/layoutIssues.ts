@@ -172,6 +172,17 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         issue('empty-path', node.id, '图形既没有填充也没有描边，看不见：给 fill 一个颜色，或把 strokeWidth 设成大于 0。')
       }
       if (node.type !== 'text' || node.hidden) continue
+      // Highlighted words sit on their own colour, whatever is behind the text.
+      const large = node.fontSize >= 48 || (node.fontWeight === 'bold' && node.fontSize >= 40)
+      for (const span of node.spans ?? []) {
+        const words = span.color ?? solidColor(node.textFill)
+        if (!span.highlight || !words) continue
+        const ratio = contrastRatio(words, span.highlight)
+        if (ratio !== null && ratio < (large ? 3 : 4.5)) {
+          issue('low-contrast', node.id, `高亮的「${short(node.text.slice(span.start, span.end))}」字色和高亮色太接近（对比度 ${ratio.toFixed(1)}:1），看不清：换一个和字色反差大的高亮色，或改这几个字的颜色。`)
+          break
+        }
+      }
       if (!node.text.trim()) issue('empty-text', node.id, '文字是空的：填上内容或删掉这个文本框。')
       else if (knownSamples.has(node.text.trim())) {
         issue('sample-text', node.id, `还是模板里的示例文字「${short(node.text)}」：换成自己的内容或删掉。`)
@@ -270,12 +281,20 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         background = entry.node.type === 'shape' || entry.node.type === 'path' ? solidColor(entry.node.fill) : null
         break
       }
-      if (background === undefined) background = solidColor(slide.background)
+      // Down to the page: its colour, or on a picture the picture's colour behind the words.
+      const onPicture = background === undefined && slide.background.type === 'image'
+      if (background === undefined) {
+        background = onPicture
+          ? measured.backdrops?.find((entry) => entry.nodeId === node.id)?.color ?? null
+          : solidColor(slide.background)
+      }
       if (!background || template.colourPairs.has(colourKey(color, background))) continue
       const ratio = contrastRatio(color, background)
       const large = node.fontSize >= 48 || (node.fontWeight === 'bold' && node.fontSize >= 40)
       if (ratio !== null && ratio < (large ? 3 : 4.5)) {
-        issue('low-contrast', node.id, `文字颜色和底色太接近（对比度 ${ratio.toFixed(1)}:1），手机上看不清：换深一点或浅一点的颜色。`)
+        issue('low-contrast', node.id, onPicture
+          ? `文字压在背景图上，和身后那块颜色太接近（对比度 ${ratio.toFixed(1)}:1），看不清：换一个和照片反差大的颜色，或在文字下面垫一块半透明色块。`
+          : `文字颜色和底色太接近（对比度 ${ratio.toFixed(1)}:1），手机上看不清：换深一点或浅一点的颜色。`)
       }
     }
   })

@@ -54,7 +54,7 @@ import {
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, type IconDefinition } from './icons'
 import { FreeformIconPicker } from './FreeformIconPicker'
 import { pathStrokeScale } from './pathData'
-import { insertRichTextSpan } from './richText'
+import { rangeHasRichTextStyle, restyleRichTextRange, type RichTextStyle } from './richText'
 import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
 import { FreeformExportMenu } from './FreeformExportMenu'
 import { FreeformContextToolbar, type ContextToolbarSubject } from './FreeformContextToolbar'
@@ -78,6 +78,7 @@ import {
   type ImageCropSession,
 } from './useImageCropSession'
 import { FreeformSlidePreview } from './FreeformSlidePreview'
+import { FreeformPageBackground, PAGE_BACKGROUND_PATH_KEY } from './FreeformPageBackground'
 import { FreeformZoomControl } from './FreeformZoomControl'
 import {
   FreeformSelectionOverlay,
@@ -246,6 +247,8 @@ const EXPORT_IMAGE_WAIT_MS = 3_500
 
 /** Preset highlight colors for rich text spans (solid hex, 6 digits). */
 const RICH_SPAN_COLORS = ['#d92d20', '#f97316', '#f79009', '#129211', '#1570ef', '#6941c6'] as const
+/** Highlighter tints: light enough for dark words to stay legible on them. */
+const RICH_SPAN_HIGHLIGHTS = ['#fef08a', '#fed7aa', '#fbcfe8', '#bbf7d0', '#bfdbfe', '#e9d5ff'] as const
 
 /** Drop shadow applied when the inspector enables shadows on a leaf. */
 const DEFAULT_SHADOW: ShadowPaint = { color: '#101828', blur: 24, offsetX: 0, offsetY: 8 }
@@ -362,7 +365,8 @@ const IMAGE_CROP_ASPECT_RATIOS: Record<ImageCropAspectId, number | 'original'> =
 type LiveEditCommitResult = 'committed' | 'cancelled' | 'rejected'
 
 interface ImageFramingTarget {
-  targetKind: 'image' | 'shape-fill'
+  /** A picture node, a shape's picture fill, or the page's picture background (path []). */
+  targetKind: 'image' | 'shape-fill' | 'page-background'
   logicalSrc: string
   resolvedSrc: string
   fit: 'cover' | 'contain'
@@ -424,6 +428,22 @@ function imageFramingTargetForNode(node: FreeformSceneNode | undefined): ImageFr
   return null
 }
 
+/** The framing target at a path: a node's picture, or (path []) the page's picture background. */
+function imageFramingTargetForPath(slide: FreeformSlide, path: ScenePath): ImageFramingTarget | null {
+  if (path.length > 0) return imageFramingTargetForNode(findNodeAtPath(slide.nodes, path))
+  const background = slide.background
+  if (background.type !== 'image') return null
+  return {
+    targetKind: 'page-background',
+    logicalSrc: background.src,
+    resolvedSrc: store.images.resolve(background.src),
+    fit: background.fit,
+    framing: background.framing,
+    frameSize: { width: slide.width, height: slide.height },
+    shape: null,
+  }
+}
+
 function imageDecodeIdentityForTarget(
   scopeGeneration: number,
   slideId: string,
@@ -466,6 +486,13 @@ function imageFramingUpdateAction(
   target: ImageFramingTarget,
   framing: ImageFraming,
 ): FreeformAction {
+  if (target.targetKind === 'page-background') {
+    return {
+      type: 'slide/update',
+      slideId,
+      patch: { background: { type: 'image', src: target.logicalSrc, fit: target.fit, framing } },
+    }
+  }
   return {
     type: 'node/update-style',
     slideId,
@@ -1189,6 +1216,7 @@ export function FreeformWorkspace({
     && menuSelectionNodes.every((node) => node.hidden)
   const menuSelectionHasGroup = menuSelectionNodes.some((node) => node.type === 'group')
   const menuSelectionHasLeaf = menuSelectionNodes.some((node) => node.type !== 'group')
+  const menuSelectionIsImage = menuSelectionNodes.length === 1 && menuSelectionNodes[0].type === 'image'
   const slideMenuIndex = slideContextMenu
     ? doc.slides.findIndex((slide) => slide.id === slideContextMenu.slideId)
     : -1
@@ -1252,6 +1280,8 @@ export function FreeformWorkspace({
   const propertiesTabRef = useRef<HTMLButtonElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
+  const pageBackgroundInputRef = useRef<HTMLInputElement>(null)
+  const [pageBackgroundPending, setPageBackgroundPending] = useState(false)
   const shapeFillOperationTokensRef = useRef(new Map<string, symbol>())
   // Starts unknown, so an editor opened with a known owner reopens their last project.
   const previousOwnerId = useRef<string | null>(null)
@@ -1400,6 +1430,34 @@ export function FreeformWorkspace({
     && !propertySelectionReadOnly
     && !imageFramingEquals(selectedImageTarget.framing, createDefaultImageFraming()),
   )
+  const pageBackgroundTarget = useMemo(
+    () => imageFramingTargetForPath(activeSlide, []),
+    [activeSlide],
+  )
+  const pageBackgroundNaturalSize = pageBackgroundTarget
+    ? readReadyImage(imageReadiness, imageDecodeIdentityForTarget(
+        documentIdentityGenerationRef.current,
+        activeSlide.id,
+        [],
+        pageBackgroundTarget,
+      ))
+    : null
+  const pageFramingDisabledReason = pageBackgroundPending
+    ? t('图片正在处理中')
+    : pageBackgroundTarget?.fit === 'contain'
+      ? t('适应模式不支持调整取景')
+      : !pageBackgroundNaturalSize
+        ? t('图片加载完成后可调整取景')
+        : null
+  const canAdjustPageFraming = Boolean(
+    pageBackgroundTarget && pageBackgroundTarget.fit === 'cover' && !pageFramingDisabledReason,
+  )
+  const canResetPageFraming = Boolean(
+    pageBackgroundTarget
+    && pageBackgroundTarget.fit === 'cover'
+    && !pageBackgroundPending
+    && !imageFramingEquals(pageBackgroundTarget.framing, createDefaultImageFraming()),
+  )
   const scopeBreadcrumbs = useMemo(() => {
     const breadcrumbs: Array<{ name: string; path: ScenePath }> = [{ name: '页面', path: [] }]
     for (let length = 1; length <= activeGroupPath.length; length += 1) {
@@ -1490,7 +1548,9 @@ export function FreeformWorkspace({
   const handleImageDecodeReport = useCallback((report: ImageDecodeReport) => {
     void imageReadinessRefresh
     if (report.identity.scopeGeneration !== documentIdentityGenerationRef.current) return
-    const path = scenePathFromKey(report.identity.scenePathKey)
+    const path = report.identity.scenePathKey === PAGE_BACKGROUND_PATH_KEY
+      ? []
+      : scenePathFromKey(report.identity.scenePathKey)
 
     const cropSession = imageCropSessionRef.current
     if (cropSession) {
@@ -1526,7 +1586,7 @@ export function FreeformWorkspace({
         )
       : undefined
     const target = slide && path
-      ? imageFramingTargetForNode(findNodeAtPath(slide.nodes, path))
+      ? imageFramingTargetForPath(slide, path)
       : null
     const expectedIdentity = slide && path && target
       ? imageDecodeIdentityForTarget(
@@ -1939,6 +1999,26 @@ export function FreeformWorkspace({
     return true
   }, [blockDocumentMutationDuringInteraction, updateHistory])
 
+  /** Apply a few actions as one undo step; nothing happens unless every one of them changes something. */
+  const applyActionGroup = useCallback((actions: FreeformAction[], label: string) => {
+    if (blockDocumentMutationDuringInteraction()) return false
+    const start = currentDocumentRef.current
+    let next = start
+    for (const action of actions) {
+      const reduced = freeformReducer(next, action)
+      if (Object.is(reduced, next)) return false
+      next = reduced
+    }
+    let applied = false
+    updateHistory((current) => {
+      if (!Object.is(current.current, start)) return current
+      applied = true
+      return pushHistory(current, next, label)
+    })
+    if (applied) setSavedAt(null)
+    return applied
+  }, [blockDocumentMutationDuringInteraction, updateHistory])
+
   // 文字盒自动增高：内容超出盒子时把盒子长到实际需要的大小（横排增高、竖排
   // 加宽），只增不减——手工调大的盒子保持不变。这是视图层的显示修正而不是
   // 用户操作：静默替换当前文档，不进撤销历史（历史是绝对状态快照，撤销/重做
@@ -2037,16 +2117,27 @@ export function FreeformWorkspace({
     return start < end ? { start, end } : null
   }, [textSelection, selectedElement])
 
-  function applySelectedTextSpan(style: { bold?: true; color?: string }) {
+  /** Restyle the selected characters; the styles they already have stay unless `change` drops them. */
+  function restyleSelectedText(change: (style: RichTextStyle) => RichTextStyle) {
     if (!selectedPath || !isTextElement(selectedElement) || !activeTextRange) return
-    const next = insertRichTextSpan(
+    const next = restyleRichTextRange(
       selectedElement.spans,
-      { start: activeTextRange.start, end: activeTextRange.end, ...style },
+      activeTextRange,
+      change,
       selectedElement.text.length,
     )
     if (!next) return
     updateSelectedStyle({ spans: next })
   }
+
+  const selectedTextIsBold = Boolean(
+    activeTextRange && isTextElement(selectedElement)
+    && rangeHasRichTextStyle(selectedElement.spans, activeTextRange, (style) => style.bold === true),
+  )
+  const selectedTextIsUnderlined = Boolean(
+    activeTextRange && isTextElement(selectedElement)
+    && rangeHasRichTextStyle(selectedElement.spans, activeTextRange, (style) => style.underline === true),
+  )
 
   function removeSelectedTextSpan(index: number) {
     if (!isTextElement(selectedElement) || !selectedElement.spans) return
@@ -2205,7 +2296,7 @@ export function FreeformWorkspace({
       (candidate) => candidate.id === session.slideId,
     )
     if (!slide) return null
-    const target = imageFramingTargetForNode(findNodeAtPath(slide.nodes, session.path))
+    const target = imageFramingTargetForPath(slide, session.path)
     if (
       !target
       || target.targetKind !== session.targetKind
@@ -2466,6 +2557,26 @@ export function FreeformWorkspace({
         path,
       ))
     ) return false
+    return openFramingSession(document, slide, path, target)
+  }
+
+  /** Frame the page's picture background, the way a picture node is framed. */
+  function startPageBackgroundFraming(): boolean {
+    if (framingSessionRef.current || blockDocumentMutationDuringInteraction()) return false
+    const document = currentDocumentRef.current
+    const slide = document.slides.find((candidate) => candidate.id === document.activeSlideId)
+    if (!slide || slide.id !== activeSlide.id) return false
+    const target = imageFramingTargetForPath(slide, [])
+    if (!target || target.fit !== 'cover') return false
+    return openFramingSession(document, slide, [], target)
+  }
+
+  function openFramingSession(
+    document: FreeformDocument,
+    slide: FreeformSlide,
+    path: ScenePath,
+    target: ImageFramingTarget,
+  ): boolean {
     const identity = imageDecodeIdentityForTarget(
       documentIdentityGenerationRef.current,
       slide.id,
@@ -2491,7 +2602,8 @@ export function FreeformWorkspace({
       startFraming: { ...target.framing },
     }
     blurActiveTypingTarget()
-    setSelection([path[path.length - 1]])
+    // Framing the page's picture leaves nothing selected; a node's keeps it selected.
+    setSelection(path.length > 0 ? [path[path.length - 1]] : [])
     framingSessionRef.current = session
     setFramingSession(session)
     setOperationNotice(null)
@@ -3041,6 +3153,76 @@ export function FreeformWorkspace({
     } finally {
       if (shapeFillInputRef.current) shapeFillInputRef.current.value = ''
     }
+  }
+
+  function updatePageBackground(slideId: string, background: SlideBackground) {
+    return applyAction({ type: 'slide/update', slideId, patch: { background } })
+  }
+
+  /** A picture from disk fills the page, under everything on it. */
+  async function setPageBackgroundFromFile(file: File) {
+    const targetSlideId = activeSlide.id
+    const targetIdentityGeneration = documentIdentityGenerationRef.current
+    const targetUserId = currentOwnerIdRef.current
+    const images = ownerStore
+    setPageBackgroundPending(true)
+    try {
+      if (images.remote) await retainImagesNow()
+      const raw = await readFileAsDataUrl(file)
+      // A page is bigger than most pictures on it; keep more of the photo.
+      const downscaled = await downscaleDataUrl(raw, 2400)
+      const src = await images.images.put(downscaled)
+      if (
+        targetIdentityGeneration !== documentIdentityGenerationRef.current
+        || targetUserId !== currentOwnerIdRef.current
+      ) return
+      updatePageBackground(targetSlideId, {
+        type: 'image',
+        src,
+        fit: 'cover',
+        framing: createDefaultImageFraming(),
+      })
+    } finally {
+      setPageBackgroundPending(false)
+    }
+  }
+
+  async function handlePageBackgroundInput(files: FileList | null) {
+    const file = files?.[0]
+    if (!file) return
+    try {
+      await setPageBackgroundFromFile(file)
+    } catch (error) {
+      showOperationError(error, t('背景图片设置失败，请稍后重试'))
+    } finally {
+      if (pageBackgroundInputRef.current) pageBackgroundInputRef.current.value = ''
+    }
+  }
+
+  /** The selected picture becomes the page background (one undo step), as in Canva. */
+  function setSelectedImageAsBackground() {
+    if (!selectedPath || !isImageElement(selectedElement) || propertySelectionReadOnly) return
+    const changed = applyActionGroup([
+      {
+        type: 'slide/update',
+        slideId: activeSlide.id,
+        patch: {
+          background: {
+            type: 'image',
+            src: selectedElement.src,
+            fit: 'cover',
+            framing: createDefaultImageFraming(),
+          },
+        },
+      },
+      {
+        type: 'node/delete',
+        slideId: activeSlide.id,
+        parentPath: selectedPath.slice(0, -1),
+        nodeIds: [selectedElement.id],
+      },
+    ], t('设为背景'))
+    if (changed) setSelection([])
   }
 
   function deleteSelection() {
@@ -6209,6 +6391,11 @@ export function FreeformWorkspace({
                     className="freeform-artwork-clip"
                     onPointerDown={onArtboardPointerDown}
                   >
+                    <FreeformPageBackground
+                      slide={activeSlide}
+                      scopeGeneration={documentIdentityGenerationRef.current}
+                      onDecodeReport={handleImageDecodeReport}
+                    />
                     <FreeformSceneNodeView
                       nodes={activeSlide.nodes}
                       slideId={activeSlide.id}
@@ -6573,17 +6760,36 @@ export function FreeformWorkspace({
                   <PaintField
                     label={t('背景')}
                     value={activeSlide.background}
-                    modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent']}
+                    modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent', 'image']}
                     fallbackPaint={DEFAULT_PAGE_PAINT}
-                    onChange={(background) =>
-                      applyAction({
-                        type: 'slide/update',
-                        slideId: activeSlide.id,
-                        patch: { background: background as SlideBackground },
+                    onChange={(background) => updatePageBackground(activeSlide.id, background as SlideBackground)}
+                    onChooseImage={() => pageBackgroundInputRef.current?.click()}
+                    onClearImage={() => updatePageBackground(activeSlide.id, { ...DEFAULT_PAGE_PAINT })}
+                    onImageFitChange={(fit) => {
+                      if (activeSlide.background.type !== 'image') return
+                      updatePageBackground(activeSlide.id, { ...activeSlide.background, fit })
+                    }}
+                    onAdjustImageFraming={() => { startPageBackgroundFraming() }}
+                    onResetImageFraming={() => {
+                      if (activeSlide.background.type !== 'image' || !canResetPageFraming) return
+                      updatePageBackground(activeSlide.id, {
+                        ...activeSlide.background,
+                        framing: createDefaultImageFraming(),
                       })
-                    }
+                    }}
+                    imageFramingDisabled={!canAdjustPageFraming}
+                    imageFramingDisabledReason={pageFramingDisabledReason ?? undefined}
+                    imageFramingResetDisabled={!canResetPageFraming}
                   />
                 </div>
+                <input
+                  ref={pageBackgroundInputRef}
+                  className="freeform-file"
+                  type="file"
+                  accept="image/*"
+                  data-testid="page-background-input"
+                  onChange={(event) => { void handlePageBackgroundInput(event.currentTarget.files) }}
+                />
               </InspectorSection>
             </>
           ) : (
@@ -6959,24 +7165,65 @@ export function FreeformWorkspace({
                             className="ghost"
                             type="button"
                             data-testid="rich-span-bold"
+                            aria-pressed={selectedTextIsBold}
                             onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => applySelectedTextSpan({ bold: true })}
+                            onClick={() => restyleSelectedText(({ bold: _bold, ...rest }) => (
+                              selectedTextIsBold ? rest : { ...rest, bold: true }
+                            ))}
                           >
                             {t('加粗')}
                           </button>
-                          <span className="rich-span-label">{t('标色')}</span>
-                          {RICH_SPAN_COLORS.map((color) => (
-                            <button
-                              key={color}
-                              className="rich-span-swatch"
-                              type="button"
-                              aria-label={t('标色 {color}', { color })}
-                              title={color}
-                              style={{ background: color }}
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => applySelectedTextSpan({ color })}
-                            />
-                          ))}
+                          <button
+                            className="ghost"
+                            type="button"
+                            data-testid="rich-span-underline"
+                            aria-pressed={selectedTextIsUnderlined}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => restyleSelectedText(({ underline: _underline, ...rest }) => (
+                              selectedTextIsUnderlined ? rest : { ...rest, underline: true }
+                            ))}
+                          >
+                            {t('下划线')}
+                          </button>
+                          <button
+                            className="ghost"
+                            type="button"
+                            data-testid="rich-span-clear"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => restyleSelectedText(() => ({}))}
+                          >
+                            {t('清除样式')}
+                          </button>
+                          <div className="rich-span-swatches">
+                            <span className="rich-span-label">{t('标色')}</span>
+                            {RICH_SPAN_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                className="rich-span-swatch"
+                                type="button"
+                                aria-label={t('标色 {color}', { color })}
+                                title={color}
+                                style={{ background: color }}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => restyleSelectedText((style) => ({ ...style, color }))}
+                              />
+                            ))}
+                          </div>
+                          <div className="rich-span-swatches">
+                            <span className="rich-span-label">{t('高亮')}</span>
+                            {RICH_SPAN_HIGHLIGHTS.map((highlight) => (
+                              <button
+                                key={highlight}
+                                className="rich-span-swatch is-highlight"
+                                type="button"
+                                aria-label={t('高亮 {color}', { color: highlight })}
+                                title={highlight}
+                                style={{ background: highlight }}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => restyleSelectedText((style) => ({ ...style, highlight }))}
+                              />
+                            ))}
+                          </div>
                         </div>
                       )}
                       {selectedElement.spans && selectedElement.spans.length > 0 && (
@@ -6992,6 +7239,12 @@ export function FreeformWorkspace({
                                   {t('标色')}
                                 </span>
                               )}
+                              {span.highlight && (
+                                <span className="rich-span-chip is-highlight" style={{ background: span.highlight }}>
+                                  {t('高亮')}
+                                </span>
+                              )}
+                              {span.underline && <span className="rich-span-chip is-underline">{t('下划线')}</span>}
                               <button
                                 className="draft-del"
                                 type="button"
@@ -7117,6 +7370,14 @@ export function FreeformWorkspace({
                               onClick={resetSelectedImageFraming}
                             >
                               {t('重置取景')}
+                            </button>
+                            <button
+                              className="ghost"
+                              type="button"
+                              data-testid="freeform-image-as-background"
+                              onClick={setSelectedImageAsBackground}
+                            >
+                              {t('设为背景')}
                             </button>
                           </div>
                         </>
@@ -7569,6 +7830,18 @@ export function FreeformWorkspace({
             {t('移到底层')}
             <MenuShortcut keys="[" />
           </button>
+          {menuSelectionIsImage && (
+            <button
+              type="button"
+              role="menuitem"
+              className="freeform-context-menu-item"
+              data-testid="freeform-context-menu-as-background"
+              disabled={menuSelectionAllLocked}
+              onClick={() => { closeContextMenu(); setSelectedImageAsBackground() }}
+            >
+              {t('设为背景')}
+            </button>
+          )}
           <div className="freeform-context-menu-separator" role="separator" />
           <button
             type="button"

@@ -129,7 +129,7 @@ describe('dingcard-mcp tool layer', () => {
       summary: { slideCount: number; coverTitle: string; pages: Array<{ title: string; role: string }> }
     }
     expect(created.ok).toBe(true)
-    expect(created.document.documentVersion).toBe(15)
+    expect(created.document.documentVersion).toBe(16)
     // Cover and two sections: the outline asked for no closing page.
     expect(created.document.slides).toHaveLength(3)
     expect(created.summary.slideCount).toBe(3)
@@ -210,6 +210,8 @@ describe('dingcard-mcp tool layer', () => {
 
     expect(await readText('dingcard://schema/freeform')).toContain('documentVersion')
     expect(await readText('dingcard://schema/freeform')).toContain('- path：')
+    expect(await readText('dingcard://schema/freeform')).toContain('highlight?')
+    expect(await readText('dingcard://schema/freeform')).toContain("{ type: 'image', src")
 
     const icons = JSON.parse(await readText('dingcard://icons')) as {
       style: { viewBox: { width: number } }
@@ -222,7 +224,7 @@ describe('dingcard-mcp tool layer', () => {
     const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
       documentVersion: number
     }
-    expect(document.documentVersion).toBe(15)
+    expect(document.documentVersion).toBe(16)
 
     const envelope = JSON.parse(await readText('dingcard://examples/markdown')) as {
       source: string

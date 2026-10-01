@@ -97,7 +97,6 @@ export function AssetsPage({ ownerId, assets, usage, onUpload, onRename, onDelet
       <div className="page-head">
         <div>
           <h1>{t('素材库')}</h1>
-          <p>{t('上传一次，Markdown 卡片和自由编辑的项目都能用。删掉素材不会影响已经用上它的项目。')}</p>
         </div>
         {ownerId && (
           <div className="page-actions">

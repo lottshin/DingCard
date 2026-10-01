@@ -357,6 +357,61 @@ describe('checkDocument', () => {
     420_000,
   )
 
+  test(
+    'draws a picture background and marked words, and reports a background that fails to load',
+    async () => {
+      const generated = createDocumentFromOutline('# 背景图\n\n## 第一节\n- 要点一', 'editorial-freeform')
+      if (!generated.ok) throw new Error(generated.error)
+      const slide = generated.document.slides[0]
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#f6f3ea"/><circle cx="300" cy="80" r="60" fill="#d94836"/></svg>'
+      const picture = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+      const title = slide.nodes.find((node): node is FreeformTextElement => node.type === 'text' && node.name === '主标题')!
+      const marked = reduceFreeformDocument(reduceFreeformDocument(generated.document, {
+        type: 'slide/update',
+        slideId: slide.id,
+        patch: { background: { type: 'image', src: picture, fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } },
+      }), {
+        type: 'node/update-style',
+        slideId: slide.id,
+        updates: [{ path: [title.id], patch: { spans: [{ start: 0, end: 2, highlight: '#fef08a', underline: true }] } }],
+      })
+      expect(marked.slides[0].background.type).toBe('image')
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-background-'))
+      const plain = await renderDocument(generated.document, { outputDir, baseName: 'plain', slideIds: [slide.id] })
+      const pictured = await renderDocument(marked, { outputDir, baseName: 'pictured', slideIds: [slide.id] })
+      if (!plain.ok || !pictured.ok) throw new Error('expected both renders to succeed')
+      expect(readFileSync(pictured.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
+
+      const checked = await checkDocument(marked)
+      if (!checked.ok) throw new Error(checked.error)
+      expect(checked.issues).toEqual([])
+
+      // On a dark picture the template's dark title can't be read: it is measured against the picture.
+      const night = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#111827"/></svg>').toString('base64')}`
+      const dark = reduceFreeformDocument(marked, {
+        type: 'slide/update',
+        slideId: slide.id,
+        patch: { background: { type: 'image', src: night, fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } },
+      })
+      const unreadable = await checkDocument(dark)
+      if (!unreadable.ok) throw new Error(unreadable.error)
+      const lowContrast = unreadable.issues.filter((issue) => issue.kind === 'low-contrast')
+      expect(lowContrast.map((issue) => issue.node)).toContain('主标题')
+      expect(lowContrast[0].message).toContain('背景图')
+
+      const broken = reduceFreeformDocument(marked, {
+        type: 'slide/update',
+        slideId: slide.id,
+        patch: { background: { type: 'image', src: 'data:image/png;base64,AAAA', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } },
+      })
+      const failed = await checkDocument(broken)
+      if (!failed.ok) throw new Error(failed.error)
+      expect(failed.issues.map((issue) => [issue.page, issue.kind])).toEqual([[1, 'image-failed']])
+    },
+    420_000,
+  )
+
   test('flags an untouched template as sample copy', async () => {
     const instantiation = instantiateTemplate('signal-freeform')
     if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')

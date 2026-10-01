@@ -46,7 +46,7 @@ import type {
   ShapeFill,
   SlideBackground,
 } from './types'
-import { normalizeRichTextSpans } from './richText'
+import { normalizeRichTextSpans, usesV16SpanStyles } from './richText'
 import {
   cloneGradientStops,
   cloneLinePoints,
@@ -84,7 +84,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -205,6 +205,24 @@ function cloneStrictSlideBackground(
     && hasExactKeys(value, TRANSPARENT_PAINT_KEYS)
   ) {
     return { type: 'transparent' }
+  }
+  // A picture background is v16-only; older input versions must reject it.
+  if (isRecord(value) && value.type === 'image') {
+    if (
+      inputVersion < 16
+      || !hasExactKeys(value, IMAGE_FILL_V4_KEYS)
+      || typeof value.src !== 'string'
+      || !isFit(value.fit)
+      || !isValidImageFraming(value.framing)
+    ) {
+      return null
+    }
+    return {
+      type: 'image',
+      src: value.src,
+      fit: value.fit,
+      framing: cloneImageFraming(value.framing as ImageFraming),
+    }
   }
   return cloneStrictColorPaint(value, inputVersion)
 }
@@ -510,6 +528,8 @@ function normalizeStrictSceneNode(
     if ('spans' in value) {
       const normalized = normalizeRichTextSpans(value.spans, value.text.length)
       if (!normalized || normalized.length === 0) return null
+      // Highlighted and underlined spans are v16-only.
+      if (inputVersion < 16 && usesV16SpanStyles(normalized)) return null
       spans = normalized
     }
     if (inputVersion >= 6) {
@@ -751,7 +771,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 15,
+    documentVersion: 16,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -820,6 +840,11 @@ export function normalizeFreeformDocumentV14(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v15 document. */
 export function normalizeFreeformDocumentV15(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 15)
+}
+
+/** Strictly validates and clones an already-v16 document. */
+export function normalizeFreeformDocumentV16(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 16)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1086,9 +1111,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v15 object. */
+/** Normalize any supported freeform document version to a fresh v16 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 16) return normalizeFreeformDocumentV16(value)
   if (value.documentVersion === 15) return normalizeFreeformDocumentV15(value)
   if (value.documentVersion === 14) return normalizeFreeformDocumentV14(value)
   if (value.documentVersion === 13) return normalizeFreeformDocumentV13(value)
@@ -1110,6 +1136,14 @@ export function normalizeFreeformDocument(value: unknown): FreeformDocument | nu
 
 function copySlideBackgroundValue(background: SlideBackground): SlideBackground {
   if (background.type === 'transparent') return { type: 'transparent' }
+  if (background.type === 'image') {
+    return {
+      type: 'image',
+      src: background.src,
+      fit: background.fit,
+      framing: cloneImageFraming(background.framing),
+    }
+  }
   if (background.type === 'solid') return { type: 'solid', color: background.color }
   if (background.type === 'radial-gradient') {
     return { type: 'radial-gradient', stops: background.stops.map((stop) => ({ ...stop })) }
@@ -1135,7 +1169,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 15,
+    documentVersion: 16,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1168,7 +1202,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 15,
+    documentVersion: 16,
     activeSlideId: document.activeSlideId,
     slides,
   }

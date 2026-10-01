@@ -26,13 +26,15 @@
 //     → mounts every slide the same way but exports nothing: it measures the
 //       laid-out page instead (each node's box, each text's lines, whether
 //       the words overflow their box and the size at which they would fit,
-//       where each path's drawing lands in its box) and writes
+//       where each path's drawing lands in its box, and on a picture
+//       background the colour behind each text) and writes
 //       { ok: true; inspected: InspectedSlide[] }.
 
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createRoot } from 'react-dom/client'
 import { toBlob, toPng } from 'html-to-image'
+import { FreeformPageBackground } from '../freeform/FreeformPageBackground'
 import { FreeformSceneNodeView } from '../freeform/FreeformSceneNodeView'
 import { waitForFramedImages } from '../freeform/imageReadiness'
 import { buildFreeformFontCSS, collectFreeformFontRequests } from '../freeform/fontRequests'
@@ -87,6 +89,8 @@ export interface InspectedSlide {
   }>
   /** Each path's drawing (its geometry, stroke left out) in its own box's pixels. */
   paths: Array<{ nodeId: string; bounds: Rect }>
+  /** On a picture background: the picture's average colour behind each text's lines. */
+  backdrops: Array<{ nodeId: string; color: string }>
   /** Pictures that didn't load. */
   imageError: string | null
 }
@@ -201,7 +205,63 @@ function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: str
     ), origin)
     texts.push({ nodeId, overflowY, overflowX, fitFontSize, area })
   }
-  return { slideId, nodes, texts, paths, imageError }
+  return { slideId, nodes, texts, paths, backdrops: pictureBackdrops(artboard, origin, texts), imageError }
+}
+
+/** Sample the page's picture background (alone, at a quarter size) under each text's lines. */
+function pictureBackdrops(
+  artboard: HTMLElement,
+  origin: DOMRect,
+  texts: InspectedSlide['texts'],
+): InspectedSlide['backdrops'] {
+  const picture = artboard.querySelector<HTMLImageElement>('.freeform-page-background img')
+  if (!picture || !picture.complete || picture.naturalWidth === 0) return []
+  const scale = 0.25
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(origin.width * scale))
+  canvas.height = Math.max(1, Math.round(origin.height * scale))
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) return []
+  const placed = picture.getBoundingClientRect()
+  context.drawImage(
+    picture,
+    (placed.left - origin.left) * scale,
+    (placed.top - origin.top) * scale,
+    placed.width * scale,
+    placed.height * scale,
+  )
+  const hex = (value: number) => Math.round(value).toString(16).padStart(2, '0')
+  const backdrops: InspectedSlide['backdrops'] = []
+  for (const text of texts) {
+    if (!text.area) continue
+    const x = Math.max(0, Math.floor(text.area.x * scale))
+    const y = Math.max(0, Math.floor(text.area.y * scale))
+    const width = Math.min(canvas.width - x, Math.max(1, Math.ceil(text.area.width * scale)))
+    const height = Math.min(canvas.height - y, Math.max(1, Math.ceil(text.area.height * scale)))
+    if (width <= 0 || height <= 0) continue
+    let data: Uint8ClampedArray
+    try {
+      data = context.getImageData(x, y, width, height).data
+    } catch {
+      // A picture from another site without CORS can't be read back.
+      return []
+    }
+    let red = 0
+    let green = 0
+    let blue = 0
+    let weight = 0
+    for (let index = 0; index < data.length; index += 4) {
+      const alpha = data[index + 3] / 255
+      red += data[index] * alpha
+      green += data[index + 1] * alpha
+      blue += data[index + 2] * alpha
+      weight += alpha
+    }
+    // Fully see-through here (a contained picture's margins): nothing to judge against.
+    if (weight < (data.length / 4) * 0.5) continue
+    backdrops.push({ nodeId: text.nodeId, color: `#${hex(red / weight)}${hex(green / weight)}${hex(blue / weight)}` })
+  }
+  return backdrops
 }
 
 function waitForDoubleFrame(): Promise<void> {
@@ -331,6 +391,7 @@ function RenderApp({ document: doc, inspect }: { document: FreeformDocument; ins
         }}
       >
         <div className="freeform-artwork-clip">
+          <FreeformPageBackground slide={slide} presentationOnly />
           <FreeformSceneNodeView
             nodes={slide.nodes}
             slideId={slide.id}

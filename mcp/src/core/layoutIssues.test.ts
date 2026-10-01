@@ -72,7 +72,7 @@ function drawing(id: string, overrides: Partial<FreeformPathElement> = {}): Free
 
 function deck(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 15,
+    documentVersion: 16,
     activeSlideId: 'page',
     slides: [{ id: 'page', name: '第 1 页', width: 1080, height: 1440, background: { type: 'solid', color: '#ffffff' }, nodes }],
   }
@@ -206,5 +206,46 @@ describe('path issues', () => {
     ))
     expect(kinds(issues)).toEqual(['covered-text:标题'])
     expect(issues[0].message).toContain('色块')
+  })
+})
+
+describe('text on a picture background', () => {
+  test('judges contrast against the picture behind the words', () => {
+    const document = deck([text('夜色', { textFill: { type: 'solid', color: '#1f2937' } }), text('月光', { y: 300, textFill: { type: 'solid', color: '#ffffff' } })])
+    document.slides[0].background = { type: 'image', src: 'night.jpg', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } }
+    const inspected = measured(
+      [
+        { id: '夜色', rect: { x: 100, y: 100, width: 400, height: 100 } },
+        { id: '月光', rect: { x: 100, y: 300, width: 400, height: 100 } },
+      ],
+      [
+        { id: '夜色', area: { x: 108, y: 108, width: 200, height: 48 } },
+        { id: '月光', area: { x: 108, y: 308, width: 200, height: 48 } },
+      ],
+    )
+    inspected[0].backdrops = [
+      { nodeId: '夜色', color: '#111827' },
+      { nodeId: '月光', color: '#111827' },
+    ]
+    const issues = layoutIssues(document, inspected)
+    expect(kinds(issues)).toEqual(['low-contrast:夜色'])
+    expect(issues[0].message).toContain('背景图')
+
+    // Without a sample (a picture that couldn't be read), nothing is guessed.
+    delete inspected[0].backdrops
+    expect(layoutIssues(document, inspected)).toEqual([])
+  })
+})
+
+describe('highlighted words', () => {
+  test('need contrast against their highlight, whatever the page behind', () => {
+    const document = deck([
+      text('白字黄底', { textFill: { type: 'solid', color: '#ffffff' }, text: '重点在这里', spans: [{ start: 0, end: 2, highlight: '#fef08a' }] }),
+      text('黑字黄底', { y: 300, text: '重点在这里', spans: [{ start: 0, end: 2, highlight: '#fef08a' }] }),
+      text('改了字色', { y: 500, textFill: { type: 'solid', color: '#ffffff' }, text: '重点在这里', spans: [{ start: 0, end: 2, highlight: '#fef08a', color: '#111111' }] }),
+    ])
+    const issues = layoutIssues(document, measured([], []))
+    expect(kinds(issues)).toEqual(['low-contrast:白字黄底'])
+    expect(issues[0].message).toContain('高亮的「重点」')
   })
 })

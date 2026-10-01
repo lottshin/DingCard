@@ -175,6 +175,8 @@ export interface InspectedSlide {
   texts: Array<{ nodeId: string; overflowY: number; overflowX: number; fitFontSize: number | null; area: Rect | null }>
   /** Each path's drawing in its own box's pixels (older render builds leave it out). */
   paths?: Array<{ nodeId: string; bounds: Rect }>
+  /** On a picture background: its average colour behind each text (older builds leave it out). */
+  backdrops?: Array<{ nodeId: string; color: string }>
   imageError: string | null
 }
 

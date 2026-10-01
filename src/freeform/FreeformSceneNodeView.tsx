@@ -3,8 +3,8 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent }
 import { store } from '../storage'
 import { FramedImage } from './FramedImage'
 import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
-import { splitTextRuns } from './richText'
-import { shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
+import { isStyledRun, splitTextRuns, textRunStyle } from './richText'
+import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
 import { scenePathKey } from './sceneTree'
@@ -130,22 +130,15 @@ function SceneLeafContent({
         : {}),
       ...(leaf.shadow ? { textShadow: shadowCss(leaf.shadow) } : {}),
     }
+    // Gradient text shows its gradient through see-through glyphs; styled runs
+    // that paint over it fall back to the gradient's first colour.
+    const runFallbackColor = leaf.textFill.type === 'solid' ? undefined : paintFallbackColor(leaf.textFill)
     if (presentationOnly) {
       return (
         <div className="freeform-preview-textbox" style={style}>
           {splitTextRuns(leaf.text, leaf.spans).map((run, index) =>
-            run.bold || run.color
-              ? (
-                <span
-                  key={index}
-                  style={{
-                    ...(run.bold ? { fontWeight: 700 } : {}),
-                    ...(run.color ? { color: run.color } : {}),
-                  }}
-                >
-                  {run.text}
-                </span>
-              )
+            isStyledRun(run)
+              ? <span key={index} style={textRunStyle(run, runFallbackColor)}>{run.text}</span>
               : run.text,
           )}
         </div>
@@ -158,6 +151,7 @@ function SceneLeafContent({
         ariaLabel={t('文本内容')}
         value={leaf.text}
         spans={leaf.spans}
+        runFallbackColor={runFallbackColor}
         readOnly={readOnly}
         onFocus={onTextFocus}
         onChange={onTextChange}

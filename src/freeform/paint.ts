@@ -98,8 +98,11 @@ export function svgGradientOf(paint: ColorPaint, width: number, height: number):
   }
 }
 
+/** The page's CSS background; a picture background is drawn by its own layer (FreeformPageBackground). */
 export function slideBackgroundToCss(background: SlideBackground): string {
-  return background.type === 'transparent' ? 'transparent' : paintToCssBackground(background)
+  return background.type === 'transparent' || background.type === 'image'
+    ? 'transparent'
+    : paintToCssBackground(background)
 }
 
 export function shapeFillToStyle(fill: ShapeFill): CSSProperties {

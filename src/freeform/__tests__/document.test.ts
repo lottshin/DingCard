@@ -72,7 +72,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(15)
+    expect(doc.documentVersion).toBe(16)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -1362,5 +1362,61 @@ describe('v15 path nodes', () => {
     ]) {
       expect(insert(broken)).toBe(document)
     }
+  })
+})
+
+describe('v16 page backgrounds and span styles', () => {
+  const slideIdOf = (document: FreeformDocument) => document.slides[0].id
+  const setBackground = (document: FreeformDocument, background: unknown) => reduceFreeformDocument(document, {
+    type: 'slide/update',
+    slideId: slideIdOf(document),
+    patch: { background: background as never },
+  })
+
+  it('sets a picture background, treats an equal one as a no-op, and copies it with the page', () => {
+    const document = documentWith([])
+    const background = { type: 'image', src: 'https://cdn.example/paper.jpg', fit: 'cover', framing: framing({ zoom: 2 }) }
+    const withPicture = setBackground(document, background)
+    expect(withPicture.slides[0].background).toEqual(background)
+    expect(setBackground(withPicture, { ...background, framing: framing({ zoom: 2 }) })).toBe(withPicture)
+    expect(setBackground(withPicture, { ...background, fit: 'contain' }).slides[0].background)
+      .toMatchObject({ fit: 'contain' })
+
+    const duplicated = reduceFreeformDocument(withPicture, {
+      type: 'slide/duplicate',
+      slideId: slideIdOf(withPicture),
+      duplicateSlideId: 'copy',
+    })
+    const copy = duplicated.slides.find((slide) => slide.id === 'copy')
+    expect(copy?.background).toEqual(background)
+    expect(copy?.background).not.toBe(withPicture.slides[0].background)
+  })
+
+  it.each([
+    ['no framing', { type: 'image', src: 'a.jpg', fit: 'cover' }],
+    ['bad fit', { type: 'image', src: 'a.jpg', fit: 'tile', framing: framing() }],
+    ['extra key', { type: 'image', src: 'a.jpg', fit: 'cover', framing: framing(), opacity: 0.5 }],
+  ])('rejects a picture background with %s', (_label, background) => {
+    const document = documentWith([])
+    expect(setBackground(document, background)).toBe(document)
+  })
+
+  it('patches highlight and underline spans and keeps equal ones as no-ops', () => {
+    const text = { ...createTextElement(createSlide()), id: 'text-1', text: '重点在这里' }
+    const document = documentWith([text])
+    const patch = (spans: RichTextSpan[]) => reduceFreeformDocument(document, {
+      type: 'node/update-style',
+      slideId: slideIdOf(document),
+      updates: [{ path: ['text-1'], patch: { spans } }],
+    })
+    const marked = patch([{ start: 0, end: 2, highlight: '#fef08a', underline: true }])
+    expect((marked.slides[0].nodes[0] as FreeformTextElement).spans)
+      .toEqual([{ start: 0, end: 2, highlight: '#fef08a', underline: true }])
+    expect(reduceFreeformDocument(marked, {
+      type: 'node/update-style',
+      slideId: slideIdOf(marked),
+      updates: [{ path: ['text-1'], patch: { spans: [{ start: 0, end: 2, highlight: '#fef08a', underline: true }] } }],
+    })).toBe(marked)
+    expect(patch([{ start: 0, end: 2, highlight: 'yellow' } as never])).toBe(document)
   })
 })

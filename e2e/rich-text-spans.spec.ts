@@ -109,3 +109,45 @@ test('rich text spans: select, bold, color, survive edits, and delete', async ({
   await expect(textbox.locator('span[style*="color"]')).toHaveText('加粗')
   await expect(spanList.locator('li')).toHaveCount(1)
 })
+
+test('rich text spans: underline, highlight, toggle bold off, and clear', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await insertFreeformText(page)
+  const textbox = page.getByTestId('freeform-textbox')
+  await textbox.click()
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.type('一句话里的重点')
+  const spansSection = page.getByTestId('inspector-rich-spans')
+
+  // Highlight and underline the last two characters; each keeps the other.
+  await selectTextRange(page, 5, 7)
+  await spansSection.getByRole('button', { name: '高亮 #fef08a' }).click()
+  await spansSection.getByTestId('rich-span-underline').click()
+  await expect(spansSection.getByTestId('rich-span-underline')).toHaveAttribute('aria-pressed', 'true')
+  const marked = textbox.locator('span[style*="background-color"]')
+  await expect(marked).toHaveText('重点')
+  await expect(marked).toHaveCSS('text-decoration-line', 'underline')
+
+  // Bold toggles: on, then off again, and the highlight stays.
+  const bold = spansSection.getByTestId('rich-span-bold')
+  await bold.click()
+  await expect(bold).toHaveAttribute('aria-pressed', 'true')
+  await expect(marked).toHaveCSS('font-weight', '700')
+  await bold.click()
+  await expect(bold).toHaveAttribute('aria-pressed', 'false')
+  await expect(textbox.locator('span[style*="font-weight"]')).toHaveCount(0)
+  await expect(marked).toHaveText('重点')
+
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.freeform-preview-textbox span[style*="background-color"]')).toHaveText('重点')
+  const spanList = page.getByTestId('rich-span-list')
+  await expect(spanList.locator('li')).toHaveCount(1)
+  await expect(spanList.locator('li').first()).toContainText('高亮')
+  await expect(spanList.locator('li').first()).toContainText('下划线')
+
+  // 清除样式 drops every style in the selection.
+  await textbox.click()
+  await selectTextRange(page, 0, 7)
+  await spansSection.getByTestId('rich-span-clear').click()
+  await expect(textbox.locator('span')).toHaveCount(0)
+})

@@ -2065,9 +2065,17 @@ html.theme-anim * {
   text-align: right;
 }
 
+/* A picture page background (v16): under every node, never in the way of a click. */
+.freeform-page-background {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .freeform-image,
 .freeform-preview-image,
-.freeform-shape-image {
+.freeform-shape-image,
+.freeform-page-background-image {
   position: absolute;
   display: block;
   max-width: none;

@@ -74,7 +74,7 @@ function slide(id: string, nodes: FreeformElement[]): FreeformSlide {
 }
 
 function document(...slides: FreeformSlide[]): FreeformDocument {
-  return { documentVersion: 15, activeSlideId: slides[0].id, slides }
+  return { documentVersion: 16, activeSlideId: slides[0].id, slides }
 }
 
 function sceneImage(id: string, src: string): FreeformSceneLeaf {
@@ -112,7 +112,7 @@ function sceneGroup(
 
 function sceneDocument(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 15,
+    documentVersion: 16,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -442,5 +442,39 @@ describe('freeform image assets', () => {
     expect(exposed).toBeUndefined()
     expect(input).toEqual(snapshot)
     expect(collectFreeformImageSources(input)).toEqual([first, failing])
+  })
+})
+
+describe('page background pictures', () => {
+  const framing = { focusX: 0.5, focusY: 0.5, zoom: 1 }
+  const withBackground = (src: string, nodes: FreeformElement[] = []): FreeformSlide => ({
+    ...slide('page-bg', nodes),
+    background: { type: 'image', src, fit: 'cover', framing },
+  })
+
+  it('collects background pictures with the rest', () => {
+    const input = document(withBackground('img:paper', [image('image-1', 'img:paper')]), slide('page-2', [image('image-2', '/uploads/b.png')]))
+    expect(collectFreeformImageSources(input)).toEqual(['img:paper', '/uploads/b.png'])
+  })
+
+  it('materializes local background refs', () => {
+    const input = document(withBackground('img:paper'))
+    const output = materializeLocalFreeformImages(input, {
+      isRef: (src) => src.startsWith('img:'),
+      resolve: () => 'data:image/png;base64,AAAA',
+    })
+    expect(output.slides[0].background).toEqual({ type: 'image', src: 'data:image/png;base64,AAAA', fit: 'cover', framing })
+    expect(input.slides[0].background).toMatchObject({ src: 'img:paper' })
+    expect(() => materializeLocalFreeformImages(input, { isRef: () => true, resolve: () => '' })).toThrow('img:paper')
+  })
+
+  it('uploads an inline background once, even when a node uses the same picture', async () => {
+    const inline = 'data:image/png;base64,BBBB'
+    const upload = vi.fn(async () => '/uploads/paper.png')
+    const output = await uploadInlineFreeformImages(document(withBackground(inline, [image('image-1', inline)])), upload)
+    expect(upload).toHaveBeenCalledTimes(1)
+    expect(output.slides[0].background).toMatchObject({ src: '/uploads/paper.png' })
+    expect(output.slides[0].nodes[0]).toMatchObject({ src: '/uploads/paper.png' })
+    expect(normalizeFreeformDocument(output)).toEqual(output)
   })
 })

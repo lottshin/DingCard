@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { FreeformPageBackground } from './FreeformPageBackground'
 import { FreeformSceneNodeView } from './FreeformSceneNodeView'
 import { slideBackgroundToCss } from './paint'
 import type { FreeformSlide } from './types'
@@ -84,6 +85,7 @@ export const FreeformSlidePreview = memo(function FreeformSlidePreview({
         className={classes('freeform-slide-preview-artboard', artboardClassName)}
         style={artboardStyle}
       >
+        {renderScene && <FreeformPageBackground slide={slide} presentationOnly />}
         {renderScene && (
           <FreeformSceneNodeView
             nodes={slide.nodes}

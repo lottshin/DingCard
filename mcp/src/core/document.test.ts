@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 15,
+    documentVersion: 16,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(15)
+    expect(result.document.documentVersion).toBe(16)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -239,6 +239,29 @@ describe('validateDocument', () => {
     const scribbledNodes = (scribbled.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>
     scribbledNodes.at(-1)!.d = 'M20 6 9'
     expect(validateDocument(scribbled).ok).toBe(false)
+  })
+
+  test('accepts v16 picture backgrounds and marked spans, and rejects them on v15 inputs', () => {
+    const marked = seedDocument() as unknown as Record<string, unknown>
+    const slide = (marked.slides as Array<Record<string, unknown>>)[0]
+    slide.background = {
+      type: 'image',
+      src: 'https://cdn.example/paper.jpg',
+      fit: 'cover',
+      framing: { focusX: 0.5, focusY: 0.4, zoom: 1.2 },
+    }
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    const text = nodes.find((node) => node.type === 'text')!
+    text.spans = [{ start: 0, end: 1, highlight: '#fef08a', underline: true }]
+    expect(validateDocument(marked).ok).toBe(true)
+
+    const summary = inspectDocument(marked)
+    if (!summary.ok) throw new Error(summary.error)
+    expect(summary.slides[0].background).toBe('image https://cdn.example/paper.jpg (cover)')
+
+    const legacy = structuredClone(marked)
+    legacy.documentVersion = 15
+    expect(validateDocument(legacy).ok).toBe(false)
   })
 
   test('accepts v9 text features, rejects vertical text on v8 inputs', () => {

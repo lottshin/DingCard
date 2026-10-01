@@ -4,7 +4,7 @@ import {
   mapFreeformDocumentLeavesAsync,
 } from './sceneDocument'
 import { walkScene } from './sceneTree'
-import type { FreeformDocument, FreeformSceneLeaf } from './types'
+import type { FreeformDocument, FreeformSceneLeaf, FreeformSlide } from './types'
 
 function imageSource(leaf: FreeformSceneLeaf): string | undefined {
   if (leaf.type === 'image') return leaf.src
@@ -23,10 +23,32 @@ function cloneLeafWithSource(
   return leaf
 }
 
-/** Collect all image sources recursively, including hidden descendants. */
+/** A page's own picture (v16 background), if it has one. */
+function backgroundSource(slide: FreeformSlide): string | undefined {
+  return slide.background.type === 'image' ? slide.background.src : undefined
+}
+
+/** The same document with each picture background's source swapped (slides are fresh clones). */
+function withBackgroundSources(
+  document: FreeformDocument,
+  sourceFor: (src: string) => string,
+): FreeformDocument {
+  return {
+    ...document,
+    slides: document.slides.map((slide) => (
+      slide.background.type === 'image'
+        ? { ...slide, background: { ...slide.background, src: sourceFor(slide.background.src) } }
+        : slide
+    )),
+  }
+}
+
+/** Collect all image sources recursively, including hidden descendants and page backgrounds. */
 export function collectFreeformImageSources(document: FreeformDocument): string[] {
   const sources = new Set<string>()
   for (const slide of document.slides) {
+    const background = backgroundSource(slide)
+    if (background !== undefined) sources.add(background)
     walkScene(slide.nodes, (node) => {
       if (node.type === 'group') return
       const source = imageSource(node)
@@ -41,10 +63,8 @@ export function materializeLocalFreeformImages(
   document: FreeformDocument,
   images: Pick<ImageStore, 'isRef' | 'resolve'>,
 ): FreeformDocument {
-  return mapFreeformDocumentLeaves(document, (leaf) => {
-    const source = imageSource(leaf)
-    if (source === undefined || !images.isRef(source)) return leaf
-
+  const materialize = (source: string) => {
+    if (!images.isRef(source)) return source
     let resolved = ''
     try {
       resolved = images.resolve(source)
@@ -52,8 +72,14 @@ export function materializeLocalFreeformImages(
       // Keep one public error for absent and corrupt local image references.
     }
     if (!resolved) throw new Error(`本地图片引用无法解析：${source}`)
-    return cloneLeafWithSource(leaf, resolved)
+    return resolved
+  }
+  const mapped = mapFreeformDocumentLeaves(document, (leaf) => {
+    const source = imageSource(leaf)
+    if (source === undefined || !images.isRef(source)) return leaf
+    return cloneLeafWithSource(leaf, materialize(source))
   })
+  return withBackgroundSources(mapped, materialize)
 }
 
 /** Upload inline images recursively; no partially mapped document is exposed. */
@@ -67,10 +93,8 @@ export async function uploadInlineFreeformImages(
   }
 
   const uploads = new Map<string, Promise<string>>()
-  return mapFreeformDocumentLeavesAsync(document, async (leaf) => {
-    const source = imageSource(leaf)
-    if (source === undefined || !source.toLowerCase().startsWith('data:image/')) return leaf
-
+  const isInline = (source: string) => source.toLowerCase().startsWith('data:image/')
+  const uploaded = (source: string) => {
     let pending = uploads.get(source)
     if (!pending) {
       pending = upload(source).then((uploadedUrl) => {
@@ -81,6 +105,18 @@ export async function uploadInlineFreeformImages(
       })
       uploads.set(source, pending)
     }
-    return cloneLeafWithSource(leaf, await pending)
+    return pending
+  }
+  const mapped = await mapFreeformDocumentLeavesAsync(document, async (leaf) => {
+    const source = imageSource(leaf)
+    if (source === undefined || !isInline(source)) return leaf
+    return cloneLeafWithSource(leaf, await uploaded(source))
   })
+  // Page backgrounds go up through the same uploads (a picture used twice goes once).
+  const backgrounds = new Map<string, string>()
+  for (const slide of mapped.slides) {
+    const source = backgroundSource(slide)
+    if (source !== undefined && isInline(source)) backgrounds.set(source, await uploaded(source))
+  }
+  return withBackgroundSources(mapped, (source) => backgrounds.get(source) ?? source)
 }

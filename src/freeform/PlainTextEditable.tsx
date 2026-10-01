@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
-import { splitTextRuns, type TextRun } from './richText'
+import { isStyledRun, splitTextRuns, textRunStyle, type TextRun } from './richText'
 import type { RichTextSpan } from './types'
 
 export interface TextSelectionRange {
@@ -12,6 +12,8 @@ interface PlainTextEditableProps {
   value: string
   /** Rich text spans over `value`; rendered as styled inline runs. */
   spans?: RichTextSpan[]
+  /** A solid colour for styled runs in gradient text (see textRunStyle). */
+  runFallbackColor?: string
   className?: string
   style?: CSSProperties
   ariaLabel: string
@@ -22,19 +24,25 @@ interface PlainTextEditableProps {
   onSelectionChange?: (range: TextSelectionRange | null) => void
 }
 
-function runNode(run: TextRun): Node {
-  if (!run.bold && !run.color) return document.createTextNode(run.text)
+function runNode(run: TextRun, fallbackColor: string | undefined): Node {
+  if (!isStyledRun(run)) return document.createTextNode(run.text)
   const span = document.createElement('span')
-  if (run.bold) span.style.fontWeight = '700'
-  if (run.color) span.style.color = run.color
+  for (const [property, value] of Object.entries(textRunStyle(run, fallbackColor))) {
+    span.style.setProperty(property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`), value)
+  }
   span.textContent = run.text
   return span
 }
 
 /** Rebuild the editable's content from the model (plain text + styled runs). */
-function applyContent(root: HTMLElement, value: string, spans: RichTextSpan[] | undefined) {
+function applyContent(
+  root: HTMLElement,
+  value: string,
+  spans: RichTextSpan[] | undefined,
+  fallbackColor: string | undefined,
+) {
   const fragment = document.createDocumentFragment()
-  for (const run of splitTextRuns(value, spans)) fragment.append(runNode(run))
+  for (const run of splitTextRuns(value, spans)) fragment.append(runNode(run, fallbackColor))
   root.replaceChildren(fragment)
 }
 
@@ -100,6 +108,7 @@ function setSelectionInRoot(root: HTMLElement, start: number, end: number) {
 export function PlainTextEditable({
   value,
   spans,
+  runFallbackColor,
   className,
   style,
   ariaLabel,
@@ -112,38 +121,38 @@ export function PlainTextEditable({
   const composingRef = useRef(false)
   const focusedRef = useRef(false)
   const appliedSpansRef = useRef<RichTextSpan[] | undefined>(undefined)
+  const appliedFallbackRef = useRef<string | undefined>(undefined)
 
   useLayoutEffect(() => {
     const node = ref.current
     if (!node) return
+    const spansChanged = appliedSpansRef.current !== spans
+      || appliedFallbackRef.current !== runFallbackColor
+    const apply = () => {
+      applyContent(node, value, spans, runFallbackColor)
+      appliedSpansRef.current = spans
+      appliedFallbackRef.current = runFallbackColor
+    }
     if (readOnly) {
       composingRef.current = false
       focusedRef.current = false
       if (document.activeElement === node) node.blur()
-      if (node.textContent !== value || appliedSpansRef.current !== spans) {
-        applyContent(node, value, spans)
-        appliedSpansRef.current = spans
-      }
+      if (node.textContent !== value || spansChanged) apply()
       return
     }
     if (composingRef.current) return
-    const spansChanged = appliedSpansRef.current !== spans
     if (focusedRef.current) {
       // The DOM owns the content while focused; a spans change (e.g. the
       // inspector bolded the current selection) rebuilds the runs in place
       // and restores the caret so editing continues seamlessly.
       if (!spansChanged) return
       const selection = selectionInRoot(node)
-      applyContent(node, value, spans)
-      appliedSpansRef.current = spans
+      apply()
       if (selection) setSelectionInRoot(node, selection.start, selection.end)
       return
     }
-    if (node.textContent !== value || spansChanged) {
-      applyContent(node, value, spans)
-      appliedSpansRef.current = spans
-    }
-  }, [readOnly, value, spans])
+    if (node.textContent !== value || spansChanged) apply()
+  }, [readOnly, value, spans, runFallbackColor])
 
   // Report the live character selection while the editable owns the caret.
   useEffect(() => {
