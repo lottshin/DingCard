@@ -504,6 +504,25 @@
   }
 }
 
+/* Just above the two-row phone bar the middle tools crowd the title, so the
+   save state and the main action shrink to their icons (the words stay for
+   screen readers), as they do on phones. */
+@media (min-width: 721px) and (max-width: 800px) {
+  .save-chip > span:not(.save-spinner),
+  .editor-primary-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .editor-bar .lang-chevron {
+    display: none;
+  }
+}
+
 @media (max-width: 720px) {
   .editor-bar {
     grid-template-columns: minmax(0, 1fr) auto;

@@ -4,8 +4,6 @@ import {
   insertFreeformText,
   openPageMenu,
   openToolPanel,
-  openZoomMenu,
-  viewOption,
 } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
@@ -182,18 +180,24 @@ test('nothing runs under the stage: pages sit on the left and zoom alone in the 
   expect(canvas.bottom).toBeLessThan(zoom.top)
   await expect(page.locator('.freeform-zoom button')).toHaveCount(3)
 
-  // Rulers, guides and snapping are view options behind the zoom value.
-  const menu = await openZoomMenu(page)
-  await expect(menu.getByRole('menuitemcheckbox')).toHaveText(['显示标尺', '显示参考线', '对象吸附'])
-  await expect(menu.getByTestId('freeform-zoom-selection')).toBeDisabled()
-  await page.keyboard.press('ArrowDown')
-  await expect(page.getByTestId('freeform-rulers-toggle')).toBeFocused()
-  await page.keyboard.press('Enter')
-  await expect(menu).toHaveCount(0)
+  // The value fits the page again.
+  await page.getByRole('button', { name: '放大画布', exact: true }).click()
+  await expect(page.getByTestId('freeform-zoom-value')).toHaveText('110%')
+  await page.getByTestId('freeform-zoom-value').click()
+  await expect(page.getByTestId('freeform-zoom-value')).toHaveText('100%')
+
+  // Rulers, guides and snapping are toggles in the top bar, beside the page size.
+  const topBar = page.getByTestId('freeform-toolbar')
+  const views = topBar.getByRole('group', { name: '视图' })
+  await expect(views.getByRole('button')).toHaveCount(3)
+  for (const [name, pressed] of [['显示标尺', 'false'], ['显示参考线', 'true'], ['对象吸附', 'true']] as const) {
+    await expect(views.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', pressed)
+  }
+  await views.getByRole('button', { name: '显示标尺', exact: true }).click()
   await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
-  await expect(await viewOption(page, 'freeform-rulers-toggle')).toHaveAttribute('aria-checked', 'true')
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('freeform-zoom-value')).toBeFocused()
+
+  // With nothing selected the bar above the canvas holds only 更多.
+  await expect(page.getByTestId('freeform-context-toolbar').getByRole('button')).toHaveText(['更多'])
 
   // The page list stays beside an open insert panel, so a picture can go on each page in turn.
   await page.getByRole('button', { name: '新增页面' }).click()
@@ -238,4 +242,43 @@ test('the settings panel follows the window width and its fields never spill out
     expect(await spill()).toEqual([])
     await expect(panel.getByTestId('freeform-panel-close')).toBeInViewport({ ratio: 1 })
   }
+})
+
+test('the page list collapses, comes back from the rail, and PageUp / PageDown turn pages', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/edit/canvas')
+  await expect(page.getByTestId('freeform-canvas')).toBeVisible()
+  const list = page.getByTestId('freeform-page-strip')
+  const pagesTool = page.getByTestId('freeform-pages-tool')
+  const thumbs = page.getByTestId('freeform-thumb')
+  const stageWidth = () => page.locator('.freeform-stage-pane').evaluate((node) => node.getBoundingClientRect().width)
+
+  await page.getByRole('button', { name: '新增页面' }).click()
+  await expect(list.getByRole('heading', { name: '2 页' })).toBeVisible()
+  await expect(thumbs.nth(1)).toHaveAttribute('aria-current', 'page')
+
+  // PageUp / PageDown walk the pages, which still works with the list collapsed.
+  await page.locator('.freeform-stage-scroll').click({ position: { x: 20, y: 20 } })
+  await page.keyboard.press('PageUp')
+  await expect(thumbs.first()).toHaveAttribute('aria-current', 'page')
+  await page.keyboard.press('PageUp')
+  await expect(thumbs.first()).toHaveAttribute('aria-current', 'page')
+  await page.keyboard.press('PageDown')
+  await expect(thumbs.nth(1)).toHaveAttribute('aria-current', 'page')
+
+  await expect(pagesTool).toHaveAttribute('aria-pressed', 'true')
+  const withList = await stageWidth()
+  await list.getByRole('button', { name: '收起页面列表' }).click()
+  await expect(list).toHaveCount(0)
+  await expect(pagesTool).toHaveAttribute('aria-pressed', 'false')
+  expect(await stageWidth()).toBeGreaterThan(withList + 100)
+
+  // The choice is kept, and 页面 in the rail brings the list back.
+  await page.reload()
+  await expect(page.getByTestId('freeform-canvas')).toBeVisible()
+  await expect(list).toHaveCount(0)
+  await pagesTool.click()
+  await expect(list).toBeVisible()
+  await expect(pagesTool).toHaveAttribute('aria-pressed', 'true')
+  await expect(thumbs).toHaveCount(2)
 })

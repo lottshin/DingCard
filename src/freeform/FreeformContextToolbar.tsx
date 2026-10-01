@@ -27,12 +27,11 @@ import type {
   FreeformShapeElement,
   FreeformTextElement,
   ShapeFill,
-  SlideBackground,
 } from './types'
 
-/** What the toolbar is about: the page, one object, or several. */
+/** What the toolbar is about: nothing selected (the page), one object, or several. */
 export type ContextToolbarSubject =
-  | { kind: 'page'; background: SlideBackground; width: number; height: number }
+  | { kind: 'page' }
   | { kind: 'text'; node: FreeformTextElement; fontSize: number }
   | { kind: 'shape'; node: FreeformShapeElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'image'; node: FreeformImageElement; canCrop: boolean; cropDisabledReason: string | null }
@@ -56,7 +55,6 @@ export interface FreeformContextToolbarProps {
   onProperty: (edit: ScenePropertyEdit) => void
   onFontFamily: (fontFamily: string) => void
   onShapeFill: (fill: ShapeFill) => void
-  onPageBackground: (background: SlideBackground) => void
   onAlign: (alignment: ToolbarAlignment) => void
   onDistribute: (axis: 'horizontal' | 'vertical') => void
   onOrder: (order: ToolbarOrder) => void
@@ -217,22 +215,9 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
       data-testid="freeform-context-toolbar"
       data-subject={subject.kind}
     >
+      {/* With nothing selected the bar stays empty but keeps its height, so the
+          canvas doesn't jump; page settings are behind 更多. */}
       <div className="ctx-group">
-        {subject.kind === 'page' && (
-          <>
-            <SubjectChip icon={<PathIcon d="M5 3.5h10v13H5z" />} label={t('页面')} />
-            <Divider />
-            <span className="ctx-label">{t('背景')}</span>
-            <ColorPickerButton
-              label={t('页面背景颜色')}
-              testId="ctx-page-background"
-              color={subject.background.type === 'transparent' ? 'transparent' : paintFallbackColor(subject.background)}
-              onChange={(color) => props.onPageBackground({ type: 'solid', color })}
-            />
-            <span className="ctx-meta tnum">{subject.width} × {subject.height}</span>
-          </>
-        )}
-
         {subject.kind === 'text' && (
           <>
             <SubjectChip icon={<TextIcon />} label={t('文本')} />

@@ -293,6 +293,16 @@ export function PanelRightIcon(props: IconProps) {
   )
 }
 
+/** Pages one under another: the editor's page list. */
+export function PagesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4.25" y="1.75" width="7.5" height="5" rx="1.25" />
+      <rect x="4.25" y="9.25" width="7.5" height="5" rx="1.25" />
+    </Icon>
+  )
+}
+
 export function LanguageIcon(props: IconProps) {
   return (
     <Icon {...props}>

@@ -61,6 +61,14 @@ describe('freeform view prefs', () => {
     expect(loadViewPrefs().panelOpen).toBe(false)
   })
 
+  it('shows the page list until it is collapsed, then remembers that', () => {
+    expect(DEFAULT_VIEW_PREFS.pagesVisible).toBe(true)
+    saveViewPrefs({ ...DEFAULT_VIEW_PREFS, pagesVisible: false })
+    expect(loadViewPrefs().pagesVisible).toBe(false)
+    localStorage.setItem('slicer.freeform.prefs.v1', '{"pagesVisible":0}')
+    expect(loadViewPrefs().pagesVisible).toBe(true)
+  })
+
   it('round-trips export options', () => {
     const prefs = {
       ...DEFAULT_VIEW_PREFS,

@@ -60,32 +60,9 @@ export async function insertFreeformShape(page: Page, label = '矩形') {
   await closeToolPanel(page, 'elements')
 }
 
-type ViewOption = 'freeform-rulers-toggle' | 'freeform-guides-toggle' | 'freeform-snap-toggle'
-
-/** Opens the menu behind the zoom value in the stage's corner (zoom and view options). */
-export async function openZoomMenu(page: Page) {
-  const menu = page.getByTestId('freeform-zoom-menu')
-  if (await menu.count() === 0) await page.getByTestId('freeform-zoom-value').click()
-  await expect(menu).toBeVisible()
-  return menu
-}
-
-/** A view option in the zoom menu, with the menu open. */
-export async function viewOption(page: Page, option: ViewOption) {
-  await openZoomMenu(page)
-  return page.getByTestId(option)
-}
-
-/** Flips a view option from the zoom menu, which closes again. */
-export async function toggleViewOption(page: Page, option: ViewOption) {
-  await (await viewOption(page, option)).click()
-  await expect(page.getByTestId('freeform-zoom-menu')).toHaveCount(0)
-}
-
-/** Back to the fitted page (100%) from the zoom menu. */
+/** Back to the fitted page (100%): the zoom value in the stage's corner. */
 export async function fitFreeformCanvas(page: Page) {
-  await openZoomMenu(page)
-  await page.getByTestId('freeform-zoom-fit').click()
+  await page.getByTestId('freeform-zoom-value').click()
   await expect(page.getByTestId('freeform-zoom-value')).toHaveText('100%')
 }
 

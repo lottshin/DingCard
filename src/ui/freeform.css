@@ -312,6 +312,12 @@
   color: var(--on-btn);
 }
 
+/* The page list is shown by default, so its button only tints while it is. */
+.freeform-tools .freeform-pages-tool[aria-pressed='true'] svg {
+  background: var(--pressed);
+  color: var(--text);
+}
+
 .freeform-tools .freeform-file {
   display: none;
 }
@@ -519,6 +525,34 @@
   background: var(--surface);
 }
 
+/* Its head: the page count and the button that collapses the list (页面 in the rail brings it back). */
+.freeform-rail .freeform-rail-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 8px 6px 0 14px;
+}
+
+.freeform-rail .freeform-rail-head h2 {
+  margin: 0;
+  color: var(--text-2);
+  font: 600 12px/1 var(--ui-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.freeform-rail .freeform-rail-head .icon-btn {
+  width: 28px;
+  height: 28px;
+  color: var(--text-3);
+}
+
+.freeform-rail .freeform-rail-head .icon-btn:hover {
+  color: var(--text);
+}
+
 .freeform-rail .freeform-slide-list {
   flex: 1 1 auto;
   display: flex;
@@ -526,7 +560,7 @@
   align-items: stretch;
   gap: 2px;
   min-height: 0;
-  padding: 10px 8px 8px;
+  padding: 4px 8px 8px;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -731,6 +765,35 @@
 .freeform-rail .freeform-add-page:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* Rulers, guides and snapping beside the page size: icon toggles, a pressed chip while on. */
+.freeform-toolbar .freeform-view-toggles {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.freeform-toolbar .freeform-view-toggles .bar-btn {
+  color: var(--text-3);
+}
+
+.freeform-toolbar .freeform-view-toggles .bar-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.freeform-toolbar .freeform-view-toggles .bar-btn[aria-pressed='true'] {
+  background: var(--pressed);
+  color: var(--text);
+}
+
+.freeform-toolbar .freeform-view-toggles .bar-btn > svg {
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Toolbar icon buttons (undo / redo). */
@@ -949,7 +1012,7 @@
   outline-offset: -4px;
 }
 
-/* Zoom alone in the stage's lower right corner; the value opens zoom and view options. */
+/* Zoom alone in the stage's lower right corner; the value fits the page again. */
 .freeform-stage-pane .freeform-zoom {
   position: absolute;
   right: 16px;
@@ -968,48 +1031,6 @@
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.freeform-stage-pane .freeform-zoom .zoom-value[aria-expanded='true']::before {
-  background: var(--pressed);
-}
-
-.freeform-stage-pane .freeform-zoom-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
-  z-index: 60;
-  display: grid;
-  min-width: 204px;
-  padding: 4px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--surface-pop);
-  box-shadow: var(--shadow-pop);
-  animation: ui-pop var(--dur) var(--ease-out);
-}
-
-.freeform-stage-pane .freeform-zoom-menu .freeform-context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.freeform-stage-pane .freeform-zoom-menu .freeform-zoom-check-mark {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  visibility: hidden;
-}
-
-.freeform-stage-pane .freeform-zoom-menu .freeform-zoom-check[aria-checked='true'] .freeform-zoom-check-mark {
-  visibility: visible;
-}
-
-/* Entries without a check mark line up with the checked ones. */
-.freeform-stage-pane .freeform-zoom-menu .freeform-context-menu-item:not(.freeform-zoom-check) {
-  padding-left: 32px;
 }
 
 .freeform-framing-head strong {
@@ -2171,8 +2192,7 @@
   }
 }
 
-/* Narrow windows: a slimmer page list, and an open insert panel takes its
-   place so the stage keeps its width. */
+/* Narrow windows: a slimmer page list. */
 @media (max-width: 1100px) {
   .freeform-rail {
     width: 80px;
@@ -2193,15 +2213,15 @@
     height: 20px;
   }
 
-  .freeform-main.has-drawer > .freeform-rail {
-    display: none;
-  }
-
   .freeform-rail .freeform-add-page {
     flex-direction: column;
     height: 52px;
     margin-inline: 6px;
     font-size: 11px;
+  }
+
+  .freeform-rail .freeform-rail-head {
+    padding-left: 10px;
   }
 }
 
@@ -2249,16 +2269,18 @@
   }
 
   /* Phones keep the pages in a row under the stage, as Canva's app does,
-     above any open insert panel. */
-  .freeform-main > .freeform-rail,
-  .freeform-main.has-drawer > .freeform-rail {
-    display: flex;
+     above any open insert panel; 页面 in the top row hides it. */
+  .freeform-main > .freeform-rail {
     flex-direction: row;
     align-items: flex-start;
     width: auto;
     max-height: none;
     border-top: 1px solid var(--line);
     border-right: 0;
+  }
+
+  .freeform-rail .freeform-rail-head {
+    display: none;
   }
 
   .freeform-rail .freeform-slide-list {
@@ -2561,17 +2583,11 @@
   background: var(--line-2);
 }
 
-.freeform-context-toolbar .ctx-label,
-.freeform-context-toolbar .ctx-meta {
+.freeform-context-toolbar .ctx-label {
   flex: none;
   color: var(--text-3);
   font: 500 12px/1 var(--ui-font);
   white-space: nowrap;
-}
-
-.freeform-context-toolbar .ctx-meta {
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
 }
 
 .freeform-context-toolbar .ctx-icon {
@@ -2923,7 +2939,6 @@
 }
 
 @container (max-width: 888px) {
-  .freeform-context-toolbar .ctx-meta,
   .freeform-context-toolbar .ctx-label,
   .freeform-context-toolbar .ctx-text-align {
     display: none;

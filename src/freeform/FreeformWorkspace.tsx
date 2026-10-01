@@ -15,10 +15,12 @@ import { GUEST_OWNER_ID, isGuestOwner, store, storeFor } from '../storage'
 import { FONTS } from '../theme'
 import { assetDocumentSource } from '../workspaces/assetSource'
 import {
+  ChevronLeftIcon,
   CloseIcon,
   ImageIcon,
   LayersIcon,
   MoreIcon,
+  PagesIcon,
   PlusIcon,
   RedoIcon,
   ShapePreviewIcon,
@@ -1683,7 +1685,7 @@ export function FreeformWorkspace({
     else if (box.bottom > area.bottom) list.scrollTop += box.bottom - area.bottom + margin
     if (box.left < area.left) list.scrollLeft -= area.left - box.left + margin
     else if (box.right > area.right) list.scrollLeft += box.right - area.right + margin
-  }, [activeSlide.id, doc.slides.length])
+  }, [activeSlide.id, doc.slides.length, viewPrefs.pagesVisible])
 
   useEffect(() => {
     if (!slideContextMenu?.fromButton) return
@@ -3580,6 +3582,17 @@ export function FreeformWorkspace({
         return
       }
       if (isTypingTarget(event.target)) return
+      // PageUp / PageDown step through the pages, as in slide editors (the page
+      // list may be collapsed).
+      if (
+        (event.key === 'PageUp' || event.key === 'PageDown')
+        && !event.ctrlKey && !event.metaKey && !event.altKey
+      ) {
+        event.preventDefault()
+        const next = doc.slides[activeSlideIndex + (event.key === 'PageDown' ? 1 : -1)]
+        if (next) selectSlide(next.id)
+        return
+      }
       // Match on key codes: macOS Option combos remap event.key to special chars.
       if ((event.ctrlKey || event.metaKey) && event.altKey && event.code === 'KeyC') {
         event.preventDefault()
@@ -5240,7 +5253,7 @@ export function FreeformWorkspace({
 
   const contextSubject: ContextToolbarSubject = (() => {
     if (liveSelection.length === 0) {
-      return { kind: 'page', background: activeSlide.background, width: activeSlide.width, height: activeSlide.height }
+      return { kind: 'page' }
     }
     if (effectiveLockedSelection) return { kind: 'locked', name: layerLabel(effectiveLockedSelection.unlockName) }
     if (lockedDescendantSelection) return { kind: 'locked', name: layerLabel(lockedDescendantSelection.sourceName) }
@@ -5396,6 +5409,53 @@ export function FreeformWorkspace({
                     onApply={applySlideSize}
                   />
                 </div>
+
+                <ToolbarDivider />
+
+                <div className="freeform-view-toggles" role="group" aria-label={t('视图')}>
+                  <button
+                    className="bar-btn bar-icon"
+                    type="button"
+                    data-testid="freeform-rulers-toggle"
+                    aria-label={t('显示标尺')}
+                    title={t('显示标尺')}
+                    aria-pressed={viewPrefs.rulersVisible}
+                    onClick={() => updateViewPrefs({ rulersVisible: !viewPrefs.rulersVisible })}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M3.5 7.5h13v5h-13z" />
+                      <path d="M6.5 7.5v2M9.5 7.5v2.75M12.5 7.5v2M15.5 7.5v2.75" />
+                    </svg>
+                  </button>
+                  <button
+                    className="bar-btn bar-icon"
+                    type="button"
+                    data-testid="freeform-guides-toggle"
+                    aria-label={t('显示参考线')}
+                    title={t('显示参考线')}
+                    aria-pressed={viewPrefs.guidesVisible}
+                    onClick={() => updateViewPrefs({ guidesVisible: !viewPrefs.guidesVisible })}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M7 2.5v15M2.5 13h15" strokeDasharray="2 2" />
+                      <rect x="4.5" y="4.5" width="11" height="11" rx="1.5" />
+                    </svg>
+                  </button>
+                  <button
+                    className="bar-btn bar-icon"
+                    type="button"
+                    data-testid="freeform-snap-toggle"
+                    aria-label={t('对象吸附')}
+                    title={t('对象吸附')}
+                    aria-pressed={viewPrefs.snappingEnabled}
+                    onClick={() => updateViewPrefs({ snappingEnabled: !viewPrefs.snappingEnabled })}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M5.5 3.5v6.25a4.5 4.5 0 0 0 9 0V3.5" />
+                      <path d="M5.5 6.75h3M11.5 6.75h3" />
+                    </svg>
+                  </button>
+                </div>
               </ToolbarGroup>
             </WorkspaceToolbar>
           )}
@@ -5477,7 +5537,18 @@ export function FreeformWorkspace({
             <span>{t('元素')}</span>
           </button>
           <button
-            className="freeform-tool freeform-tool-end"
+            className="freeform-tool freeform-tool-end freeform-pages-tool"
+            type="button"
+            data-testid="freeform-pages-tool"
+            aria-pressed={viewPrefs.pagesVisible}
+            aria-controls={viewPrefs.pagesVisible ? 'freeform-page-list' : undefined}
+            onClick={() => updateViewPrefs({ pagesVisible: !viewPrefs.pagesVisible })}
+          >
+            <PagesIcon />
+            <span>{t('页面')}</span>
+          </button>
+          <button
+            className="freeform-tool"
             type="button"
             data-testid="freeform-layers-tool"
             aria-pressed={viewPrefs.panelOpen && panelTab === 'layers'}
@@ -5682,7 +5753,26 @@ export function FreeformWorkspace({
           </aside>
         )}
 
-        <aside className="freeform-rail" aria-label={t('页面列表')} data-testid="freeform-page-strip">
+        {viewPrefs.pagesVisible && (
+        <aside
+          className="freeform-rail"
+          id="freeform-page-list"
+          aria-label={t('页面列表')}
+          data-testid="freeform-page-strip"
+        >
+          <div className="freeform-rail-head">
+            <h2>{t('{n} 页', { n: doc.slides.length })}</h2>
+            <button
+              type="button"
+              className="icon-btn"
+              data-testid="freeform-pages-collapse"
+              aria-label={t('收起页面列表')}
+              title={t('收起页面列表')}
+              onClick={() => updateViewPrefs({ pagesVisible: false })}
+            >
+              <ChevronLeftIcon />
+            </button>
+          </div>
           <div
             ref={slideListRef}
             className="freeform-slide-list"
@@ -5837,6 +5927,7 @@ export function FreeformWorkspace({
             <span>{t('新增页面')}</span>
           </button>
         </aside>
+        )}
 
         <section className="freeform-stage-pane" aria-label={t('自由画布')}>
           {(imageCropSession || framingSession) && (
@@ -5912,11 +6003,6 @@ export function FreeformWorkspace({
                 updateSelectedStyle({ fontFamily })
               }}
               onShapeFill={(fill) => { updateSelectedShapeFill(fill) }}
-              onPageBackground={(background) => applyAction({
-                type: 'slide/update',
-                slideId: activeSlide.id,
-                patch: { background },
-              })}
               onAlign={alignSelection}
               onDistribute={distributeSelection}
               onOrder={reorderSelection}
@@ -6255,21 +6341,12 @@ export function FreeformWorkspace({
 
           {!imageCropSession && !framingSession && (
             <FreeformZoomControl
-              isActive={isActive}
               zoomPercent={zoomPercent}
               canZoomOut={zoomPercent > MIN_ZOOM_PERCENT}
               canZoomIn={zoomPercent < MAX_ZOOM_PERCENT}
-              canZoomToSelection={selectionPaths.length > 0}
-              view={{
-                rulersVisible: viewPrefs.rulersVisible,
-                guidesVisible: viewPrefs.guidesVisible,
-                snappingEnabled: viewPrefs.snappingEnabled,
-              }}
               onZoomOut={() => setZoomPercent((value) => clampZoomPercent(value - ZOOM_STEP))}
               onZoomIn={() => setZoomPercent((value) => clampZoomPercent(value + ZOOM_STEP))}
               onFit={() => setZoomPercent(DEFAULT_ZOOM_PERCENT)}
-              onZoomToSelection={zoomToSelectionBounds}
-              onToggleView={(toggle) => updateViewPrefs({ [toggle]: !viewPrefs[toggle] })}
             />
           )}
         </section>

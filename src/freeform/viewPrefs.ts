@@ -17,6 +17,8 @@ export interface FreeformViewPrefs {
   exportScale: 1 | 2
   /** The settings panel beside the canvas (properties, layers, history); closed until asked for. */
   panelOpen: boolean
+  /** The page list beside the stage; shown until someone collapses it. */
+  pagesVisible: boolean
 }
 
 const KEY = 'slicer.freeform.prefs.v1'
@@ -29,6 +31,7 @@ export const DEFAULT_VIEW_PREFS: FreeformViewPrefs = {
   exportQuality: 0.92,
   exportScale: 1,
   panelOpen: false,
+  pagesVisible: true,
 }
 
 function isExportFormat(value: unknown): value is ExportFormat {
@@ -67,6 +70,9 @@ export function loadViewPrefs(): FreeformViewPrefs {
       panelOpen: typeof record.panelOpen === 'boolean'
         ? record.panelOpen
         : DEFAULT_VIEW_PREFS.panelOpen,
+      pagesVisible: typeof record.pagesVisible === 'boolean'
+        ? record.pagesVisible
+        : DEFAULT_VIEW_PREFS.pagesVisible,
     }
   } catch {
     return { ...DEFAULT_VIEW_PREFS }

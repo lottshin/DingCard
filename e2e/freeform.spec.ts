@@ -10,14 +10,7 @@ import {
   transformVector,
 } from '../src/freeform/sceneTransform'
 import type { FreeformSceneNode } from '../src/freeform/types'
-import {
-  duplicateCurrentPage,
-  fitFreeformCanvas,
-  openPageMenu,
-  openZoomMenu,
-  toggleViewOption,
-  viewOption,
-} from './freeformTools'
+import { duplicateCurrentPage, fitFreeformCanvas, openPageMenu } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
 test.beforeEach(async ({ context, page }) => {
@@ -2072,7 +2065,7 @@ test.describe('fit-relative freeform zoom', () => {
     expect(Math.abs(atRight.canvasRight - (atRight.stageRight - atRight.paddingRight))).toBeLessThanOrEqual(0.5)
   })
 
-  test('enforces zoom bounds and fits the page again from the zoom menu', async ({ page }) => {
+  test('enforces zoom bounds and resets the middle control to 100%', async ({ page }) => {
     await openFreeform(page)
     const shrink = page.getByRole('button', { name: '缩小画布', exact: true })
     const enlarge = page.getByRole('button', { name: '放大画布', exact: true })
@@ -2841,15 +2834,14 @@ test('keeps focus on an outside toolbar button when closing the page size popove
 
   await pageSizeTrigger.click()
   await expect(pageSizePopover).toBeVisible()
-  const zoomIn = page.getByRole('button', { name: '放大画布', exact: true })
-  await zoomIn.click()
+  await page.getByTestId('freeform-rulers-toggle').click()
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
 
   await expect(pageSizePopover).toBeHidden()
-  await expect(zoomIn).toBeFocused()
-  await expect(page.getByTestId('freeform-zoom-value')).toHaveText('110%')
+  await expect(page.getByTestId('freeform-rulers-toggle')).toBeFocused()
+  await expect(page.getByTestId('freeform-rulers-toggle')).toHaveAttribute('aria-pressed', 'true')
   await expect(templateButton).toBeVisible()
 })
 
@@ -10891,7 +10883,7 @@ async function dragGuideFromRuler(
   worldPosition: number,
 ) {
   if (await page.getByTestId('freeform-ruler-x').count() === 0) {
-    await toggleViewOption(page, 'freeform-rulers-toggle')
+    await page.getByTestId('freeform-rulers-toggle').click()
   }
   await page.getByTestId('freeform-ruler-x').waitFor({ state: 'attached' })
   const geometry = await stageGeometry(page)
@@ -10931,17 +10923,14 @@ test.describe('freeform rulers and guides', () => {
       }
     })
     await openFreeform(page)
+    const toggle = page.getByTestId('freeform-rulers-toggle')
     await expect(page.getByTestId('freeform-canvas')).toBeVisible()
     await expect(page.getByTestId('freeform-ruler-x')).toHaveCount(0)
-    const toggle = await viewOption(page, 'freeform-rulers-toggle')
-    await expect(toggle).toHaveAttribute('role', 'menuitemcheckbox')
-    await expect(toggle).toHaveAttribute('aria-checked', 'false')
+    // The view toggles sit in the top bar beside the page size.
+    await expect(page.getByTestId('freeform-toolbar').getByTestId('freeform-rulers-toggle')).toBeVisible()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
     await toggle.click()
-    await expect(page.getByTestId('freeform-zoom-menu')).toHaveCount(0)
-    await expect(page.getByTestId('freeform-zoom-value')).toBeFocused()
-    await expect(await viewOption(page, 'freeform-rulers-toggle')).toHaveAttribute('aria-checked', 'true')
-    await page.keyboard.press('Escape')
-    await expect(page.getByTestId('freeform-zoom-menu')).toHaveCount(0)
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
     await page.reload()
     await expect(page.getByTestId('freeform-ruler-x')).toBeVisible()
@@ -11197,10 +11186,10 @@ test.describe('freeform selection completion', () => {
     const guide = page.getByTestId('freeform-guide')
     await expect(guide).toHaveCount(1)
 
-    await expect(await viewOption(page, 'freeform-guides-toggle')).toHaveAttribute('aria-checked', 'true')
-    await toggleViewOption(page, 'freeform-guides-toggle')
-    await expect(await viewOption(page, 'freeform-guides-toggle')).toHaveAttribute('aria-checked', 'false')
-    await page.keyboard.press('Escape')
+    const toggle = page.getByTestId('freeform-guides-toggle')
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
     await expect(guide).toHaveCount(0)
 
     // The preference survives a reload, and so does the guest's page (saved on
@@ -11208,14 +11197,12 @@ test.describe('freeform selection completion', () => {
     await page.reload()
     await page.goto('/#/edit/canvas')
     await expect(page.locator('.freeform-stage-scroll')).toHaveAttribute('aria-busy', 'false')
-    await expect(await viewOption(page, 'freeform-guides-toggle')).toHaveAttribute('aria-checked', 'false')
-    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('freeform-guides-toggle')).toHaveAttribute('aria-pressed', 'false')
     await expect(guide).toHaveCount(0)
 
     // Dragging a fresh guide from the ruler re-enables visibility.
     await dragGuideFromRuler(page, 'x', 500)
-    await expect(await viewOption(page, 'freeform-guides-toggle')).toHaveAttribute('aria-checked', 'true')
-    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('freeform-guides-toggle')).toHaveAttribute('aria-pressed', 'true')
     await expect(guide).toHaveCount(2)
   })
 
@@ -11232,7 +11219,7 @@ test.describe('freeform selection completion', () => {
     expect(box).toBeTruthy()
 
     // With snapping off the shape lands 3 world px left of the guide.
-    await toggleViewOption(page, 'freeform-snap-toggle')
+    await page.getByTestId('freeform-snap-toggle').click()
     const dragDistance = (417 - 300) * scale
     const startX = box!.x + box!.width / 2
     const startY = box!.y + box!.height / 2
@@ -11246,7 +11233,7 @@ test.describe('freeform selection completion', () => {
     expect(boxes[0].x).toBe(417)
 
     // Re-enabling snapping pulls the same drag onto the guide.
-    await toggleViewOption(page, 'freeform-snap-toggle')
+    await page.getByTestId('freeform-snap-toggle').click()
     const box2 = await element.boundingBox()
     await page.mouse.move(box2!.x + box2!.width / 2, box2!.y + box2!.height / 2)
     await page.mouse.down()
@@ -11813,7 +11800,8 @@ test.describe('freeform editing chrome', () => {
     await openFreeform(page)
     const bar = page.getByRole('toolbar', { name: '对象工具条' })
     await expect(bar).toHaveAttribute('data-subject', 'page')
-    await expect(bar.getByTestId('ctx-page-background')).toBeVisible()
+    // Nothing selected: only 更多, which opens the page's settings.
+    await expect(bar.getByRole('button')).toHaveText(['更多'])
 
     await insertText(page)
     await expect(bar).toHaveAttribute('data-subject', 'text')
