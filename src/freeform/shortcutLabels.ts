@@ -11,3 +11,9 @@ export function shortcutLabel(key: string, modifiers: { mod?: boolean; shift?: b
   if (IS_MAC) return `${modifiers.alt ? '⌥' : ''}${modifiers.shift ? '⇧' : ''}${modifiers.mod ? '⌘' : ''}${key}`
   return [modifiers.mod && 'Ctrl', modifiers.shift && 'Shift', modifiers.alt && 'Alt', key].filter(Boolean).join('+')
 }
+
+/** The platform's own paste shortcut (⌘V on a Mac, Ctrl+V elsewhere): the browser follows it with a paste event carrying the system clipboard. */
+export function isPlatformPasteShortcut(event: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean }): boolean {
+  if (event.key.toLowerCase() !== 'v' || event.altKey) return false
+  return IS_MAC ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+}

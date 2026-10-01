@@ -57,7 +57,8 @@ import { FreeformContextToolbar, type ContextToolbarSubject } from './FreeformCo
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorGlyph } from './InspectorGlyph'
 import { isDefaultPageName, slideDisplayName } from './pageNames'
-import { DELETE_KEY, shortcutLabel } from './shortcutLabels'
+import { DELETE_KEY, isPlatformPasteShortcut, shortcutLabel } from './shortcutLabels'
+import { staggerNewElement } from './insertPlacement'
 import { InspectorNumberInput } from './InspectorNumberInput'
 import { FreeformLayersPanel, layerLabel } from './FreeformLayersPanel'
 import { FreeformPageSizePopover } from './FreeformPageSizePopover'
@@ -682,6 +683,17 @@ function matrixAroundPoint(matrix: Matrix2D, point: { x: number; y: number }): M
   return multiply(translation(point.x, point.y), multiply(matrix, translation(-point.x, -point.y)))
 }
 
+/** A new element's spot: centred in the page (stepped clear of one already
+ *  there) or in the open group. */
+function placeNewElementInScope<T extends FreeformElement>(
+  element: T,
+  slide: FreeformSlide,
+  parentPath: ScenePath,
+): T {
+  const centred = centerNewElementInScope(element, slide.nodes, parentPath)
+  return parentPath.length === 0 ? staggerNewElement(centred, slide.nodes, slide) : centred
+}
+
 function centerNewElementInScope<T extends FreeformElement>(
   element: T,
   nodes: readonly FreeformSceneNode[],
@@ -1056,6 +1068,8 @@ export function FreeformWorkspace({
   } | null>(null)
   const slideContextMenuRef = useRef<HTMLDivElement>(null)
   const slideMenuButtonRef = useRef<HTMLButtonElement | null>(null)
+  /** ⌘V was pressed and the browser's paste event is on its way. */
+  const pendingPasteRef = useRef<{ inPlace: boolean } | null>(null)
   const slideListRef = useRef<HTMLDivElement>(null)
   // Narrow windows get smaller page thumbnails (the same width as the CSS breakpoint).
   const compactPageStrip = useMediaQuery('(max-width: 1100px)')
@@ -1693,6 +1707,28 @@ export function FreeformWorkspace({
       ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
       ?.focus({ preventScroll: true })
   }, [slideContextMenu?.slideId, slideContextMenu?.fromButton])
+
+  // Pictures on the system clipboard (a screenshot, an image copied from a
+  // page) paste into the middle of the page, stepped clear like any insert.
+  useEffect(() => {
+    if (!isActive) return
+    const onPaste = (event: ClipboardEvent) => {
+      const pending = pendingPasteRef.current
+      pendingPasteRef.current = null
+      if (isTypingTarget(event.target)) return
+      if (event.target instanceof Element && event.target.closest('[aria-modal="true"]')) return
+      if (framingSessionRef.current || imageCropSessionRef.current) return
+      const pictures = imageFiles(event.clipboardData?.files).slice(0, MAX_DROPPED_IMAGES)
+      event.preventDefault()
+      if (pictures.length > 0) {
+        void insertDroppedImages(pictures, null)
+        return
+      }
+      pasteClipboard(pending?.inPlace ?? false)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  })
 
   // Clicking anywhere outside the open context menus dismisses them.
   useEffect(() => {
@@ -2741,7 +2777,7 @@ export function FreeformWorkspace({
   function insertNewElement(element: FreeformElement): boolean {
     if (blockDocumentMutationDuringInteraction()) return false
     const parentPath = [...activeGroupPath]
-    const node = centerNewElementInScope(element, activeSlide.nodes, parentPath)
+    const node = placeNewElementInScope(element, activeSlide, parentPath)
     const changed = applyAction({
       type: 'node/insert-children',
       slideId: activeSlide.id,
@@ -2793,7 +2829,7 @@ export function FreeformWorkspace({
     loadSource: () => Promise<string>,
     alt: string,
     natural?: { width: number; height: number },
-    /** Page point the image is centred on (a drop); otherwise it lands in the middle. */
+    /** Page point the image is centred on (a drop); otherwise it lands in the middle, clear of one already there. */
     placeAt?: { x: number; y: number },
   ) {
     if (blockDocumentMutationDuringInteraction()) return
@@ -2817,7 +2853,7 @@ export function FreeformWorkspace({
           x: Math.round(Math.max(0, Math.min(placeAt.x - sized.width / 2, currentSlide.width - sized.width))),
           y: Math.round(Math.max(0, Math.min(placeAt.y - sized.height / 2, currentSlide.height - sized.height))),
         }
-      : centerNewElementInScope(sized, currentSlide.nodes, targetParentPath)
+      : placeNewElementInScope(sized, currentSlide, targetParentPath)
     if (applyAction({
       type: 'node/insert-children',
       slideId: targetSlideId,
@@ -3003,6 +3039,13 @@ export function FreeformWorkspace({
       nodes: structuredClone(selected),
       sourceParentWorld: [...sourceParentWorld],
     })
+    // The system clipboard gets the copy too (the words of any text in it), so
+    // a screenshot copied before doesn't come in on the next paste instead.
+    const words = selected.flatMap(function textOf(node): string[] {
+      if (node.type === 'group') return node.children.flatMap(textOf)
+      return node.type === 'text' ? [node.text] : []
+    })
+    void navigator.clipboard?.writeText(words.join('\n')).catch(() => undefined)
   }
 
   /** Ctrl/⌘+D: duplicate the selection in place and select the fresh copies. */
@@ -3692,15 +3735,23 @@ export function FreeformWorkspace({
         cutSelection()
         return
       }
-      // Shift escalates paste to paste-in-place; check before the plain branch.
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === 'v') {
-        event.preventDefault()
-        pasteClipboard(true)
-        return
-      }
+      // ⌘V (Ctrl+V off the Mac) lets the browser hand over the system clipboard,
+      // so a copied screenshot comes in as a picture: the paste event decides.
+      // If the browser sends none, the editor's own clipboard is pasted after all.
+      // Shift escalates to paste-in-place.
       if ((event.ctrlKey || event.metaKey) && key === 'v') {
+        const inPlace = event.shiftKey
+        if (isPlatformPasteShortcut(event)) {
+          pendingPasteRef.current = { inPlace }
+          window.setTimeout(() => {
+            if (!pendingPasteRef.current) return
+            pendingPasteRef.current = null
+            pasteClipboard(inPlace)
+          }, 0)
+          return
+        }
         event.preventDefault()
-        pasteClipboard()
+        pasteClipboard(inPlace)
         return
       }
       if ((event.ctrlKey || event.metaKey) && key === 'g') {
@@ -5986,37 +6037,36 @@ export function FreeformWorkspace({
             </div>
           )}
 
-          {!hasImageEditSession && (
-            <FreeformContextToolbar
-              isActive={isActive}
-              subject={contextSubject}
-              resetKey={inspectorNumberResetKey}
-              canAlign={canUseLogicalAlignment}
-              canDistribute={selectionPaths.length >= 3}
-              canGroup={selectionPaths.length >= 2}
-              onStyle={(patch) => { updateSelectedStyle(patch) }}
-              onProperty={(edit) => { commitSceneProperty(edit) }}
-              onFontFamily={(fontFamily) => {
-                if (selectedElement?.type === 'text') {
-                  void buildFontEmbedCSS(selectedElement.text, fontFamily, [selectedElement.fontWeight]).catch(() => undefined)
-                }
-                updateSelectedStyle({ fontFamily })
-              }}
-              onShapeFill={(fill) => { updateSelectedShapeFill(fill) }}
-              onAlign={alignSelection}
-              onDistribute={distributeSelection}
-              onOrder={reorderSelection}
-              onGroup={() => { groupSelection() }}
-              onUngroup={() => { ungroupSelection() }}
-              onCrop={() => { if (selectedPath) startImageCrop(selectedPath) }}
-              onDuplicate={duplicateSelection}
-              onToggleLock={toggleSelectionLock}
-              onDelete={deleteSelection}
-              onAdjustFraming={() => { if (selectedPath) startImageFraming(selectedPath) }}
-              panelOpen={viewPrefs.panelOpen && panelTab === 'properties'}
-              onTogglePanel={() => togglePanel('properties')}
-            />
-          )}
+          <FreeformContextToolbar
+            suspended={hasImageEditSession}
+            isActive={isActive}
+            subject={contextSubject}
+            resetKey={inspectorNumberResetKey}
+            canAlign={canUseLogicalAlignment}
+            canDistribute={selectionPaths.length >= 3}
+            canGroup={selectionPaths.length >= 2}
+            onStyle={(patch) => { updateSelectedStyle(patch) }}
+            onProperty={(edit) => { commitSceneProperty(edit) }}
+            onFontFamily={(fontFamily) => {
+              if (selectedElement?.type === 'text') {
+                void buildFontEmbedCSS(selectedElement.text, fontFamily, [selectedElement.fontWeight]).catch(() => undefined)
+              }
+              updateSelectedStyle({ fontFamily })
+            }}
+            onShapeFill={(fill) => { updateSelectedShapeFill(fill) }}
+            onAlign={alignSelection}
+            onDistribute={distributeSelection}
+            onOrder={reorderSelection}
+            onGroup={() => { groupSelection() }}
+            onUngroup={() => { ungroupSelection() }}
+            onCrop={() => { if (selectedPath) startImageCrop(selectedPath) }}
+            onDuplicate={duplicateSelection}
+            onToggleLock={toggleSelectionLock}
+            onDelete={deleteSelection}
+            onAdjustFraming={() => { if (selectedPath) startImageFraming(selectedPath) }}
+            panelOpen={viewPrefs.panelOpen && panelTab === 'properties'}
+            onTogglePanel={() => togglePanel('properties')}
+          />
 
           <div
             ref={stageViewportRef}

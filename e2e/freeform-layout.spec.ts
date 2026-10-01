@@ -114,8 +114,16 @@ test('a shape filled with a picture is framed from the toolbar', async ({ page }
 
   const frame = page.getByTestId('ctx-adjust-framing')
   await expect(frame).toBeEnabled()
+  const stageBox = () => page.locator('.freeform-stage-scroll').evaluate((node) => {
+    const rect = node.getBoundingClientRect()
+    return { top: rect.top, height: rect.height }
+  })
+  const before = await stageBox()
   await frame.click()
   await expect(page.getByTestId('freeform-framing-surface')).toBeVisible()
+  // The bar steps aside without giving up its row, so the canvas keeps its size.
+  await expect(page.getByTestId('freeform-context-toolbar')).toHaveCSS('visibility', 'hidden')
+  expect(await stageBox()).toEqual(before)
   await page.getByTestId('freeform-framing-cancel').click()
   await expect(page.getByTestId('freeform-framing-surface')).toHaveCount(0)
 })

@@ -2583,6 +2583,11 @@
   background: var(--line-2);
 }
 
+/* While a picture is cropped or framed the bar hides but keeps its row. */
+.freeform-context-toolbar.is-suspended {
+  visibility: hidden;
+}
+
 .freeform-context-toolbar .ctx-label {
   flex: none;
   color: var(--text-3);

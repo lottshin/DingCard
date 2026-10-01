@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { t } from '../i18n'
 import { Select } from '../Select'
 import { FONTS } from '../theme'
@@ -68,6 +68,8 @@ export interface FreeformContextToolbarProps {
   /** Whether the settings panel is open on its properties tab. */
   panelOpen: boolean
   onTogglePanel: () => void
+  /** Cropping or framing a picture: the bar steps aside but keeps its row, so the canvas doesn't jump. */
+  suspended?: boolean
 }
 
 const SHAPE_OPTIONS: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
@@ -204,12 +206,21 @@ function nextFontSize(current: number, direction: 1 | -1): number {
  * changed by, one click away. Everything else stays in the inspector.
  */
 export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
-  const { subject, resetKey } = props
+  const { subject, resetKey, suspended = false } = props
   const objectSelected = subject.kind !== 'page'
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    if (suspended) root.setAttribute('inert', '')
+    else root.removeAttribute('inert')
+  }, [suspended])
 
   return (
     <div
-      className="freeform-context-toolbar"
+      ref={rootRef}
+      className={`freeform-context-toolbar${suspended ? ' is-suspended' : ''}`}
       role="toolbar"
       aria-label={t('对象工具条')}
       data-testid="freeform-context-toolbar"

@@ -11990,6 +11990,77 @@ test.describe('freeform editing chrome', () => {
     await expect(page.getByTestId('freeform-element')).toHaveCount(1)
   })
 
+  test('new elements fan out from the middle instead of stacking on one spot', async ({ page }) => {
+    await openFreeform(page)
+    await insertShape(page)
+    await insertShape(page)
+    await insertShape(page)
+    // 3% of the 1080px page width per step, down and to the right.
+    await expect.poll(() => freeformElementBoxes(page)).toEqual([
+      { x: 360, y: 600, width: 360, height: 240 },
+      { x: 392, y: 632, width: 360, height: 240 },
+      { x: 424, y: 664, width: 360, height: 240 },
+    ])
+    // Moving one off the middle frees its spot for the next insert.
+    await setSelectedElementPosition(page, 40, 40)
+    await insertShape(page)
+    await expect.poll(async () => (await freeformElementBoxes(page)).at(-1)).toEqual(
+      { x: 424, y: 664, width: 360, height: 240 },
+    )
+  })
+
+  test('a picture on the system clipboard pastes into the page', async ({ page }) => {
+    await openFreeform(page)
+    await expect(page.getByTestId('freeform-canvas')).toBeVisible()
+    const images = page.getByTestId('freeform-element').filter({ has: page.locator('.freeform-image') })
+    const pastePicture = () => page.evaluate((base64) => {
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))
+      const clipboard = new DataTransfer()
+      clipboard.items.add(new File([bytes], 'screenshot.png', { type: 'image/png' }))
+      document.body.dispatchEvent(new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: clipboard,
+      }))
+    }, TEST_PNG.toString('base64'))
+
+    await pastePicture()
+    await expect(images).toHaveCount(1)
+    await expect(images.first()).toHaveAttribute('data-selected', 'true')
+    // A second paste steps clear of the first.
+    await pastePicture()
+    await expect(images).toHaveCount(2)
+    const [first, second] = await images.evaluateAll((nodes) => nodes.map((node) => ({
+      x: Number.parseFloat((node as HTMLElement).style.left),
+      y: Number.parseFloat((node as HTMLElement).style.top),
+    })))
+    expect(second.x - first.x).toBe(32)
+    expect(second.y - first.y).toBe(32)
+
+    // Without a picture, a paste brings back what was copied in the editor.
+    await page.keyboard.press('Control+c')
+    await page.evaluate(() => {
+      document.body.dispatchEvent(new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: new DataTransfer(),
+      }))
+    })
+    await expect(images).toHaveCount(3)
+
+    // A text field keeps its own paste.
+    await page.keyboard.press('Escape')
+    const pageName = page.getByTestId('inspector-page').getByLabel('页面名称')
+    await pageName.focus()
+    await pageName.evaluate((node, base64) => {
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))
+      const clipboard = new DataTransfer()
+      clipboard.items.add(new File([bytes], 'screenshot.png', { type: 'image/png' }))
+      node.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }))
+    }, TEST_PNG.toString('base64'))
+    await expect(images).toHaveCount(3)
+  })
+
   test('canvas menu items show their shortcuts without changing their names', async ({ page }) => {
     await openFreeform(page)
     await insertShape(page)
