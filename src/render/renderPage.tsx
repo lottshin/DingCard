@@ -15,11 +15,18 @@
 //       platform chrome, html-to-image toPng at pixelRatio 3 — identical to
 //       the workspace's own export.
 //
-// Both paths write PNG data URLs back:
+// Both paths write PNG data URLs back, each with a small JPEG preview a
+// client can show to the model that made the document:
 //
 //   window.__DINGCARD_RENDER_RESULT__ =
-//     | { ok: true; slides: Array<{ slideId; name; width; height; dataUrl }> }
+//     | { ok: true; slides: Array<{ slideId; name; width; height; dataUrl; previewDataUrl }> }
 //     | { ok: false; error: string }
+//
+//   window.__DINGCARD_RENDER__ = { document, inspect: true }
+//     → mounts every slide the same way but exports nothing: it measures the
+//       laid-out page instead (each node's box, each text's lines, whether
+//       the words overflow their box and the size at which they would fit)
+//       and writes { ok: true; inspected: InspectedSlide[] }.
 
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -43,6 +50,7 @@ import '../styles.css'
 interface RenderPayload {
   document?: unknown
   markdown?: unknown
+  inspect?: boolean
 }
 
 interface RenderedSlide {
@@ -51,10 +59,38 @@ interface RenderedSlide {
   width: number
   height: number
   dataUrl: string
+  previewDataUrl: string
+}
+
+interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** One slide as laid out: every node's box and every text's measured words. */
+export interface InspectedSlide {
+  slideId: string
+  /** Boxes in page pixels, rotation included (the axis-aligned bounds). */
+  nodes: Array<{ nodeId: string; rect: Rect }>
+  texts: Array<{
+    nodeId: string
+    /** How far the words run past the box, down and across. */
+    overflowY: number
+    overflowX: number
+    /** The largest whole font size at which they fit; null when they already do. */
+    fitFontSize: number | null
+    /** The visible lines (clipped to the box), or null for an empty text. */
+    area: Rect | null
+  }>
+  /** Pictures that didn't load. */
+  imageError: string | null
 }
 
 export type RenderResult =
   | { ok: true; slides: RenderedSlide[] }
+  | { ok: true; inspected: InspectedSlide[] }
   | { ok: false; error: string }
 
 const EXPORT_IMAGE_WAIT_MS = 3_500
@@ -77,6 +113,80 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error('blob read failed'))
     reader.readAsDataURL(blob)
   })
+}
+
+const PREVIEW_WIDTH = 432
+
+/** A small JPEG of an exported page, for a client to show its model. */
+async function previewOf(dataUrl: string, width: number, height: number): Promise<string> {
+  const image = new Image()
+  image.src = dataUrl
+  await image.decode()
+  const canvas = document.createElement('canvas')
+  canvas.width = PREVIEW_WIDTH
+  canvas.height = Math.max(1, Math.round((height / width) * PREVIEW_WIDTH))
+  const context = canvas.getContext('2d')
+  if (!context) return dataUrl
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', 0.82)
+}
+
+function relativeRect(rect: DOMRect, origin: DOMRect): Rect {
+  return {
+    x: Math.round(rect.left - origin.left),
+    y: Math.round(rect.top - origin.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  }
+}
+
+/** Measure the mounted slide: node boxes, text overflow, and the size each overflowing text would fit at. */
+function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: string | null): InspectedSlide {
+  const origin = artboard.getBoundingClientRect()
+  const nodes: InspectedSlide['nodes'] = []
+  const texts: InspectedSlide['texts'] = []
+  for (const element of Array.from(artboard.querySelectorAll<HTMLElement>('[data-preview-node-id]'))) {
+    const nodeId = element.dataset.previewNodeId!
+    nodes.push({ nodeId, rect: relativeRect(element.getBoundingClientRect(), origin) })
+    const box = element.querySelector<HTMLElement>(':scope > .freeform-preview-textbox')
+    if (!box) continue
+    const overflowY = Math.max(0, box.scrollHeight - box.clientHeight)
+    const overflowX = Math.max(0, box.scrollWidth - box.clientWidth)
+    let fitFontSize: number | null = null
+    if (overflowY > 1 || overflowX > 1) {
+      const original = box.style.fontSize
+      const start = Math.floor(Number.parseFloat(getComputedStyle(box).fontSize))
+      for (let size = start - 1; size >= 8; size -= 1) {
+        box.style.fontSize = `${size}px`
+        if (box.scrollHeight <= box.clientHeight + 1 && box.scrollWidth <= box.clientWidth + 1) {
+          fitFontSize = size
+          break
+        }
+      }
+      box.style.fontSize = original
+    }
+    const clip = box.getBoundingClientRect()
+    const range = document.createRange()
+    range.selectNodeContents(box)
+    const lines = Array.from(range.getClientRects())
+      .map((rect) => ({
+        left: Math.max(rect.left, clip.left),
+        top: Math.max(rect.top, clip.top),
+        right: Math.min(rect.right, clip.right),
+        bottom: Math.min(rect.bottom, clip.bottom),
+      }))
+      .filter((rect) => rect.right > rect.left && rect.bottom > rect.top)
+    const area = lines.length === 0 ? null : relativeRect(new DOMRect(
+      Math.min(...lines.map((rect) => rect.left)),
+      Math.min(...lines.map((rect) => rect.top)),
+      Math.max(...lines.map((rect) => rect.right)) - Math.min(...lines.map((rect) => rect.left)),
+      Math.max(...lines.map((rect) => rect.bottom)) - Math.min(...lines.map((rect) => rect.top)),
+    ), origin)
+    texts.push({ nodeId, overflowY, overflowX, fitFontSize, area })
+  }
+  return { slideId, nodes, texts, imageError }
 }
 
 function waitForDoubleFrame(): Promise<void> {
@@ -106,7 +216,7 @@ function waitForCardImages(root: HTMLElement, timeoutMs: number): Promise<void> 
   return new Promise(tick)
 }
 
-function RenderApp({ document: doc }: { document: FreeformDocument }) {
+function RenderApp({ document: doc, inspect }: { document: FreeformDocument; inspect: boolean }) {
   const [index, setIndex] = useState(0)
   const artboardRef = useRef<HTMLDivElement>(null)
   const startedRef = useRef(false)
@@ -120,6 +230,29 @@ function RenderApp({ document: doc }: { document: FreeformDocument }) {
     void (async () => {
       try {
         const fontCSS = await buildFreeformFontCSS(collectFreeformFontRequests(doc.slides))
+        if (inspect) {
+          // Lay the words out in the fonts the export embeds.
+          const style = document.createElement('style')
+          style.textContent = fontCSS
+          document.head.appendChild(style)
+          await document.fonts.ready
+          const inspected: InspectedSlide[] = []
+          for (let i = 0; i < doc.slides.length; i++) {
+            setIndex(i)
+            await waitForDoubleFrame()
+            const artboard = artboardRef.current
+            if (!artboard) throw new Error('render artboard missing')
+            const imageWait = await waitForFramedImages(artboard, { timeoutMs: EXPORT_IMAGE_WAIT_MS })
+            await waitForDoubleFrame()
+            inspected.push(inspectArtboard(
+              artboard,
+              doc.slides[i].id,
+              imageWait.ok ? null : imageWait.reason === 'timeout' ? '图片加载超时' : '图片加载失败',
+            ))
+          }
+          writeResult({ ok: true, inspected })
+          return
+        }
         const slides: RenderedSlide[] = []
         // Sequential slide rendering, mirroring the editor's ZIP export: one
         // artboard, one slide mounted at a time, one blob per slide.
@@ -146,12 +279,14 @@ function RenderApp({ document: doc }: { document: FreeformDocument }) {
             fontEmbedCSS: fontCSS,
           })
           if (!blob) throw new Error('页面导出失败')
+          const dataUrl = await blobToDataUrl(blob)
           slides.push({
             slideId: current.id,
             name: current.name,
             width: current.width,
             height: current.height,
-            dataUrl: await blobToDataUrl(blob),
+            dataUrl,
+            previewDataUrl: await previewOf(dataUrl, current.width, current.height),
           })
         }
         writeResult({ ok: true, slides })
@@ -164,7 +299,7 @@ function RenderApp({ document: doc }: { document: FreeformDocument }) {
         })
       }
     })()
-  }, [doc])
+  }, [doc, inspect])
 
   return (
     <div
@@ -274,6 +409,7 @@ function MarkdownRenderApp({ markdown }: { markdown: MarkdownCardDocument }) {
             width: config.width * 3,
             height: config.height * 3,
             dataUrl,
+            previewDataUrl: await previewOf(dataUrl, config.width, config.height),
           })
         }
         writeResult({ ok: true, slides })
@@ -329,6 +465,6 @@ if (!payload || typeof payload !== 'object') {
   if (!doc) {
     writeResult({ ok: false, error: '文档未通过自由画布文档校验' })
   } else {
-    createRoot(document.getElementById('root')!).render(<RenderApp document={doc} />)
+    createRoot(document.getElementById('root')!).render(<RenderApp document={doc} inspect={payload.inspect === true} />)
   }
 }

@@ -1,7 +1,7 @@
 // MCP-layer test: connects a real SDK client to the server over in-memory
 // transport and exercises every offline tool end to end (tool registration,
-// zod argument parsing, JSON result payloads). render_document is covered by
-// the browser pipeline test instead.
+// zod argument parsing, JSON result payloads). render_document, render_markdown
+// and check_document need a browser and are covered by the pipeline test instead.
 
 import { describe, expect, test } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -26,12 +26,14 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the seven tools', async () => {
+  test('exposes the ten tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
     expect(names).toEqual([
       'apply_actions',
+      'check_document',
+      'create_document_from_content',
       'create_document_from_outline',
       'create_document_from_template',
       'inspect_document',
@@ -50,8 +52,12 @@ describe('dingcard-mcp tool layer', () => {
     const client = await connect()
     const response = await client.callTool({ name: 'list_templates', arguments: {} })
     const parsed = parseContent(response as { content: Array<{ type: string; text?: string }> })
-    const templates = (parsed as { templates: Array<{ id: string }> }).templates
+    const templates = (parsed as { templates: Array<{ id: string; capacity?: { sectionPoints: number; sectionQuote: boolean } }> }).templates
     expect(templates.map((template) => template.id)).toContain('editorial-freeform')
+    // Freeform templates say how much a page holds, so a client can pick one for its content.
+    expect(templates.find((template) => template.id === 'editorial-freeform')?.capacity)
+      .toMatchObject({ sectionPoints: 3, sectionQuote: true })
+    expect(templates.find((template) => template.id === 'editorial-archive-markdown')?.capacity).toBeUndefined()
     await client.close()
   })
 
@@ -119,14 +125,15 @@ describe('dingcard-mcp tool layer', () => {
     ) as {
       ok: boolean
       document: { documentVersion: number; slides: Array<{ id: string }> }
-      summary: { slideCount: number; coverTitle: string; sections: Array<{ title: string }> }
+      summary: { slideCount: number; coverTitle: string; pages: Array<{ title: string; role: string }> }
     }
     expect(created.ok).toBe(true)
     expect(created.document.documentVersion).toBe(14)
-    expect(created.document.slides).toHaveLength(4)
-    expect(created.summary.slideCount).toBe(4)
+    // Cover and two sections: the outline asked for no closing page.
+    expect(created.document.slides).toHaveLength(3)
+    expect(created.summary.slideCount).toBe(3)
     expect(created.summary.coverTitle).toBe('大纲标题')
-    expect(created.summary.sections.map((section) => section.title)).toEqual(['第一节', '第二节'])
+    expect(created.summary.pages.map((page) => page.title)).toEqual(['大纲标题', '第一节', '第二节'])
 
     const validated = parseContent(
       (await client.callTool({
@@ -135,6 +142,37 @@ describe('dingcard-mcp tool layer', () => {
       })) as { content: Array<{ type: string; text?: string }> },
     ) as { ok: boolean }
     expect(validated.ok).toBe(true)
+    await client.close()
+  })
+
+  test('creates a card set from structured content', async () => {
+    const client = await connect()
+    const created = parseContent(
+      (await client.callTool({
+        name: 'create_document_from_content',
+        arguments: {
+          templateId: 'checklist-freeform',
+          content: {
+            title: '开工清单',
+            subtitle: '三件事做完再动手',
+            pages: [{ title: '准备', points: ['列目标：一句话写清楚', '找素材'] }],
+            ending: { title: '可以开工了', points: ['目标清楚', '素材齐全'] },
+          },
+        },
+      })) as { content: Array<{ type: string; text?: string }> },
+    ) as { ok: boolean; document: { slides: unknown[] }; summary: { pages: Array<{ role: string }> } }
+    expect(created.ok).toBe(true)
+    expect(created.document.slides).toHaveLength(3)
+    expect(created.summary.pages.map((page) => page.role)).toEqual(['cover', 'section', 'ending'])
+
+    const rejected = parseContent(
+      (await client.callTool({
+        name: 'create_document_from_content',
+        arguments: { templateId: 'no-such-template', content: { title: 'a', pages: [{ title: 'b' }] } },
+      })) as { content: Array<{ type: string; text?: string }> },
+    ) as { ok: boolean; error: string }
+    expect(rejected.ok).toBe(false)
+    expect(rejected.error).toContain('list_templates')
     await client.close()
   })
 

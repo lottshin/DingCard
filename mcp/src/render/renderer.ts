@@ -19,6 +19,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
+import type { FreeformDocument } from '../../../src/freeform/types'
 import { isMarkdownDocument } from '../../../src/drafts'
 import { createStaticServer } from './staticServer'
 
@@ -34,10 +35,18 @@ export interface RenderFile {
   bytes: number
 }
 
+/** A small JPEG of one page, for the client to show its model. */
+export interface RenderPreview {
+  slideId: string
+  name: string
+  dataUrl: string
+}
+
 export interface RenderSuccess {
   ok: true
   files: RenderFile[]
   distDir: string
+  previews: RenderPreview[]
 }
 
 export type RenderResult =
@@ -149,14 +158,29 @@ interface RenderPageSlide {
   width: number
   height: number
   dataUrl: string
+  previewDataUrl: string
 }
 
-type RenderPayload = { document: unknown } | { markdown: unknown }
+interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
-async function renderInBrowser(
-  payload: RenderPayload,
-  port: number,
-): Promise<Array<RenderPageSlide>> {
+/** The render page's measurements of one laid-out slide (see src/render/renderPage.tsx). */
+export interface InspectedSlide {
+  slideId: string
+  nodes: Array<{ nodeId: string; rect: Rect }>
+  texts: Array<{ nodeId: string; overflowY: number; overflowX: number; fitFontSize: number | null; area: Rect | null }>
+  imageError: string | null
+}
+
+type RenderPayload = { document: unknown; inspect?: boolean } | { markdown: unknown }
+
+type PageResult = { ok?: boolean; error?: string; slides?: RenderPageSlide[]; inspected?: InspectedSlide[] }
+
+async function runInBrowser(payload: RenderPayload, port: number): Promise<PageResult> {
   const browser = await launchBrowser()
   const page = await browser.newPage()
   const pageErrors: string[] = []
@@ -180,11 +204,9 @@ async function renderInBrowser(
     )
     const raw = (await page.evaluate(
       () => (globalThis as unknown as Record<string, unknown>).__DINGCARD_RENDER_RESULT__,
-    )) as { ok?: boolean; error?: string; slides?: Array<RenderPageSlide> }
-    if (!raw || raw.ok !== true || !raw.slides) {
-      throw new Error(raw?.error ?? '渲染页未返回结果')
-    }
-    return raw.slides
+    )) as PageResult
+    if (!raw || raw.ok !== true) throw new Error(raw?.error ?? '渲染页未返回结果')
+    return raw
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     const context = pageErrors.length > 0 ? `；页面错误：${pageErrors.slice(0, 3).join(' | ')}` : ''
@@ -193,6 +215,12 @@ async function renderInBrowser(
     await page.close().catch(() => undefined)
     await browser.close().catch(() => undefined)
   }
+}
+
+async function renderInBrowser(payload: RenderPayload, port: number): Promise<RenderPageSlide[]> {
+  const result = await runInBrowser(payload, port)
+  if (!result.slides) throw new Error('渲染页未返回页面')
+  return result.slides
 }
 
 async function writeResultFiles(
@@ -228,6 +256,28 @@ async function writeResultFiles(
     })
   }
   return files
+}
+
+/** The built render page, served on a loopback port for the duration of `work`. */
+async function withRenderPage<T>(work: (port: number) => Promise<T>): Promise<T> {
+  const repoRoot = resolveRepoRoot()
+  const distDir = resolveDistDir(repoRoot)
+  await ensureRenderPage(repoRoot, distDir)
+  const server = await createStaticServer(distDir)
+  try {
+    return await work(server.port)
+  } finally {
+    await server.close().catch(() => undefined)
+  }
+}
+
+/** Lay a freeform document out in the render page and measure every slide (nothing is exported). */
+export async function inspectLayout(document: FreeformDocument): Promise<InspectedSlide[]> {
+  return withRenderPage(async (port) => {
+    const result = await runInBrowser({ document, inspect: true }, port)
+    if (!result.inspected) throw new Error('渲染页未返回测量结果')
+    return result.inspected
+  })
 }
 
 /** Shared plumbing: build check → loopback server → browser → files.
@@ -268,7 +318,12 @@ async function runRender(
       name: slide.name,
     }))
     const files = await writeResultFiles(rendered, expected, options)
-    return { ok: true, files, distDir }
+    const previews = rendered.map((slide) => ({
+      slideId: slide.slideId,
+      name: slide.name,
+      dataUrl: slide.previewDataUrl,
+    }))
+    return { ok: true, files, distDir, previews }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   } finally {

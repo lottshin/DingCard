@@ -1,10 +1,11 @@
 # MCP 自动化接口
 
-叮卡自带一个 MCP（Model Context Protocol）服务器 `dingcard-mcp`，让 AI 客户端（Claude Desktop、Cursor、ZCode 等任何支持 MCP 的工具）和其他程序可以不走浏览器 UI，直接完成“选模板 → 构造/编辑文档 → 校验 → 无头渲染 PNG”的完整闭环：
+叮卡自带一个 MCP（Model Context Protocol）服务器 `dingcard-mcp`，让 AI 客户端（Claude Desktop、Cursor、ZCode 等任何支持 MCP 的工具）和其他程序可以不走浏览器 UI，直接完成“选模板 → 生成整套卡片 → 检查 → 无头渲染 PNG”的完整闭环，并且能看到自己做出来的样子：
 
 ```text
-list_templates → create_document_from_template / create_document_from_outline → inspect_document
-      → apply_actions（与编辑器同一动作归约器）→ render_document → PNG 文件
+list_templates → create_document_from_content / create_document_from_outline
+      → check_document（排版后列出问题，可自动缩字号）→ apply_actions 修改
+      → render_document → PNG 文件 + 每页缩略图（直接给模型看）
 ```
 
 渲染与编辑器导出走同一套管线：自由画布逐页 `pixelRatio: 1` 导出；Markdown 走工作台自己的管线（DOM 实测分页、平台头部与主题、`---` 手动分页、`pixelRatio: 3` 导出）；两者都做网页字体按字符子集嵌入与图片就绪等待。
@@ -13,16 +14,62 @@ list_templates → create_document_from_template / create_document_from_outline 
 
 | 工具 | 作用 |
 | --- | --- |
-| `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台）。 |
+| `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台）。自由画布模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么，按内容挑模板。 |
 | `create_document_from_template` | 按模板 id 实例化完整文档：自由画布返回 v14 文档，Markdown 返回源文信封。 |
-| `create_document_from_outline` | 按 Markdown 大纲批量生成整套卡片文档：`# 总标题` 命名封面，每个 `## 小节` 生成一页（小节标题入标题槽、正文行入正文槽），风格沿用所选自由画布模板，返回封面 + 每小节一页 + 模板结尾页的多页 v14 文档，可直接 `render_document` 一次性渲染整套 PNG。 |
+| `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
+| `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
+| `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
 | `validate_document` | 严格校验 v14 文档（v1–v13 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时返回规范化结果。 |
 | `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要），为编辑提供目标。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效。 |
-| `render_document` | 无头渲染自由画布 v14 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录。 |
-| `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。 |
+| `render_document` | 无头渲染自由画布 v14 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录，并默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
+| `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 
-工具描述内嵌了 v14 文档模型（含多段渐变、径向渐变、文字描边与竖排文字）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 选风格 → `create_document_from_outline` 用大纲一次生成整套 → 需要精修时 `apply_actions` → `render_document` 一次出全套 PNG。
+工具描述内嵌了 v14 文档模型（含多段渐变、径向渐变、文字描边与竖排文字）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改 → `render_document` 出全套 PNG 并看缩略图。
+
+## 生成整套卡片
+
+`create_document_from_content` 和 `create_document_from_outline` 把内容放进模板画好的位置（`src/templates/slots.ts` 为每个自由画布模板的封面、内页、结尾页标明了标题、正文、要点、引文、页码和目录的位置）：
+
+- 模板里每一块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，生成的卡片里不会留下模板原话；英文刊头、编号这类装饰照原样保留。
+- 页码按页序更新（`02`、`03`…；「完成进度 03 / 03」这类写法同时更新总页数）。
+- 要点先放进模板的条目位：`"要点：说明"` 冒号后面放到这一条的第二行，太长又没写冒号时在第一个逗号处分成两行。要点比条目多时，多出来的接在下方的正文里；正文在条目上方的模板，接到最后一条后面，保持阅读顺序。
+- 封面的目录位（清单、柔光模板）列出各页标题。
+- 文字放不下时先占用下方或上方的空位（不越过它所在的卡片、不压到别的元素），再缩小字号，最小到原字号的 72%；仍放不下的列在 `summary.overflowing`，请删短或换一个容量大的模板。被缩小的文字列在 `summary.shrunk`。
+- 没有给结尾页（`ending`，或大纲里的 `## 结尾：标题`）就不出结尾页。
+
+大纲写法：
+
+```markdown
+# 总标题
+封面副标题（# 下面、第一个 ## 之前的文字）
+
+## 小节标题
+- 要点
+- 要点：这一条的说明
+正文段落（不带列表标记的行）
+> 引文 —— 出处
+
+## 结尾：结尾页标题
+- 结尾页的要点
+```
+
+## 检查
+
+`check_document` 用无头浏览器把每一页按导出的样子排出来（嵌入与导出相同的字体），再结合文档本身列出问题：
+
+| kind | 说明 |
+| --- | --- |
+| `text-overflow` | 文字超出文本框被裁掉，附 `fitFontSize`（实测能放下的最大字号）。 |
+| `text-overlap` | 两段文字叠在一起。 |
+| `covered-text` | 文字被上层不透明的色块或图片挡住三成以上。 |
+| `off-page` | 文字跑出页面。 |
+| `low-contrast` | 纯色文字和身后的纯色底板（或页面背景）对比度低于 4.5:1（48 号以上或 40 号以上粗体放宽到 3:1）。 |
+| `sample-text` | 还是模板里的示例文字。 |
+| `empty-text` | 空文本框。 |
+| `image-failed` | 这一页有图片没加载出来。 |
+
+每条问题带 `page`、`slideId`、`node`（图层名）、`path`（`apply_actions` 用的节点路径）和中文改法。内置模板原样保留的装饰文字、模板自己采用的配色不算问题，所以报告里只有内容带来的问题。`fix: true` 只自动处理 `text-overflow`（改成 `fitFontSize`），改完再检查一遍，返回 `document`、`fixed` 和剩下的问题；颜色、位置交给客户端用 `apply_actions` 改。
 
 ## MCP 资源
 
@@ -95,7 +142,8 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 - `render_document` 仅支持自由画布文档（v14；v1–v13 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
 - 自由画布文本节点的可选 `spans` 富文本片段（局部加粗/标色）在渲染与校验中与编辑器一致支持；编辑器内改动文字时片段会按编辑位置自动保留或收缩。
-- `list_templates` 与 `create_document_from_template` 只覆盖代码内置模板；编辑器「存为模板」保存的个人模板存在浏览器本地（按账号隔离），不进入 MCP。需要渲染自己的文档时，把文档直接传给 `render_document` / `render_markdown`。
+- 模板只有仓库里内置的这几套（社区通过 PR 共建，见 docs/templates.md）。需要渲染自己的文档时，把文档直接传给 `render_document` / `render_markdown`。
 - 文档中的图片 `src`（自由画布）必须是浏览器可加载的 URL 或 data URL；Markdown 文档的图片通过信封的 `images` 映射（`img:<id>` → data URL）提供，本地文件请先转为 data URL。
-- 一次调用串行渲染全部所选页面，没有并发渲染池。
+- 一次调用串行渲染全部所选页面，没有并发渲染池；`check_document` 同样要启动一次浏览器（一套 4–6 页的卡片约几秒）。
+- 生成整套卡片只按模板画好的位置排版，不会改版式：内容明显超过模板容量时，换一个 `capacity` 更大的模板，或把内容拆成更多页。
 - Markdown 平台头部中的时间戳（微博/推特）按渲染时刻生成，与编辑器导出行为一致。

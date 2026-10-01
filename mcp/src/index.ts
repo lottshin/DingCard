@@ -8,13 +8,42 @@ import { pathToFileURL } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import { composeDeck } from './core/compose'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
 import { createDocumentFromOutline } from './core/outline'
 import { instantiateTemplate, listTemplates } from './core/templates'
-import { renderDocument, renderMarkdownDocument } from './render/renderer'
+import { checkDocument } from './render/check'
+import { renderDocument, renderMarkdownDocument, type RenderResult } from './render/renderer'
 
 function jsonResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] }
+}
+
+/** Previews shown to the model, at most this many per call. */
+const MAX_PREVIEWS = 12
+
+/** A render result as text plus the pages as small images, so the model can look at what it made. */
+function renderResult(result: RenderResult, previews: boolean) {
+  if (!result.ok) return jsonResult(result)
+  const { previews: pages, ...rest } = result
+  if (!previews) return jsonResult(rest)
+  const shown = pages.slice(0, MAX_PREVIEWS)
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({
+          ...rest,
+          previews: `下面附了 ${shown.length} 张缩略图（按页序）${pages.length > shown.length ? `，其余 ${pages.length - shown.length} 页没附` : ''}。`,
+        }, null, 2),
+      },
+      ...shown.map((page) => ({
+        type: 'image' as const,
+        data: page.dataUrl.slice(page.dataUrl.indexOf(',') + 1),
+        mimeType: 'image/jpeg',
+      })),
+    ],
+  }
 }
 
 function errorResult(error: unknown) {
@@ -44,7 +73,15 @@ ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle 
 - group：+ children（非空节点数组；组没有 width/height）
 全文档节点 id 必须唯一。`
 
-const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。第一行 "# 总标题"（可选）命名整套卡片；每个 "## 小节标题" 生成一页卡片，小节下的正文行（"- 项目"、列表或普通句子，列表标记会自动去掉）逐行填入该页正文槽位。templateId：list_templates 返回的自由画布模板 id（如 "editorial-freeform"），整套卡片沿用该模板的版式与风格。返回的文档：封面（填入总标题）+ 每小节一页（标题与正文字段自动填充）+ 模板结尾页；可直接传给 apply_actions 精修或 render_document 一次性渲染整套 PNG。`
+const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。返回 { ok, document, summary }：summary.pages 是每页的 slideId 与角色，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
+
+const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
+- "# 总标题"：封面标题；它下面、第一个 "##" 之前的文字是封面副标题。
+- "## 小节标题"：每个小节一页。小节下 "- 要点" 或 "1. 要点" 是要点（"要点：说明" 冒号后面是这一条的第二行），"> 引文" 是引文（"引文 —— 出处"），其他行是正文。
+- "## 结尾：标题"：可选的结尾页，内容写法同小节。
+templateId：list_templates 返回的自由画布模板 id（如 "editorial-freeform"），整套卡片沿用该模板的版式与风格。${COMPOSE_HINT}`
+
+const CONTENT_SCHEMA_HINT = `content：{ title: 封面标题, subtitle?: 封面副标题, pages: [{ title, body?: 正文段落, points?: [要点…]（"要点：说明" 冒号后面是这一条的第二行）, quote?: 引文（"引文 —— 出处"）}…], ending?: 结尾页（同 pages 的一项）}。templateId：list_templates 返回的自由画布模板 id。${COMPOSE_HINT}`
 
 const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI 完全同一归约器）。常用动作：
 - { type: 'slide/add-after-active', slideId? } 在当前页后新增空白页
@@ -71,7 +108,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台）。先用它拿到 templateId。',
+    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台）。自由画布模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等，按内容挑模板。先用它拿到 templateId。',
     {},
     async () => jsonResult({ templates: listTemplates() }),
   )
@@ -89,9 +126,31 @@ export function createDingcardServer(): McpServer {
     },
   )
 
+  const pageSchema = z.object({
+    title: z.string().describe('这一页的标题'),
+    body: z.string().optional().describe('正文段落'),
+    points: z.array(z.string()).optional().describe('要点，一条一项；"要点：说明" 冒号后面是第二行'),
+    quote: z.string().optional().describe('引文；"引文 —— 出处" 会把出处放在下面'),
+  })
+
+  server.tool(
+    'create_document_from_content',
+    `按结构化内容生成一整套自由画布卡片（v14）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容。${CONTENT_SCHEMA_HINT}`,
+    {
+      templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
+      content: z.object({
+        title: z.string().describe('封面标题'),
+        subtitle: z.string().optional().describe('封面副标题'),
+        pages: z.array(pageSchema).min(1).describe('内页，一项一页'),
+        ending: pageSchema.optional().describe('结尾页；不给就没有结尾页'),
+      }),
+    },
+    async ({ templateId, content }) => jsonResult(composeDeck(templateId, content)),
+  )
+
   server.tool(
     'create_document_from_outline',
-    `按 Markdown 大纲批量生成一整套自由画布卡片文档（v9）：每个 "## 小节" 一页、风格沿用所选模板，返回可直接渲染的多页文档与各页摘要。${OUTLINE_SCHEMA_HINT}`,
+    `按 Markdown 大纲生成一整套自由画布卡片（v14）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板。${OUTLINE_SCHEMA_HINT}`,
     {
       outline: z.string().describe('Markdown 大纲：# 总标题 + 若干 ## 小节（小节下正文行填入该页正文）'),
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
@@ -130,16 +189,27 @@ export function createDingcardServer(): McpServer {
   )
 
   server.tool(
+    'check_document',
+    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下被裁掉（附能放下的字号 fitFontSize）、文字互相叠住、文字被上层色块挡住、跑出页面、文字和底色对比太低、还留着模板示例文字、空文本框、图片没加载出来。每条带 page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法。fix: true 时把放不下的文字改成能放下的字号，返回改好的 document、改了哪些（fixed）和剩下的问题。${DOCUMENT_SCHEMA_HINT}`,
+    {
+      document: z.unknown().describe('v14 文档 JSON'),
+      fix: z.boolean().optional().describe('把放不下的文字自动缩到能放下的字号'),
+    },
+    async ({ document, fix }) => jsonResult(await checkDocument(document, { fix })),
+  )
+
+  server.tool(
     'render_document',
-    `把自由画布 v14 文档（v1–v13 输入自动迁移）无头渲染为 PNG 文件（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
+    `把自由画布 v14 文档（v1–v13 输入自动迁移）无头渲染为 PNG 文件（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir，并默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
       document: z.unknown().describe('v14 文档 JSON'),
       outputDir: z.string().describe('PNG 输出目录（不存在会创建）'),
       baseName: z.string().optional().describe('输出文件名前缀，默认 "dingcard"'),
       slideIds: z.array(z.string()).optional().describe('只渲染这些页（默认全部）'),
+      previews: z.boolean().optional().describe('是否附上缩略图，默认 true'),
     },
-    async ({ document, outputDir, baseName, slideIds }) =>
-      jsonResult(await renderDocument(document, { outputDir, baseName, slideIds })),
+    async ({ document, outputDir, baseName, slideIds, previews }) =>
+      renderResult(await renderDocument(document, { outputDir, baseName, slideIds }), previews !== false),
   )
 
   server.tool(
@@ -150,9 +220,10 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
       document: z.unknown().describe('Markdown 文档信封 JSON'),
       outputDir: z.string().describe('PNG 输出目录（不存在会创建）'),
       baseName: z.string().optional().describe('输出文件名前缀，默认 "dingcard"'),
+      previews: z.boolean().optional().describe('是否附上缩略图，默认 true'),
     },
-    async ({ document, outputDir, baseName }) =>
-      jsonResult(await renderMarkdownDocument(document, { outputDir, baseName })),
+    async ({ document, outputDir, baseName, previews }) =>
+      renderResult(await renderMarkdownDocument(document, { outputDir, baseName }), previews !== false),
   )
 
   // ---- Resources: let clients discover the document schema, action union,

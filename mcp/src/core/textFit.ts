@@ -1,0 +1,114 @@
+// Text fitting without a browser: a conservative estimate of how much room a
+// text node's words need in the render page's text box (8px padding, 1.18
+// line height unless the node sets its own, pre-wrap with break-word), used
+// to pick a font size that keeps filled-in copy inside the box the template
+// drew for it. check_document measures the real layout afterwards.
+
+import type { FreeformTextElement } from '../../../src/freeform/types'
+
+const PADDING = 8
+const DEFAULT_LINE_HEIGHT = 1.18
+/** Copy may shrink to this share of the template's size before it is left to overflow. */
+export const MIN_FIT_SCALE = 0.72
+/** Slack against glyph-width guesses: assume lines run this much longer. */
+const WIDTH_SAFETY = 1.06
+
+const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦　-〿—…“”‘’]/
+const UPPER = /[A-Z0-9]/
+
+function glyphEm(char: string): number {
+  if (WIDE.test(char)) return 1
+  if (char === ' ') return 0.3
+  if (UPPER.test(char)) return 0.66
+  return 0.56
+}
+
+/** Words that wrap as a unit: a run of narrow characters, or one wide character. */
+function tokens(paragraph: string): string[] {
+  const result: string[] = []
+  let word = ''
+  for (const char of paragraph) {
+    if (WIDE.test(char) || char === ' ') {
+      if (word) result.push(word)
+      word = ''
+      result.push(char)
+    } else {
+      word += char
+    }
+  }
+  if (word) result.push(word)
+  return result
+}
+
+function lineCount(paragraph: string, available: number, fontSize: number, spacing: number, weight: number): number {
+  const width = (token: string) => [...token].reduce(
+    (sum, char) => sum + glyphEm(char) * fontSize * weight * WIDTH_SAFETY + spacing,
+    0,
+  )
+  let lines = 1
+  let used = 0
+  for (const token of tokens(paragraph)) {
+    const size = width(token)
+    if (used + size <= available) {
+      used += size
+      continue
+    }
+    if (token === ' ') continue
+    if (size <= available) {
+      lines += 1
+      used = size
+      continue
+    }
+    // A word wider than the line breaks wherever it runs out (break-word).
+    for (const char of token) {
+      const charSize = width(char)
+      if (used + charSize > available && used > 0) {
+        lines += 1
+        used = 0
+      }
+      used += charSize
+    }
+  }
+  return lines
+}
+
+/** The room `text` needs at `fontSize` in `node`'s box: lines along the flow and their total depth. */
+export function measureText(node: FreeformTextElement, text: string, fontSize: number): { lines: number; depth: number } {
+  const along = (node.vertical ? node.height : node.width) - PADDING * 2
+  const spacing = node.letterSpacing ?? 0
+  const weight = node.fontWeight === 'bold' ? 1.04 : 1
+  const lines = text.split('\n').reduce(
+    (sum, paragraph) => sum + lineCount(paragraph, Math.max(1, along), fontSize, spacing, weight),
+    0,
+  )
+  return { lines, depth: lines * fontSize * (node.lineHeight ?? DEFAULT_LINE_HEIGHT) }
+}
+
+/**
+ * Whether `text` fits `node`'s box at `fontSize`. Templates sometimes draw
+ * boxes a hair tighter than their own sample's line box (the glyphs still
+ * show); `sample` lends the box that much room, so copy no longer than the
+ * sample is never shrunk.
+ */
+export function textFits(node: FreeformTextElement, text: string, fontSize: number, sample?: string): boolean {
+  const across = (node.vertical ? node.width : node.height) - PADDING * 2
+  const room = sample === undefined ? across : Math.max(across, measureText(node, sample, node.fontSize).depth)
+  return measureText(node, text, fontSize).depth <= room + 0.5
+}
+
+/**
+ * The largest font size, from the node's own down to MIN_FIT_SCALE of it,
+ * at which `text` fits the box; null when even the smallest doesn't.
+ */
+export function fittingFontSize(
+  node: FreeformTextElement,
+  text: string,
+  sample?: string,
+  minScale = MIN_FIT_SCALE,
+): number | null {
+  const floor = Math.max(10, Math.floor(node.fontSize * minScale))
+  for (let size = node.fontSize; size >= floor; size -= 1) {
+    if (textFits(node, text, size, sample)) return size
+  }
+  return null
+}

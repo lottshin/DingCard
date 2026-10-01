@@ -1,131 +1,100 @@
-// Batch generation: turn a markdown outline into one multi-slide freeform
-// document based on a built-in template. Pure orchestration over the real
-// reducer — no new document-model semantics.
+// Batch generation: turn a Markdown outline into a finished multi-page deck
+// on a built-in freeform template. The outline only decides the content;
+// compose.ts places it in the template's slots.
 
-import { reduceFreeformDocument } from '../../../src/freeform/document'
-import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
-import { walkScene } from '../../../src/freeform/sceneTree'
-import type {
-  FreeformDocument,
-  FreeformSlide,
-  FreeformTextElement,
-} from '../../../src/freeform/types'
-import { instantiateTemplate } from './templates'
-
-export interface OutlineSection {
-  title: string
-  points: string[]
-}
+import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { composeDeck, type ComposeError, type ComposeSuccess, type DeckContent, type DeckPage } from './compose'
 
 export interface ParsedOutline {
   title: string | null
-  sections: OutlineSection[]
-}
-
-export interface OutlineDocumentResult {
-  ok: true
-  document: FreeformDocument
-  summary: {
-    documentVersion: 14
-    slideCount: number
-    coverTitle: string
-    sections: Array<{ slideId: string; title: string; pointCount: number }>
-  }
-}
-
-export interface OutlineError {
-  ok: false
-  error: string
+  subtitle: string | null
+  sections: DeckPage[]
+  ending: DeckPage | null
 }
 
 const HEADING_1 = /^#\s+/
 const HEADING_2 = /^##\s+/
-const BULLET = /^[-*+]\s+|^(\d+)[.、)]\s+/
+const POINT = /^(?:[-*+•]\s+|\d+[.、)]\s*)/
+const QUOTE = /^>\s?/
+const ENDING = /^(?:结尾|结束语|收尾|ending|end)\s*[：:]\s*(.+)$/i
+const RULE = /^(?:-{3,}|\*{3,}|_{3,})$/
+
+interface Draft {
+  title: string
+  body: string[]
+  points: string[]
+  quote: string[]
+}
+
+function toPage(draft: Draft): DeckPage {
+  return {
+    title: draft.title,
+    ...(draft.body.length > 0 ? { body: draft.body.join('\n') } : {}),
+    ...(draft.points.length > 0 ? { points: draft.points } : {}),
+    ...(draft.quote.length > 0 ? { quote: draft.quote.join(' ') } : {}),
+  }
+}
 
 /**
- * Parse an outline: the first `#` line is the deck title, every `##` line
- * starts a section, and the remaining non-empty lines (bullet markers
- * stripped) are that section's points. Horizontal rules are ignored.
+ * Parse an outline. "# 总标题" names the deck and the lines under it (before
+ * the first "##") are the cover's subtitle. Each "## 小节" is a page: list
+ * lines ("- 要点", "1. 要点") are its points, "> 引文" its quote, other lines
+ * its body. A section headed "## 结尾：标题" becomes the closing page.
  */
 export function parseOutline(source: string): ParsedOutline | null {
-  const lines = typeof source === 'string' ? source.split('\n') : []
+  const lines = typeof source === 'string' ? source.replace(/\r\n?/g, '\n').split('\n') : []
   let title: string | null = null
-  const sections: OutlineSection[] = []
+  const subtitle: string[] = []
+  const sections: Draft[] = []
+  let ending: Draft | null = null
+  let current: Draft | null = null
   for (const rawLine of lines) {
     const line = rawLine.trim()
-    if (line.length === 0 || line === '---' || line === '***') continue
-    if (HEADING_1.test(line)) {
-      if (title === null) title = line.replace(HEADING_1, '').trim()
+    if (line.length === 0 || RULE.test(line)) continue
+    if (HEADING_1.test(line) && !HEADING_2.test(line)) {
+      if (title === null && current === null) title = line.replace(HEADING_1, '').trim()
       continue
     }
     if (HEADING_2.test(line)) {
-      sections.push({ title: line.replace(HEADING_2, '').trim(), points: [] })
+      const heading = line.replace(HEADING_2, '').trim()
+      const closing = ENDING.exec(heading)
+      current = { title: closing ? closing[1].trim() : heading, body: [], points: [], quote: [] }
+      if (closing) ending = current
+      else sections.push(current)
       continue
     }
-    if (sections.length === 0) continue
-    sections[sections.length - 1].points.push(line.replace(BULLET, '').trim())
+    if (current === null) {
+      if (title !== null) subtitle.push(line.replace(POINT, '').trim())
+      continue
+    }
+    if (QUOTE.test(line)) current.quote.push(line.replace(QUOTE, '').trim())
+    else if (POINT.test(line)) current.points.push(line.replace(POINT, '').trim())
+    else current.body.push(line)
   }
   if (sections.length === 0) return null
   if (sections.some((section) => section.title.length === 0)) return null
-  return { title, sections }
-}
-
-interface TextSlots {
-  title: FreeformTextElement
-  body: FreeformTextElement
-}
-
-function textLeaves(slide: FreeformSlide): FreeformTextElement[] {
-  const leaves: FreeformTextElement[] = []
-  walkScene(slide.nodes, (node) => {
-    if (node.type === 'text') leaves.push(node)
-  })
-  return leaves
-}
-
-function area(leaf: FreeformTextElement): number {
-  return leaf.width * leaf.height
-}
-
-/**
- * Locate the fill slots on a template slide: the title slot is the
- * "标题"-named text with the largest font, the body slot is the remaining
- * text with the most characters (the template's main copy node).
- */
-function textSlots(slide: FreeformSlide): TextSlots | null {
-  const leaves = textLeaves(slide)
-  if (leaves.length < 2) return null
-  let title: FreeformTextElement | undefined
-  for (const leaf of leaves) {
-    if (!leaf.name.includes('标题')) continue
-    if (
-      title === undefined
-      || leaf.fontSize > title.fontSize
-      || (leaf.fontSize === title.fontSize && area(leaf) > area(title))
-    ) {
-      title = leaf
-    }
+  if (ending && ending.title.length === 0) return null
+  return {
+    title,
+    subtitle: subtitle.length > 0 ? subtitle.join('\n') : null,
+    sections: sections.map(toPage),
+    ending: ending ? toPage(ending) : null,
   }
-  if (!title) return null
-  let body: FreeformTextElement | undefined
-  for (const leaf of leaves) {
-    if (leaf.id === title.id) continue
-    if (
-      body === undefined
-      || leaf.text.length > body.text.length
-      || (leaf.text.length === body.text.length && area(leaf) > area(body))
-    ) {
-      body = leaf
-    }
+}
+
+export function outlineContent(parsed: ParsedOutline): DeckContent {
+  return {
+    title: parsed.title ?? parsed.sections[0].title,
+    ...(parsed.subtitle ? { subtitle: parsed.subtitle } : {}),
+    pages: parsed.sections,
+    ...(parsed.ending ? { ending: parsed.ending } : {}),
   }
-  if (!body) return null
-  return { title, body }
 }
 
 export function createDocumentFromOutline(
   outline: string,
   templateId: string,
-): OutlineDocumentResult | OutlineError {
+): ComposeSuccess | ComposeError {
   const parsed = parseOutline(outline)
   if (!parsed) {
     return {
@@ -133,89 +102,8 @@ export function createDocumentFromOutline(
       error: '大纲解析失败：需要至少一个 "## 小节标题" 段落（可先用 "# 总标题" 给整套卡片命名）。',
     }
   }
-
-  let instantiation
-  try {
-    instantiation = instantiateTemplate(templateId)
-  } catch {
-    return { ok: false, error: `未知的模板 id：${templateId}（先用 list_templates 查询）。` }
-  }
-  if (instantiation.workspace !== 'freeform') {
-    return { ok: false, error: '仅支持自由画布模板（id 以 -freeform 结尾）。' }
-  }
-
-  let document = instantiation.document
-  if (document.slides.length < 2) {
-    return { ok: false, error: '模板页数不足，无法生成多页卡片。' }
-  }
-  const cover = document.slides[0]
-  const bodySlide = document.slides[1]
-  const coverSlots = textSlots(cover)
-  const bodySlots = textSlots(bodySlide)
-  if (!coverSlots || !bodySlots) {
-    return { ok: false, error: '模板缺少可填充的标题/正文文本节点。' }
-  }
-
-  // One slide per section: duplicate the template body slide for every
-  // section after the first (before editing, so copies keep placeholder
-  // text). Each duplicate lands directly after the body slide, so create
-  // them in reverse to keep the sections in outline order.
-  for (let index = parsed.sections.length - 1; index >= 1; index -= 1) {
-    const next = reduceFreeformDocument(document, {
-      type: 'slide/duplicate',
-      slideId: bodySlide.id,
-      duplicateSlideId: `outline-section-${index + 1}`,
-    })
-    if (next === document) {
-      return { ok: false, error: '生成小节页面失败：页面数量达到上限。' }
-    }
-    document = next
-  }
-  const sectionSlideIds = [bodySlide.id]
-  for (let index = 1; index < parsed.sections.length; index += 1) {
-    sectionSlideIds.push(`outline-section-${index + 1}`)
-  }
-
-  const summarySections: OutlineDocumentResult['summary']['sections'] = []
-  for (const [index, section] of parsed.sections.entries()) {
-    const slideId = sectionSlideIds[index]
-    const slide = document.slides.find((candidate) => candidate.id === slideId)
-    if (!slide) return { ok: false, error: '生成小节页面失败：页面丢失。' }
-    const slots = textSlots(slide)
-    if (!slots) return { ok: false, error: '生成小节页面失败：找不到可填充字段。' }
-    const updates: Array<{ path: string[]; patch: { text: string } }> = [
-      { path: [slots.title.id], patch: { text: section.title } },
-    ]
-    if (section.points.length > 0) {
-      updates.push({ path: [slots.body.id], patch: { text: section.points.join('\n') } })
-    }
-    document = reduceFreeformDocument(document, {
-      type: 'node/update-content',
-      slideId,
-      updates,
-    })
-    summarySections.push({ slideId, title: section.title, pointCount: section.points.length })
-  }
-
-  const coverTitle = parsed.title ?? parsed.sections[0].title
-  document = reduceFreeformDocument(document, {
-    type: 'node/update-content',
-    slideId: cover.id,
-    updates: [{ path: [coverSlots.title.id], patch: { text: coverTitle } }],
-  })
-
-  const normalized = normalizeFreeformDocument(document)
-  if (!normalized) {
-    return { ok: false, error: '生成的文档未通过 v14 校验。' }
-  }
-  return {
-    ok: true,
-    document: normalized,
-    summary: {
-      documentVersion: 14,
-      slideCount: normalized.slides.length,
-      coverTitle,
-      sections: summarySections,
-    },
-  }
+  const template = TEMPLATE_REGISTRY.find((candidate) => candidate.id === templateId)
+  if (!template) return { ok: false, error: `未知的模板 id：${templateId}（先用 list_templates 查询）。` }
+  if (template.workspace !== 'freeform') return { ok: false, error: '仅支持自由画布模板（id 以 -freeform 结尾）。' }
+  return composeDeck(templateId, outlineContent(parsed))
 }

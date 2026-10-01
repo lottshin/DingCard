@@ -10,6 +10,7 @@ import { reduceFreeformDocument } from '../../../src/freeform/document'
 import type { FreeformTextElement } from '../../../src/freeform/types'
 import { createDocumentFromOutline } from '../core/outline'
 import { instantiateTemplate } from '../core/templates'
+import { checkDocument } from './check'
 import { renderDocument, renderMarkdownDocument } from './renderer'
 
 function pngIhdr(png: Buffer): { width: number; height: number } {
@@ -130,12 +131,20 @@ describe('renderDocument', () => {
 
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error(result.error)
-      // cover + one slide per section + the template ending page
-      expect(result.files).toHaveLength(5)
+      // cover + one slide per section (the outline asked for no closing page)
+      expect(result.files).toHaveLength(4)
       for (const file of result.files) {
         expect(file.width).toBe(1080)
         expect(file.height).toBe(1440)
         expect(file.bytes).toBeGreaterThan(1000)
+      }
+      // Each page also comes back as a small JPEG for the client to show its model.
+      expect(result.previews.map((preview) => preview.slideId)).toEqual(result.files.map((file) => file.slideId))
+      for (const preview of result.previews) {
+        expect(preview.dataUrl).toMatch(/^data:image\/jpeg;base64,/)
+        const jpeg = Buffer.from(preview.dataUrl.split(',')[1], 'base64')
+        expect(jpeg.length).toBeGreaterThan(2000)
+        expect(jpeg.length).toBeLessThan(120_000)
       }
     },
     420_000,
@@ -251,4 +260,79 @@ describe('renderMarkdownDocument', () => {
     if (result.ok) return
     expect(result.error).toContain('Markdown 文档校验')
   }, 30_000)
+})
+
+describe('checkDocument', () => {
+  test(
+    'finds nothing to fix on a composed deck, and finds what an edit broke',
+    async () => {
+      const generated = createDocumentFromOutline(
+        `# 一周早餐不重样
+上班族的五分钟早餐清单
+
+## 周一：燕麦杯
+- 燕麦：前一晚泡好
+- 酸奶：选无糖的
+> 早餐吃好，上午不慌 —— 营养师
+
+## 周二：鸡蛋三明治
+全麦面包、煎蛋、生菜和番茄，五分钟搞定。
+
+## 结尾：明天吃什么？
+- 收藏这一套`,
+        'editorial-freeform',
+      )
+      if (!generated.ok) throw new Error(generated.error)
+      const clean = await checkDocument(generated.document)
+      if (!clean.ok) throw new Error(clean.error)
+      expect(clean.issues).toEqual([])
+      expect(clean.summary).toEqual({ slideCount: 4, issueCount: 0, byKind: {} })
+
+      // Overfill a paragraph and wash out a title: both get reported.
+      const slide = generated.document.slides[2]
+      const lead = slide.nodes.find((node) => node.name === '导语')!
+      const title = slide.nodes.find((node) => node.name === '标题')!
+      const broken = reduceFreeformDocument(reduceFreeformDocument(generated.document, {
+        type: 'node/update-content',
+        slideId: slide.id,
+        updates: [{ path: [lead.id], patch: { text: '这是一段故意写得很长很长的正文，'.repeat(8) } }],
+      }), {
+        type: 'node/update-style',
+        slideId: slide.id,
+        updates: [{ path: [title.id], patch: { textFill: { type: 'solid', color: '#ece8dc' } } }],
+      })
+      const found = await checkDocument(broken)
+      if (!found.ok) throw new Error(found.error)
+      expect(found.issues.map((issue) => [issue.page, issue.kind, issue.node])).toEqual([
+        [3, 'text-overflow', '导语'],
+        [3, 'low-contrast', '标题'],
+      ])
+      const overflow = found.issues[0]
+      expect(overflow.fitFontSize).toBeGreaterThan(10)
+      expect(overflow.path).toEqual([lead.id])
+
+      // fix sets the paragraph to the size it fits at; the colour is left to the client.
+      const fixed = await checkDocument(broken, { fix: true })
+      if (!fixed.ok) throw new Error(fixed.error)
+      expect(fixed.fixed).toEqual([{ page: 3, slideId: slide.id, node: '导语', fontSize: overflow.fitFontSize }])
+      expect(fixed.issues.map((issue) => issue.kind)).toEqual(['low-contrast'])
+      const fixedLead = fixed.document!.slides[2].nodes.find((node) => node.id === lead.id) as FreeformTextElement
+      expect(fixedLead.fontSize).toBe(overflow.fitFontSize)
+    },
+    420_000,
+  )
+
+  test('flags an untouched template as sample copy', async () => {
+    const instantiation = instantiateTemplate('signal-freeform')
+    if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
+    const result = await checkDocument(instantiation.document)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.summary.byKind['sample-text']).toBeGreaterThan(5)
+    expect(result.issues.every((issue) => issue.kind === 'sample-text' || issue.kind === 'text-overflow')).toBe(true)
+  }, 420_000)
+
+  test('refuses invalid documents without a browser', async () => {
+    const result = await checkDocument({ documentVersion: 4 })
+    expect(result.ok).toBe(false)
+  })
 })

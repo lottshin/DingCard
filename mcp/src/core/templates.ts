@@ -5,12 +5,26 @@
 // the in-app template center runs.
 
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots } from '../../../src/templates/slots'
 import type {
   FreeformTemplateSeriesId,
   MarkdownTemplateDocument,
   TemplateWorkspace,
 } from '../../../src/templates/types'
 import type { FreeformDocument } from '../../../src/freeform/types'
+
+/** How much content a freeform template's pages hold before it spills over. */
+export interface TemplateCapacity {
+  coverSubtitle: boolean
+  /** The cover lists the first page titles (a contents block). */
+  coverContents: number
+  sectionPoints: number
+  sectionBody: boolean
+  sectionQuote: boolean
+  endingPoints: number
+  endingBody: boolean
+  endingQuote: boolean
+}
 
 export interface TemplateSummary {
   id: string
@@ -20,6 +34,26 @@ export interface TemplateSummary {
   description: string
   pageCount: number
   tags: string[]
+  capacity?: TemplateCapacity
+}
+
+function pointRoom(slots: SlideSlots): number {
+  return slots.list ? 6 : slots.items?.length ?? 0
+}
+
+function capacityOf(series: string): TemplateCapacity | undefined {
+  const slots = FREEFORM_TEMPLATE_SLOTS[series as keyof typeof FREEFORM_TEMPLATE_SLOTS]
+  if (!slots) return undefined
+  return {
+    coverSubtitle: Boolean(slots.cover.lead),
+    coverContents: slots.cover.toc?.items?.length ?? (slots.cover.toc?.list ? 4 : 0),
+    sectionPoints: pointRoom(slots.section),
+    sectionBody: Boolean(slots.section.lead),
+    sectionQuote: Boolean(slots.section.quote),
+    endingPoints: pointRoom(slots.ending),
+    endingBody: Boolean(slots.ending.lead),
+    endingQuote: Boolean(slots.ending.quote),
+  }
 }
 
 export type TemplateInstantiation =
@@ -35,6 +69,7 @@ export function listTemplates(): TemplateSummary[] {
     description: template.description,
     pageCount: template.pageCount,
     tags: [...template.tags],
+    ...(template.workspace === 'freeform' ? { capacity: capacityOf(template.series) } : {}),
   }))
 }
 

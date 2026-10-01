@@ -347,8 +347,9 @@ function SceneNodeBranch({
   if (hidden) return null
   const locked = inheritedLocked || node.locked
   const selected = selectedKeys.has(scenePathKey(path))
+  // Previews carry the node id too (the headless check measures them by it).
   const commonData = props.presentationOnly
-    ? {}
+    ? { 'data-preview-node-id': node.id }
     : {
         'data-scene-node-id': node.id,
         'data-scene-root-node': path.length === 1 ? 'true' : undefined,
