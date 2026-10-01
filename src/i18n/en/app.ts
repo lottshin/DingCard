@@ -146,7 +146,6 @@ export const app: Record<string, Translation> = {
   '打开 {title}': 'Open {title}',
   '{n} 页': plural('{n} page', '{n} pages'),
   '复制一份': 'Duplicate',
-  '共 {n} 个项目，最近一次保存在 {time}。': plural('{n} project, last saved {time}.', '{n} projects, last saved {time}.'),
   '项目读取失败': 'Could not load projects',
   '这一类还没有项目': 'No projects of this kind yet',
   '暂时无法读取项目，请稍后重试': 'Could not load projects right now. Please try again later.',
@@ -270,7 +269,6 @@ export const app: Record<string, Translation> = {
 
   // Projects: autosave, rename, import
   '项目名称': 'Project name',
-  '编辑过的项目都会自动保存在这里。': 'Everything you edit is saved here automatically.',
   '导入 .json 文档，比如 MCP 工具生成的结果': 'Import a .json document, such as one made by the MCP tools',
   '导入 JSON': 'Import JSON',
   '松开，导入为项目': 'Drop to import as a project',

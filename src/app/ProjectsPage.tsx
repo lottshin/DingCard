@@ -85,11 +85,6 @@ export function ProjectsPage({
       <div className="page-head">
         <div>
           <h1>{t('我的项目')}</h1>
-          <p>
-            {all.length > 0
-              ? t('共 {n} 个项目，最近一次保存在 {time}。', { n: all.length, time: new Date(all[0].updatedAt).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) })
-              : t('编辑过的项目都会自动保存在这里。')}
-          </p>
         </div>
         <div className="page-actions">
           {ownerId && (

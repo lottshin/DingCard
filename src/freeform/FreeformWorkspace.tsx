@@ -46,10 +46,14 @@ import {
   createSlide,
   createImageElement,
   createLineElement,
+  createPathElement,
   createShapeElement,
   createTextElement,
   freeformReducer,
 } from './document'
+import { ICON_STROKE_WIDTH, ICON_VIEWBOX, type IconDefinition } from './icons'
+import { FreeformIconPicker } from './FreeformIconPicker'
+import { pathStrokeScale } from './pathData'
 import { insertRichTextSpan } from './richText'
 import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
 import { FreeformExportMenu } from './FreeformExportMenu'
@@ -209,9 +213,11 @@ import type {
   FreeformNodeContentPatch,
   FreeformNodeGeometryPatch,
   FreeformNodeStylePatch,
+  FreeformPathElement,
   FreeformShapeElement,
   FreeformSlide,
   BlendMode,
+  PathFill,
   FreeformTextElement,
   LineEndpointCap,
   SceneFilter,
@@ -269,6 +275,12 @@ const LINE_CAPS: Array<{ id: 'round' | 'butt' | 'square'; label: string }> = [
   { id: 'round', label: '圆头' },
   { id: 'butt', label: '平头' },
   { id: 'square', label: '方头' },
+]
+
+const PATH_JOINS: Array<{ id: 'round' | 'miter' | 'bevel'; label: string }> = [
+  { id: 'round', label: '圆滑' },
+  { id: 'miter', label: '尖角' },
+  { id: 'bevel', label: '斜切' },
 ]
 
 const LINE_ENDPOINT_CAPS: Array<{ id: LineEndpointCap; label: string }> = [
@@ -790,6 +802,10 @@ function isLineElement(element: FreeformElement | undefined): element is Freefor
   return element?.type === 'line'
 }
 
+function isPathElement(element: FreeformElement | undefined): element is FreeformPathElement {
+  return element?.type === 'path'
+}
+
 /** Filter stack editor shared by every leaf type; `null` clears the stored filter. */
 function FilterField({
   filter,
@@ -1085,6 +1101,9 @@ export function FreeformWorkspace({
   const [galleryTemplateId, setGalleryTemplateId] = useState<string | undefined>(undefined)
   /** The insert panel docked beside the tool rail; one at a time. */
   const [toolDrawer, setToolDrawer] = useState<ToolDrawer | null>(null)
+  // The icon picker gets one stable handler, so editor renders skip its grid.
+  const addIconRef = useRef<(icon: IconDefinition) => void>(() => undefined)
+  const pickIcon = useCallback((icon: IconDefinition) => addIconRef.current(icon), [])
   const [panelTab, setPanelTab] = useState<FreeformRightPanelTab>('properties')
   const [textSelection, setTextSelection] = useState<{
     path: ScenePath
@@ -2825,6 +2844,17 @@ export function FreeformWorkspace({
     insertNewElement(createLineElement(activeSlide, lineKind))
   }
 
+  function addIcon(icon: IconDefinition) {
+    insertNewElement(createPathElement(activeSlide, {
+      name: icon.zh,
+      d: icon.d,
+      viewBox: ICON_VIEWBOX,
+      size: Math.max(48, Math.round(Math.min(activeSlide.width, activeSlide.height) * 0.15)),
+      strokeWidth: ICON_STROKE_WIDTH,
+    }))
+  }
+  addIconRef.current = addIcon
+
   async function insertImageElement(
     loadSource: () => Promise<string>,
     alt: string,
@@ -4311,7 +4341,11 @@ export function FreeformWorkspace({
     const updates = selectionPaths.flatMap((path) => {
       const node = findNodeAtPath(activeSlide.nodes, path)
       if (!node || node.type === 'group') return []
-      const patch = pasteStylePatch(styleClipboard, node.type)
+      const patch = pasteStylePatch(
+        styleClipboard,
+        node.type,
+        node.type === 'path' ? pathStrokeScale(node.viewBox, node.width, node.height) : 1,
+      )
       if (Object.keys(patch).length === 0) return []
       return [{ path: [...path], patch }]
     })
@@ -4815,7 +4849,10 @@ export function FreeformWorkspace({
         const minSize = 40 / worldScale
         let width = startLeaf.width
         let height = startLeaf.height
-        if (moveEvent.shiftKey && cornerHandle && startLengthSquared > Number.EPSILON) {
+        // Paths keep their drawing's proportions from a corner, as graphics
+        // do in Canva; their edges still stretch.
+        const keepAspect = cornerHandle && (moveEvent.shiftKey || startLeaf.type === 'path')
+        if (keepAspect && startLengthSquared > Number.EPSILON) {
           // Shift keeps the leaf's aspect ratio: scale both edges by the
           // pointer's distance change from the opposite corner.
           const currentLength = Math.hypot(
@@ -5329,6 +5366,14 @@ export function FreeformWorkspace({
     if (selectedElement.type === 'line') {
       return { kind: 'line', node: selectedElement, strokeWidth: leafProperties?.strokeWidth ?? selectedElement.strokeWidth }
     }
+    if (selectedElement.type === 'path') {
+      return {
+        kind: 'path',
+        node: selectedElement,
+        strokeWidth: leafProperties?.strokeWidth
+          ?? selectedElement.strokeWidth * pathStrokeScale(selectedElement.viewBox, selectedElement.width, selectedElement.height),
+      }
+    }
     return {
       kind: 'image',
       node: selectedElement,
@@ -5723,6 +5768,7 @@ export function FreeformWorkspace({
             data-testid="freeform-elements-drawer"
             onKeyDown={(event) => {
               if (event.key !== 'Escape' || event.defaultPrevented) return
+              if (event.target instanceof HTMLInputElement && event.target.value) return
               event.preventDefault()
               setToolDrawer(null)
               requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="freeform-elements-tool"]')?.focus())
@@ -5764,6 +5810,8 @@ export function FreeformWorkspace({
                 </button>
               ))}
             </div>
+            <div className="freeform-drawer-section">{t('图标')}</div>
+            <FreeformIconPicker onPick={pickIcon} />
           </aside>
         )}
 
@@ -6961,6 +7009,7 @@ export function FreeformWorkspace({
 
                   {(isTextElement(selectedElement) ||
                     isShapeElement(selectedElement) ||
+                    isPathElement(selectedElement) ||
                     isImageElement(selectedElement)) && (
                     <InspectorSection title={t('填充')} testId="inspector-fill">
                       {isTextElement(selectedElement) && (
@@ -7013,6 +7062,17 @@ export function FreeformWorkspace({
                           />
                         </>
                       )}
+                      {isPathElement(selectedElement) && (
+                        <div data-testid="path-fill-paint">
+                          <PaintField
+                            label={t('填充')}
+                            value={selectedElement.fill}
+                            modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent']}
+                            fallbackPaint={DEFAULT_SHAPE_PAINT}
+                            onChange={(fill) => updateSelectedStyle({ fill: fill as PathFill })}
+                          />
+                        </div>
+                      )}
                       {isImageElement(selectedElement) && (
                         <>
                           <div className="field-label">{t('图片填充方式')}</div>
@@ -7064,7 +7124,7 @@ export function FreeformWorkspace({
                     </InspectorSection>
                   )}
 
-                  {(isShapeElement(selectedElement) || isLineElement(selectedElement)) && (
+                  {(isShapeElement(selectedElement) || isLineElement(selectedElement) || isPathElement(selectedElement)) && (
                     <InspectorSection title={t('描边')} testId="inspector-stroke">
                       {isLineElement(selectedElement) && (
                         <>
@@ -7086,7 +7146,9 @@ export function FreeformWorkspace({
                       <div className="field-grid with-gap">
                         <div
                           className="stroke-color-field"
-                          data-testid={isShapeElement(selectedElement) ? 'shape-stroke-color' : 'line-stroke-color'}
+                          data-testid={isShapeElement(selectedElement)
+                            ? 'shape-stroke-color'
+                            : isPathElement(selectedElement) ? 'path-stroke-color' : 'line-stroke-color'}
                         >
                           <span className="stroke-color-label">{t('颜色')}</span>
                           <div className="color-field">
@@ -7094,17 +7156,19 @@ export function FreeformWorkspace({
                               {selectedElement.stroke === 'transparent' ? t('透明') : selectedElement.stroke.toUpperCase()}
                             </span>
                             <ColorPickerButton
-                              label={isShapeElement(selectedElement) ? t('形状描边颜色') : t('线条颜色')}
+                              label={isShapeElement(selectedElement)
+                                ? t('形状描边颜色')
+                                : isPathElement(selectedElement) ? t('图形描边颜色') : t('线条颜色')}
                               color={selectedElement.stroke}
                               onChange={(stroke) => updateSelectedStyle({ stroke })}
                             />
                           </div>
                         </div>
-                        <label title={isShapeElement(selectedElement) ? t('描边宽') : t('粗细')}>
+                        <label title={isLineElement(selectedElement) ? t('粗细') : t('描边宽')}>
                           <InspectorGlyph name="stroke" />
                           <InspectorNumberInput
-                            ariaLabel={isShapeElement(selectedElement) ? t('描边宽') : t('粗细')}
-                            min={isShapeElement(selectedElement) ? 0 : Number.MIN_VALUE}
+                            ariaLabel={isLineElement(selectedElement) ? t('粗细') : t('描边宽')}
+                            min={isLineElement(selectedElement) ? Number.MIN_VALUE : 0}
                             max={Number.MAX_VALUE}
                             resetKey={inspectorNumberResetKey}
                             value={selectedProperties.kind === 'leaf'
@@ -7114,6 +7178,69 @@ export function FreeformWorkspace({
                           />
                         </label>
                       </div>
+                      {isPathElement(selectedElement) && (
+                        <>
+                          <div className="field-grid with-gap">
+                            <label title={t('虚线')}>
+                              <InspectorGlyph name="dash" />
+                              <InspectorNumberInput
+                                ariaLabel={t('虚线')}
+                                min={0}
+                                max={Number.MAX_VALUE}
+                                resetKey={inspectorNumberResetKey}
+                                value={selectedElement.dash === undefined
+                                  ? 0
+                                  : selectedElement.dash * pathStrokeScale(selectedElement.viewBox, selectedElement.width, selectedElement.height)}
+                                onCommit={(value) => updateSelectedStyle({
+                                  // The panel shows page pixels; the path keeps viewBox units.
+                                  dash: value > 0
+                                    ? value / pathStrokeScale(selectedElement.viewBox, selectedElement.width, selectedElement.height)
+                                    : null,
+                                })}
+                              />
+                            </label>
+                            <div className="inspector-actions">
+                              <button
+                                className="ghost"
+                                type="button"
+                                data-testid="path-dash-clear"
+                                disabled={selectedElement.dash === undefined}
+                                onClick={() => updateSelectedStyle({ dash: null })}
+                              >
+                                {t('实线')}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="field-label with-gap">{t('线帽')}</div>
+                          <div className="seg stretch">
+                            {LINE_CAPS.map((cap) => (
+                              <button
+                                key={cap.id}
+                                type="button"
+                                className={(selectedElement.cap ?? 'round') === cap.id ? 'seg-btn on' : 'seg-btn'}
+                                data-testid={`path-cap-${cap.id}`}
+                                onClick={() => updateSelectedStyle({ cap: cap.id })}
+                              >
+                                {t(cap.label)}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="field-label with-gap">{t('拐角')}</div>
+                          <div className="seg stretch">
+                            {PATH_JOINS.map((join) => (
+                              <button
+                                key={join.id}
+                                type="button"
+                                className={(selectedElement.join ?? 'round') === join.id ? 'seg-btn on' : 'seg-btn'}
+                                data-testid={`path-join-${join.id}`}
+                                onClick={() => updateSelectedStyle({ join: join.id })}
+                              >
+                                {t(join.label)}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                       {isLineElement(selectedElement) && (
                         <>
                           <div className="field-grid with-gap">

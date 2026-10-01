@@ -45,7 +45,7 @@ function freeformDraft(id: string, src: string): Draft {
     updatedAt: 1,
     mode: 'freeform-slide',
     document: {
-      documentVersion: 14,
+      documentVersion: 15,
       activeSlideId: 'page-1',
       slides: [{
         id: 'page-1',

@@ -9,6 +9,7 @@ import {
   paintToCssBackground,
   shapeFillToStyle,
   slideBackgroundToCss,
+  svgGradientOf,
   textFillToStyle,
   toGradientPaint,
   toRadialPaint,
@@ -116,5 +117,26 @@ describe('paint helpers', () => {
       ],
     })
     expect(toSolidPaint({ type: 'radial-gradient', stops })).toEqual({ type: 'solid', color: '#fde68a' })
+  })
+})
+
+describe('SVG gradients for path fills', () => {
+  it('lays a linear gradient along the CSS gradient line', () => {
+    expect(svgGradientOf({ type: 'solid', color: '#000000' }, 100, 50)).toBeNull()
+    const rightward = svgGradientOf({ type: 'linear-gradient', from: '#000000', to: '#ffffff', angle: 90 }, 100, 50)
+    expect(rightward).toMatchObject({ kind: 'linear', x1: 0, x2: 100, stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }] })
+    if (rightward?.kind !== 'linear') throw new Error('Expected a linear gradient')
+    expect(rightward.y1).toBeCloseTo(25)
+    expect(rightward.y2).toBeCloseTo(25)
+
+    // 45deg in a square runs corner to corner, bottom-left to top-right.
+    const diagonal = svgGradientOf({ type: 'linear-gradient', stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }], angle: 45 }, 100, 100)
+    if (diagonal?.kind !== 'linear') throw new Error('Expected a linear gradient')
+    expect([diagonal.x1, diagonal.y1, diagonal.x2, diagonal.y2].map((value) => Math.round(value) || 0)).toEqual([0, 100, 100, 0])
+  })
+
+  it('centres a radial gradient out to the farthest corner', () => {
+    expect(svgGradientOf({ type: 'radial-gradient', stops: [{ offset: 0, color: '#000000' }, { offset: 1, color: '#ffffff' }] }, 60, 80))
+      .toMatchObject({ kind: 'radial', cx: 30, cy: 40, r: 50 })
   })
 })

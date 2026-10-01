@@ -18,6 +18,8 @@ export type LayoutIssueKind =
   | 'sample-text'
   | 'empty-text'
   | 'image-failed'
+  | 'path-overflow'
+  | 'empty-path'
 
 export interface LayoutIssue {
   page: number
@@ -133,6 +135,15 @@ function short(text: string): string {
   return flat.length > 16 ? `${flat.slice(0, 16)}…` : flat
 }
 
+/** Whether a node hides what lies under its box: opaque shapes, and paths with a fill. */
+function coversBelow(node: FreeformSceneNode): boolean {
+  if (node.type === 'shape') return node.fill.type !== 'transparent'
+  if (node.type === 'path') return node.fill.type !== 'transparent'
+  return node.type === 'image'
+}
+
+const viewBoxNumber = (value: number) => Math.round(value * 100) / 100
+
 export function layoutIssues(document: FreeformDocument, inspected: readonly InspectedSlide[]): LayoutIssue[] {
   const template = templateMarks()
   const knownSamples = template.samples
@@ -157,6 +168,9 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
     }
 
     for (const { node } of nodes.values()) {
+      if (node.type === 'path' && !node.hidden && node.fill.type === 'transparent' && node.strokeWidth === 0) {
+        issue('empty-path', node.id, '图形既没有填充也没有描边，看不见：给 fill 一个颜色，或把 strokeWidth 设成大于 0。')
+      }
       if (node.type !== 'text' || node.hidden) continue
       if (!node.text.trim()) issue('empty-text', node.id, '文字是空的：填上内容或删掉这个文本框。')
       else if (knownSamples.has(node.text.trim())) {
@@ -165,6 +179,26 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
     }
     if (!measured) return
     if (measured.imageError) issue('image-failed', null, `${measured.imageError}：检查图片地址是否能打开。`)
+
+    for (const drawn of measured.paths ?? []) {
+      const node = nodes.get(drawn.nodeId)?.node
+      if (!node || node.type !== 'path') continue
+      const { bounds } = drawn
+      const overflow = Math.max(-bounds.x, -bounds.y, bounds.x + bounds.width - node.width, bounds.y + bounds.height - node.height)
+      if (overflow <= Math.max(2, Math.max(node.width, node.height) * 0.05)) continue
+      // The viewBox that would hold the drawing exactly, in the drawing's own coordinates.
+      const sx = node.width / node.viewBox.width
+      const sy = node.height / node.viewBox.height
+      const fitted = {
+        x: viewBoxNumber(node.viewBox.x + bounds.x / sx),
+        y: viewBoxNumber(node.viewBox.y + bounds.y / sy),
+        width: viewBoxNumber(Math.max(bounds.width / sx, 0.01)),
+        height: viewBoxNumber(Math.max(bounds.height / sy, 0.01)),
+      }
+      issue('path-overflow', node.id, `图形画到了自己的框外（超出约 ${Math.round(overflow)}px）：viewBox 没有包住 d 用到的坐标。`
+        + `把 viewBox 改成 { x: ${fitted.x}, y: ${fitted.y}, width: ${fitted.width}, height: ${fitted.height} } 正好包住图形，`
+        + '再按需要调整节点盒的宽高比；或者改 d 让坐标落在原 viewBox 里。')
+    }
 
     const order = measured.nodes.map((entry) => entry.nodeId)
     const rectOf = new Map(measured.nodes.map((entry) => [entry.nodeId, entry.rect]))
@@ -208,8 +242,7 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         if (!entry || entry.node.type === 'text' || entry.node.type === 'group') continue
         const node = entry.node
         if ((node.opacity ?? 1) < OPAQUE) continue
-        if (node.type === 'shape' && node.fill.type === 'transparent') continue
-        if (node.type === 'line') continue
+        if (!coversBelow(node)) continue
         const rect = rectOf.get(above)
         if (rect && textArea > 0 && intersection(rect, text.area) / textArea > 0.3) {
           issue('covered-text', text.nodeId, `被上面的「${node.name}」挡住了：把文字移到它上层，或者挪开。`)
@@ -229,10 +262,12 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
       for (const below of order.slice(0, textAt).reverse()) {
         const entry = nodes.get(below)
         if (!entry || entry.node.type === 'group' || entry.node.type === 'line' || entry.node.type === 'text') continue
+        // An outline-only path leaves the colour under it showing.
+        if (entry.node.type === 'path' && entry.node.fill.type === 'transparent') continue
         const rect = rectOf.get(below)
         if (!rect || centre.x < rect.x || centre.x > rect.x + rect.width || centre.y < rect.y || centre.y > rect.y + rect.height) continue
         if ((entry.node.opacity ?? 1) < OPAQUE) continue
-        background = entry.node.type === 'shape' ? solidColor(entry.node.fill) : null
+        background = entry.node.type === 'shape' || entry.node.type === 'path' ? solidColor(entry.node.fill) : null
         break
       }
       if (background === undefined) background = solidColor(slide.background)

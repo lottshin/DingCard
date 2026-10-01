@@ -4,8 +4,9 @@ import { store } from '../storage'
 import { FramedImage } from './FramedImage'
 import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
 import { splitTextRuns } from './richText'
-import { shapeFillToStyle, textFillToStyle } from './paint'
+import { shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { sceneFilterCss } from './appearance'
+import { fitPathData, pathStrokeScale } from './pathData'
 import { scenePathKey } from './sceneTree'
 import type { ImageDecodeIdentity, ImageDecodeReport } from './imageReadiness'
 import type {
@@ -19,6 +20,11 @@ import { t } from '../i18n'
 /** CSS shadow components shared by box-shadow, text-shadow, and drop-shadow. */
 function shadowCss(shadow: ShadowPaint): string {
   return `${shadow.offsetX}px ${shadow.offsetY}px ${shadow.blur}px ${shadow.color}`
+}
+
+/** A node id made safe for an SVG id and its url(#…) reference. */
+function svgIdPart(id: string): string {
+  return id.replace(/[^\w-]/g, (char) => `_${char.charCodeAt(0).toString(16)}_`)
 }
 
 export interface SceneNodePointerState {
@@ -188,9 +194,9 @@ function SceneLeafContent({
   }
 
   if (leaf.type === 'line') {
-    const markerId = `${markerIdPrefix}-arrow-${leaf.id}`
-    const dotMarkerId = `${markerIdPrefix}-dot-${leaf.id}`
-    const startArrowMarkerId = `${markerIdPrefix}-arrow-start-${leaf.id}`
+    const markerId = `${markerIdPrefix}-arrow-${svgIdPart(leaf.id)}`
+    const dotMarkerId = `${markerIdPrefix}-dot-${svgIdPart(leaf.id)}`
+    const startArrowMarkerId = `${markerIdPrefix}-arrow-start-${svgIdPart(leaf.id)}`
     // lineKind: 'arrow' stays the default end decoration; an explicit cap overrides it.
     const startCap = leaf.startCap ?? 'none'
     const endCap = leaf.endCap ?? (leaf.lineKind === 'arrow' ? 'arrow' : 'none')
@@ -293,6 +299,77 @@ function SceneLeafContent({
             markerEnd={markerEnd}
           />
         )}
+      </svg>
+    )
+  }
+
+  if (leaf.type === 'path') {
+    // The drawing is redrawn in box pixels, then stroked at one even width.
+    const strokeScale = pathStrokeScale(leaf.viewBox, leaf.width, leaf.height)
+    const gradient = leaf.fill.type === 'transparent'
+      ? null
+      : svgGradientOf(leaf.fill, leaf.width, leaf.height)
+    const paintId = `${markerIdPrefix}-paint-${svgIdPart(leaf.id)}`
+    const fill = leaf.fill.type === 'transparent'
+      ? 'none'
+      : leaf.fill.type === 'solid'
+        ? leaf.fill.color
+        : `url(#${paintId})`
+    // Three decimals keep float noise out of the markup.
+    const strokeWidth = Math.round(leaf.strokeWidth * strokeScale * 1000) / 1000
+    const dash = leaf.dash !== undefined ? Math.round(leaf.dash * strokeScale * 1000) / 1000 : undefined
+    return (
+      <svg
+        className={presentationOnly ? 'freeform-preview-path' : 'freeform-path'}
+        data-testid={presentationOnly ? undefined : 'freeform-path'}
+        viewBox={`0 0 ${leaf.width} ${leaf.height}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+        style={{
+          overflow: 'visible',
+          ...(leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : {}),
+        }}
+      >
+        {gradient && (
+          <defs>
+            {gradient.kind === 'linear' ? (
+              <linearGradient
+                id={paintId}
+                gradientUnits="userSpaceOnUse"
+                x1={gradient.x1}
+                y1={gradient.y1}
+                x2={gradient.x2}
+                y2={gradient.y2}
+              >
+                {gradient.stops.map((stop, index) => (
+                  <stop key={index} offset={stop.offset} stopColor={stop.color} />
+                ))}
+              </linearGradient>
+            ) : (
+              <radialGradient
+                id={paintId}
+                gradientUnits="userSpaceOnUse"
+                cx={gradient.cx}
+                cy={gradient.cy}
+                r={gradient.r}
+              >
+                {gradient.stops.map((stop, index) => (
+                  <stop key={index} offset={stop.offset} stopColor={stop.color} />
+                ))}
+              </radialGradient>
+            )}
+          </defs>
+        )}
+        <path
+          d={fitPathData(leaf.d, leaf.viewBox, leaf.width, leaf.height) ?? ''}
+          fill={fill}
+          fillRule={leaf.fillRule ?? 'nonzero'}
+          stroke={leaf.strokeWidth > 0 ? leaf.stroke : 'none'}
+          strokeWidth={strokeWidth}
+          strokeLinecap={leaf.cap ?? 'round'}
+          strokeLinejoin={leaf.join ?? 'round'}
+          strokeDasharray={dash !== undefined ? `${dash} ${dash}` : undefined}
+        />
       </svg>
     )
   }

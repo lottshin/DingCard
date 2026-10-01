@@ -663,7 +663,7 @@ test.describe('remote backend integration', () => {
       }
     }>
     const saved = savedDrafts.find((draft) => draft.id === created.id)
-    expect(saved?.document.documentVersion).toBe(14)
+    expect(saved?.document.documentVersion).toBe(15)
     const group = saved?.document.slides[0].nodes.find((node) => node.id === 'remote-hidden-group')
     const savedImage = group?.children?.find((node) => node.id === 'remote-image')
     expect(savedImage).toBeDefined()
@@ -723,7 +723,7 @@ test.describe('remote backend integration', () => {
       }
     }>
     const reloaded = reloadedDrafts.find((draft) => draft.id === created.id)
-    expect(reloaded?.document.documentVersion).toBe(14)
+    expect(reloaded?.document.documentVersion).toBe(15)
     const reloadedGroup = reloaded?.document.slides[0].nodes
       .find((node) => node.id === 'remote-hidden-group')
     const reloadedImage = reloadedGroup?.children?.find((node) => node.id === 'remote-image')
@@ -1243,7 +1243,7 @@ test.describe('remote backend integration', () => {
       documentVersion: unknown
       slides: Array<{ nodes: unknown[]; elements?: unknown }>
     }
-    expect(secondDocument.documentVersion).toBe(14)
+    expect(secondDocument.documentVersion).toBe(15)
     expect(secondDocument.slides[0]).not.toHaveProperty('elements')
     expect(secondDocument.slides[0].nodes).toHaveLength(3)
 
@@ -1253,7 +1253,7 @@ test.describe('remote backend integration', () => {
         slides: Array<{ nodes: unknown[]; elements?: unknown }>
       }
     }
-    expect(secondSavedDraft.document.documentVersion).toBe(14)
+    expect(secondSavedDraft.document.documentVersion).toBe(15)
     expect(secondSavedDraft.document.slides[0]).not.toHaveProperty('elements')
     expect(secondSavedDraft.document.slides[0].nodes).toHaveLength(3)
     await expectSaved(page)

@@ -18,6 +18,7 @@ import {
 import {
   validateSceneNodesForMutation,
 } from './sceneTree'
+import { pathStrokeScale } from './pathData'
 import type { Matrix2D, Point, SceneBounds } from './sceneTransform'
 import type {
   FreeformGroupNode,
@@ -276,6 +277,10 @@ function resolveSceneProperties(
         ...(target.type === 'shape' || target.type === 'line'
           ? { strokeWidth: target.strokeWidth * worldScale }
           : {}),
+        // A path's stroke is in viewBox units; the panel shows page pixels.
+        ...(target.type === 'path'
+          ? { strokeWidth: target.strokeWidth * pathStrokeScale(target.viewBox, target.width, target.height) * worldScale }
+          : {}),
       }
       if (
         (properties.fontSize !== undefined && !Number.isFinite(properties.fontSize)) ||
@@ -478,20 +483,24 @@ function scenePropertyMutationUnsafe(
       return styleSuccess(path, { fontSize }, edit.value)
     }
     if (edit.property === 'strokeWidth') {
-      if (node.type !== 'shape' && node.type !== 'line') {
+      if (node.type !== 'shape' && node.type !== 'line' && node.type !== 'path') {
         return { ok: false, reason: 'unsupported-property' }
       }
-      const valid = node.type === 'shape'
+      const allowsZero = node.type === 'shape' || node.type === 'path'
+      const valid = allowsZero
         ? finiteNonNegative(edit.value)
         : finitePositive(edit.value)
       if (!valid) return { ok: false, reason: 'invalid-value' }
       if (almostEqual(properties.strokeWidth ?? Number.NaN, edit.value)) {
         return styleSuccess(path, null, edit.value)
       }
-      const strokeWidth = edit.value / properties.worldScale
+      const unitScale = node.type === 'path'
+        ? pathStrokeScale(node.viewBox, node.width, node.height)
+        : 1
+      const strokeWidth = edit.value / (properties.worldScale * unitScale)
       if (
         !Number.isFinite(strokeWidth) ||
-        (node.type === 'shape' ? strokeWidth < 0 : strokeWidth <= 0)
+        (allowsZero ? strokeWidth < 0 : strokeWidth <= 0)
       ) return { ok: false, reason: 'invalid-transform' }
       return styleSuccess(path, { strokeWidth }, edit.value)
     }

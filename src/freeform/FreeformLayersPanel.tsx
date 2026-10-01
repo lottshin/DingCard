@@ -9,15 +9,19 @@ import {
   type MouseEvent,
 } from 'react'
 import { MAX_SCENE_DEPTH } from './constants'
+import { iconByName } from './icons'
 import { scenePathKey } from './sceneTree'
 import type { FreeformSceneNode, ScenePath } from './types'
-import { t } from '../i18n'
+import { getLang, t } from '../i18n'
 
 // Names the editor gives new layers; shown in the interface language until renamed.
-const DEFAULT_LAYER_NAMES = new Set(['文本', '图片', '形状', '直线', '箭头', '组'])
+const DEFAULT_LAYER_NAMES = new Set(['文本', '图片', '形状', '直线', '箭头', '组', '图形'])
 
 export function layerLabel(name: string): string {
-  return DEFAULT_LAYER_NAMES.has(name) ? t(name) : name
+  if (DEFAULT_LAYER_NAMES.has(name)) return t(name)
+  // Inserted icons are named after the icon, in Chinese.
+  const icon = getLang() === 'en' ? iconByName(name) : undefined
+  return icon ? icon.en : name
 }
 
 export interface LayerSelectionOptions {
@@ -76,6 +80,7 @@ function defaultNodeName(node: FreeformSceneNode): string {
   if (node.type === 'image') return t('图片')
   if (node.type === 'line') return node.lineKind === 'arrow' ? t('箭头') : t('直线')
   if (node.type === 'group') return t('组合')
+  if (node.type === 'path') return t('图形')
   return t('形状')
 }
 
@@ -139,6 +144,15 @@ function typeIcon(node: FreeformSceneNode) {
       <svg viewBox="0 0 20 20" aria-hidden="true" className="freeform-layer-icon">
         <path d="m4 16 12-12" />
         {node.lineKind === 'arrow' && <path d="M11 4h5v5" />}
+      </svg>
+    )
+  }
+  if (node.type === 'path') {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true" className="freeform-layer-icon">
+        <path d="M3.5 15.5c2.5-9 6-11 8-6.5s4.5 3 5-5" />
+        <circle cx="3.5" cy="15.5" r="1.3" />
+        <circle cx="16.5" cy="4" r="1.3" />
       </svg>
     )
   }

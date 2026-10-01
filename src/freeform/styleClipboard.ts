@@ -1,3 +1,5 @@
+import { isHexColor } from './paint'
+import { pathStrokeScale } from './pathData'
 import type { FreeformNodeStylePatch, FreeformSceneNode } from './types'
 
 /**
@@ -21,6 +23,7 @@ const TEXT_STYLE_KEYS = [
 ] as const
 const SHAPE_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'cornerRadius'] as const
 const LINE_STYLE_KEYS = ['stroke', 'strokeWidth', 'dash', 'cap'] as const
+const PATH_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'dash', 'cap', 'join', 'fillRule'] as const
 const IMAGE_STYLE_KEYS = ['fit'] as const
 
 export function styleKeysForNodeType(type: FreeformSceneNode['type']): readonly string[] {
@@ -28,6 +31,7 @@ export function styleKeysForNodeType(type: FreeformSceneNode['type']): readonly 
     case 'text': return [...TEXT_STYLE_KEYS, ...SHARED_STYLE_KEYS]
     case 'shape': return [...SHAPE_STYLE_KEYS, ...SHARED_STYLE_KEYS]
     case 'line': return [...LINE_STYLE_KEYS, ...SHARED_STYLE_KEYS]
+    case 'path': return [...PATH_STYLE_KEYS, ...SHARED_STYLE_KEYS]
     case 'image': return [...IMAGE_STYLE_KEYS, ...SHARED_STYLE_KEYS]
     default: return []
   }
@@ -41,19 +45,38 @@ export function copyStylePatch(node: FreeformSceneNode): FreeformNodeStylePatch 
     const value = (node as unknown as Record<string, unknown>)[key]
     if (value !== undefined) patch[key] = value
   }
+  // A path measures its stroke in viewBox units; the clipboard holds pixels.
+  if (node.type === 'path') {
+    const scale = pathStrokeScale(node.viewBox, node.width, node.height)
+    patch.strokeWidth = node.strokeWidth * scale
+    if (node.dash !== undefined) patch.dash = node.dash * scale
+  }
   return Object.keys(patch).length > 0 ? (patch as FreeformNodeStylePatch) : null
 }
 
-/** Narrow a stored patch to the keys the target node type accepts. */
+/**
+ * Narrow a stored patch to the keys the target node type accepts. A path
+ * target passes its stroke scale, so pixel stroke widths land in its viewBox
+ * units.
+ */
 export function pasteStylePatch(
   patch: FreeformNodeStylePatch,
   targetType: FreeformSceneNode['type'],
+  strokeScale = 1,
 ): FreeformNodeStylePatch {
   if (targetType === 'group') return {}
   const allowed = new Set(styleKeysForNodeType(targetType))
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(patch)) {
-    if (allowed.has(key) && value !== undefined) result[key] = value
+    if (!allowed.has(key) || value === undefined) continue
+    // Paths take no picture fills, and their strokes are always hex colors.
+    if (targetType === 'path' && key === 'fill' && (value as { type?: unknown }).type === 'image') continue
+    if (targetType === 'path' && key === 'stroke' && !isHexColor(value)) continue
+    if (targetType === 'path' && (key === 'strokeWidth' || key === 'dash') && typeof value === 'number') {
+      result[key] = value / strokeScale
+      continue
+    }
+    result[key] = value
   }
   return result as FreeformNodeStylePatch
 }

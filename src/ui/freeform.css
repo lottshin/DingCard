@@ -512,6 +512,58 @@
   outline-offset: 2px;
 }
 
+/* Icons: a searchable grid; a tile drops the icon in as a vector path. */
+.freeform-drawer .freeform-icon-search {
+  width: auto;
+  margin: 0 16px;
+}
+
+.freeform-drawer .freeform-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0 12px;
+}
+
+.freeform-drawer .freeform-icon-tile {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.freeform-drawer .freeform-icon-tile svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.freeform-drawer .freeform-icon-tile:hover {
+  background: var(--field-fill-hover, var(--hover));
+}
+
+.freeform-drawer .freeform-icon-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.freeform-drawer .freeform-icon-empty {
+  margin: 4px 16px 0;
+  color: var(--text-3);
+  font: 400 12.5px/1.4 var(--ui-font);
+}
+
 /* Page list: a column of thumbnails beside the stage, as in Keynote and
    PowerPoint. Each page keeps its actions behind a 「…」 button. */
 .freeform-rail {
@@ -2514,8 +2566,9 @@
    One row above the canvas with what the selection is most often changed by:
    a label for what is selected, its key settings, then position, order,
    duplicate, lock and delete at the end. It never scrolls (that would clip
-   its colour pickers and menus): on a narrow stage labels fold into icons
-   first, then the end group takes a second row. */
+   its colour pickers and menus) and stays one row, so selecting something
+   never moves the canvas: on a narrow stage labels fold into icons first,
+   then less-needed controls fold away (see the fold steps below). */
 .freeform-context-toolbar {
   position: relative;
   /* Over the stage and its rulers (so its popovers are too), under the top bar's menus. */
@@ -2954,6 +3007,37 @@
   .freeform-context-toolbar .ctx-font {
     display: none;
   }
+}
+
+/* Still too narrow for one row (both side panels open, a small window): the
+   bar measures itself and folds step by step, as few steps as it needs
+   (foldToOneRow in FreeformContextToolbar.tsx). */
+.freeform-context-toolbar .ctx-fold-menus {
+  display: contents;
+}
+
+.freeform-context-toolbar[data-fold~='1'] .ctx-more {
+  justify-content: center;
+  width: 30px;
+  padding: 0;
+}
+
+.freeform-context-toolbar[data-fold~='1'] .ctx-more > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.freeform-context-toolbar[data-fold~='2'] .ctx-fold-menus,
+.freeform-context-toolbar[data-fold~='3'] .ctx-fold-actions,
+.freeform-context-toolbar[data-fold~='4'] .ctx-fold-details,
+.freeform-context-toolbar[data-fold~='5'] .ctx-fold-delete,
+.freeform-context-toolbar[data-fold~='6'] .ctx-subject,
+.freeform-context-toolbar[data-fold~='6'] .ctx-subject + .ctx-divider {
+  display: none;
 }
 
 /* ---------- Context toolbar colour popovers ----------

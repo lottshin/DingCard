@@ -74,7 +74,7 @@ function slide(id: string, nodes: FreeformElement[]): FreeformSlide {
 }
 
 function document(...slides: FreeformSlide[]): FreeformDocument {
-  return { documentVersion: 14, activeSlideId: slides[0].id, slides }
+  return { documentVersion: 15, activeSlideId: slides[0].id, slides }
 }
 
 function sceneImage(id: string, src: string): FreeformSceneLeaf {
@@ -112,7 +112,7 @@ function sceneGroup(
 
 function sceneDocument(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 14,
+    documentVersion: 15,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',

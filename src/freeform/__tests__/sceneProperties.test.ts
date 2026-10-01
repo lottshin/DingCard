@@ -99,7 +99,7 @@ function group(
 
 function documentWith(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 14,
+    documentVersion: 15,
     activeSlideId: 'slide',
     slides: [{
       id: 'slide',
@@ -709,5 +709,38 @@ describe('scene property contracts', () => {
       ok: false,
       reason: 'invalid-scene',
     })
+  })
+})
+
+describe('path stroke properties', () => {
+  it('shows and writes a path stroke in page pixels', () => {
+    const icon: FreeformSceneNode = {
+      id: 'icon',
+      name: 'icon',
+      locked: false,
+      hidden: false,
+      type: 'path',
+      x: 10,
+      y: 20,
+      width: 96,
+      height: 96,
+      rotation: 0,
+      scale: 1,
+      d: 'M20 6 9 17l-5-5',
+      viewBox: { x: 0, y: 0, width: 24, height: 24 },
+      fill: { type: 'transparent' },
+      stroke: '#111111',
+      strokeWidth: 2,
+    }
+    const nodes = [group('parent', [icon], { scale: 0.5 })]
+    expect(readProperties(nodes, ['parent', 'icon'])).toMatchObject({ strokeWidth: 4 })
+
+    const result = mutate(nodes, ['parent', 'icon'], { property: 'strokeWidth', value: 6 })
+    const written = findNodeAtPath(result.nodes, ['parent', 'icon'])
+    expect(written?.type === 'path' ? written.strokeWidth : null).toBeCloseTo(3)
+
+    const cleared = mutate(nodes, ['parent', 'icon'], { property: 'strokeWidth', value: 0 })
+    const none = findNodeAtPath(cleared.nodes, ['parent', 'icon'])
+    expect(none?.type === 'path' ? none.strokeWidth : null).toBe(0)
   })
 })

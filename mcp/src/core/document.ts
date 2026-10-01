@@ -4,11 +4,12 @@
 // MCP surface has exactly the same validation and reducer semantics as the
 // in-app editor:
 //
-//   - normalizeFreeformDocument: strict v14 validation (+ v1–v13 migration)
+//   - normalizeFreeformDocument: strict v15 validation (+ v1–v14 migration)
 //   - reduceFreeformDocument:    the exact action reducer the UI dispatches to
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
+import { ICONS } from '../../../src/freeform/icons'
 import type {
   FreeformAction,
   FreeformDocument,
@@ -21,7 +22,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v14 校验：需要 documentVersion=1–14 之一（旧版自动迁移为 v14）、非空 slides、'
+  '文档未通过自由画布 v15 校验：需要 documentVersion=1–15 之一（旧版自动迁移为 v15）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -33,7 +34,7 @@ export function validateDocument(value: unknown): ValidateResult {
 export interface NodeSummary {
   id: string
   name: string
-  type: 'text' | 'image' | 'shape' | 'line' | 'group'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'group'
   x: number
   y: number
   rotation: number
@@ -45,8 +46,14 @@ export interface NodeSummary {
   fontSize?: number
   fontFamily?: string
   shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
+  /** A path drawn from the built-in icon set: the icon's id. */
+  icon?: string
+  /** The start of a path's drawing, for paths that aren't built-in icons. */
+  d?: string
   children?: NodeSummary[]
 }
+
+const ICON_BY_PATH = new Map(ICONS.map((icon) => [icon.d, icon.id]))
 
 export interface SlideSummary {
   id: string
@@ -101,6 +108,11 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
   }
   if (node.type === 'shape') {
     return { ...leaf, shape: node.shape }
+  }
+  if (node.type === 'path') {
+    const icon = ICON_BY_PATH.get(node.d)
+    if (icon) return { ...leaf, icon }
+    return { ...leaf, d: node.d.length > 60 ? `${node.d.slice(0, 60)}…` : node.d }
   }
   return leaf
 }
@@ -164,7 +176,7 @@ export function applyActions(value: unknown, actions: unknown): ApplyActionsResu
   }
   const finalCheck = normalizeFreeformDocument(document)
   if (!finalCheck) {
-    return { ok: false, error: '应用动作后文档未通过 v14 校验（不应发生，请反馈）' }
+    return { ok: false, error: '应用动作后文档未通过 v15 校验（不应发生，请反馈）' }
   }
   return { ok: true, document: finalCheck, changes }
 }

@@ -357,6 +357,14 @@ export function LineToolIcon(props: IconProps) {
   )
 }
 
+export function GraphicIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.75 12.75c1.75-7.5 4.5-9 6-5.25s3.75 2.75 4.5-4.75" />
+    </Icon>
+  )
+}
+
 export function ImageIcon(props: IconProps) {
   return (
     <Icon {...props}>

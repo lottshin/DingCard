@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 14
+  documentVersion: 15
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -92,7 +92,7 @@ export type BlendMode =
   | 'luminosity'
 
 export interface FreeformElementBase extends SceneNodeState {
-  type: 'text' | 'image' | 'shape' | 'line'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path'
   x: number
   y: number
   width: number
@@ -193,11 +193,48 @@ export interface FreeformLineElement extends FreeformElementBase {
   points?: LinePoint[]
 }
 
+/** The coordinate space a path's `d` is written in (v15); it stretches to fill the node box. */
+export interface PathViewBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** A path fills with a color paint or not at all; there are no picture fills. */
+export type PathFill = ColorPaint | { type: 'transparent' }
+
+/**
+ * A vector drawing (v15): SVG path data in its own viewBox, stretched to the
+ * node box. The stroke is measured in viewBox units, so it grows and shrinks
+ * with the drawing and stays even when the box changes aspect.
+ */
+export interface FreeformPathElement extends FreeformElementBase {
+  type: 'path'
+  /** SVG path data in viewBox coordinates. */
+  d: string
+  viewBox: PathViewBox
+  fill: PathFill
+  /** Stroke color (#RRGGBB); a strokeWidth of 0 draws no stroke. */
+  stroke: string
+  /** Stroke width in viewBox units. */
+  strokeWidth: number
+  /** Unified dash length in viewBox units (dash = gap); absent means solid. */
+  dash?: number
+  /** Stroke cap; absent means round. */
+  cap?: 'round' | 'butt' | 'square'
+  /** Stroke corner join; absent means round. */
+  join?: 'round' | 'miter' | 'bevel'
+  /** How overlapping subpaths fill; absent means nonzero. */
+  fillRule?: 'nonzero' | 'evenodd'
+}
+
 export type FreeformElement =
   | FreeformTextElement
   | FreeformImageElement
   | FreeformShapeElement
   | FreeformLineElement
+  | FreeformPathElement
 
 /**
  * A scene path contains node IDs from a slide root to one node. The empty
@@ -225,6 +262,10 @@ export interface FreeformNodeContentPatch {
   text?: string
   src?: string
   alt?: string
+  /** A path's drawing (v15); valid SVG path data in its viewBox. */
+  d?: string
+  /** A path's coordinate space (v15). */
+  viewBox?: PathViewBox
 }
 
 export interface FreeformNodeStylePatch {
@@ -256,15 +297,20 @@ export interface FreeformNodeStylePatch {
   fit?: 'cover' | 'contain'
   framing?: ImageFraming
   shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
+  /** Shape fill, or a path fill (v15; no picture fills on paths). */
   fill?: ShapeFill
-  /** Shape/line stroke color, or the text outline color; text `null` clears it. */
+  /** Shape/line/path stroke color, or the text outline color; text `null` clears it. */
   stroke?: string | null
-  /** Shape/line stroke width, or the text outline width; text `null` clears it. */
+  /** Shape/line/path stroke width, or the text outline width; text `null` clears it. */
   strokeWidth?: number | null
   lineKind?: 'line' | 'arrow'
-  /** Unified dash length in px; `null` restores a solid stroke. */
+  /** Unified dash length (px on lines, viewBox units on paths); `null` restores a solid stroke. */
   dash?: number | null
   cap?: 'round' | 'butt' | 'square'
+  /** Path stroke corner join (v15). */
+  join?: 'round' | 'miter' | 'bevel'
+  /** Path fill rule for overlapping subpaths (v15). */
+  fillRule?: 'nonzero' | 'evenodd'
   /** Line start endpoint decoration (v13); `null` defers to lineKind. */
   startCap?: LineEndpointCap | null
   /** Line end endpoint decoration (v13); `null` defers to lineKind. */

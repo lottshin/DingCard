@@ -15,17 +15,18 @@ list_templates → create_document_from_content / create_document_from_outline
 | 工具 | 作用 |
 | --- | --- |
 | `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台）。自由画布模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么，按内容挑模板。 |
-| `create_document_from_template` | 按模板 id 实例化完整文档：自由画布返回 v14 文档，Markdown 返回源文信封。 |
+| `create_document_from_template` | 按模板 id 实例化完整文档：自由画布返回 v15 文档，Markdown 返回源文信封。 |
 | `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
-| `validate_document` | 严格校验 v14 文档（v1–v13 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时返回规范化结果。 |
-| `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要），为编辑提供目标。 |
+| `validate_document` | 严格校验 v15 文档（v1–v14 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时返回规范化结果。 |
+| `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，其他图形给出 `d` 开头），为编辑提供目标。 |
+| `list_icons` | 查内置图标（97 个线性图标）：不带参数列出全部图标的 id 和中英文名，`query` 用中文或英文关键词搜，`ids` 按 id 取；带上路径数据 `d`、统一画法 `style` 和一个可以直接插入的完整节点 `example`（见下文「图形与图标」）。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效。 |
-| `render_document` | 无头渲染自由画布 v14 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录，并默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
+| `render_document` | 无头渲染自由画布 v15 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录，并默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 
-工具描述内嵌了 v14 文档模型（含多段渐变、径向渐变、文字描边与竖排文字）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改 → `render_document` 出全套 PNG 并看缩略图。
+工具描述内嵌了 v15 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改 → `render_document` 出全套 PNG 并看缩略图。
 
 ## 生成整套卡片
 
@@ -68,6 +69,8 @@ list_templates → create_document_from_content / create_document_from_outline
 | `sample-text` | 还是模板里的示例文字。 |
 | `empty-text` | 空文本框。 |
 | `image-failed` | 这一页有图片没加载出来。 |
+| `path-overflow` | 图形画到了自己的框外：`viewBox` 没有包住 `d` 用到的坐标。改法里直接给出正好包住图形的 `viewBox`。 |
+| `empty-path` | 图形既没有填充也没有描边，看不见。 |
 
 每条问题带 `page`、`slideId`、`node`（图层名）、`path`（`apply_actions` 用的节点路径）和中文改法。内置模板原样保留的装饰文字、模板自己采用的配色不算问题，所以报告里只有内容带来的问题。`fix: true` 只自动处理 `text-overflow`（改成 `fitFontSize`），改完再检查一遍，返回 `document`、`fixed` 和剩下的问题；颜色、位置交给客户端用 `apply_actions` 改。
 
@@ -77,11 +80,35 @@ list_templates → create_document_from_content / create_document_from_outline
 
 | URI | 内容 |
 | --- | --- |
-| `dingcard://schema/freeform` | 自由画布 v14 文档模型与校验规则说明。 |
+| `dingcard://schema/freeform` | 自由画布 v15 文档模型与校验规则说明。 |
 | `dingcard://schema/actions` | `FreeformAction` 动作联合类型说明（`apply_actions` 的入参结构）。 |
 | `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
-| `dingcard://examples/freeform` | 完整自由画布 v14 文档示例（编辑部模板实例）。 |
+| `dingcard://examples/freeform` | 完整自由画布 v15 文档示例（编辑部模板实例）。 |
+| `dingcard://icons` | 内置图标全集：每个图标的 id、中英文名、关键词与 24×24 路径数据 `d`。 |
 | `dingcard://examples/markdown` | 完整 Markdown 文档信封示例（编辑档案模板实例）。 |
+
+## 图形与图标
+
+`path` 节点（v15）画任意矢量图：图标、徽章、对话气泡、波浪分隔线、曲线箭头、折线图、不规则色块。
+
+- `d` 是 SVG 路径数据（`M/L/H/V/C/S/Q/T/A/Z` 及小写相对命令，必须以 `M`/`m` 开头，最长 20000 字符），写在 `viewBox` 坐标系里；渲染时图形拉伸铺满节点盒。节点盒与 `viewBox` 宽高比相同就不变形，不同就跟着盒子拉伸，描边始终粗细均匀。
+- `fill` 是 ColorPaint（纯色、线性渐变、径向渐变）或 `{ type: 'transparent' }`；`stroke` 是 `#RRGGBB`；`strokeWidth` 用 `viewBox` 单位，随图形一起缩放，`0` 即不描边。可选 `dash`（`viewBox` 单位）、`cap`、`join`（`round`/`miter`/`bevel`）、`fillRule`（`nonzero`/`evenodd`，画圆环这类镂空图形用 `evenodd`），以及通用的 `opacity`、`shadow`、`filter`、`blendMode`。
+- `viewBox` 要正好包住 `d` 用到的坐标，画到框外 `check_document` 会报 `path-overflow` 并给出合适的 `viewBox`。
+- 换图形用 `node/update-content` 的 `{ d, viewBox }`，改样式用 `node/update-style`。
+
+内置图标先用 `list_icons` 查，再把返回的 `example` 改好 `id`、位置和颜色，用 `node/insert-children` 插进去：
+
+```json
+{
+  "id": "icon-check", "name": "对勾", "locked": false, "hidden": false,
+  "type": "path", "x": 120, "y": 120, "width": 96, "height": 96, "rotation": 0, "scale": 1,
+  "d": "M20 6 9 17l-5-5",
+  "viewBox": { "x": 0, "y": 0, "width": 24, "height": 24 },
+  "fill": { "type": "transparent" }, "stroke": "#18181b", "strokeWidth": 2
+}
+```
+
+图标是 [Lucide](https://lucide.dev) 的线性图标（ISC 许可，来自 Feather 的部分为 MIT 许可），每个合并成一条路径，存放在 `src/freeform/iconLibrary.ts`，由 `scripts/icons/build-icon-library.mjs` 生成。
 
 ## 线段与旋转几何
 
@@ -89,7 +116,7 @@ list_templates → create_document_from_content / create_document_from_outline
 
 ## 回到编辑器精修
 
-AI 生成的文档 JSON 可以直接回到叮卡里精修：在工作台「我的项目」点击「导入 JSON」，或把 `.json` 文件拖进页面。自由画布文档（v1–v13，旧版自动迁移为 v14）和 Markdown 文档都会存为项目，并在对应的编辑器里打开；非法文件会给出可读的错误提示。由此形成完整闭环：
+AI 生成的文档 JSON 可以直接回到叮卡里精修：在工作台「我的项目」点击「导入 JSON」，或把 `.json` 文件拖进页面。自由画布文档（v1–v15，旧版自动迁移为 v15）和 Markdown 文档都会存为项目，并在对应的编辑器里打开；非法文件会给出可读的错误提示。由此形成完整闭环：
 
 ```text
 AI 生成文档 → 导入叮卡精修 → 编辑器导出 PNG
@@ -140,7 +167,7 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 ## 当前限制
 
-- `render_document` 仅支持自由画布文档（v14；v1–v13 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
+- `render_document` 仅支持自由画布文档（v15；v1–v14 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
 - 自由画布文本节点的可选 `spans` 富文本片段（局部加粗/标色）在渲染与校验中与编辑器一致支持；编辑器内改动文字时片段会按编辑位置自动保留或收缩。
 - 模板只有仓库里内置的这几套（社区通过 PR 共建，见 docs/templates.md）。需要渲染自己的文档时，把文档直接传给 `render_document` / `render_markdown`。
 - 文档中的图片 `src`（自由画布）必须是浏览器可加载的 URL 或 data URL；Markdown 文档的图片通过信封的 `images` 映射（`img:<id>` → data URL）提供，本地文件请先转为 data URL。

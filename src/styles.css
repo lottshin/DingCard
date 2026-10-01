@@ -1756,8 +1756,10 @@ html.theme-anim * {
 
 .freeform-shape,
 .freeform-line,
+.freeform-path,
 .freeform-preview-shape,
-.freeform-preview-line {
+.freeform-preview-line,
+.freeform-preview-path {
   width: 100%;
   height: 100%;
   display: block;

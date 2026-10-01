@@ -26,7 +26,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the ten tools', async () => {
+  test('exposes the eleven tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -37,6 +37,7 @@ describe('dingcard-mcp tool layer', () => {
       'create_document_from_outline',
       'create_document_from_template',
       'inspect_document',
+      'list_icons',
       'list_templates',
       'render_document',
       'render_markdown',
@@ -128,7 +129,7 @@ describe('dingcard-mcp tool layer', () => {
       summary: { slideCount: number; coverTitle: string; pages: Array<{ title: string; role: string }> }
     }
     expect(created.ok).toBe(true)
-    expect(created.document.documentVersion).toBe(14)
+    expect(created.document.documentVersion).toBe(15)
     // Cover and two sections: the outline asked for no closing page.
     expect(created.document.slides).toHaveLength(3)
     expect(created.summary.slideCount).toBe(3)
@@ -183,6 +184,7 @@ describe('dingcard-mcp tool layer', () => {
     expect(uris).toEqual([
       'dingcard://examples/freeform',
       'dingcard://examples/markdown',
+      'dingcard://icons',
       'dingcard://schema/actions',
       'dingcard://schema/freeform',
       'dingcard://templates',
@@ -207,16 +209,72 @@ describe('dingcard-mcp tool layer', () => {
     expect(templates.templates.map((template) => template.id)).toContain('editorial-freeform')
 
     expect(await readText('dingcard://schema/freeform')).toContain('documentVersion')
+    expect(await readText('dingcard://schema/freeform')).toContain('- path：')
+
+    const icons = JSON.parse(await readText('dingcard://icons')) as {
+      style: { viewBox: { width: number } }
+      icons: Array<{ id: string; d: string }>
+    }
+    expect(icons.style.viewBox.width).toBe(24)
+    expect(icons.icons.length).toBeGreaterThan(90)
+    expect(icons.icons.every((icon) => icon.d.startsWith('M'))).toBe(true)
 
     const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
       documentVersion: number
     }
-    expect(document.documentVersion).toBe(14)
+    expect(document.documentVersion).toBe(15)
 
     const envelope = JSON.parse(await readText('dingcard://examples/markdown')) as {
       source: string
     }
     expect(envelope.source).toContain('#')
+    await client.close()
+  })
+
+  test('list_icons lists names, searches drawings, and its example inserts as a path', async () => {
+    const client = await connect()
+    const call = async (args: Record<string, unknown>) => parseContent(
+      (await client.callTool({ name: 'list_icons', arguments: args })) as { content: Array<{ type: string; text?: string }> },
+    ) as {
+      ok: boolean
+      total: number
+      icons: Array<{ id: string; zh: string; d?: string }>
+      missing?: string[]
+      example?: Record<string, unknown>
+    }
+
+    const catalogue = await call({})
+    expect(catalogue.total).toBe(catalogue.icons.length)
+    expect(catalogue.icons.find((icon) => icon.id === 'check')).toEqual({ id: 'check', zh: '对勾', en: 'Check' })
+
+    const found = await call({ query: '勾' })
+    expect(found.icons[0]).toMatchObject({ id: 'check', d: 'M20 6 9 17l-5-5' })
+    expect((await call({ query: '没有这种图标' })).icons).toEqual([])
+
+    const picked = await call({ ids: ['star', 'nope'] })
+    expect(picked.icons.map((icon) => icon.id)).toEqual(['star'])
+    expect(picked.missing).toEqual(['nope'])
+
+    const created = instantiateTemplate('editorial-freeform')
+    if (created.workspace !== 'freeform') throw new Error('expected a freeform template')
+    const slideId = created.document.slides[0].id
+    const applied = parseContent(
+      (await client.callTool({
+        name: 'apply_actions',
+        arguments: {
+          document: created.document,
+          actions: [{ type: 'node/insert-children', slideId, parentPath: [], nodes: [picked.example] }],
+        },
+      })) as { content: Array<{ type: string; text?: string }> },
+    ) as { ok: boolean; changes: boolean[]; document: unknown }
+    expect(applied.changes).toEqual([true])
+
+    const inspected = parseContent(
+      (await client.callTool({ name: 'inspect_document', arguments: { document: applied.document } })) as {
+        content: Array<{ type: string; text?: string }>
+      },
+    ) as { slides: Array<{ nodes: Array<{ id: string; type: string; icon?: string }> }> }
+    expect(inspected.slides[0].nodes.at(-1)).toMatchObject({ id: 'icon-star', type: 'path', icon: 'star' })
     await client.close()
   })
 

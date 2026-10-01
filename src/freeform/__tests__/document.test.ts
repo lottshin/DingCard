@@ -3,6 +3,7 @@ import {
   createFreeformDocument,
   createImageElement,
   createLineElement,
+  createPathElement,
   createShapeElement,
   createSlide,
   createTextElement,
@@ -18,6 +19,7 @@ import type {
   FreeformGroupNode,
   FreeformImageElement,
   FreeformLineElement,
+  FreeformPathElement,
   FreeformSceneNode,
   FreeformShapeElement,
   FreeformTextElement,
@@ -70,7 +72,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(14)
+    expect(doc.documentVersion).toBe(15)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -1202,6 +1204,163 @@ describe('guides actions', () => {
     ]
     for (const action of invalid) {
       expect(reduceFreeformDocument(withGuides, action as FreeformAction)).toBe(withGuides)
+    }
+  })
+})
+
+describe('v15 path nodes', () => {
+  const slideIdOf = (document: FreeformDocument) => document.slides[0].id
+  const update = (
+    document: FreeformDocument,
+    type: 'node/update-style' | 'node/update-content',
+    patch: Record<string, unknown>,
+  ) => reduceFreeformDocument(document, {
+    type,
+    slideId: slideIdOf(document),
+    updates: [{ path: ['icon-1'], patch }],
+  } as FreeformAction)
+  const icon = (overrides: Partial<FreeformPathElement> = {}): FreeformPathElement => ({
+    ...createPathElement(createSlide(), {
+      name: '对勾',
+      d: 'M20 6 9 17l-5-5',
+      viewBox: { x: 0, y: 0, width: 24, height: 24 },
+      size: 96,
+    }),
+    id: 'icon-1',
+    ...overrides,
+  })
+  const pathOf = (document: FreeformDocument) => document.slides[0].nodes[0] as FreeformPathElement
+
+  it('creates a centred outline path whose box follows the drawing aspect', () => {
+    const slide = createSlide()
+    const square = createPathElement(slide, {
+      name: '对勾',
+      d: 'M20 6 9 17l-5-5',
+      viewBox: { x: 0, y: 0, width: 24, height: 24 },
+      size: 96,
+    })
+    expect(square).toMatchObject({
+      type: 'path',
+      width: 96,
+      height: 96,
+      x: (slide.width - 96) / 2,
+      y: (slide.height - 96) / 2,
+      fill: { type: 'transparent' },
+      stroke: '#18181b',
+      strokeWidth: 2,
+    })
+    const wide = createPathElement(slide, {
+      name: '波浪',
+      d: 'M0 10q25-20 50 0t50 0',
+      viewBox: { x: 0, y: 0, width: 100, height: 20 },
+      size: 400,
+    })
+    expect([wide.width, wide.height]).toEqual([400, 80])
+  })
+
+  it('patches fill, stroke and stroke style, and keeps no-ops stable', () => {
+    const document = documentWith([icon()])
+    const styled = update(document, 'node/update-style', {
+      fill: { type: 'linear-gradient', stops: [{ offset: 0, color: '#fde68a' }, { offset: 1, color: '#f97316' }], angle: 90 },
+      stroke: '#1d4ed8',
+      strokeWidth: 1.5,
+      dash: 0.75,
+      cap: 'butt',
+      join: 'bevel',
+      fillRule: 'evenodd',
+      opacity: 0.5,
+    })
+    expect(pathOf(styled)).toMatchObject({
+      stroke: '#1d4ed8',
+      strokeWidth: 1.5,
+      dash: 0.75,
+      cap: 'butt',
+      join: 'bevel',
+      fillRule: 'evenodd',
+      opacity: 0.5,
+    })
+    expect(update(styled, 'node/update-style', { stroke: '#1d4ed8', join: 'bevel' })).toBe(styled)
+    expect(update(styled, 'node/update-style', {
+      fill: { type: 'linear-gradient', stops: [{ offset: 0, color: '#fde68a' }, { offset: 1, color: '#f97316' }], angle: 90 },
+    })).toBe(styled)
+
+    const solid = update(styled, 'node/update-style', { dash: null, strokeWidth: 0, fill: { type: 'transparent' } })
+    expect('dash' in pathOf(solid)).toBe(false)
+    expect(pathOf(solid).strokeWidth).toBe(0)
+    expect(pathOf(solid).fill).toEqual({ type: 'transparent' })
+  })
+
+  it.each([
+    ['picture fill', { fill: { type: 'image', src: 'a.png', fit: 'cover', framing: framing() } }],
+    ['named stroke', { stroke: 'blue' }],
+    ['cleared stroke', { stroke: null }],
+    ['negative width', { strokeWidth: -2 }],
+    ['zero dash', { dash: 0 }],
+    ['unknown join', { join: 'sharp' }],
+    ['cleared cap', { cap: null }],
+    ['shape-only key', { cornerRadius: 4 }],
+    ['line-only key', { lineKind: 'arrow' }],
+  ])('rejects a style patch with %s', (_label, patch) => {
+    const document = documentWith([icon()])
+    expect(update(document, 'node/update-style', patch)).toBe(document)
+  })
+
+  it('replaces the drawing and its viewBox as content', () => {
+    const document = documentWith([icon()])
+    const redrawn = update(document, 'node/update-content', {
+      d: 'M12 2 2 22h20z',
+      viewBox: { x: 0, y: 0, width: 24, height: 24 },
+    })
+    expect(pathOf(redrawn).d).toBe('M12 2 2 22h20z')
+    expect(update(redrawn, 'node/update-content', { d: 'M12 2 2 22h20z' })).toBe(redrawn)
+
+    const reframed = update(redrawn, 'node/update-content', { viewBox: { x: 2, y: 2, width: 20, height: 20 } })
+    expect(pathOf(reframed).viewBox).toEqual({ x: 2, y: 2, width: 20, height: 20 })
+
+    for (const patch of [{ d: 'Z' }, { viewBox: { x: 0, y: 0, width: -1, height: 1 } }, { text: 'x' }, {}]) {
+      expect(update(document, 'node/update-content', patch)).toBe(document)
+    }
+  })
+
+  it('stretches the drawing with geometry patches and clones paths independently', () => {
+    const document = documentWith([icon()])
+    const resized = reduceFreeformDocument(document, {
+      type: 'node/update-geometry',
+      slideId: slideIdOf(document),
+      updates: [{ path: ['icon-1'], patch: { width: 192, height: 96 } }],
+    })
+    expect(pathOf(resized)).toMatchObject({ width: 192, height: 96, viewBox: { x: 0, y: 0, width: 24, height: 24 } })
+
+    const cloned = reduceFreeformDocument(document, {
+      type: 'node/clone',
+      slideId: slideIdOf(document),
+      parentPath: [],
+      nodeIds: ['icon-1'],
+      idFactory: () => 'icon-2',
+    })
+    const [source, copy] = cloned.slides[0].nodes as FreeformPathElement[]
+    expect(copy).toMatchObject({ id: 'icon-2', d: source.d, viewBox: source.viewBox })
+    expect(copy.viewBox).not.toBe(source.viewBox)
+    expect(copy.fill).not.toBe(source.fill)
+  })
+
+  it('inserts only well-formed path nodes', () => {
+    const document = documentWith([])
+    const insert = (node: unknown) => reduceFreeformDocument(document, {
+      type: 'node/insert-children',
+      slideId: slideIdOf(document),
+      parentPath: [],
+      nodes: [node as FreeformSceneNode],
+    })
+    expect(pathOf(insert(icon({ cap: 'square', fillRule: 'evenodd' }))).cap).toBe('square')
+    for (const broken of [
+      icon({ d: 'M0' }),
+      icon({ viewBox: { x: 0, y: 0, width: 24, height: 0 } }),
+      icon({ stroke: 'currentColor' }),
+      icon({ dash: -1 }),
+      { ...icon(), shape: 'rect' },
+    ]) {
+      expect(insert(broken)).toBe(document)
     }
   })
 })

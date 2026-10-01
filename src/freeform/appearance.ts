@@ -6,13 +6,22 @@
 // `cornerRadius` on shapes. v7 adds a `filter` stack and `blendMode` on every
 // leaf, `dash` / `cap` on lines, and the star/hexagon shapes. v8 adds
 // multi-stop gradient paints (`stops`) and the text outline (`stroke` /
-// `strokeWidth` on text). All fields are strictly bounded; absent means the
+// `strokeWidth` on text). v15 path nodes add `join` and `fillRule` and carry
+// their own `viewBox`. All fields are strictly bounded; absent means the
 // respective default (opaque, no shadow, browser line-height, no tracking,
 // upright text, the stylesheet's 16px rect radius, unfiltered, normal
-// blending, solid round-cap strokes, no text outline).
+// blending, solid round-cap strokes, round joins, nonzero fills, no text
+// outline).
 
 import { isHexColor } from './paint'
-import type { BlendMode, GradientStop, LinePoint, SceneFilter, ShadowPaint } from './types'
+import type {
+  BlendMode,
+  GradientStop,
+  LinePoint,
+  PathViewBox,
+  SceneFilter,
+  ShadowPaint,
+} from './types'
 
 const SHADOW_KEYS = new Set(['color', 'blur', 'offsetX', 'offsetY'])
 const FILTER_KEYS = new Set(['brightness', 'contrast', 'saturation', 'blur'])
@@ -179,6 +188,47 @@ export function cloneLinePoints(
     points.push({ x, y })
   }
   return points
+}
+
+export function isValidLineJoin(value: unknown): value is 'round' | 'miter' | 'bevel' {
+  return value === 'round' || value === 'miter' || value === 'bevel'
+}
+
+export function isValidFillRule(value: unknown): value is 'nonzero' | 'evenodd' {
+  return value === 'nonzero' || value === 'evenodd'
+}
+
+/** Path stroke width in viewBox units; 0 draws no stroke. */
+export function isValidPathStrokeWidth(value: unknown): value is number {
+  return isFiniteIn(value, 0, 10_000)
+}
+
+/** Path dash length in viewBox units: small viewBoxes need dashes under 1. */
+export function isValidPathDash(value: unknown): value is number {
+  return isFiniteIn(value, 0, 10_000) && value > 0
+}
+
+const VIEW_BOX_KEYS = new Set(['x', 'y', 'width', 'height'])
+
+/** Clone a path viewBox: exactly `{x, y, width, height}`, finite, with a positive size. */
+export function clonePathViewBox(value: unknown): PathViewBox | null {
+  if (!isRecord(value)) return null
+  const keys = Object.keys(value)
+  if (keys.length !== VIEW_BOX_KEYS.size || !keys.every((key) => VIEW_BOX_KEYS.has(key))) return null
+  const { x, y, width, height } = value
+  if (
+    typeof x !== 'number' || !Number.isFinite(x)
+    || typeof y !== 'number' || !Number.isFinite(y)
+    || typeof width !== 'number' || !Number.isFinite(width) || width <= 0
+    || typeof height !== 'number' || !Number.isFinite(height) || height <= 0
+  ) {
+    return null
+  }
+  return { x, y, width, height }
+}
+
+export function pathViewBoxEquals(a: PathViewBox, b: PathViewBox): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 }
 
 export function isValidShape(value: unknown): value is 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon' {

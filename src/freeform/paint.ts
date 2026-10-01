@@ -65,6 +65,39 @@ export function paintToCssBackground(paint: ColorPaint): string {
   return `linear-gradient(${angle}deg, ${paint.from}, ${paint.to})`
 }
 
+/** An SVG gradient laid out in box pixels (userSpaceOnUse). */
+export type SvgGradient =
+  | { kind: 'linear'; x1: number; y1: number; x2: number; y2: number; stops: GradientStop[] }
+  | { kind: 'radial'; cx: number; cy: number; r: number; stops: GradientStop[] }
+
+/**
+ * The SVG gradient that paints a width × height box exactly like
+ * `paintToCssBackground` does: the CSS gradient line through the centre at
+ * the paint's angle, long enough to reach the corners, or the centred circle
+ * out to the farthest corner. Solid paints need no gradient.
+ */
+export function svgGradientOf(paint: ColorPaint, width: number, height: number): SvgGradient | null {
+  if (paint.type === 'solid') return null
+  if (paint.type === 'radial-gradient') {
+    return { kind: 'radial', cx: width / 2, cy: height / 2, r: Math.hypot(width, height) / 2, stops: paint.stops }
+  }
+  const angle = (normalizeAngle(paint.angle) * Math.PI) / 180
+  const dx = Math.sin(angle)
+  const dy = -Math.cos(angle)
+  const half = (Math.abs(width * dx) + Math.abs(height * dy)) / 2
+  const stops = isStopsGradient(paint)
+    ? paint.stops
+    : [{ offset: 0, color: paint.from }, { offset: 1, color: paint.to }]
+  return {
+    kind: 'linear',
+    x1: width / 2 - dx * half,
+    y1: height / 2 - dy * half,
+    x2: width / 2 + dx * half,
+    y2: height / 2 + dy * half,
+    stops,
+  }
+}
+
 export function slideBackgroundToCss(background: SlideBackground): string {
   return background.type === 'transparent' ? 'transparent' : paintToCssBackground(background)
 }

@@ -39,6 +39,7 @@ import type {
   ImageFraming,
   LineEndpointCap,
   LinePoint,
+  PathFill,
   RichTextSpan,
   SceneFilter,
   ShadowPaint,
@@ -49,20 +50,26 @@ import { normalizeRichTextSpans } from './richText'
 import {
   cloneGradientStops,
   cloneLinePoints,
+  clonePathViewBox,
   cloneSceneFilter,
   cloneShadowPaint,
   isV7Shape,
   isValidBlendMode,
   isValidCornerRadius,
   isValidDash,
+  isValidFillRule,
   isValidLetterSpacing,
   isValidLineCap,
   isValidLineEndpointCap,
   isValidLineHeight,
+  isValidLineJoin,
   isValidOpacity,
+  isValidPathDash,
+  isValidPathStrokeWidth,
   isValidShape,
   isValidTextStrokeWidth,
 } from './appearance'
+import { isValidPathData } from './pathData'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -77,7 +84,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -108,6 +115,10 @@ const SHAPE_NODE_KEYS = new Set([
 const LINE_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'lineKind', 'stroke', 'strokeWidth',
+])
+const PATH_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'd', 'viewBox', 'fill', 'stroke', 'strokeWidth',
 ])
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -229,6 +240,16 @@ function cloneStrictShapeFill(
   return cloneStrictColorPaint(value, inputVersion)
 }
 
+function cloneStrictPathFill(
+  value: unknown,
+  inputVersion: StrictDocumentVersion,
+): PathFill | null {
+  if (isRecord(value) && value.type === 'transparent') {
+    return hasExactKeys(value, TRANSPARENT_PAINT_KEYS) ? { type: 'transparent' } : null
+  }
+  return cloneStrictColorPaint(value, inputVersion)
+}
+
 function normalizeNodeState(
   value: UnknownRecord,
 ): { id: string; name: string; locked: boolean; hidden: boolean } | null {
@@ -274,6 +295,9 @@ const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
 const LINE_OPTIONAL_V14_KEYS = new Set([...LINE_OPTIONAL_V13_KEYS, 'points'])
+const PATH_OPTIONAL_V15_KEYS = new Set([
+  'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'join', 'fillRule',
+])
 
 /** Exact required keys plus an optional-key whitelist (null = exact only). */
 function hasKeysWithOptionals(
@@ -323,6 +347,7 @@ function optionalKeysFor(
     return LINE_OPTIONAL_V9_KEYS
   }
   if (type === 'image') return BASE_OPTIONAL_V9_KEYS
+  if (type === 'path') return PATH_OPTIONAL_V15_KEYS
   return null
 }
 
@@ -346,6 +371,11 @@ function hasStrictNodeKeys(
   }
   if (value.type === 'line') {
     return hasKeysWithOptionals(value, LINE_NODE_KEYS, optionalKeysFor('line', inputVersion))
+  }
+  // Path nodes are v15-only; older input versions reject them.
+  if (value.type === 'path') {
+    return inputVersion >= 15
+      && hasKeysWithOptionals(value, PATH_NODE_KEYS, optionalKeysFor('path', inputVersion))
   }
   return false
 }
@@ -609,6 +639,40 @@ function normalizeStrictSceneNode(
     }
   }
 
+  if (value.type === 'path') {
+    const viewBox = clonePathViewBox(value.viewBox)
+    const fill = cloneStrictPathFill(value.fill, inputVersion)
+    if (
+      !isValidPathData(value.d) ||
+      !viewBox ||
+      !fill ||
+      !isHexColor(value.stroke) ||
+      !isValidPathStrokeWidth(value.strokeWidth)
+    ) {
+      return null
+    }
+    if ('dash' in value && !isValidPathDash(value.dash)) return null
+    if ('cap' in value && !isValidLineCap(value.cap)) return null
+    if ('join' in value && !isValidLineJoin(value.join)) return null
+    if ('fillRule' in value && !isValidFillRule(value.fillRule)) return null
+    const pathAppearance = cloneStrictAppearance(value, inputVersion)
+    if (!pathAppearance) return null
+    return {
+      ...geometry,
+      type: 'path',
+      d: value.d,
+      viewBox,
+      fill,
+      stroke: value.stroke,
+      strokeWidth: value.strokeWidth,
+      ...('dash' in value ? { dash: value.dash as number } : {}),
+      ...('cap' in value ? { cap: value.cap as 'round' | 'butt' | 'square' } : {}),
+      ...('join' in value ? { join: value.join as 'round' | 'miter' | 'bevel' } : {}),
+      ...('fillRule' in value ? { fillRule: value.fillRule as 'nonzero' | 'evenodd' } : {}),
+      ...pathAppearance,
+    }
+  }
+
   return null
 }
 
@@ -687,7 +751,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 14,
+    documentVersion: 15,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -751,6 +815,11 @@ export function normalizeFreeformDocumentV13(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v14 document. */
 export function normalizeFreeformDocumentV14(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 14)
+}
+
+/** Strictly validates and clones an already-v15 document. */
+export function normalizeFreeformDocumentV15(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 15)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1017,9 +1086,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v14 object. */
+/** Normalize any supported freeform document version to a fresh v15 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 15) return normalizeFreeformDocumentV15(value)
   if (value.documentVersion === 14) return normalizeFreeformDocumentV14(value)
   if (value.documentVersion === 13) return normalizeFreeformDocumentV13(value)
   if (value.documentVersion === 12) return normalizeFreeformDocumentV12(value)
@@ -1065,7 +1135,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 14,
+    documentVersion: 15,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1098,7 +1168,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 14,
+    documentVersion: 15,
     activeSlideId: document.activeSlideId,
     slides,
   }

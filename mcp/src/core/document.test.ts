@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 14,
+    documentVersion: 15,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(14)
+    expect(result.document.documentVersion).toBe(15)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -197,6 +197,48 @@ describe('validateDocument', () => {
     const outOfBoxNodes = (outOfBox.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>
     ;(outOfBoxNodes[1].points as Array<{ x: number; y: number }>)[1].y = 121
     expect(validateDocument(outOfBox).ok).toBe(false)
+  })
+
+  test('accepts v15 path nodes, summarises them, and rejects them on v14 inputs', () => {
+    const drawn = seedDocument() as unknown as Record<string, unknown>
+    const slide = (drawn.slides as Array<Record<string, unknown>>)[0]
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    const path = {
+      locked: false,
+      hidden: false,
+      type: 'path',
+      x: 72,
+      y: 700,
+      width: 400,
+      height: 80,
+      rotation: 0,
+      scale: 1,
+      viewBox: { x: 0, y: 0, width: 100, height: 20 },
+      fill: { type: 'transparent' },
+      stroke: '#17293c',
+      strokeWidth: 2,
+    }
+    nodes.push(
+      { ...path, id: 'wave-1', name: '波浪线', d: 'M0 10q12.5-10 25 0t25 0 25 0 25 0', dash: 0.5 },
+      { ...path, id: 'icon-1', name: '对勾', width: 80, d: 'M20 6 9 17l-5-5', viewBox: { x: 0, y: 0, width: 24, height: 24 } },
+    )
+    expect(validateDocument(drawn).ok).toBe(true)
+
+    const summary = inspectDocument(drawn)
+    if (!summary.ok) throw new Error(summary.error)
+    expect(summary.slides[0].nodes.slice(-2)).toMatchObject([
+      { id: 'wave-1', type: 'path', d: 'M0 10q12.5-10 25 0t25 0 25 0 25 0' },
+      { id: 'icon-1', type: 'path', icon: 'check' },
+    ])
+
+    const legacy = structuredClone(drawn)
+    legacy.documentVersion = 14
+    expect(validateDocument(legacy).ok).toBe(false)
+
+    const scribbled = structuredClone(drawn)
+    const scribbledNodes = (scribbled.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>
+    scribbledNodes.at(-1)!.d = 'M20 6 9'
+    expect(validateDocument(scribbled).ok).toBe(false)
   })
 
   test('accepts v9 text features, rejects vertical text on v8 inputs', () => {

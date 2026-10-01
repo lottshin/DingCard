@@ -25,6 +25,7 @@ import {
   deleteSceneNodes,
   insertSceneChildren,
   isValidSceneColorPaint,
+  isValidScenePathFill,
   isValidSceneShapeFill,
   reorderNodesAboveAtPath,
   reorderNodesAtPath,
@@ -40,23 +41,30 @@ import { effectiveSceneState } from './sceneSelection'
 import { guidesEqual, normalizeSlideGuides } from './guides'
 import { normalizeRichTextSpans, remapRichTextSpans } from './richText'
 import {
+  clonePathViewBox,
   cloneSceneFilter,
   cloneShadowPaint,
   gradientStopsEquals,
   isValidBlendMode,
   isValidCornerRadius,
   isValidDash,
+  isValidFillRule,
   isValidLineCap,
   isValidLineEndpointCap,
+  isValidLineJoin,
   cloneLinePoints,
   isValidLineHeight,
   isValidLetterSpacing,
   isValidOpacity,
+  isValidPathDash,
+  isValidPathStrokeWidth,
   isValidShape,
   isValidTextStrokeWidth,
+  pathViewBoxEquals,
   sceneFilterEquals,
   shadowPaintEquals,
 } from './appearance'
+import { isValidPathData } from './pathData'
 import type {
   ColorPaint,
   FreeformAction,
@@ -68,6 +76,7 @@ import type {
   FreeformNodeContentPatch,
   FreeformNodeGeometryPatch,
   FreeformNodeStylePatch,
+  FreeformPathElement,
   FreeformSceneLeaf,
   FreeformSceneNode,
   FreeformShapeElement,
@@ -75,6 +84,8 @@ import type {
   FreeformTextElement,
   ImageFraming,
   LinePoint,
+  PathFill,
+  PathViewBox,
   RichTextSpan,
   SceneFilter,
   ScenePath,
@@ -125,7 +136,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 14,
+    documentVersion: 15,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -219,6 +230,39 @@ export function createLineElement(
   }
 }
 
+export interface CreatePathInput {
+  name: string
+  d: string
+  viewBox: PathViewBox
+  /** The box's longer side in px; the other follows the viewBox's aspect. */
+  size: number
+  stroke?: string
+  strokeWidth?: number
+  fill?: PathFill
+}
+
+/** A path node centred on the page, its box matching the drawing's aspect. */
+export function createPathElement(slide: FreeformSlide, input: CreatePathInput): FreeformPathElement {
+  const aspect = input.viewBox.width / input.viewBox.height
+  const width = aspect >= 1 ? input.size : Math.round(input.size * aspect)
+  const height = aspect >= 1 ? Math.round(input.size / aspect) : input.size
+  return {
+    id: crypto.randomUUID(),
+    name: input.name,
+    locked: false,
+    hidden: false,
+    type: 'path',
+    ...centerBox(slide, Math.max(1, width), Math.max(1, height)),
+    rotation: 0,
+    scale: 1,
+    d: input.d,
+    viewBox: { ...input.viewBox },
+    fill: input.fill ?? { type: 'transparent' },
+    stroke: input.stroke ?? '#18181b',
+    strokeWidth: input.strokeWidth ?? 2,
+  }
+}
+
 type UnknownRecord = Record<string, unknown>
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -305,6 +349,10 @@ function cloneShapeFill(fill: ShapeFill): ShapeFill {
     : cloneColorPaint(fill)
 }
 
+function clonePathFill(fill: PathFill): PathFill {
+  return fill.type === 'transparent' ? { type: 'transparent' } : cloneColorPaint(fill)
+}
+
 function shapeFillEquals(left: ShapeFill, right: ShapeFill): boolean {
   if (left === right) return true
   if (left.type !== right.type) return false
@@ -366,7 +414,7 @@ interface NodePatchResult {
   node: FreeformSceneNode
 }
 
-const CONTENT_KEYS = new Set(['text', 'src', 'alt'])
+const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox'])
 const STYLE_KEYS = new Set([
   'fontSize',
   'fontFamily',
@@ -385,6 +433,8 @@ const STYLE_KEYS = new Set([
   'blendMode',
   'dash',
   'cap',
+  'join',
+  'fillRule',
   'startCap',
   'endCap',
   'fit',
@@ -408,6 +458,10 @@ const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'fil
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
+])
+// A path's dash is checked on its own: viewBox units allow dashes under 1.
+const PATH_APPEARANCE_KEYS = new Set([
+  'opacity', 'shadow', 'filter', 'blendMode', 'cap', 'join', 'fillRule',
 ])
 
 /** Validate every v6 appearance key present on a style patch; false rejects. */
@@ -437,6 +491,10 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidDash(value)) return false
     } else if (key === 'cap') {
       if (!isValidLineCap(value)) return false
+    } else if (key === 'join') {
+      if (!isValidLineJoin(value)) return false
+    } else if (key === 'fillRule') {
+      if (!isValidFillRule(value)) return false
     } else if (key === 'startCap' || key === 'endCap') {
       if (value !== null && !isValidLineEndpointCap(value)) return false
     } else if (key === 'stroke') {
@@ -556,6 +614,27 @@ function applyContentPatch(
             alt,
             framing: sourceChanged ? createDefaultImageFraming() : node.framing,
           },
+    }
+  }
+  if (node.type === 'path') {
+    if (
+      Object.keys(record).some((key) => key !== 'd' && key !== 'viewBox') ||
+      ('d' in record && !isValidPathData(record.d))
+    ) {
+      return { ok: false, node }
+    }
+    let viewBox = node.viewBox
+    if ('viewBox' in record) {
+      const cloned = clonePathViewBox(record.viewBox)
+      if (!cloned) return { ok: false, node }
+      viewBox = cloned
+    }
+    const d = 'd' in record ? (record.d as string) : node.d
+    return {
+      ok: true,
+      node: d === node.d && pathViewBoxEquals(viewBox, node.viewBox)
+        ? node
+        : { ...node, d, viewBox },
     }
   }
   return { ok: false, node }
@@ -785,6 +864,38 @@ function applyStylePatch(
     ) && appearanceKeysSame(node, next, patch, LINE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
+  if (node.type === 'path') {
+    const allowed = new Set(['fill', 'stroke', 'strokeWidth', 'dash', ...PATH_APPEARANCE_KEYS])
+    if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
+    // Paths fill with a color paint or nothing; their strokes are hex colors.
+    if ('fill' in patch && !isValidScenePathFill(patch.fill)) return { ok: false, node }
+    if ('stroke' in patch && !isHexColor(patch.stroke)) return { ok: false, node }
+    if ('strokeWidth' in patch && !isValidPathStrokeWidth(patch.strokeWidth)) {
+      return { ok: false, node }
+    }
+    if ('dash' in patch && patch.dash !== null && !isValidPathDash(patch.dash)) {
+      return { ok: false, node }
+    }
+    if (!validAppearancePatch(patch, PATH_APPEARANCE_KEYS)) return { ok: false, node }
+    const { dash: _previousDash, ...undashed } = node
+    const base: FreeformPathElement = {
+      ...('dash' in patch ? undashed : node),
+      ...('fill' in patch ? { fill: clonePathFill(patch.fill as PathFill) } : {}),
+      ...('stroke' in patch ? { stroke: patch.stroke as string } : {}),
+      ...('strokeWidth' in patch ? { strokeWidth: patch.strokeWidth as number } : {}),
+      // `null` restores a solid stroke.
+      ...('dash' in patch && patch.dash !== null ? { dash: patch.dash as number } : {}),
+    }
+    const next = withAppearancePatch(base, patch, PATH_APPEARANCE_KEYS)
+    const same = keys.every((key) =>
+      PATH_APPEARANCE_KEYS.has(key)
+        ? true
+        : key === 'fill'
+          ? paintEquals(node.fill, next.fill)
+          : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+    ) && appearanceKeysSame(node, next, patch, PATH_APPEARANCE_KEYS)
+    return { ok: true, node: same ? node : next }
+  }
   return { ok: false, node }
 }
 
@@ -979,6 +1090,7 @@ function defaultSceneNodeName(element: FreeformElement): string {
   if (element.type === 'text') return '文本'
   if (element.type === 'image') return '图片'
   if (element.type === 'shape') return '形状'
+  if (element.type === 'path') return '图形'
   return element.lineKind === 'arrow' ? '箭头' : '直线'
 }
 
@@ -1096,6 +1208,7 @@ function applyLegacyElementPatch(
     ]),
     shape: new Set(['x', 'y', 'width', 'height', 'rotation', 'shape', 'fill', 'stroke', 'strokeWidth']),
     line: new Set(['x', 'y', 'width', 'height', 'rotation', 'lineKind', 'stroke', 'strokeWidth']),
+    path: new Set(['x', 'y', 'width', 'height', 'rotation']),
   }
   if (!hasOnlyKeys(patch, allowedByType[node.type])) return { ok: false, node }
   if (Object.keys(patch).length === 0) return { ok: true, node }

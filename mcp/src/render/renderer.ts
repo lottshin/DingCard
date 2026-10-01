@@ -173,6 +173,8 @@ export interface InspectedSlide {
   slideId: string
   nodes: Array<{ nodeId: string; rect: Rect }>
   texts: Array<{ nodeId: string; overflowY: number; overflowX: number; fitFontSize: number | null; area: Rect | null }>
+  /** Each path's drawing in its own box's pixels (older render builds leave it out). */
+  paths?: Array<{ nodeId: string; bounds: Rect }>
   imageError: string | null
 }
 

@@ -1092,6 +1092,25 @@ async function openNestedV3Draft(
   await openStoredDrafts(page, [draft])
 }
 
+/** Resolves once the canvas has kept the same box for two frames (a panel change re-fits it a frame later). */
+async function waitForCanvasFit(page: import('@playwright/test').Page) {
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    let last = ''
+    let steady = 0
+    const check = () => {
+      const canvas = document.querySelector('[data-testid="freeform-canvas"]')
+      if (!canvas) return resolve()
+      const box = canvas.getBoundingClientRect()
+      const key = `${box.left},${box.top},${box.width},${box.height}`
+      steady = key === last ? steady + 1 : 0
+      last = key
+      if (steady >= 2) resolve()
+      else requestAnimationFrame(check)
+    }
+    requestAnimationFrame(check)
+  }))
+}
+
 /** Opens an insert panel from the tool rail, inserts from it, and closes it again. */
 async function withToolPanel(
   page: import('@playwright/test').Page,
@@ -1106,6 +1125,7 @@ async function withToolPanel(
   await trigger.click()
   await expect(panel).toHaveCount(0)
   await expect(trigger).toBeFocused()
+  await waitForCanvasFit(page)
 }
 
 async function insertText(page: import('@playwright/test').Page) {
@@ -5554,7 +5574,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(14)
+  expect(storedDocument.documentVersion).toBe(15)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
@@ -11873,6 +11893,41 @@ test.describe('freeform editing chrome', () => {
     await expect.poll(layerOrder).toEqual([above, below])
   })
 
+  test('with both side panels open the bar keeps one row, so selecting never moves the canvas', async ({ page }) => {
+    await openFreeform(page)
+    const bar = page.getByRole('toolbar', { name: '对象工具条' })
+    const canvas = page.getByTestId('freeform-canvas')
+    const elements = page.getByTestId('freeform-elements-tool')
+    await elements.click()
+    await expect(page.getByTestId('freeform-elements-drawer')).toBeVisible()
+    await waitForCanvasFit(page)
+    const idle = await canvas.boundingBox()
+
+    await page.getByTestId('insert-shape-rect').click()
+    await expect(bar).toHaveAttribute('data-subject', 'shape')
+    await waitForCanvasFit(page)
+    expect(await bar.evaluate((node) => (node as HTMLElement).offsetHeight)).toBe(48)
+    expect(await canvas.boundingBox()).toEqual(idle)
+    // What the narrow bar folds away is still in the settings panel; 更多 keeps its name.
+    await expect(bar.getByTestId('ctx-shape-fill')).toBeVisible()
+    await expect(bar.getByTestId('ctx-delete')).toBeVisible()
+    await expect(bar.getByTestId('ctx-order-menu')).toBeHidden()
+    await expect(bar.getByTestId('ctx-more')).toHaveAccessibleName('更多')
+
+    await canvas.click({ position: { x: 8, y: 8 } })
+    await expect(bar).toHaveAttribute('data-subject', 'page')
+    await waitForCanvasFit(page)
+    expect(await canvas.boundingBox()).toEqual(idle)
+
+    // A wider stage brings the folded controls back.
+    await page.getByTestId('freeform-element').click()
+    await elements.click()
+    await expect(page.getByTestId('freeform-elements-drawer')).toHaveCount(0)
+    await expect(bar.getByTestId('ctx-order-menu')).toBeVisible()
+    await expect(bar.getByTestId('ctx-duplicate')).toBeVisible()
+    expect(await bar.evaluate((node) => (node as HTMLElement).offsetHeight)).toBe(48)
+  })
+
   test('the bar locks, unlocks and groups the selection', async ({ page }) => {
     await insertTwoSelectedRectangles(page)
     const bar = page.getByRole('toolbar', { name: '对象工具条' })
@@ -12075,4 +12130,165 @@ test.describe('freeform editing chrome', () => {
     await expect(menu.getByTestId('freeform-context-menu-front').locator('kbd')).toHaveText(']')
     await expect(menu.getByTestId('freeform-context-menu-lock').locator('kbd')).toHaveCount(0)
   })
+})
+
+test('the Elements panel finds icons and drops them in as vector paths to style', async ({ page }) => {
+  await openFreeform(page)
+  const drawer = page.getByTestId('freeform-elements-drawer')
+  await page.getByTestId('freeform-elements-tool').click()
+  await expect(drawer).toBeVisible()
+
+  const search = page.getByTestId('freeform-icon-search')
+  await search.fill('购物')
+  await expect(drawer.locator('.freeform-icon-tile')).toHaveCount(2)
+  await expect(drawer.getByRole('button', { name: '购物车', exact: true })).toBeVisible()
+  await search.fill('没有这种图标')
+  await expect(page.getByTestId('freeform-icon-empty')).toBeVisible()
+  // Escape clears a search before it closes the panel.
+  await search.press('Escape')
+  await expect(search).toHaveValue('')
+  await expect(drawer).toBeVisible()
+
+  await drawer.getByTestId('insert-icon-star').click()
+  const graphic = page.getByTestId('freeform-path')
+  const drawing = graphic.locator('path')
+  await expect(graphic).toHaveCount(1)
+  await expect(selectedFreeformElements(page)).toHaveCount(1)
+  await expect(page.getByTestId('freeform-context-toolbar')).toHaveAttribute('data-subject', 'path')
+  // A 24-unit icon in a 162px box (15% of the page's short side), stroked at 2 units.
+  await expect.poll(() => freeformElementBoxes(page)).toEqual([{ x: 459, y: 639, width: 162, height: 162 }])
+  await expect(drawing).toHaveAttribute('stroke-width', '13.5')
+  await expect(drawing).toHaveAttribute('fill', 'none')
+  await expect(drawing).toHaveAttribute('stroke-linejoin', 'round')
+
+  const stroke = page.getByTestId('inspector-stroke')
+  const width = stroke.getByLabel('描边宽', { exact: true })
+  await expect(width).toHaveValue('13.5')
+  await width.fill('27')
+  await width.press('Enter')
+  await expect(drawing).toHaveAttribute('stroke-width', '27')
+  await stroke.getByTestId('path-join-miter').click()
+  await expect(drawing).toHaveAttribute('stroke-linejoin', 'miter')
+  await stroke.getByLabel('虚线', { exact: true }).fill('20')
+  await stroke.getByLabel('虚线', { exact: true }).press('Enter')
+  await expect(drawing).toHaveAttribute('stroke-dasharray', '20 20')
+  await stroke.getByTestId('path-dash-clear').click()
+  await expect(drawing).not.toHaveAttribute('stroke-dasharray', /./)
+
+  await page.getByTestId('path-fill-paint').getByRole('button', { name: '纯色', exact: true }).click()
+  await expect(drawing).toHaveAttribute('fill', /^#/)
+
+  // Stretching from an edge widens the drawing; the stroke keeps one width.
+  await setSelectedElementBox(page, 400, 600, 324, 162)
+  await expect(drawing).toHaveAttribute('stroke-width', /^38\.18/)
+  await expect(drawing).toHaveAttribute('d', /^M/)
+
+  await page.getByTestId('freeform-layers-tool').click()
+  await expect(page.getByRole('treeitem', { name: '星星', exact: true })).toHaveCount(1)
+})
+
+test('a path keeps its proportions from a corner handle and stretches from an edge', async ({ page }) => {
+  await openFreeform(page)
+  await withToolPanel(page, 'elements', (panel) => panel.getByTestId('insert-icon-heart').click())
+  await setSelectedElementBox(page, 100, 100, 400, 400)
+  await expect.poll(() => freeformElementBoxes(page)).toEqual([{ x: 100, y: 100, width: 400, height: 400 }])
+
+  const drag = async (testId: string, dx: number, dy: number) => {
+    const box = await page.getByTestId(testId).boundingBox()
+    expect(box).toBeTruthy()
+    const start = { x: Math.round(box!.x + box!.width / 2), y: Math.round(box!.y + box!.height / 2) }
+    await page.mouse.move(start.x, start.y)
+    await page.mouse.down()
+    await page.mouse.move(start.x + dx / 2, start.y + dy / 2)
+    await page.mouse.move(start.x + dx, start.y + dy)
+    await page.mouse.up()
+  }
+
+  await drag('freeform-selection-resize', 90, 10)
+  const [cornered] = await freeformElementBoxes(page)
+  expect(cornered.width).toBeGreaterThan(420)
+  expect(cornered.width).toBeCloseTo(cornered.height, 6)
+
+  await drag('freeform-selection-resize-e', 60, 0)
+  const [edged] = await freeformElementBoxes(page)
+  expect(edged.width).toBeGreaterThan(cornered.width + 20)
+  expect(edged.height).toBeCloseTo(cornered.height, 6)
+})
+
+test('我的项目 imports a v15 document with icons and custom paths', async ({ page }) => {
+  await page.goto('/#/edit')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openFreeform(page)
+  await page.getByTestId('account-login').click()
+  await registerUser(page, `paths-${Date.now()}`)
+
+  const pathNode = {
+    locked: false,
+    hidden: false,
+    type: 'path',
+    rotation: 0,
+    scale: 1,
+    stroke: '#17293c',
+    strokeWidth: 2,
+  }
+  const importedDocument = {
+    documentVersion: 15,
+    activeSlideId: 'path-slide-1',
+    slides: [{
+      id: 'path-slide-1',
+      name: '图形页',
+      width: 1080,
+      height: 1440,
+      background: { type: 'solid', color: '#ffffff' },
+      nodes: [
+        {
+          ...pathNode,
+          id: 'path-icon',
+          name: '对勾',
+          x: 100,
+          y: 100,
+          width: 240,
+          height: 240,
+          d: 'M20 6 9 17l-5-5',
+          viewBox: { x: 0, y: 0, width: 24, height: 24 },
+          fill: { type: 'transparent' },
+        },
+        {
+          ...pathNode,
+          id: 'path-blob',
+          name: '色块',
+          x: 400,
+          y: 400,
+          width: 400,
+          height: 200,
+          d: 'M0 50a50 50 0 1 0 100 0a50 50 0 1 0-100 0z',
+          viewBox: { x: 0, y: 0, width: 100, height: 100 },
+          fill: { type: 'linear-gradient', from: '#fde68a', to: '#f97316', angle: 90 },
+          strokeWidth: 0,
+        },
+      ],
+    }],
+  }
+
+  await page.goto('/#/projects')
+  await page.getByTestId('project-import-input').setInputFiles({
+    name: 'paths.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(importedDocument)),
+  })
+
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
+  const paths = page.getByTestId('freeform-path').locator('path')
+  await expect(paths).toHaveCount(2)
+  // The 24-unit check mark is redrawn ten times larger; the circle stretches into an ellipse.
+  await expect(paths.nth(0)).toHaveAttribute('d', 'M200 60 90 170l-50 -50')
+  await expect(paths.nth(0)).toHaveAttribute('stroke-width', '20')
+  await expect(paths.nth(1)).toHaveAttribute('d', 'M0 100a200 100 0 1 0 400 0a200 100 0 1 0 -400 0z')
+  await expect(paths.nth(1)).toHaveAttribute('fill', /^url\(#/)
+  await expect(paths.nth(1)).toHaveAttribute('stroke', 'none')
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+
+  await page.reload()
+  await expect(page.getByTestId('freeform-path').locator('path').nth(0)).toHaveAttribute('d', 'M200 60 90 170l-50 -50')
 })

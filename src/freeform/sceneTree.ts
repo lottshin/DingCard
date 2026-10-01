@@ -8,20 +8,26 @@ import { isHexColor } from './paint'
 import { normalizeRichTextSpans } from './richText'
 import {
   cloneGradientStops,
+  clonePathViewBox,
   cloneSceneFilter,
   cloneShadowPaint,
   isValidBlendMode,
   isValidCornerRadius,
   isValidDash,
+  isValidFillRule,
   isValidLineCap,
   isValidLineEndpointCap,
+  isValidLineJoin,
   cloneLinePoints,
   isValidLineHeight,
   isValidLetterSpacing,
   isValidOpacity,
+  isValidPathDash,
+  isValidPathStrokeWidth,
   isValidShape,
   isValidTextStrokeWidth,
 } from './appearance'
+import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
   SCENE_EPSILON,
@@ -40,6 +46,7 @@ import type { Matrix2D } from './sceneTransform'
 import type {
   ColorPaint,
   FreeformGroupNode,
+  FreeformPathElement,
   FreeformSceneLeaf,
   FreeformSceneNode,
   FreeformTextElement,
@@ -526,6 +533,15 @@ function copyColorPaint(paint: ColorPaint): ColorPaint {
   return clonePaint(paint)
 }
 
+/** Own a path's nested values (viewBox, fill) so copies share no references. */
+function ownPathLeaf(leaf: FreeformPathElement): FreeformPathElement {
+  return ownLeafAppearance({
+    ...leaf,
+    viewBox: { ...leaf.viewBox },
+    fill: leaf.fill.type === 'transparent' ? { type: 'transparent' } : clonePaint(leaf.fill),
+  })
+}
+
 function copyShapeFill(fill: ShapeFill): ShapeFill {
   if (fill.type === 'transparent') return { type: 'transparent' }
   return fill.type === 'image'
@@ -568,6 +584,7 @@ function cloneSceneNode(
       points: node.points.map((point) => ({ ...point })),
     })
   }
+  if (node.type === 'path') return ownPathLeaf({ ...node, id })
   return ownLeafAppearance({ ...node, id })
 }
 
@@ -601,6 +618,10 @@ function copySceneNodeValue(node: FreeformSceneNode, depth: number): FreeformSce
   if (node.type === 'shape') {
     return ownLeafAppearance({ ...node, fill: copyShapeFill(node.fill) })
   }
+  if (node.type === 'line' && node.points) {
+    return ownLeafAppearance({ ...node, points: node.points.map((point) => ({ ...point })) })
+  }
+  if (node.type === 'path') return ownPathLeaf(node)
   return ownLeafAppearance({ ...node })
 }
 
@@ -861,6 +882,10 @@ const LINE_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'lineKind', 'stroke', 'strokeWidth',
 ])
+const PATH_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'd', 'viewBox', 'fill', 'stroke', 'strokeWidth',
+])
 
 function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
   const actualKeys = Object.keys(value)
@@ -936,6 +961,17 @@ const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   ) !== null,
 }
 
+const PATH_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
+  dash: (record) => isValidPathDash(record.dash),
+  cap: (record) => isValidLineCap(record.cap),
+  join: (record) => isValidLineJoin(record.join),
+  fillRule: (record) => isValidFillRule(record.fillRule),
+}
+
 export function isValidSceneColorPaint(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const paint = value as Record<string, unknown>
@@ -960,6 +996,14 @@ export function isValidSceneColorPaint(value: unknown): boolean {
     typeof paint.angle === 'number' &&
     Number.isFinite(paint.angle)
   )
+}
+
+/** A path fill: a color paint or no fill; paths take no picture fills. */
+export function isValidScenePathFill(value: unknown): boolean {
+  if (isValidSceneColorPaint(value)) return true
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const fill = value as Record<string, unknown>
+  return fill.type === 'transparent' && hasExactKeys(fill, TRANSPARENT_PAINT_KEYS)
 }
 
 export function isValidSceneShapeFill(value: unknown): boolean {
@@ -1016,6 +1060,16 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
       (node.lineKind === 'line' || node.lineKind === 'arrow') &&
       typeof node.stroke === 'string' &&
       Number.isFinite(node.strokeWidth)
+    )
+  }
+  if (node.type === 'path') {
+    return (
+      hasValidOptionalFields(record, PATH_NODE_KEYS, PATH_OPTIONAL_FIELD_CHECKS) &&
+      isValidPathData(node.d) &&
+      clonePathViewBox(node.viewBox) !== null &&
+      isValidScenePathFill(node.fill) &&
+      isHexColor(node.stroke) &&
+      isValidPathStrokeWidth(node.strokeWidth)
     )
   }
   return false

@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
-import type { FreeformTextElement } from '../../../src/freeform/types'
+import type { FreeformPathElement, FreeformTextElement } from '../../../src/freeform/types'
+import { listIcons } from '../core/icons'
 import { createDocumentFromOutline } from '../core/outline'
 import { instantiateTemplate } from '../core/templates'
 import { checkDocument } from './check'
@@ -318,6 +319,40 @@ describe('checkDocument', () => {
       expect(fixed.issues.map((issue) => issue.kind)).toEqual(['low-contrast'])
       const fixedLead = fixed.document!.slides[2].nodes.find((node) => node.id === lead.id) as FreeformTextElement
       expect(fixedLead.fontSize).toBe(overflow.fitFontSize)
+    },
+    420_000,
+  )
+
+  test(
+    'draws icons and reports a drawing that leaves its box',
+    async () => {
+      const generated = createDocumentFromOutline('# 图标\n\n## 第一节\n- 要点一', 'editorial-freeform')
+      if (!generated.ok) throw new Error(generated.error)
+      const slide = generated.document.slides[1]
+      const star = listIcons({ ids: ['star'] }).example as FreeformPathElement
+      const icons: FreeformPathElement[] = [
+        { ...star, x: 860, y: 1180, width: 120, height: 120, stroke: '#d92d20', strokeWidth: 2.5 },
+        // Drawn in a 48-unit grid but given the 24-unit icon box: it spills out.
+        { ...star, id: 'icon-spill', name: '溢出', x: 700, y: 1180, width: 120, height: 120, d: 'M4 4h40v40H4z' },
+      ]
+      const drawn = reduceFreeformDocument(generated.document, {
+        type: 'node/insert-children',
+        slideId: slide.id,
+        parentPath: [],
+        nodes: icons,
+      })
+      expect(drawn).not.toBe(generated.document)
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-icons-'))
+      const plain = await renderDocument(generated.document, { outputDir, baseName: 'plain', slideIds: [slide.id] })
+      const withIcons = await renderDocument(drawn, { outputDir, baseName: 'icons', slideIds: [slide.id] })
+      if (!plain.ok || !withIcons.ok) throw new Error('expected both renders to succeed')
+      expect(readFileSync(withIcons.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
+
+      const checked = await checkDocument(drawn)
+      if (!checked.ok) throw new Error(checked.error)
+      expect(checked.issues.map((issue) => [issue.kind, issue.node])).toEqual([['path-overflow', '溢出']])
+      expect(checked.issues[0].message).toContain('width: 40, height: 40')
     },
     420_000,
   )

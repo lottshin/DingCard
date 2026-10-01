@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest'
-import type { FreeformDocument, FreeformSceneNode, FreeformTextElement } from '../../../src/freeform/types'
+import type {
+  FreeformDocument,
+  FreeformPathElement,
+  FreeformSceneNode,
+  FreeformTextElement,
+} from '../../../src/freeform/types'
 import type { InspectedSlide } from '../render/renderer'
 import { contrastRatio, layoutIssues } from './layoutIssues'
 
@@ -43,9 +48,31 @@ function card(id: string, color: string, box: { x: number; y: number; width: num
   }
 }
 
+function drawing(id: string, overrides: Partial<FreeformPathElement> = {}): FreeformPathElement {
+  return {
+    id,
+    name: id,
+    locked: false,
+    hidden: false,
+    type: 'path',
+    x: 100,
+    y: 600,
+    width: 200,
+    height: 200,
+    rotation: 0,
+    scale: 1,
+    d: 'M2 2h20v20H2z',
+    viewBox: { x: 0, y: 0, width: 24, height: 24 },
+    fill: { type: 'transparent' },
+    stroke: '#111111',
+    strokeWidth: 2,
+    ...overrides,
+  }
+}
+
 function deck(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 14,
+    documentVersion: 15,
     activeSlideId: 'page',
     slides: [{ id: 'page', name: '第 1 页', width: 1080, height: 1440, background: { type: 'solid', color: '#ffffff' }, nodes }],
   }
@@ -138,5 +165,46 @@ describe('layout issues', () => {
     const document = deck([text('导语', { text: '第一屏负责给出判断，后面的页面再交代过程。' }), text('空的', { text: '  ' })])
     const issues = layoutIssues(document, measured([], [], '图片加载失败'))
     expect(kinds(issues)).toEqual(['sample-text:导语', 'empty-text:空的', 'image-failed:'])
+  })
+})
+
+describe('path issues', () => {
+  const box = { x: 100, y: 600, width: 200, height: 200 }
+
+  test('a drawing that leaves its box says which viewBox would hold it', () => {
+    const document = deck([drawing('图形', { d: 'M0 0h48v48H0z' })])
+    const inspected = measured([{ id: '图形', rect: box }], [])
+    inspected[0].paths = [{ nodeId: '图形', bounds: { x: 0, y: 0, width: 400, height: 400 } }]
+    const issues = layoutIssues(document, inspected)
+    expect(kinds(issues)).toEqual(['path-overflow:图形'])
+    expect(issues[0].message).toContain('{ x: 0, y: 0, width: 48, height: 48 }')
+
+    // A drawing inside its box, a little padding included, is fine.
+    inspected[0].paths = [{ nodeId: '图形', bounds: { x: 16.7, y: 16.7, width: 166.6, height: 166.6 } }]
+    expect(layoutIssues(document, inspected)).toEqual([])
+  })
+
+  test('a path with neither fill nor stroke cannot be seen', () => {
+    const document = deck([drawing('隐形', { strokeWidth: 0 }), drawing('实心', { strokeWidth: 0, fill: { type: 'solid', color: '#111111' } })])
+    expect(kinds(layoutIssues(document, measured([], [])))).toEqual(['empty-path:隐形'])
+  })
+
+  test('a filled drawing covers text, an outline does not', () => {
+    const covered = { x: 100, y: 600, width: 400, height: 100 }
+    const document = deck([
+      text('标题', { ...covered }),
+      drawing('描边', { ...box }),
+      drawing('色块', { ...box, x: 300, fill: { type: 'solid', color: '#000000' } }),
+    ])
+    const issues = layoutIssues(document, measured(
+      [
+        { id: '标题', rect: covered },
+        { id: '描边', rect: box },
+        { id: '色块', rect: { ...box, x: 300 } },
+      ],
+      [{ id: '标题', area: { x: 108, y: 608, width: 384, height: 48 } }],
+    ))
+    expect(kinds(issues)).toEqual(['covered-text:标题'])
+    expect(issues[0].message).toContain('色块')
   })
 })

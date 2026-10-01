@@ -1,9 +1,10 @@
-import { useEffect, useRef, type ReactNode } from 'react'
-import { t } from '../i18n'
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { getLang, t } from '../i18n'
 import { Select } from '../Select'
 import { FONTS } from '../theme'
 import {
   CopyIcon,
+  GraphicIcon,
   ImageIcon,
   LineToolIcon,
   LockIcon,
@@ -24,6 +25,7 @@ import type {
   FreeformImageElement,
   FreeformLineElement,
   FreeformNodeStylePatch,
+  FreeformPathElement,
   FreeformShapeElement,
   FreeformTextElement,
   ShapeFill,
@@ -36,6 +38,7 @@ export type ContextToolbarSubject =
   | { kind: 'shape'; node: FreeformShapeElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'image'; node: FreeformImageElement; canCrop: boolean; cropDisabledReason: string | null }
   | { kind: 'line'; node: FreeformLineElement; strokeWidth: number }
+  | { kind: 'path'; node: FreeformPathElement; strokeWidth: number }
   | { kind: 'group'; name: string }
   | { kind: 'multi'; count: number }
   | { kind: 'locked'; name: string }
@@ -112,8 +115,29 @@ function PathIcon({ d, viewBox = '0 0 20 20' }: { d: string; viewBox?: string })
   )
 }
 
-function Divider() {
-  return <span className="ctx-divider" aria-hidden="true" />
+function Divider({ className }: { className?: string }) {
+  return <span className={className ? `ctx-divider ${className}` : 'ctx-divider'} aria-hidden="true" />
+}
+
+/** How many fold steps freeform.css has for a bar still too narrow for one row. */
+const FOLD_STEPS = 6
+
+/**
+ * Keep the bar to one row: show everything, then hide the next set of
+ * less-needed controls (the 更多 label, the position and order menus,
+ * duplicate and lock, secondary number fields, delete, the selection's name)
+ * until it stops wrapping. It runs before paint, so the canvas below never
+ * jumps when the selection changes; everything folded away is still in the
+ * settings panel, the right-click menu or a shortcut.
+ */
+function foldToOneRow(bar: HTMLElement) {
+  const oneRow = Number.parseFloat(getComputedStyle(bar).minHeight) + 1
+  const steps: string[] = []
+  bar.removeAttribute('data-fold')
+  while (bar.offsetHeight > oneRow && steps.length < FOLD_STEPS) {
+    steps.push(String(steps.length + 1))
+    bar.setAttribute('data-fold', steps.join(' '))
+  }
 }
 
 /** A compact number field: a glyph, the value, and an optional unit. */
@@ -217,6 +241,37 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
     else root.removeAttribute('inert')
   }, [suspended])
 
+  // Refold when what the bar holds changes...
+  const foldKey = [
+    subject.kind,
+    'node' in subject ? subject.node.id : '',
+    subject.kind === 'shape' ? `${subject.node.shape} ${subject.node.fill.type}` : '',
+    'name' in subject ? subject.name : '',
+    'count' in subject ? subject.count : '',
+    props.canAlign,
+    getLang(),
+  ].join('|')
+  useLayoutEffect(() => {
+    if (rootRef.current) foldToOneRow(rootRef.current)
+  }, [foldKey])
+
+  // ...and when the stage it sits on gets wider or narrower. The pane is
+  // watched rather than the bar, whose height folding itself changes.
+  useEffect(() => {
+    const bar = rootRef.current
+    const pane = bar?.parentElement
+    if (!bar || !pane) return
+    let width = -1
+    const observer = new ResizeObserver(() => {
+      const next = pane.getBoundingClientRect().width
+      if (next === width) return
+      width = next
+      foldToOneRow(bar)
+    })
+    observer.observe(pane)
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <div
       ref={rootRef}
@@ -246,7 +301,7 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
             <div className="ctx-stepper">
               <button
                 type="button"
-                className="ctx-btn is-small"
+                className="ctx-btn is-small ctx-fold-details"
                 aria-label={t('缩小字号')}
                 title={t('缩小字号')}
                 onClick={() => props.onProperty({ property: 'fontSize', value: nextFontSize(subject.fontSize, -1) })}
@@ -264,7 +319,7 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
               />
               <button
                 type="button"
-                className="ctx-btn is-small"
+                className="ctx-btn is-small ctx-fold-details"
                 aria-label={t('放大字号')}
                 title={t('放大字号')}
                 onClick={() => props.onProperty({ property: 'fontSize', value: nextFontSize(subject.fontSize, 1) })}
@@ -361,6 +416,7 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
               min={0}
               max={Number.MAX_VALUE}
               resetKey={resetKey}
+              className="ctx-fold-details"
               onCommit={(value) => props.onProperty({ property: 'strokeWidth', value })}
             />
             {subject.node.shape === 'rect' && (
@@ -371,6 +427,7 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
                 min={0}
                 max={2000}
                 resetKey={resetKey}
+                className="ctx-fold-details"
                 onCommit={(value) => props.onStyle({ cornerRadius: value })}
               />
             )}
@@ -426,6 +483,7 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
               min={Number.MIN_VALUE}
               max={Number.MAX_VALUE}
               resetKey={resetKey}
+              className="ctx-fold-details"
               onCommit={(value) => props.onProperty({ property: 'strokeWidth', value })}
             />
             <ToolbarButton
@@ -435,6 +493,37 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
             >
               <PathIcon d="M3 10h13M12 6l4 4-4 4" />
             </ToolbarButton>
+          </>
+        )}
+
+        {subject.kind === 'path' && (
+          <>
+            <SubjectChip icon={<GraphicIcon />} label={t('图形')} />
+            <Divider />
+            <span className="ctx-label">{t('填充')}</span>
+            <ColorPickerButton
+              label={t('图形填充颜色')}
+              testId="ctx-path-fill"
+              color={subject.node.fill.type === 'transparent' ? 'transparent' : paintFallbackColor(subject.node.fill)}
+              onChange={(color) => props.onStyle({ fill: { type: 'solid', color } })}
+            />
+            <span className="ctx-label">{t('描边')}</span>
+            <ColorPickerButton
+              label={t('图形描边颜色')}
+              testId="ctx-path-stroke"
+              color={subject.node.stroke}
+              onChange={(stroke) => props.onStyle({ stroke })}
+            />
+            <ToolbarNumber
+              label={t('描边粗细')}
+              glyph="stroke"
+              value={subject.strokeWidth}
+              min={0}
+              max={Number.MAX_VALUE}
+              resetKey={resetKey}
+              className="ctx-fold-details"
+              onCommit={(value) => props.onProperty({ property: 'strokeWidth', value })}
+            />
           </>
         )}
 
@@ -483,35 +572,38 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
           )}
           {subject.kind !== 'locked' && (
             <>
-              {props.canAlign && (
+              <div className="ctx-fold-menus">
+                {props.canAlign && (
+                  <FreeformInsertMenu
+                    isActive={props.isActive}
+                    testId="ctx-align-menu"
+                    label={t('位置')}
+                    icon={<PathIcon d="M4 3v14M7 6.5h9M7 13.5h5.5" />}
+                    options={ALIGN_OPTIONS
+                      .filter((option) => props.canDistribute || !option.id.startsWith('distribute'))
+                      .map((option) => ({ id: option.id, label: option.label, icon: <PathIcon d={option.icon} /> }))}
+                    onSelect={(id) => {
+                      if (id === 'distribute-h') props.onDistribute('horizontal')
+                      else if (id === 'distribute-v') props.onDistribute('vertical')
+                      else props.onAlign(id)
+                    }}
+                  />
+                )}
                 <FreeformInsertMenu
                   isActive={props.isActive}
-                  testId="ctx-align-menu"
-                  label={t('位置')}
-                  icon={<PathIcon d="M4 3v14M7 6.5h9M7 13.5h5.5" />}
-                  options={ALIGN_OPTIONS
-                    .filter((option) => props.canDistribute || !option.id.startsWith('distribute'))
-                    .map((option) => ({ id: option.id, label: option.label, icon: <PathIcon d={option.icon} /> }))}
-                  onSelect={(id) => {
-                    if (id === 'distribute-h') props.onDistribute('horizontal')
-                    else if (id === 'distribute-v') props.onDistribute('vertical')
-                    else props.onAlign(id)
-                  }}
+                  testId="ctx-order-menu"
+                  label={t('层级')}
+                  icon={<PathIcon d="m10 3.5 6.5 3.25L10 10 3.5 6.75zM3.5 10.25 10 13.5l6.5-3.25M3.5 13.75 10 17l6.5-3.25" />}
+                  options={ORDER_OPTIONS.map((option) => ({ id: option.id, label: option.label, icon: <PathIcon d={option.icon} /> }))}
+                  onSelect={props.onOrder}
                 />
-              )}
-              <FreeformInsertMenu
-                isActive={props.isActive}
-                testId="ctx-order-menu"
-                label={t('层级')}
-                icon={<PathIcon d="m10 3.5 6.5 3.25L10 10 3.5 6.75zM3.5 10.25 10 13.5l6.5-3.25M3.5 13.75 10 17l6.5-3.25" />}
-                options={ORDER_OPTIONS.map((option) => ({ id: option.id, label: option.label, icon: <PathIcon d={option.icon} /> }))}
-                onSelect={props.onOrder}
-              />
-              <Divider />
+                <Divider />
+              </div>
               <ToolbarButton
                 label={t('复制一份')}
                 title={t('复制一份（{keys}）', { keys: shortcutLabel('D', { mod: true }) })}
                 testId="ctx-duplicate"
+                className="ctx-fold-actions"
                 onClick={props.onDuplicate}
               >
                 <CopyIcon />
@@ -522,6 +614,7 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
             label={subject.kind === 'locked' ? t('解锁对象') : t('锁定对象')}
             pressed={subject.kind === 'locked'}
             testId="ctx-lock"
+            className={subject.kind === 'locked' ? undefined : 'ctx-fold-actions'}
             onClick={props.onToggleLock}
           >
             <LockIcon />
@@ -531,12 +624,13 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
               label={t('删除对象')}
               title={t('删除对象（{keys}）', { keys: DELETE_KEY })}
               testId="ctx-delete"
+              className="ctx-fold-delete"
               onClick={props.onDelete}
             >
               <TrashIcon />
             </ToolbarButton>
           )}
-          <Divider />
+          <Divider className={subject.kind === 'locked' ? undefined : 'ctx-fold-delete'} />
         </>
       )}
         <button

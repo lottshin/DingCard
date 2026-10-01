@@ -103,3 +103,50 @@ describe('style clipboard', () => {
     expect(pasteStylePatch(copied, 'group')).toEqual({})
   })
 })
+
+describe('style clipboard with paths', () => {
+  const pathNode = {
+    ...base,
+    width: 96,
+    height: 96,
+    type: 'path',
+    d: 'M20 6 9 17l-5-5',
+    viewBox: { x: 0, y: 0, width: 24, height: 24 },
+    fill: { type: 'transparent' },
+    stroke: '#1d4ed8',
+    strokeWidth: 2,
+    dash: 1,
+    join: 'miter',
+  } as FreeformSceneNode
+
+  it('copies a path stroke in page pixels', () => {
+    expect(styleKeysForNodeType('path')).toEqual(expect.arrayContaining(['fill', 'join', 'fillRule', 'opacity']))
+    expect(copyStylePatch(pathNode)).toEqual({
+      fill: { type: 'transparent' },
+      stroke: '#1d4ed8',
+      strokeWidth: 8,
+      dash: 4,
+      join: 'miter',
+    })
+  })
+
+  it('pastes into a path in its viewBox units and drops what a path cannot take', () => {
+    const fromLine = pasteStylePatch({ stroke: '#000000', strokeWidth: 6, dash: 3, cap: 'butt' }, 'path', 3)
+    expect(fromLine).toEqual({ stroke: '#000000', strokeWidth: 2, dash: 1, cap: 'butt' })
+
+    const fromShape = pasteStylePatch({
+      fill: { type: 'image', src: 'a.png', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } },
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 8,
+    }, 'path', 4)
+    expect(fromShape).toEqual({ strokeWidth: 0 })
+
+    // A path's pixel stroke lands as-is on a shape.
+    expect(pasteStylePatch(copyStylePatch(pathNode)!, 'shape')).toEqual({
+      fill: { type: 'transparent' },
+      stroke: '#1d4ed8',
+      strokeWidth: 8,
+    })
+  })
+})

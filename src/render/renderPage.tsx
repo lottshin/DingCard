@@ -25,8 +25,9 @@
 //   window.__DINGCARD_RENDER__ = { document, inspect: true }
 //     → mounts every slide the same way but exports nothing: it measures the
 //       laid-out page instead (each node's box, each text's lines, whether
-//       the words overflow their box and the size at which they would fit)
-//       and writes { ok: true; inspected: InspectedSlide[] }.
+//       the words overflow their box and the size at which they would fit,
+//       where each path's drawing lands in its box) and writes
+//       { ok: true; inspected: InspectedSlide[] }.
 
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -84,6 +85,8 @@ export interface InspectedSlide {
     /** The visible lines (clipped to the box), or null for an empty text. */
     area: Rect | null
   }>
+  /** Each path's drawing (its geometry, stroke left out) in its own box's pixels. */
+  paths: Array<{ nodeId: string; bounds: Rect }>
   /** Pictures that didn't load. */
   imageError: string | null
 }
@@ -147,9 +150,21 @@ function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: str
   const origin = artboard.getBoundingClientRect()
   const nodes: InspectedSlide['nodes'] = []
   const texts: InspectedSlide['texts'] = []
+  const paths: InspectedSlide['paths'] = []
   for (const element of Array.from(artboard.querySelectorAll<HTMLElement>('[data-preview-node-id]'))) {
     const nodeId = element.dataset.previewNodeId!
     nodes.push({ nodeId, rect: relativeRect(element.getBoundingClientRect(), origin) })
+    // The path is drawn in box pixels, so its own bounding box is box-relative.
+    const drawing = element.querySelector<SVGPathElement>(':scope > .freeform-preview-path > path')
+    if (drawing) {
+      const bounds = drawing.getBBox()
+      const round = (value: number) => Math.round(value * 10) / 10
+      paths.push({
+        nodeId,
+        bounds: { x: round(bounds.x), y: round(bounds.y), width: round(bounds.width), height: round(bounds.height) },
+      })
+      continue
+    }
     const box = element.querySelector<HTMLElement>(':scope > .freeform-preview-textbox')
     if (!box) continue
     const overflowY = Math.max(0, box.scrollHeight - box.clientHeight)
@@ -186,7 +201,7 @@ function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: str
     ), origin)
     texts.push({ nodeId, overflowY, overflowX, fitFontSize, area })
   }
-  return { slideId, nodes, texts, imageError }
+  return { slideId, nodes, texts, paths, imageError }
 }
 
 function waitForDoubleFrame(): Promise<void> {
