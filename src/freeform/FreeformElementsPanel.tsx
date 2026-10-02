@@ -1,6 +1,7 @@
 import { memo, useMemo, useState, type DragEvent } from 'react'
 import { useLang, t } from '../i18n'
 import { SearchIcon, ShapePreviewIcon } from '../ui/icons'
+import { COLLAGE_LAYOUTS, collageById } from './collageLayouts'
 import {
   DECORATION_CATEGORIES,
   DECORATIONS,
@@ -17,6 +18,7 @@ import type { FreeformLineElement, FreeformShapeElement, FreeformSlide } from '.
 export type ElementPick =
   | { kind: 'shape'; id: FreeformShapeElement['shape'] }
   | { kind: 'line'; id: FreeformLineElement['lineKind'] }
+  | { kind: 'collage'; id: string }
   | { kind: 'decoration'; id: string }
   | { kind: 'icon'; id: string }
 
@@ -48,6 +50,7 @@ export function droppedElement(dataTransfer: DataTransfer): ElementPick | null {
     if (typeof value.id !== 'string') return null
     if (value.kind === 'shape' && SHAPES.some((shape) => shape.id === value.id)) return value as ElementPick
     if (value.kind === 'line' && LINES.some((line) => line.id === value.id)) return value as ElementPick
+    if (value.kind === 'collage' && collageById(value.id)) return value as ElementPick
     if (value.kind === 'decoration' && DECORATIONS.some((decoration) => decoration.id === value.id)) return value as ElementPick
     if (value.kind === 'icon' && ICONS.some((icon) => icon.id === value.id)) return value as ElementPick
     return null
@@ -106,10 +109,11 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
   const searching = query.trim().length > 0
   const shapes = useMemo(() => SHAPES.filter((shape) => !searching || matchesLabel(shape.label, query)), [query, searching, lang])
   const lines = useMemo(() => LINES.filter((line) => !searching || matchesLabel(line.label, query)), [query, searching, lang])
+  const collages = useMemo(() => COLLAGE_LAYOUTS.filter((layout) => !searching || matchesLabel(layout.label, query)), [query, searching, lang])
   const decorations = useMemo(() => searchDecorations(query), [query])
   const icons = useMemo(() => searchIcons(query), [query])
   const previews = useMemo(() => new Map(DECORATIONS.map((decoration) => [decoration.id, previewSlide(decoration, language)])), [language])
-  const nothing = shapes.length + lines.length + decorations.length + icons.length === 0
+  const nothing = shapes.length + lines.length + collages.length + decorations.length + icons.length === 0
 
   return (
     <>
@@ -159,6 +163,42 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
               >
                 <ShapePreviewIcon shape={line.id} />
                 <span>{t(line.label)}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {collages.length > 0 && (
+        <>
+          <div className="freeform-drawer-section">{t('拼图')}</div>
+          <div className="freeform-element-tiles" role="group" aria-label={t('拼图')}>
+            {collages.map((layout) => (
+              <button
+                key={layout.id}
+                type="button"
+                className="freeform-element-tile"
+                data-testid={`insert-collage-${layout.id}`}
+                {...dragProps({ kind: 'collage', id: layout.id })}
+                onClick={() => onPick({ kind: 'collage', id: layout.id })}
+              >
+                <span
+                  className="collage-preview"
+                  aria-hidden="true"
+                  style={{ aspectRatio: `${layout.aspect}` }}
+                >
+                  {layout.cells.map((cell, index) => (
+                    <span
+                      key={index}
+                      style={{
+                        left: `${cell.x * 100}%`,
+                        top: `${cell.y * 100}%`,
+                        width: `${cell.width * 100}%`,
+                        height: `${cell.height * 100}%`,
+                      }}
+                    />
+                  ))}
+                </span>
+                <span>{t(layout.label)}</span>
               </button>
             ))}
           </div>

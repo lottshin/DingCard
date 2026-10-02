@@ -29,6 +29,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `list_decorations` | 查内置装饰素材（48 个，和编辑器「元素」面板同一套）：手绘线条、贴纸、标签。不带参数列出全部，`query` 用中英文关键词搜，`category` 只看一类，`ids` 按 id 取；每个带宽高比 `aspect`、本来的 `color`、标签的示例 `text`、能否单独拉伸 `stretches` 和默认宽度（见下文「装饰素材」）。 |
 | `add_decorations` | 把装饰素材放到一页上，一次可以放多个：每项给 `decoration`、`x`、`y`、`width`，可选 `color`、`text`、`rotation`、`below`（垫在某个顶层节点下面）；返回每个的 `nodeId`、`path` 和盒子。 |
 | `list_text_styles` | 列出 16 套现成的花字：每套有 `id`、`name`、适合的底色 `backdrop` 和 `patch`，`patch` 直接作为 `node/update-style` 的补丁就能把文字变成这个样子（见下文「花字与文字效果」）。 |
+| `list_collages` | 列出 6 套拼图版式（两张并排、一大两小、两小一大、三等分、四宫格、六宫格）：每套有 `id`、`name`、格子数 `cellCount`、宽高比 `aspect` 和 `example`——完整的拼图组节点（圆角矩形格子、留缝、灰色占位），用 `apply_actions` 的 `node/insert-children` 直接插入，再把格子 `fill` 换成图片填充；可选 `pageWidth`/`pageHeight`（默认 1080×1440）按页面尺寸铺格子。 |
 | `list_filter_presets` | 列出 8 个现成的滤镜预设（黑白/复古/暖阳/冷调/胶片/褪色/高对比/柔焦）：每个有 `id`、`name` 和 `patch`，`patch` 直接作为 `node/update-style` 的补丁就能把图片、形状等元素一键变成这个风格（用到 v18 的 `hue`/`grayscale`/`sepia`；传 `null` 清除滤镜回到原图）。 |
 | `list_styles` | 列出可一键套到整套卡片上的搭配（一组配色加上相配的字体组合）、配色（底色、文字色、强调色）和字体组合（标题字体、正文字体），配合 `document/restyle` 使用（见下文「整套换风格」）。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效；按 `documentId` 就地更新（`version` 加一）。 |

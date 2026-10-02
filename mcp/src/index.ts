@@ -18,6 +18,7 @@ import { listDecorations, placeDecorations } from './core/decorations'
 import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
 import { composePoster } from './core/poster'
+import { listCollages } from './core/collages'
 import { listFilterPresets, listStyles, listTextStyles } from './core/styles'
 import { instantiateTemplate, listTemplates } from './core/templates'
 import { checkDocument } from './render/check'
@@ -320,6 +321,16 @@ export function createDingcardServer(): McpServer {
     '列出现成的花字（文字效果组合）：每个有 id、name、适合放在什么底色上（backdrop），以及 patch——直接作为 apply_actions 里 node/update-style 的 patch，就能把一段文字变成这个样子（填充、效果和加粗一起设好，同时去掉原来的描边和阴影）。效果的大小按字号比例算，大标题和小字都能用；深色 backdrop 的（霓虹、故障、极光等）放在深色页面上才好看。',
     {},
     async () => jsonResult(listTextStyles()),
+  )
+
+  server.tool(
+    'list_collages',
+    `列出 6 套拼图版式（两张并排、一大两小、两小一大、三等分、四宫格、六宫格）：每套有 id、name、格子数 cellCount、宽高比 aspect，以及 example——一个完整的拼图组节点（圆角矩形格子、留缝隙、灰色占位），用 apply_actions 的 node/insert-children 直接插入页面，再把每个格子的 fill 换成 { type: 'image', src, fit, framing } 图片填充（node/update-style，取景同形状图片填充）。可选 pageWidth / pageHeight（默认 1080×1440）让格子按你的页面尺寸铺。`,
+    {
+      pageWidth: z.number().optional().describe('页面宽 px（默认 1080）'),
+      pageHeight: z.number().optional().describe('页面高 px（默认 1440）'),
+    },
+    async ({ pageWidth, pageHeight }) => jsonResult(listCollages(pageWidth, pageHeight)),
   )
 
   server.tool(

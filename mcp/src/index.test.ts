@@ -36,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the nineteen tools', async () => {
+  test('exposes the twenty tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -50,6 +50,7 @@ describe('dingcard-mcp tool layer', () => {
       'create_poster_from_content',
       'get_document',
       'inspect_document',
+      'list_collages',
       'list_decorations',
       'list_filter_presets',
       'list_icons',
@@ -494,6 +495,50 @@ describe('dingcard-mcp tool layer', () => {
     const legacyText = (legacy as { content: Array<{ type: string; text?: string }> }).content[0].text ?? ''
     // The v18-only hue key on a v17 document fails strict validation.
     expect(legacyText).toContain('"ok": false')
+    await client.close()
+  })
+
+  test('list_collages gives insertable picture grids', async () => {
+    const client = await connect()
+    const listed = await call<{
+      collages: Array<{
+        id: string
+        name: string
+        cellCount: number
+        aspect: number
+        example: { id: string; type: string; children: Array<{ id: string; type: string }> }
+      }>
+    }>(client, 'list_collages', { pageWidth: 1080, pageHeight: 1440 })
+    expect(listed.collages.length).toBeGreaterThanOrEqual(6)
+    const quad = listed.collages.find((collage) => collage.id === 'quad')!
+    expect(quad.cellCount).toBe(4)
+    expect(quad.example.type).toBe('group')
+    expect(quad.example.children).toHaveLength(4)
+
+    // The example inserts as-is, and a cell takes a picture fill (v19).
+    const created = await call<{ documentId: string; slides: Array<{ id: string }> }>(client, 'create_document_from_template', { templateId: 'editorial-freeform' })
+    const inserted = await call<{ ok: boolean; changes: boolean[] }>(client, 'apply_actions', {
+      documentId: created.documentId,
+      actions: [{
+        type: 'node/insert-children',
+        slideId: created.slides[0].id,
+        parentPath: [],
+        nodes: [quad.example],
+      }],
+    })
+    expect(inserted).toMatchObject({ ok: true })
+    const filled = await call<{ ok: boolean }>(client, 'apply_actions', {
+      documentId: created.documentId,
+      actions: [{
+        type: 'node/update-style',
+        slideId: created.slides[0].id,
+        updates: [{
+          path: [quad.example.id, quad.example.children[0].id],
+          patch: { fill: { type: 'image', src: 'https://cdn.example/paper.jpg', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } },
+        }],
+      }],
+    })
+    expect(filled.ok).toBe(true)
     await client.close()
   })
 

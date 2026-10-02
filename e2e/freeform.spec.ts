@@ -12319,6 +12319,47 @@ test('a path fills with a picture and frames it inside the outline (v19)', async
     .locator('[data-framed-image="true"]')).toHaveAttribute('data-image-load-state', 'ready')
 })
 
+test('the Elements panel inserts collage grids and pictures fill their cells', async ({ page }) => {
+  await openFreeform(page)
+
+  // The collage tiles sit under their own group in the elements drawer.
+  await withToolPanel(page, 'elements', (panel) => panel
+    .getByRole('group', { name: '拼图' })
+    .getByTestId('insert-collage-quad')
+    .click())
+
+  // A group of four placeholder cells lands on the page, selected as one.
+  const collage = page.getByTestId('freeform-scene-group')
+  await expect(collage).toHaveCount(1)
+  await expect(collage.locator('.freeform-shape')).toHaveCount(4)
+
+  // Double-clicking a cell enters the collage group, a click then selects
+  // the cell itself (the inner shape takes no pointer events — clicks land on
+  // its wrapper).
+  const firstCell = collage.locator('[data-testid="freeform-element"]').first()
+  await firstCell.dblclick()
+  await firstCell.click()
+  await expect(page.getByTestId('shape-fill-paint')).toBeVisible()
+  await page.getByTestId('inspector-fill').locator('input.freeform-file').setInputFiles({
+    name: 'collage-cell.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  const cellFrame = page.getByTestId('freeform-shape-image-fill')
+  await expect(cellFrame).toHaveCount(1)
+  await expect(cellFrame.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+
+  // The collage and its picture survive a reload.
+  await signUpToSave(page, `collage-${Date.now().toString(36)}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+
+  await page.reload()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  await expect(page.getByTestId('freeform-scene-group').locator('.freeform-shape')).toHaveCount(4)
+  await expect(page.getByTestId('freeform-shape-image-fill')).toHaveCount(1)
+})
+
 test('a path keeps its proportions from a corner handle and stretches from an edge', async ({ page }) => {
   await openFreeform(page)
   await withToolPanel(page, 'elements', (panel) => panel.getByTestId('insert-icon-heart').click())

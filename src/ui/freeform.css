@@ -815,6 +815,23 @@
   color: var(--text);
 }
 
+/* 拼图 tiles: the layout itself as a tiny cell map. */
+.collage-preview {
+  position: relative;
+  display: block;
+  width: 38px;
+  max-height: 38px;
+  border-radius: 4px;
+}
+
+.collage-preview span {
+  position: absolute;
+  display: block;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
 .freeform-drawer .freeform-element-tile:hover {
   background: var(--field-fill-hover, var(--hover));
   color: var(--text);

@@ -67,6 +67,7 @@ import { TextEffectField } from './TextEffectField'
 import { TextEffectSample } from './TextEffectSample'
 import { TEXT_STYLE_PRESETS, presetOnDarkPage, textStylePatch, type TextStylePreset } from './textStyles'
 import { fitPathData, pathStrokeScale } from './pathData'
+import { collageBox, collageById, createCollageGroup, type CollageLayout } from './collageLayouts'
 import { deckColors, deckFonts, type RestyleRequest } from './restyle'
 import { DeckColorsContext, type DeckColorsValue } from './deckColors'
 import { rangeHasRichTextStyle, restyleRichTextRange, type RichTextStyle } from './richText'
@@ -3088,6 +3089,15 @@ export function FreeformWorkspace({
     insertNewElement(createLineElement(activeSlide, lineKind), placeAt)
   }
 
+  /** A picture grid: a group of rounded rect cells, each ready for a
+   * picture fill (select a cell → 插入图片填充). */
+  function addCollage(layout: CollageLayout, placeAt?: { x: number; y: number }) {
+    if (blockDocumentMutationDuringInteraction()) return
+    const parentPath = [...activeGroupPath]
+    const box = placeNewBox(collageBox(layout, activeSlide), placeAt, parentPath)
+    insertSceneNode(createCollageGroup(layout, { box }), parentPath)
+  }
+
   function addIcon(icon: IconDefinition, placeAt?: { x: number; y: number }) {
     insertNewElement(createPathElement(activeSlide, {
       name: icon.zh,
@@ -3114,7 +3124,10 @@ export function FreeformWorkspace({
   function addElement(pick: ElementPick, placeAt?: { x: number; y: number }) {
     if (pick.kind === 'shape') addShape(pick.id, placeAt)
     else if (pick.kind === 'line') addLine(pick.id, placeAt)
-    else if (pick.kind === 'icon') {
+    else if (pick.kind === 'collage') {
+      const layout = collageById(pick.id)
+      if (layout) addCollage(layout, placeAt)
+    } else if (pick.kind === 'icon') {
       const icon = iconById(pick.id)
       if (icon) addIcon(icon, placeAt)
     } else {
