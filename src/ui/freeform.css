@@ -318,7 +318,8 @@
   color: var(--text);
 }
 
-.freeform-tools .freeform-file {
+.freeform-tools .freeform-file,
+.freeform-tools .freeform-font-file {
   display: none;
 }
 
@@ -405,6 +406,12 @@
   cursor: pointer;
 }
 
+/* Each first page fills its column, however much a scrollbar takes from the panel. */
+.freeform-drawer .freeform-template-thumb {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+}
+
 .freeform-drawer .freeform-template-tile .template-freeform-preview {
   overflow: hidden;
   border-radius: 10px;
@@ -435,8 +442,7 @@
   font: 400 11.5px/1 var(--ui-font);
 }
 
-/* Styles panel: palettes as little pages in two columns, font sets in their own fonts,
-   then the deck's own colours and fonts to swap one by one. */
+/* Styles panel: palettes as little pages in two columns, then font sets in their own fonts. */
 .freeform-drawer .freeform-palettes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -499,9 +505,9 @@
   white-space: nowrap;
 }
 
-.freeform-drawer .freeform-font-sets,
-.freeform-drawer .freeform-deck-fonts {
+.freeform-drawer .freeform-font-sets {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   margin: 0 16px;
 }
@@ -544,41 +550,256 @@
   white-space: nowrap;
 }
 
-.freeform-drawer .freeform-deck-fonts .sel-trigger {
-  justify-content: space-between;
-  width: 100%;
-  border-color: transparent;
-  background: var(--field-fill);
-}
-
-.freeform-drawer .freeform-deck-fonts .sel-trigger:hover {
-  border-color: transparent;
-  background: var(--field-fill-hover);
-}
-
-.freeform-drawer .freeform-deck-fonts .sel-trigger.open {
-  border-color: var(--accent);
-  background: var(--field-bg);
-  box-shadow: 0 0 0 3px var(--accent-weak);
-}
-
-/* The swatches wrap; a swatch's picker opens under the whole row, as wide as the panel. */
-.freeform-drawer .freeform-deck-colors {
+/* Imported fonts sit among the font sets, a remove button at their right end; the import button closes the list. */
+.freeform-drawer .freeform-my-font {
   position: relative;
+  min-width: 0;
+}
+
+.freeform-drawer .freeform-my-font .freeform-font-set {
+  padding-right: 44px;
+}
+
+.freeform-drawer .freeform-my-font-remove {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.freeform-drawer .freeform-my-font-remove:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.freeform-drawer .freeform-my-font-remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+.freeform-drawer .freeform-font-import {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  border: 1px dashed var(--line-strong, var(--line-2));
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 13px/1 var(--ui-font);
+  cursor: pointer;
+}
+
+.freeform-drawer .freeform-font-import:hover {
+  border-color: var(--text-3);
+  background: var(--hover);
+  color: var(--text);
+}
+
+.freeform-drawer .freeform-font-import svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 搭配: each look as a little page in its colours and fonts, two to a row. */
+.freeform-drawer .freeform-looks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 10px;
+  margin: 4px 16px 0;
+}
+
+.freeform-drawer .freeform-look {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.freeform-drawer .freeform-look-page {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 6px;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 12px 14px;
+  overflow: hidden;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--line);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.freeform-drawer .freeform-look:hover .freeform-look-page {
+  box-shadow: 0 0 0 2px var(--canvas-select);
+}
+
+.freeform-drawer .freeform-look:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+.freeform-drawer .freeform-look-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.freeform-drawer .freeform-look-accent {
+  width: 26px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.freeform-drawer .freeform-look-body {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0.75;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A few words with a fill and an effect (TextEffectSample): the effect's copy sits under the words. */
+.text-effect-sample {
+  position: relative;
+  display: inline-block;
+  font-weight: 700;
+  line-height: 1.18;
+  white-space: nowrap;
+}
+
+.text-effect-sample-layer {
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  pointer-events: none;
+}
+
+.text-effect-sample-words {
+  position: relative;
+}
+
+/* 花字 in the text panel: each look on a page it reads well on, two to a row. */
+.freeform-drawer .freeform-text-styles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 0 16px;
 }
 
-.freeform-drawer .freeform-deck-colors .paint-color {
-  position: static;
+.freeform-drawer .freeform-text-style {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  height: 72px;
+  padding: 0 0 12px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.freeform-drawer .freeform-deck-colors .paint-popover {
-  left: 0;
-  width: 100%;
-  max-width: none;
+.freeform-drawer .freeform-text-style:hover {
+  box-shadow: 0 0 0 2px var(--canvas-select);
+}
+
+.freeform-drawer .freeform-text-style:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.freeform-drawer .freeform-text-style-name {
+  position: absolute;
+  left: 8px;
+  bottom: 5px;
+  color: rgba(0, 0, 0, 0.55);
+  font: 500 10.5px/1 var(--ui-font);
+}
+
+.freeform-drawer .freeform-text-style.is-dark .freeform-text-style-name {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* 效果 in the settings panel: the choices as small samples, then the chosen one's settings. */
+.freeform-inspector .text-effect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+}
+
+.freeform-inspector .text-effect-choice {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.freeform-inspector .text-effect-choice-sample {
+  display: grid;
+  place-items: center;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.freeform-inspector .text-effect-choice:hover .text-effect-choice-sample {
+  box-shadow: 0 0 0 2px var(--line-2);
+}
+
+.freeform-inspector .text-effect-choice[aria-pressed='true'] .text-effect-choice-sample {
+  box-shadow: 0 0 0 2px var(--canvas-select);
+}
+
+.freeform-inspector .text-effect-choice[aria-pressed='true'] {
+  color: var(--text);
+}
+
+.freeform-inspector .text-effect-choice-name {
+  overflow: hidden;
+  font: 500 11px/1.2 var(--ui-font);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-inspector .text-effect-settings {
+  margin-top: 10px;
+}
+
+.freeform-inspector .field-glyph.is-word {
+  min-width: auto;
+  white-space: nowrap;
 }
 
 /* Text panel: each default style set the way it lands on the page. */
@@ -3572,3 +3793,60 @@
   height: 30px;
 }
 
+
+/* The colour picker: the deck's own colours first (set off from the presets),
+   and once the colour changes, 全部替换 to carry it across the deck. */
+.paint-popover .paint-deck-grid {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.paint-popover .paint-replace-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--field-fill, var(--surface-3));
+  color: var(--text);
+  font: 500 12.5px/1 var(--ui-font);
+  cursor: pointer;
+}
+
+.paint-popover .paint-replace-all:hover {
+  background: var(--field-fill-hover, var(--hover));
+}
+
+.paint-popover .paint-replace-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+}
+
+.paint-popover .paint-replace-arrow {
+  margin-right: 4px;
+  color: var(--text-3);
+}
+
+/* 全部替换 under a text's font: the font just picked, for every text still in the old one. */
+.freeform-inspector .freeform-font-swap {
+  justify-self: start;
+  height: 28px;
+  margin: 6px 0 4px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font: 500 12px/1 var(--ui-font);
+  cursor: pointer;
+}
+
+.freeform-inspector .freeform-font-swap:hover {
+  filter: brightness(0.96);
+}

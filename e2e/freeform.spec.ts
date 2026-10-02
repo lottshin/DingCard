@@ -1274,8 +1274,8 @@ test('inspector hierarchy shows only context-relevant sections in contract order
 
   await insertText(page)
   await setSelectedElementPosition(page, 420, 180)
-  // Text spans only show up once part of the text is selected.
-  await expectSections(['geometry', 'typography', 'fill', 'appearance', 'arrange', 'danger'])
+  // Text spans only show up once part of the text is selected; 效果 follows the type.
+  await expectSections(['geometry', 'typography', 'text-effect', 'fill', 'appearance', 'arrange', 'danger'])
   const textFill = page.getByTestId('text-fill-paint')
   await expect(textFill.getByTestId('paint-mode-solid')).toBeVisible()
   await expect(textFill.getByTestId('paint-mode-linear-gradient')).toBeVisible()
@@ -3401,8 +3401,10 @@ test('font listbox exposes active options and isolates keyboard navigation from 
   await expectActiveOption(1)
   await page.keyboard.press('Home')
   await expectActiveOption(0)
+  // The seven fonts, then 导入字体… last.
   await page.keyboard.press('End')
-  await expectActiveOption(6)
+  await expectActiveOption(7)
+  await expect(options.nth(7)).toHaveText('导入字体…')
   await trigger.dispatchEvent('keydown', {
     key: '思',
     bubbles: true,
@@ -3437,7 +3439,9 @@ test('font menu closes on Tab without trapping focus and handles Space selection
   await trigger.focus()
   await page.keyboard.press('Space')
   await expect(page.getByRole('listbox')).toBeVisible()
+  // The last font sits just above 导入字体….
   await page.keyboard.press('End')
+  await page.keyboard.press('ArrowUp')
   await page.keyboard.press('Space')
   await expect(page.getByRole('listbox')).toHaveCount(0)
   await expect(trigger).toContainText('系统默认')
@@ -5574,7 +5578,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(16)
+  expect(storedDocument.documentVersion).toBe(17)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()

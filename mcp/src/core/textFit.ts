@@ -23,6 +23,11 @@ function glyphEm(char: string): number {
   return 0.56
 }
 
+/** How wide `text` sets, in ems of its font size (a CJK character is one). */
+export function emWidth(text: string): number {
+  return [...text].reduce((sum, char) => sum + glyphEm(char), 0)
+}
+
 /** Words that wrap as a unit: a run of narrow characters, or one wide character. */
 function tokens(paragraph: string): string[] {
   const result: string[] = []
@@ -128,4 +133,55 @@ export function fittingFontSize(
     if (textFits(node, text, size, sample)) return size
   }
   return null
+}
+
+/** Characters a line may not start with (closing punctuation) or end with (opening marks). */
+const NO_LINE_START = /^[，。、；：！？）」』》〉,.;:!?)\]}%…—]/
+const NO_LINE_END = /[（「『《〈(\[{“‘]$/
+const PAUSE = /[，、；：,;:]$/
+
+/**
+ * A heading that takes two or three lines, broken where they come out most
+ * even ("先把睡眠时间\n固定下来" rather than a lone "下来" under a full line):
+ * at word boundaries, never starting a line with closing punctuation or ending
+ * one with an opening mark, longer lines first on a tie, and preferring breaks
+ * after a pause (，、；：). A heading with its own line breaks, one that fits a
+ * line, or one that needs more than three is left as it is.
+ */
+export function balancedHeading(node: FreeformTextElement, text: string, fontSize: number): string {
+  if (text.includes('\n') || node.vertical) return text
+  const lines = measureText(node, text, fontSize, true).lines
+  if (lines < 2 || lines > 3) return text
+  // Room for the longest line, kept a little short of the box so it never wraps again.
+  const available = (node.width - PADDING * 2) / WIDTH_SAFETY
+  const spacing = node.letterSpacing ?? 0
+  const width = (part: string) => [...part].reduce((sum, char) => sum + glyphEm(char) * fontSize + spacing, 0)
+  const words = [...new Intl.Segmenter('zh', { granularity: 'word' }).segment(text)].map((part) => part.segment)
+  if (words.length < lines || words.length > 40) return text
+  const splits: number[][] = []
+  for (let first = 1; first < words.length; first += 1) {
+    if (lines === 2) splits.push([first])
+    else for (let second = first + 1; second < words.length; second += 1) splits.push([first, second])
+  }
+  let best = text
+  let bestScore = Infinity
+  for (const cuts of splits) {
+    const bounds = [0, ...cuts, words.length]
+    const parts = bounds.slice(1).map((end, index) => words.slice(bounds[index], end).join('').trim())
+    if (parts.some((part, index) => !part || (index > 0 && NO_LINE_START.test(part)) || (index < parts.length - 1 && NO_LINE_END.test(part)))) continue
+    const widths = parts.map(width)
+    const longest = Math.max(...widths)
+    if (longest > available) continue
+    // Evenest wins: the longest line first, then how ragged the rest are. A later line longer
+    // than the one before it costs a little, a pause at a break earns a little.
+    const ragged = widths.reduce((sum, value) => sum + ((longest - value) / longest) ** 2, 0)
+    const rising = widths.slice(1).filter((value, index) => value > widths[index]).length
+    const pauses = parts.slice(0, -1).filter((part) => PAUSE.test(part)).length
+    const score = longest + (ragged * 0.5 + rising * 0.25 - pauses * 0.5) * fontSize
+    if (score < bestScore) {
+      best = parts.join('\n')
+      bestScore = score
+    }
+  }
+  return best
 }

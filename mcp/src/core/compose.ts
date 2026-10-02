@@ -16,7 +16,7 @@ import type {
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots, type SlotItem } from '../../../src/templates/slots'
 import type { FreeformTemplateSeriesId } from '../../../src/templates/types'
-import { fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
+import { balancedHeading, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
 
 export interface DeckPage {
   title: string
@@ -48,7 +48,7 @@ export interface ComposeSuccess {
   ok: true
   document: FreeformDocument
   summary: {
-    documentVersion: 16
+    documentVersion: 17
     templateId: string
     slideCount: number
     coverTitle: string
@@ -124,20 +124,29 @@ function seriesOf(templateId: string): { series: FreeformTemplateSeriesId; creat
 
 const pad = (value: number) => String(value).padStart(2, '0')
 
-/** Two lines for a title drawn as two texts: its own line break, else the punctuation nearest the middle, else the middle. */
+/**
+ * Two lines for a title drawn as two texts: its own line break, else the
+ * split between words that sets the two most evenly (a break after
+ * punctuation counts a little in its favour), else the middle character.
+ */
 function splitTitle(title: string): [string, string] {
   const lines = title.split('\n')
   if (lines.length > 1) return [lines[0], lines.slice(1).join(' ')]
   const chars = [...title]
   if (chars.length < 2) return [title, '']
-  const middle = chars.length / 2
-  let best = -1
-  chars.forEach((char, index) => {
-    if (/[，,、；;：:！!？? ]/.test(char) && index < chars.length - 1) {
-      if (best < 0 || Math.abs(index + 1 - middle) < Math.abs(best + 1 - middle)) best = index
-    }
-  })
-  const cut = best >= 0 ? best + 1 : Math.ceil(middle)
+  const words = [...new Intl.Segmenter('zh', { granularity: 'word' }).segment(title)].map((part) => part.segment)
+  let best: { lines: [string, string]; score: number } | null = null
+  let head = ''
+  for (const word of words.slice(0, -1)) {
+    head += word
+    const first = head.trim()
+    const second = title.slice(head.length).trim()
+    if (!first || !second || /^[，。、；：！？）」』》,.;:!?)]/.test(second)) continue
+    const score = Math.max(emWidth(first), emWidth(second)) - (/[，、；：！？,;:!?]$/.test(first) ? 0.5 : 0)
+    if (!best || score < best.score) best = { lines: [first, second], score }
+  }
+  if (best) return best.lines
+  const cut = Math.ceil(chars.length / 2)
   return [chars.slice(0, cut).join('').trim(), chars.slice(cut).join('').trim()]
 }
 
@@ -509,6 +518,17 @@ function fillSlide(template: FreeformSlide, slots: SlideSlots, fill: SlideFill):
     if (size === null) overflowing.push({ node: node.name, text: fitted.text })
     nodes[index] = { ...fitted, fontSize: size ?? smallest }
   }
+  // Filled-in headings, points and quotes on two or three lines break where the lines come out even.
+  const headings = new Set([
+    ...(typeof slots.title === 'string' ? [slots.title] : []),
+    ...(slots.items ?? []).map((item) => item.text),
+    ...(slots.quote ? [slots.quote.text] : []),
+  ])
+  nodes.forEach((node, index) => {
+    if (node.type === 'text' && headings.has(node.name) && texts.has(node.name)) {
+      nodes[index] = { ...node, text: balancedHeading(node, node.text, node.fontSize) }
+    }
+  })
   return { slide: { ...slide, nodes }, shrunk, overflowing }
 }
 
@@ -564,14 +584,14 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
 
   const filled = plan.map((entry) => ({ ...entry, result: fillSlide(entry.slide, entry.slots, entry.fill) }))
   const slides = filled.map((entry) => entry.result.slide)
-  const document = normalizeFreeformDocument({ documentVersion: 16, activeSlideId: slides[0].id, slides })
-  if (!document) return { ok: false, error: '生成的文档未通过 v16 校验。' }
+  const document = normalizeFreeformDocument({ documentVersion: 17, activeSlideId: slides[0].id, slides })
+  if (!document) return { ok: false, error: '生成的文档未通过 v17 校验。' }
 
   return {
     ok: true,
     document,
     summary: {
-      documentVersion: 16,
+      documentVersion: 17,
       templateId,
       slideCount: document.slides.length,
       coverTitle: content.title,

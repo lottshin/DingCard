@@ -20,6 +20,7 @@ const TEXT_STYLE_KEYS = [
   'vertical',
   'stroke',
   'strokeWidth',
+  'effect',
 ] as const
 const SHAPE_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'cornerRadius'] as const
 const LINE_STYLE_KEYS = ['stroke', 'strokeWidth', 'dash', 'cap'] as const

@@ -12,6 +12,8 @@
 // and embed just those handful of subset files. System fonts (PingFang, etc.)
 // need no embedding at all, so export becomes instant.
 
+import { fontLibrary, type ImportedFont } from './freeform/fontLibrary'
+
 // Cache raw stylesheet CSS text by href (stable for the session).
 const cssTextCache = new Map<string, string>()
 // Cache fetched woff2 → data URL (subset files are reused across exports).
@@ -200,6 +202,12 @@ async function buildFontEmbedCSSUncached(
   return kept.filter((b) => b.startsWith('@font-face')).join('\n')
 }
 
+/** An imported font travels whole: its file has no subsets to pick from. */
+async function importedFontFaceCSS(font: ImportedFont): Promise<string> {
+  const dataUrl = await fontLibrary.dataUrl(font.id)
+  return dataUrl ? `@font-face {font-family: '${font.family}'; src: url(${dataUrl}) format('${font.format}'); font-display: block;}` : ''
+}
+
 /**
  * Build a minimal @font-face CSS embedding only the subsets of `fontFamily`
  * needed to render `text`. Returns '' for system fonts (nothing to embed),
@@ -212,6 +220,8 @@ export async function buildFontEmbedCSS(
 ): Promise<string> {
   const family = primaryFamily(fontFamily)
   if (!family) return ''
+  const imported = fontLibrary.fontFor(fontFamily)
+  if (imported) return importedFontFaceCSS(imported)
 
   // Unique codepoints used in the card.
   const codepoints = new Set<number>()

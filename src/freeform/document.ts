@@ -65,6 +65,7 @@ import {
   shadowPaintEquals,
 } from './appearance'
 import { isValidPathData } from './pathData'
+import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {
   ColorPaint,
@@ -91,6 +92,7 @@ import type {
   SceneFilter,
   ScenePath,
   ShadowPaint,
+  TextEffect,
   ShapeFill,
   SlideBackground,
 } from './types'
@@ -137,7 +139,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 16,
+    documentVersion: 17,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -443,6 +445,7 @@ interface NodePatchResult {
 
 const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox'])
 const STYLE_KEYS = new Set([
+  'effect',
   'fontSize',
   'fontFamily',
   'textFill',
@@ -479,7 +482,7 @@ const IMAGE_CROP_PATCH_KEYS = new Set(['x', 'y', 'width', 'height', 'framing'])
 
 const TEXT_APPEARANCE_KEYS = new Set([
   'lineHeight', 'letterSpacing', 'italic', 'vertical', 'opacity', 'shadow', 'filter', 'blendMode',
-  'stroke', 'strokeWidth',
+  'stroke', 'strokeWidth', 'effect',
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
@@ -528,6 +531,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isHexColor(value)) return false
     } else if (key === 'strokeWidth') {
       if (value !== null && !isValidTextStrokeWidth(value)) return false
+    } else if (key === 'effect') {
+      if (value !== null && !isValidTextEffect(value)) return false
     }
   }
   return true
@@ -557,7 +562,9 @@ function withAppearancePatch<T extends object>(
         ? cloneShadowPaint(value)
         : key === 'filter'
           ? cloneSceneFilter(value)
-          : value,
+          : key === 'effect'
+            ? { ...(value as TextEffect) }
+            : value,
     }
   }
   return next as T
@@ -592,6 +599,8 @@ function appearanceKeysSame(
       ) {
         return false
       }
+    } else if (key === 'effect') {
+      if (!textEffectsEqual(nodeRecord.effect as TextEffect | undefined, nextRecord.effect as TextEffect | undefined)) return false
     } else if (nodeRecord[key] !== nextRecord[key]) {
       return false
     }
@@ -710,6 +719,7 @@ function applyStylePatch(
       'blendMode',
       'stroke',
       'strokeWidth',
+      'effect',
     ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {

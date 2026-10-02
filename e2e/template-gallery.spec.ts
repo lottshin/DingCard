@@ -192,28 +192,26 @@ test('Freeform sidebar mounts scene nodes only near the visible thumbnails', asy
 
 test('Freeform template exports keep full-bleed corners sealed', async ({ page }) => {
   const scenarios: ExportScenario[] = [
+    // Editorial's quote band runs from edge to edge.
     {
       templateIndex: 0,
-      slides: [{ slideIndex: 2, pixels: [[1079, 0, [217, 72, 54, 255]], [1079, 1439, [217, 72, 54, 255]]] }],
-    },
-    {
-      templateIndex: 1,
-      slides: [{ slideIndex: 0, pixels: [[0, 0, [23, 74, 56, 255]], [0, 1439, [23, 74, 56, 255]]] }],
+      slides: [{ slideIndex: 1, pixels: [[0, 1130, [231, 223, 207, 255]], [1079, 1130, [231, 223, 207, 255]]] }],
     },
     {
       templateIndex: 2,
       slides: [
-        { slideIndex: 0, pixels: [[1079, 0, [228, 71, 47, 255]]] },
-        { slideIndex: 1, pixels: [[0, 0, [36, 87, 214, 255]], [0, 1439, [36, 87, 214, 255]]] },
-        { slideIndex: 2, pixels: [[0, 0, [242, 200, 75, 255]], [1079, 0, [242, 200, 75, 255]]] },
+        { slideIndex: 0, pixels: [[0, 0, [214, 59, 36, 255]]] },
+        { slideIndex: 1, pixels: [[0, 0, [37, 80, 217, 255]], [0, 1439, [37, 80, 217, 255]]] },
+        { slideIndex: 2, pixels: [[0, 0, [244, 197, 66, 255]], [1079, 0, [244, 197, 66, 255]]] },
       ],
     },
     {
       templateIndex: 3,
-      slides: [
-        { slideIndex: 0, pixels: [[0, 0, [236, 232, 220, 255]], [1079, 0, [236, 232, 220, 255]]] },
-        { slideIndex: 2, pixels: [[0, 0, [17, 24, 32, 255]], [1079, 0, [17, 24, 32, 255]]] },
-      ],
+      slides: [{ slideIndex: 2, pixels: [[0, 0, [14, 24, 36, 255]], [1079, 0, [14, 24, 36, 255]]] }],
+    },
+    {
+      templateIndex: 5,
+      slides: [{ slideIndex: 2, pixels: [[0, 0, [13, 13, 13, 255]], [0, 1439, [13, 13, 13, 255]]] }],
     },
   ]
 

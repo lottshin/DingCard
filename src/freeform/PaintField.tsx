@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useContext, useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   DEFAULT_PAGE_PAINT,
   isHexColor,
@@ -15,6 +15,7 @@ import {
   pushRecentColor,
   saveRecentColors,
 } from './recentColors'
+import { DeckColorsContext } from './deckColors'
 import type { ColorPaint, GradientStop, ShapeFill, SlideBackground } from './types'
 import { t } from '../i18n'
 import { MinusIcon } from '../ui/icons'
@@ -136,6 +137,9 @@ export function ColorPickerButton({ label, color, onChange, testId = 'paint-colo
   // The color this picker session last committed, recorded as a recent color
   // when the popover closes (channel-slider noise never lands in the list).
   const sessionColorRef = useRef<string | null>(null)
+  const deck = useContext(DeckColorsContext)
+  // The color the session started from: 全部替换 carries the change to the rest of the deck.
+  const [startColor, setStartColor] = useState<string | null>(null)
   const rgb = hexToRgb(color)
   // No colour: drawn as a slashed chip, like "none" in a design tool.
   const empty = color === 'transparent'
@@ -145,6 +149,7 @@ export function ColorPickerButton({ label, color, onChange, testId = 'paint-colo
     // see each other's committed colors.
     setRecentColors(loadRecentColors())
     sessionColorRef.current = null
+    setStartColor(isHexColor(color) ? color.toLowerCase() : null)
     setOpen(true)
   }
 
@@ -206,6 +211,10 @@ export function ColorPickerButton({ label, color, onChange, testId = 'paint-colo
     commitColor(rgbToHex({ ...rgb, [channel]: clampChannel(Number(value)) }))
   }
 
+  const deckColors = deck?.colors.slice(0, 12) ?? []
+  const current = isHexColor(color) ? color.toLowerCase() : null
+  const canReplaceAll = Boolean(deck && startColor && current && current !== startColor && deck.colors.includes(startColor))
+
   return (
     <div className="paint-color" ref={rootRef}>
       <button
@@ -257,6 +266,20 @@ export function ColorPickerButton({ label, color, onChange, testId = 'paint-colo
               </button>
             )}
           </div>
+          {deckColors.length > 0 && (
+            <div className="paint-swatch-grid paint-deck-grid" aria-label={t('{label} 本设计用色', { label })} data-testid="paint-deck-grid">
+              {deckColors.map((used) => (
+                <button
+                  key={used}
+                  type="button"
+                  className="paint-swatch"
+                  aria-label={t('{label} 本设计 {color}', { label, color: used })}
+                  style={{ background: used }}
+                  onClick={() => commitColor(used)}
+                />
+              ))}
+            </div>
+          )}
           <div className="paint-swatch-grid" aria-label={t('{label} 常用颜色', { label })}>
             {PRESET_COLORS.map((preset) => (
               <button
@@ -308,6 +331,23 @@ export function ColorPickerButton({ label, color, onChange, testId = 'paint-colo
               </label>
             ))}
           </div>
+          {canReplaceAll && deck && startColor && current && (
+            <button
+              type="button"
+              className="paint-replace-all"
+              data-testid="paint-replace-all"
+              title={t('把整套里的 {from} 都换成 {to}', { from: startColor, to: current })}
+              onClick={() => {
+                deck.replace(startColor, current)
+                setStartColor(current)
+              }}
+            >
+              <span className="paint-replace-chip" style={{ background: startColor }} aria-hidden="true" />
+              <span className="paint-replace-arrow" aria-hidden="true">→</span>
+              <span className="paint-replace-chip" style={{ background: current }} aria-hidden="true" />
+              {t('全部替换')}
+            </button>
+          )}
         </div>
       )}
     </div>

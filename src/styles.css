@@ -21,7 +21,7 @@
   --freeform-ruler-bg: #ffffff;
   --freeform-ruler-tick: #c9c9ce;
   --freeform-ruler-label: #8f8f96;
-  --freeform-guide: #ec4899;
+  --freeform-guide: #8e8e93;
   --surface: #ffffff;     /* panels, bars, modals */
   --surface-2: #fafafa;   /* subtle inset fills */
   --surface-3: #eeeef0;   /* active and pressed controls */
@@ -56,7 +56,7 @@
   --freeform-ruler-bg: #161619;
   --freeform-ruler-tick: #3f3f46;
   --freeform-ruler-label: #71717a;
-  --freeform-guide: #f472b6;
+  --freeform-guide: #a1a1aa;
   --surface: #161619;
   --surface-2: #1c1c20;
   --surface-3: #26262b;
@@ -1533,10 +1533,6 @@ html.theme-anim * {
   transform: translateY(-1px);
 }
 
-.freeform-snap-line.freeform-snap-source-guide {
-  background: var(--freeform-guide);
-}
-
 .freeform-measurement {
   position: absolute;
   z-index: 19;
@@ -1559,10 +1555,10 @@ html.theme-anim * {
   pointer-events: none;
 }
 
+/* Ruler guides are grey dashed lines, dashes a steady 4 screen px at any zoom. */
 .freeform-guide {
   position: absolute;
   z-index: 20;
-  background: var(--freeform-guide);
 }
 
 .freeform-guide-x {
@@ -1577,6 +1573,24 @@ html.theme-anim * {
   right: 0;
   transform: translateY(-50%);
   cursor: ns-resize;
+}
+
+.freeform-guide-x,
+.freeform-guide-ghost.freeform-guide-x {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--freeform-guide) 0 var(--freeform-guide-dash, 4px),
+    transparent var(--freeform-guide-dash, 4px) calc(var(--freeform-guide-dash, 4px) * 2)
+  );
+}
+
+.freeform-guide-y,
+.freeform-guide-ghost.freeform-guide-y {
+  background: repeating-linear-gradient(
+    to right,
+    var(--freeform-guide) 0 var(--freeform-guide-dash, 4px),
+    transparent var(--freeform-guide-dash, 4px) calc(var(--freeform-guide-dash, 4px) * 2)
+  );
 }
 
 .freeform-guide-hit {
@@ -1600,7 +1614,6 @@ html.theme-anim * {
 .freeform-guide-ghost {
   position: absolute;
   z-index: 21;
-  background: var(--freeform-guide);
   pointer-events: none;
   opacity: 0.9;
 }
@@ -1752,6 +1765,28 @@ html.theme-anim * {
   user-select: text;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* A text effect's copy of the words, under the text in the same box (textEffects.ts):
+   laid out like the text, invisible itself, carrying the glow, outline, shadows or line backgrounds. */
+.freeform-text-effect {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: 8px;
+  overflow: visible;
+  line-height: 1.18;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  pointer-events: none;
+  user-select: none;
+}
+
+.freeform-text-effect-band {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .freeform-shape,

@@ -114,14 +114,14 @@ describe('composeDeck', () => {
     const grown = compose('editorial-freeform', { title: '标题', pages: [{ title: '长正文', body: long }] })
     const lead = grown.document.slides[1].nodes.find((node) => node.name === '导语') as FreeformTextElement
     // The steps and the quote are gone, so the paragraph has the page below it.
-    expect(lead.fontSize).toBe(34)
+    expect(lead.fontSize).toBe(38)
     expect(lead.height).toBeGreaterThan(130)
     expect(grown.summary.shrunk).toEqual([])
 
     // On a page that keeps its steps there is no room to grow into.
     const tight = compose('editorial-freeform', { title: '标题', pages: [{ title: '长正文', body: long, points: ['一', '二'] }] })
     const squeezed = tight.document.slides[1].nodes.find((node) => node.name === '导语') as FreeformTextElement
-    expect(squeezed.fontSize).toBeLessThan(34)
+    expect(squeezed.fontSize).toBeLessThan(38)
     expect(tight.summary.shrunk.map((item) => item.node)).toContain('导语')
 
     const huge = compose('editorial-freeform', { title: '标题', pages: [{ title: '太长', body: long.repeat(12) }] })
@@ -158,8 +158,8 @@ describe('composeDeck', () => {
     const steps = compose('editorial-freeform', LONG).document.slides[1].nodes
       .filter((node): node is FreeformTextElement => node.type === 'text' && node.name.startsWith('步骤'))
     expect(steps.map((node) => node.text)).toEqual(['01\n低角度的暖光：轮廓最清楚', '02\n天空还有颜色，别急着收工', '03\n路灯刚亮的那几分钟最好看'])
-    // The template draws each step's box over the next one; the columns still start where they did.
-    expect(steps.map((node) => node.x)).toEqual([72, 366, 714])
+    // The columns still start where the template drew them.
+    expect(steps.map((node) => node.x)).toEqual([88, 400, 712])
     expect(steps[0].x + steps[0].width).toBeLessThanOrEqual(steps[1].x)
     expect(steps[1].x + steps[1].width).toBeLessThanOrEqual(steps[2].x)
 
@@ -167,7 +167,8 @@ describe('composeDeck', () => {
     const title = neon.find((node) => node.name === '灯牌标题二') as FreeformTextElement
     const note = neon.find((node) => node.name === '灯牌注释二') as FreeformTextElement
     const card = neon.find((node) => node.name === '灯牌底板二')!
-    expect([title.text, note.text]).toEqual(['把最亮的招牌拍成一整页的主角', '注释说明一下为什么'])
+    // The point's own words, its two lines broken evenly.
+    expect([title.text.replace(/\n/g, ''), note.text]).toEqual(['把最亮的招牌拍成一整页的主角', '注释说明一下为什么'])
     expect(title.y + title.height).toBeLessThanOrEqual(note.y)
     expect(title.y).toBeGreaterThanOrEqual(card.y)
   })
@@ -175,9 +176,22 @@ describe('composeDeck', () => {
   test('keeps points in the items when they fit the room the items can grow into', () => {
     const page = compose('signal-freeform', LONG).document.slides[3].nodes
       .filter((node): node is FreeformTextElement => node.type === 'text')
-    expect(page.find((node) => node.name === '证据一')?.text).toBe('人物放在三分线上，留出他要走去的方向')
-    expect(page.find((node) => node.name === '证据二')?.text).toBe('前景压一点暗部，画面更有层次')
+    expect(page.find((node) => node.name === '证据一')?.text.replace(/\n/g, '')).toBe('人物放在三分线上，留出他要走去的方向')
+    expect(page.find((node) => node.name === '证据二')?.text.replace(/\n/g, '')).toBe('前景压一点暗部，画面更有层次')
     expect(page.some((node) => node.name === '左栏正文')).toBe(false)
+  })
+
+  test('sets headings in even lines, broken between words', () => {
+    const content = { title: '30 天养成早起习惯', pages: [{ title: '先把睡眠时间固定下来', body: '先固定入睡时间。' }] }
+    const heading = (templateId: string, page: number, name: string) => (compose(templateId, content).document.slides[page].nodes
+      .find((node) => node.name === name) as FreeformTextElement).text
+    expect(heading('editorial-freeform', 0, '主标题')).toBe('30 天养成\n早起习惯')
+    expect(heading('editorial-freeform', 1, '标题')).toBe('先把睡眠时间\n固定下来')
+    // A heading that fits one line keeps it.
+    expect(heading('night-flight-freeform', 1, '页标题')).toBe('先把睡眠时间固定下来')
+    // A title drawn as two texts splits where the two set most evenly, not at the first space.
+    expect(heading('signal-freeform', 0, '标题上')).toBe('30 天养成')
+    expect(heading('signal-freeform', 0, '标题下')).toBe('早起习惯')
   })
 
   test('rejects content it cannot place', () => {

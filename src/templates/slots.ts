@@ -61,7 +61,7 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformTemplateSeriesId, TemplateS
       items: steps(['步骤一', '步骤二', '步骤三']),
       itemsExtras: ['正文分隔线'],
       numberedItems: true,
-      quote: { text: '引文', note: '引文注释', extras: ['引文底板'] },
+      quote: { text: '引文', note: '引文注释', extras: ['引文底板', '引文竖线'] },
       numbers: ['页码', '页脚'],
     },
     ending: {
@@ -78,10 +78,11 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformTemplateSeriesId, TemplateS
       lead: '导语',
       toc: {
         items: [
-          { text: '检查项一', extras: ['复选框一', '清单线一'] },
+          { text: '检查项一', extras: ['复选框一', '勾一'] },
           { text: '检查项二', extras: ['复选框二', '清单线二'] },
           { text: '检查项三', extras: ['复选框三', '清单线三'] },
         ],
+        extras: ['清单线一'],
       },
       numbers: ['边栏页码'],
     },
@@ -221,7 +222,7 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformTemplateSeriesId, TemplateS
     ending: {
       title: '主标题',
       lead: '导语',
-      quote: { text: '信纸文字', extras: ['晚安信纸'] },
+      quote: { text: '信纸文字', extras: ['晚安信纸', '信纸线一', '信纸线二'] },
       numbers: ['刊头'],
     },
   },

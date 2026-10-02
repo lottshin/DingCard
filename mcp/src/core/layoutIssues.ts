@@ -76,6 +76,8 @@ export function templateMarks(): TemplateMarks {
         if (node.type !== 'text') return
         if (names.has(node.name) && node.text.trim()) result.samples.add(node.text.trim())
         else result.decoration.add(decorationKey(node))
+        // Words that read off their own label or outline don't make their colours a pair to keep.
+        if (node.effect?.type === 'background' || node.effect?.type === 'outline') return
         const colour = solidColor(node.textFill)
         if (!colour) return
         const centre = { x: node.x + node.width / 2, y: node.y + node.height / 2 }
@@ -269,8 +271,10 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
       if (!color) continue
       const centre = { x: text.area.x + text.area.width / 2, y: text.area.y + text.area.height / 2 }
       const textAt = order.indexOf(text.nodeId)
-      let background: string | null | undefined
-      for (const below of order.slice(0, textAt).reverse()) {
+      // A label effect puts the words on their own block of colour.
+      let background: string | null | undefined = node.effect?.type === 'background' ? node.effect.color : undefined
+      const onLabel = background !== undefined
+      for (const below of onLabel ? [] : order.slice(0, textAt).reverse()) {
         const entry = nodes.get(below)
         if (!entry || entry.node.type === 'group' || entry.node.type === 'line' || entry.node.type === 'text') continue
         // An outline-only path leaves the colour under it showing.
@@ -291,10 +295,15 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
       if (!background || template.colourPairs.has(colourKey(color, background))) continue
       const ratio = contrastRatio(color, background)
       const large = node.fontSize >= 48 || (node.fontWeight === 'bold' && node.fontSize >= 40)
-      if (ratio !== null && ratio < (large ? 3 : 4.5)) {
-        issue('low-contrast', node.id, onPicture
-          ? `文字压在背景图上，和身后那块颜色太接近（对比度 ${ratio.toFixed(1)}:1），看不清：换一个和照片反差大的颜色，或在文字下面垫一块半透明色块。`
-          : `文字颜色和底色太接近（对比度 ${ratio.toFixed(1)}:1），手机上看不清：换深一点或浅一点的颜色。`)
+      const needed = large ? 3 : 4.5
+      // An outline that stands off the words keeps them readable on any page.
+      const outlined = node.effect?.type === 'outline' && (contrastRatio(color, node.effect.color) ?? 0) >= needed
+      if (ratio !== null && ratio < needed && !outlined) {
+        issue('low-contrast', node.id, onLabel
+          ? `文字颜色和它的底色块太接近（对比度 ${ratio.toFixed(1)}:1），看不清：换一个和底色块反差大的颜色。`
+          : onPicture
+            ? `文字压在背景图上，和身后那块颜色太接近（对比度 ${ratio.toFixed(1)}:1），看不清：换一个和照片反差大的颜色，或在文字下面垫一块半透明色块。`
+            : `文字颜色和底色太接近（对比度 ${ratio.toFixed(1)}:1），手机上看不清：换深一点或浅一点的颜色。`)
       }
     }
   })

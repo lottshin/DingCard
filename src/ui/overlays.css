@@ -193,6 +193,8 @@
 }
 
 .template-dialog {
+  display: flex;
+  flex-direction: column;
   width: min(1120px, 100%);
   border: 0;
   border-radius: 16px;
@@ -202,8 +204,16 @@
 }
 
 .template-dialog-head {
+  flex: none;
   padding: 24px 24px 20px 28px;
   border-bottom-color: var(--line);
+}
+
+/* The head stays; the list and the detail each scroll in the room left under it. */
+.template-dialog-body {
+  flex: 1 1 auto;
+  max-height: none;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .template-kicker {
@@ -243,6 +253,7 @@
 }
 
 .template-list {
+  grid-auto-rows: max-content;
   gap: 16px;
   padding: 20px 20px 28px 28px;
 }
@@ -379,6 +390,10 @@
 @media (max-width: 860px) {
   .template-backdrop {
     padding: 10px;
+  }
+
+  .template-dialog-body {
+    grid-template-rows: none;
   }
 
   .template-list {

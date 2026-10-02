@@ -57,16 +57,16 @@ describe('what a deck uses', () => {
     expect(colors[0].background).toBeGreaterThan(0)
     // The closing page is dark with light words, so the page colour is also set as text.
     expect(colors[0].text).toBeGreaterThan(0)
-    expect(colors.find((entry) => entry.color === '#18181b')?.text).toBeGreaterThan(0)
-    expect(colors.find((entry) => entry.color === '#d94836')?.fill).toBeGreaterThan(0)
+    expect(colors.find((entry) => entry.color === '#1b1a18')?.text).toBeGreaterThan(0)
+    expect(colors.find((entry) => entry.color === '#c23a26')?.fill).toBeGreaterThan(0)
     expect(new Set(colors.map((entry) => entry.color)).size).toBe(colors.length)
   })
 
   it('lists its fonts, the one set largest first, and finds the body size', () => {
     const document = template('editorial-freeform')
     const fonts = deckFonts(document)
-    expect(fonts.map((font) => font.fontFamily)).toEqual(['system-ui, sans-serif', 'Songti SC, serif'])
-    expect(fonts[0].largest).toBe(118)
+    expect(fonts.map((font) => font.fontFamily)).toEqual(["'Noto Serif SC', serif", 'system-ui, sans-serif'])
+    expect(fonts[0].largest).toBe(340)
     expect(fonts.reduce((sum, font) => sum + font.texts, 0)).toBe(texts(document).length)
     expect(deckBodySize(document)).toBeGreaterThan(18)
     expect(deckBodySize(document)).toBeLessThan(40)
@@ -76,13 +76,13 @@ describe('what a deck uses', () => {
 describe('restyleDocument', () => {
   it('replaces an exact colour everywhere it appears, and nothing else', () => {
     const document = template('editorial-freeform')
-    const next = restyleDocument(document, { colors: { '#D94836': '#123456' } })
+    const next = restyleDocument(document, { colors: { '#C23A26': '#123456' } })
     const before = JSON.stringify(document).toLowerCase()
     const after = JSON.stringify(next).toLowerCase()
-    expect(before).toContain('#d94836')
-    expect(after).not.toContain('#d94836')
-    expect(after.split('#123456').length).toBe(before.split('#d94836').length)
-    expect(after.split('#123456').join('#d94836')).toBe(before)
+    expect(before).toContain('#c23a26')
+    expect(after).not.toContain('#c23a26')
+    expect(after.split('#123456').length).toBe(before.split('#c23a26').length)
+    expect(after.split('#123456').join('#c23a26')).toBe(before)
     // A colour the deck doesn't have changes nothing.
     expect(restyleDocument(document, { colors: { '#abcdef': '#123456' } })).toBe(document)
   })
@@ -92,12 +92,11 @@ describe('restyleDocument', () => {
     const sea = PALETTES.find((palette) => palette.id === 'sea-salt')!
     const map = paletteColorMap(document, sea)
     expect(map.get('#f6f3ea')).toBe(sea.background)
-    // The words, not the light words of the dark closing page; the near-black that closing page is drawn in follows them.
-    expect(map.get('#18181b')).toBe(sea.text)
-    expect(contrast(map.get('#171717')!, sea.text)).toBeLessThan(1.1)
-    expect(sea.accents).toContain(map.get('#d94836'))
-    // The quote card, a shade darker than the page, stays a light shade between the new page and words.
-    const card = map.get('#ded8cb')!
+    // The words, not the light words of the dark closing page (drawn in the words' own near-black).
+    expect(map.get('#1b1a18')).toBe(sea.text)
+    expect(sea.accents).toContain(map.get('#c23a26'))
+    // The quote band, a shade darker than the page, stays a light shade between the new page and words.
+    const card = map.get('#e7dfcf')!
     expect(luminance(card)).toBeLessThan(luminance(sea.background))
     expect(luminance(card)).toBeGreaterThan(0.5)
   })
@@ -117,7 +116,9 @@ describe('restyleDocument', () => {
               && centre.x >= candidate.x && centre.x <= candidate.x + candidate.width
               && centre.y >= candidate.y && centre.y <= candidate.y + candidate.height
             ))
-            const fill = under?.type === 'shape' ? under.fill : under ? null : slide.background
+            // Words on their own label read against the label.
+            const label = node.effect?.type === 'background' ? { type: 'solid' as const, color: node.effect.color } : null
+            const fill = label ?? (under?.type === 'shape' ? under.fill : under ? null : slide.background)
             if (!fill || fill.type !== 'solid') return
             const needed = node.fontSize >= 48 || (node.fontWeight === 'bold' && node.fontSize >= 40) ? 3 : 4.5
             expect(

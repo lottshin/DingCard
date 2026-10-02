@@ -1,37 +1,63 @@
 import { memo, useMemo } from 'react'
 import { t, useLang } from '../i18n'
-import { Select } from '../Select'
-import { FONTS } from '../theme'
-import { ColorPickerButton } from './PaintField'
-import { deckColors, deckFonts, FONT_SETS, PALETTES, type RestyleRequest } from './restyle'
+import { CloseIcon, UploadIcon } from '../ui/icons'
+import { fontLabel } from './fontChoices'
+import { importedFontStack } from './fontFiles'
+import { fontLibrary, useImportedFonts } from './fontLibrary'
+import { deckFonts, FONT_SETS, PALETTES, STYLE_LOOKS, type RestyleRequest } from './restyle'
 import type { FreeformDocument } from './types'
 
-/** How many of a deck's colours the panel lists, the most prominent first. */
-const DECK_COLOR_LIMIT = 12
-
-function fontLabel(fontFamily: string): string {
-  const font = FONTS.find((candidate) => candidate.id === fontFamily)
-  return font ? t(font.label) : fontFamily
-}
-
 /**
- * The 风格 drawer: a palette or a font set for the whole deck, or one of the
- * deck's own colours and fonts swapped wherever it appears. Every choice is
- * one undo step.
+ * The 风格 drawer puts a whole look on every page at once: a look (palette
+ * and fonts together), a palette, or a font set — imported fonts among them,
+ * each setting all the text. Every choice is one undo step. Changing one
+ * colour or font of the deck everywhere is done where that colour or font is
+ * edited (全部替换 in the settings panel).
  */
 export const FreeformStylePanel = memo(function FreeformStylePanel({
   document,
   onRestyle,
+  onImportFont,
 }: {
   document: FreeformDocument
   onRestyle: (request: RestyleRequest) => void
+  /** Opens the font file picker; the font joins the font sets. */
+  onImportFont: () => void
 }) {
   useLang()
-  const colors = useMemo(() => deckColors(document).slice(0, DECK_COLOR_LIMIT), [document])
-  const fonts = useMemo(() => deckFonts(document), [document])
+  const families = useMemo(() => deckFonts(document).map((font) => font.fontFamily), [document])
+  const imported = useImportedFonts()
+  const setEverywhere = (stack: string) => {
+    const changed = families.filter((family) => family !== stack)
+    if (changed.length > 0) onRestyle({ fonts: Object.fromEntries(changed.map((family) => [family, stack])) })
+  }
 
   return (
     <>
+      <div className="freeform-drawer-section">{t('搭配')}</div>
+      <div className="freeform-looks">
+        {STYLE_LOOKS.map((look) => {
+          const palette = PALETTES.find((candidate) => candidate.id === look.palette)!
+          const fonts = FONT_SETS.find((candidate) => candidate.id === look.fontSet)!
+          return (
+            <button
+              key={look.id}
+              type="button"
+              className="freeform-look"
+              data-testid={`style-look-${look.id}`}
+              onClick={() => onRestyle({ palette: look.palette, fontSet: look.fontSet })}
+            >
+              <span className="freeform-look-page" style={{ background: palette.background, color: palette.text }} aria-hidden="true">
+                <span className="freeform-look-title" style={{ fontFamily: fonts.heading }}>{t('标题')}</span>
+                <i className="freeform-look-accent" style={{ background: palette.accents[0] }} />
+                <span className="freeform-look-body" style={{ fontFamily: fonts.body }}>{t('正文内容')}</span>
+              </span>
+              <span className="freeform-palette-name">{t(look.name)}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="freeform-drawer-section">{t('配色')}</div>
       <div className="freeform-palettes">
         {PALETTES.map((palette) => (
@@ -64,51 +90,40 @@ export const FreeformStylePanel = memo(function FreeformStylePanel({
             onClick={() => onRestyle({ fontSet: set.id })}
           >
             <span className="freeform-font-set-name" style={{ fontFamily: set.heading }}>{t(set.name)}</span>
-            <span className="freeform-font-set-body" style={{ fontFamily: set.body }}>{fontLabel(set.body)}</span>
+            <span className="freeform-font-set-body">
+              <span style={{ fontFamily: set.heading }}>{fontLabel(set.heading)}</span>
+              {set.body !== set.heading && <> + <span style={{ fontFamily: set.body }}>{fontLabel(set.body)}</span></>}
+            </span>
           </button>
         ))}
+        {imported.map((font) => (
+          <div key={font.id} className="freeform-my-font">
+            <button
+              type="button"
+              className="freeform-font-set"
+              data-testid={`style-my-font-${font.id}`}
+              title={font.family}
+              onClick={() => setEverywhere(importedFontStack(font.family))}
+            >
+              <span className="freeform-font-set-name" style={{ fontFamily: importedFontStack(font.family) }}>{font.family}</span>
+              <span className="freeform-font-set-body">{t('我的字体')}</span>
+            </button>
+            <button
+              type="button"
+              className="freeform-my-font-remove"
+              aria-label={t('删除字体 {font}', { font: font.family })}
+              title={t('删除字体 {font}', { font: font.family })}
+              onClick={() => { void fontLibrary.remove(font.id).catch(() => undefined) }}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        ))}
+        <button type="button" className="freeform-font-import" data-testid="style-import-font" onClick={onImportFont}>
+          <UploadIcon />
+          {t('导入字体')}
+        </button>
       </div>
-
-      {colors.length > 0 && (
-        <>
-          <div className="freeform-drawer-section">{t('本套用色')}</div>
-          <div className="freeform-deck-colors">
-            {colors.map((entry, index) => (
-              <ColorPickerButton
-                key={index}
-                label={t('颜色 {color}', { color: entry.color })}
-                color={entry.color}
-                testId={`style-deck-color-${index}`}
-                onChange={(color) => onRestyle({ colors: { [entry.color]: color } })}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {fonts.length > 0 && (
-        <>
-          <div className="freeform-drawer-section">{t('本套字体')}</div>
-          <div className="freeform-deck-fonts">
-            {fonts.map((font, index) => (
-              <Select
-                key={index}
-                value={font.fontFamily}
-                title={t('字体 {font}', { font: fontLabel(font.fontFamily) })}
-                testId={`style-deck-font-${index}`}
-                previewFonts
-                options={[
-                  ...FONTS.map((option) => ({ id: option.id, label: t(option.label) })),
-                  ...(FONTS.some((option) => option.id === font.fontFamily) ? [] : [{ id: font.fontFamily, label: font.fontFamily }]),
-                ]}
-                onChange={(fontFamily) => {
-                  if (fontFamily !== font.fontFamily) onRestyle({ fonts: { [font.fontFamily]: fontFamily } })
-                }}
-              />
-            ))}
-          </div>
-        </>
-      )}
     </>
   )
 })

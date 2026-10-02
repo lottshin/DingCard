@@ -45,8 +45,10 @@ import type {
   ShadowPaint,
   ShapeFill,
   SlideBackground,
+  TextEffect,
 } from './types'
 import { normalizeRichTextSpans, usesV16SpanStyles } from './richText'
+import { isValidTextEffect } from './textEffects'
 import {
   cloneGradientStops,
   cloneLinePoints,
@@ -84,7 +86,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -309,6 +311,7 @@ const TEXT_OPTIONAL_V9_KEYS = new Set([
   'spans', 'lineHeight', 'letterSpacing', 'italic', 'vertical', 'opacity', 'shadow', 'filter',
   'blendMode', 'stroke', 'strokeWidth',
 ])
+const TEXT_OPTIONAL_V17_KEYS = new Set([...TEXT_OPTIONAL_V9_KEYS, 'effect'])
 const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
@@ -357,7 +360,7 @@ function optionalKeysFor(
     if (type === 'image') return BASE_OPTIONAL_V8_KEYS
     return null
   }
-  if (type === 'text') return TEXT_OPTIONAL_V9_KEYS
+  if (type === 'text') return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
   if (type === 'shape') return SHAPE_OPTIONAL_V9_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
@@ -544,6 +547,7 @@ function normalizeStrictSceneNode(
     if (inputVersion >= 9) {
       if ('vertical' in value && value.vertical !== true) return null
     }
+    if ('effect' in value && !isValidTextEffect(value.effect)) return null
     const appearance = cloneStrictAppearance(value, inputVersion)
     if (!appearance) return null
     return {
@@ -562,6 +566,7 @@ function normalizeStrictSceneNode(
       ...('vertical' in value ? { vertical: true as const } : {}),
       ...('stroke' in value ? { stroke: value.stroke as string } : {}),
       ...('strokeWidth' in value ? { strokeWidth: value.strokeWidth as number } : {}),
+      ...('effect' in value ? { effect: { ...(value.effect as TextEffect) } } : {}),
       ...appearance,
     }
   }
@@ -771,7 +776,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 16,
+    documentVersion: 17,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -845,6 +850,11 @@ export function normalizeFreeformDocumentV15(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v16 document. */
 export function normalizeFreeformDocumentV16(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 16)
+}
+
+/** Strictly validates and clones an already-v17 document. */
+export function normalizeFreeformDocumentV17(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 17)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1111,9 +1121,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v16 object. */
+/** Normalize any supported freeform document version to a fresh v17 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 17) return normalizeFreeformDocumentV17(value)
   if (value.documentVersion === 16) return normalizeFreeformDocumentV16(value)
   if (value.documentVersion === 15) return normalizeFreeformDocumentV15(value)
   if (value.documentVersion === 14) return normalizeFreeformDocumentV14(value)
@@ -1169,7 +1180,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 16,
+    documentVersion: 17,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1202,7 +1213,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 16,
+    documentVersion: 17,
     activeSlideId: document.activeSlideId,
     slides,
   }

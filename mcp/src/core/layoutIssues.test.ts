@@ -72,7 +72,7 @@ function drawing(id: string, overrides: Partial<FreeformPathElement> = {}): Free
 
 function deck(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 16,
+    documentVersion: 17,
     activeSlideId: 'page',
     slides: [{ id: 'page', name: '第 1 页', width: 1080, height: 1440, background: { type: 'solid', color: '#ffffff' }, nodes }],
   }
@@ -141,28 +141,42 @@ describe('layout issues', () => {
 
   test('low contrast against the card behind, but not the colours a template pairs on purpose', () => {
     const document = deck([
-      card('底板', '#f6f3ea', { x: 80, y: 80, width: 600, height: 300 }),
-      text('浅字', { textFill: { type: 'solid', color: '#ece8dc' } }),
-      // Editorial's red page number on its cream page is the template's choice.
-      text('页码', { y: 200, textFill: { type: 'solid', color: '#d94836' } }),
+      card('底板', '#d63b24', { x: 80, y: 80, width: 600, height: 300 }),
+      text('浅字', { textFill: { type: 'solid', color: '#e8553d' } }),
+      // Signal's paper-white numeral on its red block is the template's choice, even set small.
+      text('编号', { y: 200, textFill: { type: 'solid', color: '#f1efe9' } }),
     ])
     const issues = layoutIssues(document, measured(
       [
         { id: '底板', rect: { x: 80, y: 80, width: 600, height: 300 } },
         { id: '浅字', rect: { x: 100, y: 100, width: 400, height: 100 } },
-        { id: '页码', rect: { x: 100, y: 200, width: 400, height: 100 } },
+        { id: '编号', rect: { x: 100, y: 200, width: 400, height: 100 } },
       ],
       [
         { id: '浅字', area: { x: 108, y: 108, width: 200, height: 48 } },
-        { id: '页码', area: { x: 108, y: 208, width: 60, height: 48 } },
+        { id: '编号', area: { x: 108, y: 208, width: 60, height: 48 } },
       ],
     ))
     expect(kinds(issues)).toEqual(['low-contrast:浅字'])
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 0)
   })
 
+  test('a label effect is the words\' backdrop, and an outline that stands off them keeps them readable', () => {
+    const rect = { x: 100, y: 100, width: 400, height: 100 }
+    const area = { x: 108, y: 108, width: 200, height: 48 }
+    const check = (node: FreeformTextElement) => kinds(layoutIssues(deck([node]), measured([{ id: node.id, rect }], [{ id: node.id, area }])))
+    // White words on a white page read fine on a black label, not on a pale one.
+    expect(check(text('标签', { textFill: { type: 'solid', color: '#ffffff' }, effect: { type: 'background', color: '#18181b', amount: 40, radius: 30 } }))).toEqual([])
+    expect(check(text('浅底', { textFill: { type: 'solid', color: '#ffffff' }, effect: { type: 'background', color: '#fef9c3', amount: 40, radius: 30 } })))
+      .toEqual(['low-contrast:浅底'])
+    // White words with a dark outline stay readable on the white page; a pale outline doesn't help.
+    expect(check(text('贴纸', { fontWeight: 'bold', textFill: { type: 'solid', color: '#ffffff' }, effect: { type: 'outline', color: '#f43f5e', amount: 50 } }))).toEqual([])
+    expect(check(text('白边', { textFill: { type: 'solid', color: '#ffffff' }, effect: { type: 'outline', color: '#fafafa', amount: 50 } })))
+      .toEqual(['low-contrast:白边'])
+  })
+
   test('sample text, empty text and pictures that did not load', () => {
-    const document = deck([text('导语', { text: '第一屏负责给出判断，后面的页面再交代过程。' }), text('空的', { text: '  ' })])
+    const document = deck([text('导语', { text: '第一屏负责给出判断，\n后面的页面再交代过程。' }), text('空的', { text: '  ' })])
     const issues = layoutIssues(document, measured([], [], '图片加载失败'))
     expect(kinds(issues)).toEqual(['sample-text:导语', 'empty-text:空的', 'image-failed:'])
   })

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 16
+  documentVersion: 17
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -121,6 +121,33 @@ export interface FreeformElementBase extends SceneNodeState {
 }
 
 /**
+ * A text effect (v17), drawn by textEffects.ts. `amount` (0–100) sizes it as a
+ * share of the font size; `angle` (0–360, 0 to the right, 90 down) points it;
+ * colours are #RRGGBB.
+ */
+export type TextEffect =
+  /** A glow in `color` around the words. */
+  | { type: 'neon'; color: string; amount: number }
+  /** An outline outside the words, sticker style. */
+  | { type: 'outline'; color: string; amount: number }
+  /** Only the words' outline, in their own colour. */
+  | { type: 'hollow'; amount: number }
+  /** Hollow words over a solid copy shifted along `angle`. */
+  | { type: 'splice'; color: string; amount: number; angle: number }
+  /** A hard shadow shifted along `angle`. */
+  | { type: 'offset'; color: string; amount: number; angle: number }
+  /** Two fading copies along `angle`. */
+  | { type: 'echo'; color: string; amount: number; angle: number }
+  /** Copies in two colours split left and right. */
+  | { type: 'glitch'; color: string; color2: string; amount: number }
+  /** A solid 3D block along `angle`. */
+  | { type: 'extrude'; color: string; amount: number; angle: number }
+  /** A label block behind each line; `radius` (0–100) rounds it. */
+  | { type: 'background'; color: string; amount: number; radius: number }
+  /** A highlighter band across the lower part of each line. */
+  | { type: 'marker'; color: string; amount: number }
+
+/**
  * Additive styling for a character range [start, end) inside a text
  * element's plain `text`. Canonical spans are sorted, non-overlapping, and
  * carry at least one of bold/color/highlight/underline.
@@ -154,6 +181,8 @@ export interface FreeformTextElement extends FreeformElementBase {
   italic?: true
   /** Vertical text flow (v9); absent means horizontal. */
   vertical?: true
+  /** One text effect (v17); absent means none. */
+  effect?: TextEffect
   /** Text outline color (v8); absent means no outline. */
   stroke?: string
   /** Text outline width in px (v8). */
@@ -283,6 +312,8 @@ export interface FreeformNodeContentPatch {
 }
 
 export interface FreeformNodeStylePatch {
+  /** A text's effect (v17); `null` removes it. */
+  effect?: TextEffect | null
   fontSize?: number
   fontFamily?: string
   textFill?: ColorPaint

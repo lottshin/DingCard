@@ -14,7 +14,6 @@ import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
 import { readLastSession, updateLastSession } from '../lastSession'
 import { GUEST_OWNER_ID, isGuestOwner, store, storeFor } from '../storage'
-import { FONTS } from '../theme'
 import { assetDocumentSource } from '../workspaces/assetSource'
 import {
   ChevronLeftIcon,
@@ -40,6 +39,7 @@ import type { WorkspaceShellProps } from '../workspaces/types'
 import { useImageLease } from '../workspaces/useImageLease'
 import { useProjectAutosave } from '../workspaces/useProjectAutosave'
 import { FreeformTemplatePreview, TemplateGallery } from '../templates/TemplateGallery'
+import { Measured } from '../app/DocumentPreview'
 import { templatesForWorkspace } from '../templates/registry'
 import type { TemplateDefinition } from '../templates/types'
 import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE, PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
@@ -57,8 +57,15 @@ import {
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, type IconDefinition } from './icons'
 import { FreeformIconPicker } from './FreeformIconPicker'
 import { FreeformStylePanel } from './FreeformStylePanel'
+import { fontLabel, fontOptions, fontPickerValue, IMPORT_FONT_OPTION } from './fontChoices'
+import { FONT_FILE_ACCEPT, importedFontStack } from './fontFiles'
+import { fontLibrary, useImportedFonts } from './fontLibrary'
+import { TextEffectField } from './TextEffectField'
+import { TextEffectSample } from './TextEffectSample'
+import { TEXT_STYLE_PRESETS, presetOnDarkPage, textStylePatch, type TextStylePreset } from './textStyles'
 import { pathStrokeScale } from './pathData'
-import type { RestyleRequest } from './restyle'
+import { deckColors, deckFonts, type RestyleRequest } from './restyle'
+import { DeckColorsContext, type DeckColorsValue } from './deckColors'
 import { rangeHasRichTextStyle, restyleRichTextRange, type RichTextStyle } from './richText'
 import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
 import { FreeformExportMenu } from './FreeformExportMenu'
@@ -142,6 +149,7 @@ import {
   DEFAULT_SHAPE_PAINT,
   DEFAULT_TEXT_PAINT,
   isHexColor,
+  paintFallbackColor,
   slideBackgroundToCss,
 } from './paint'
 import {
@@ -244,7 +252,7 @@ import {
   zoomPercentFromWheelDelta,
 } from './viewportScale'
 import { copyStylePatch, pasteStylePatch } from './styleClipboard'
-import { t } from '../i18n'
+import { getLang, t } from '../i18n'
 import { useMediaQuery } from '../useMediaQuery'
 
 const FIT_SCALE_EPSILON = 0.0001
@@ -319,7 +327,6 @@ type ToolDrawer = 'templates' | 'styles' | 'text' | 'images' | 'elements'
 
 const FREEFORM_TEMPLATES = templatesForWorkspace('freeform')
 /** Two columns in the 288px templates panel. */
-const TEMPLATE_TILE_FRAME = { width: 122, height: 163 }
 
 /** Page list thumbnails share one width (smaller in narrow windows and the
  *  phone strip); the height follows each page's ratio, within bounds. */
@@ -784,6 +791,19 @@ type GuideDragState = { axis: 'x' | 'y'; guideId: string | null; position: numbe
 
 function operationErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? t(error.message) : fallback
+}
+
+/** Screen pixels in each dash (and gap) of a ruler guide. */
+const GUIDE_DASH = 4
+
+type GuideStyle = CSSProperties & { '--freeform-guide-dash': string }
+
+/** A guide one screen pixel thick at `position`, its dashes kept the same length at any zoom. */
+function guideStyle(axis: 'x' | 'y', position: number, renderScale: number): GuideStyle {
+  return {
+    ...(axis === 'x' ? { left: position, width: 1 / renderScale } : { top: position, height: 1 / renderScale }),
+    '--freeform-guide-dash': `${GUIDE_DASH / renderScale}px`,
+  }
 }
 
 const LOCKED_OPERATION_NOTICE = '图层已锁定，先解锁后再编辑'
@@ -1290,6 +1310,10 @@ export function FreeformWorkspace({
   const marqueePointerIdRef = useRef<number | null>(null)
   const propertiesTabRef = useRef<HTMLButtonElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const fontInputRef = useRef<HTMLInputElement>(null)
+  // Whether the font being imported goes onto the selected texts (picked from a text's font menu).
+  const fontImportForSelectionRef = useRef(false)
+  const importedFonts = useImportedFonts()
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
   const pageBackgroundInputRef = useRef<HTMLInputElement>(null)
   const [pageBackgroundPending, setPageBackgroundPending] = useState(false)
@@ -2014,6 +2038,15 @@ export function FreeformWorkspace({
   const restyleDeck = useCallback((request: RestyleRequest) => {
     applyAction({ type: 'document/restyle', ...request })
   }, [applyAction])
+  const deckColorsValue = useMemo<DeckColorsValue>(() => ({
+    colors: deckColors(doc).map((entry) => entry.color),
+    replace: (from, to) => restyleDeck({ colors: { [from]: to } }),
+  }), [doc, restyleDeck])
+  // The font a text was just moved off, for 全部替换 under its font menu.
+  const [fontSwap, setFontSwap] = useState<{ from: string; to: string } | null>(null)
+  const deckFamilies = useMemo(() => new Set(deckFonts(doc).map((font) => font.fontFamily)), [doc])
+  const fontSwapOwner = selectionPaths.map((path) => path.join('/')).join('|')
+  useEffect(() => { setFontSwap(null) }, [fontSwapOwner])
 
   /** Apply a few actions as one undo step; nothing happens unless every one of them changes something. */
   const applyActionGroup = useCallback((actions: FreeformAction[], label: string) => {
@@ -2943,7 +2976,7 @@ export function FreeformWorkspace({
     return false
   }
 
-  function addTextPreset(preset: TextPresetId) {
+  function addTextPreset(preset: TextPresetId, look?: TextStylePreset) {
     const base = createTextElement(activeSlide)
     if (preset === 'box') {
       insertNewElement({ ...base, text: t(base.text) })
@@ -2961,7 +2994,24 @@ export function FreeformWorkspace({
       fontSize: style.fontSize,
       fontWeight: style.fontWeight,
       lineHeight: style.lineHeight,
+      ...(look ? { textFill: structuredClone(look.textFill), ...(look.effect ? { effect: { ...look.effect } } : {}) } : {}),
     })
+  }
+
+  /** 花字: the selected texts take the look in one step; with no text selected, a new heading in it. */
+  function applyTextStylePreset(preset: TextStylePreset) {
+    if (blockDocumentMutationDuringInteraction()) return
+    const patch = textStylePatch(preset)
+    const updates = selectionPaths.flatMap((path) => {
+      const node = findNodeAtPath(activeSlide.nodes, path)
+      return node?.type === 'text' ? [{ path: [...path], patch }] : []
+    })
+    if (updates.length === 0) {
+      addTextPreset('heading', preset)
+      return
+    }
+    const changed = applyAction({ type: 'node/update-style', slideId: activeSlide.id, updates }, t('套用花字'))
+    if (!changed && (effectiveLockedSelection || lockedDescendantSelection)) showLockedOperationNotice()
   }
 
   function addShape(shape: FreeformShapeElement['shape']) {
@@ -3103,6 +3153,26 @@ export function FreeformWorkspace({
       await insertImageElement(() => assetDocumentSource(asset, owner), asset.name, asset)
     } catch (error) {
       showOperationError(error, t('图片插入失败，请稍后重试'))
+    }
+  }
+
+  function openFontImport(forSelection: boolean) {
+    fontImportForSelectionRef.current = forSelection
+    fontInputRef.current?.click()
+  }
+
+  async function handleFontInput(files: FileList | null) {
+    const file = files?.[0]
+    if (!file) return
+    try {
+      const font = await fontLibrary.importFile(file)
+      if (fontImportForSelectionRef.current && selectedElement?.type === 'text') {
+        updateSelectedStyle({ fontFamily: importedFontStack(font.family) })
+      }
+    } catch (error) {
+      showOperationError(error, t('字体导入失败，请稍后重试'))
+    } finally {
+      if (fontInputRef.current) fontInputRef.current.value = ''
     }
   }
 
@@ -5762,6 +5832,7 @@ export function FreeformWorkspace({
     && guideDrag.position <= guideDragBound
 
   return (
+    <DeckColorsContext.Provider value={deckColorsValue}>
     <div
       className={[
         'freeform-workspace',
@@ -5987,6 +6058,14 @@ export function FreeformWorkspace({
             accept="image/*"
             onChange={(event) => handleImageInput(event.currentTarget.files)}
           />
+          <input
+            ref={fontInputRef}
+            className="freeform-font-file"
+            type="file"
+            accept={FONT_FILE_ACCEPT}
+            data-testid="freeform-font-input"
+            onChange={(event) => handleFontInput(event.currentTarget.files)}
+          />
         </nav>
 
         {toolDrawer === 'templates' && (
@@ -6033,7 +6112,9 @@ export function FreeformWorkspace({
                     setShowTemplates(true)
                   }}
                 >
-                  <FreeformTemplatePreview template={template} frame={TEMPLATE_TILE_FRAME} />
+                  <Measured className="freeform-template-thumb">
+                    {(width) => <FreeformTemplatePreview template={template} frame={{ width, height: Math.round((width * 4) / 3) }} />}
+                  </Measured>
                   <span className="freeform-template-tile-title">{t(template.title)}</span>
                   <span className="freeform-template-tile-meta">{t('{n} 页', { n: template.pageCount })}</span>
                 </button>
@@ -6061,7 +6142,7 @@ export function FreeformWorkspace({
                 <CloseIcon />
               </button>
             </div>
-            <FreeformStylePanel document={doc} onRestyle={restyleDeck} />
+            <FreeformStylePanel document={doc} onRestyle={restyleDeck} onImportFont={() => openFontImport(false)} />
           </aside>
         )}
 
@@ -6104,6 +6185,22 @@ export function FreeformWorkspace({
                   onClick={() => addTextPreset(preset.id)}
                 >
                   {t(preset.label)}
+                </button>
+              ))}
+            </div>
+            <div className="freeform-drawer-section">{t('花字')}</div>
+            <div className="freeform-text-styles">
+              {TEXT_STYLE_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`freeform-text-style${presetOnDarkPage(preset) ? ' is-dark' : ''}`}
+                  data-testid={`text-style-${preset.id}`}
+                  style={{ background: preset.backdrop }}
+                  onClick={() => applyTextStylePreset(preset)}
+                >
+                  <TextEffectSample text={getLang() === 'en' ? 'Wow' : '花字'} fontSize={30} textFill={preset.textFill} effect={preset.effect} />
+                  <span className="freeform-text-style-name">{t(preset.name)}</span>
                 </button>
               ))}
             </div>
@@ -6446,10 +6543,15 @@ export function FreeformWorkspace({
             onStyle={(patch) => { updateSelectedStyle(patch) }}
             onProperty={(edit) => { commitSceneProperty(edit) }}
             onFontFamily={(fontFamily) => {
+              if (fontFamily === IMPORT_FONT_OPTION) {
+                openFontImport(true)
+                return
+              }
               if (selectedElement?.type === 'text') {
                 void buildFontEmbedCSS(selectedElement.text, fontFamily, [selectedElement.fontWeight]).catch(() => undefined)
               }
-              updateSelectedStyle({ fontFamily })
+              const from = selectedElement?.type === 'text' ? selectedElement.fontFamily : null
+              if (updateSelectedStyle({ fontFamily }) && from && from !== fontFamily) setFontSwap({ from, to: fontFamily })
             }}
             onShapeFill={(fill) => { updateSelectedShapeFill(fill) }}
             onAlign={alignSelection}
@@ -6657,9 +6759,7 @@ export function FreeformWorkspace({
                           data-guide-axis={guide.axis}
                           title={t('拖动参考线，拖出页面删除；双击移除')}
                           onPointerDown={(event) => guideDragPointerDown(event, guide.axis, guide.id)}
-                          style={guide.axis === 'x'
-                            ? { left: guide.position, width: 1 / renderScale }
-                            : { top: guide.position, height: 1 / renderScale }}
+                          style={guideStyle(guide.axis, guide.position, renderScale)}
                         >
                           <div
                             className="freeform-guide-hit"
@@ -6673,9 +6773,7 @@ export function FreeformWorkspace({
                       <div
                         className={`freeform-ui-only freeform-guide-ghost freeform-guide-${guideDrag.axis}${guideDragValid ? '' : ' freeform-guide-invalid'}`}
                         data-testid="freeform-guide-dragging"
-                        style={guideDrag.axis === 'x'
-                          ? { left: guideDrag.position, width: 1 / renderScale }
-                          : { top: guideDrag.position, height: 1 / renderScale }}
+                        style={guideStyle(guideDrag.axis, guideDrag.position, renderScale)}
                       />
                     )}
                   </div>
@@ -7165,21 +7263,40 @@ export function FreeformWorkspace({
                       <label className="field">
                         <span className="field-label">{t('字体')}</span>
                         <Select
-                          value={selectedElement.fontFamily}
+                          value={fontPickerValue(selectedElement.fontFamily)}
                           onChange={(fontFamily) => {
+                            if (fontFamily === IMPORT_FONT_OPTION) {
+                              openFontImport(true)
+                              return
+                            }
                             void buildFontEmbedCSS(
                               selectedElement.text,
                               fontFamily,
                               [selectedElement.fontWeight],
                             ).catch(() => undefined)
-                            updateSelectedStyle({ fontFamily })
+                            const from = selectedElement.fontFamily
+                            if (updateSelectedStyle({ fontFamily }) && from !== fontFamily) setFontSwap({ from, to: fontFamily })
                           }}
                           title={t('字体')}
                           testId="freeform-font-select"
                           previewFonts
-                          options={FONTS.map((font) => ({ id: font.id, label: t(font.label) }))}
+                          options={fontOptions(importedFonts, { current: selectedElement.fontFamily, withImport: true })}
                         />
                       </label>
+                      {fontSwap && fontSwap.to === selectedElement.fontFamily && deckFamilies.has(fontSwap.from) && (
+                        <button
+                          type="button"
+                          className="freeform-font-swap"
+                          data-testid="freeform-font-swap"
+                          title={t('把整套里用「{from}」的文字都换成「{to}」', { from: fontLabel(fontSwap.from), to: fontLabel(fontSwap.to) })}
+                          onClick={() => {
+                            restyleDeck({ fonts: { [fontSwap.from]: fontSwap.to } })
+                            setFontSwap(null)
+                          }}
+                        >
+                          {t('全部替换')}
+                        </button>
+                      )}
                       <div className="field-grid three">
                         <label title={t('字号')}>
                           <InspectorGlyph name="font-size" />
@@ -7319,6 +7436,19 @@ export function FreeformWorkspace({
                           <CloseIcon />
                         </button>
                       </div>
+                    </InspectorSection>
+                  )}
+
+                  {isTextElement(selectedElement) && (
+                    <InspectorSection title={t('效果')} testId="inspector-text-effect">
+                      <TextEffectField
+                        effect={selectedElement.effect}
+                        textColor={selectedElement.textFill.type === 'solid'
+                          ? selectedElement.textFill.color
+                          : paintFallbackColor(selectedElement.textFill)}
+                        resetKey={inspectorNumberResetKey}
+                        onChange={(effect) => updateSelectedStyle({ effect })}
+                      />
                     </InspectorSection>
                   )}
 
@@ -8223,5 +8353,6 @@ export function FreeformWorkspace({
         </div>
       )}
     </div>
+    </DeckColorsContext.Provider>
   )
 }

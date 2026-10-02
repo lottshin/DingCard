@@ -10,9 +10,8 @@ const STANDALONE_TWO_DIGITS = /(?<!\d)\d{2}(?!\d)/
 // Chinese text a template keeps as decoration: labels that read as part of
 // the design, not as sample sentences about some other topic.
 const KEPT_DECORATION: Partial<Record<FreeformTemplateSeriesId, readonly string[]>> = {
-  editorial: ['阅读顺序 / 02'],
-  brutalist: ['宣言 / 01'],
-  blueprint: ['结构蓝图 · 图号 A-01', '760 px —— 结构跨度 ——', '签名 / DATE'],
+  editorial: ['完'],
+  blueprint: ['签名 / DATE'],
 }
 
 function freeformTemplates() {

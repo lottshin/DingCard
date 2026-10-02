@@ -36,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the fourteen tools', async () => {
+  test('exposes the fifteen tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -51,6 +51,7 @@ describe('dingcard-mcp tool layer', () => {
       'list_icons',
       'list_styles',
       'list_templates',
+      'list_text_styles',
       'open_in_editor',
       'render_document',
       'render_markdown',
@@ -190,7 +191,7 @@ describe('dingcard-mcp tool layer', () => {
     }
     expect(created.ok).toBe(true)
     const kept = await call<{ document: { documentVersion: number; slides: unknown[] } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(16)
+    expect(kept.document.documentVersion).toBe(17)
     // Cover and two sections: the outline asked for no closing page.
     expect(kept.document.slides).toHaveLength(3)
     expect(created.summary.slideCount).toBe(3)
@@ -287,7 +288,7 @@ describe('dingcard-mcp tool layer', () => {
     const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
       documentVersion: number
     }
-    expect(document.documentVersion).toBe(16)
+    expect(document.documentVersion).toBe(17)
 
     const envelope = JSON.parse(await readText('dingcard://examples/markdown')) as {
       source: string
@@ -346,12 +347,19 @@ describe('dingcard-mcp tool layer', () => {
   test('list_styles offers palettes and font sets that document/restyle takes, and inspect_document shows the deck\'s own', async () => {
     const client = await connect()
     const styles = await call(client, 'list_styles', {}) as unknown as {
+      looks: Array<{ id: string; palette: string; fontSet: string }>
       palettes: Array<{ id: string; background: string; text: string; accents: string[] }>
       fontSets: Array<{ id: string; heading: string; body: string }>
       headingScale: number
     }
     expect(styles.palettes.length).toBeGreaterThanOrEqual(8)
     expect(styles.fontSets.length).toBeGreaterThanOrEqual(5)
+    // Every look names a palette and a font set the list has.
+    expect(styles.looks.length).toBeGreaterThanOrEqual(6)
+    for (const look of styles.looks) {
+      expect(styles.palettes.some((palette) => palette.id === look.palette), look.id).toBe(true)
+      expect(styles.fontSets.some((set) => set.id === look.fontSet), look.id).toBe(true)
+    }
     expect(styles.headingScale).toBeGreaterThan(1)
     const night = styles.palettes.find((palette) => palette.id === 'night-flight')!
 
@@ -361,7 +369,7 @@ describe('dingcard-mcp tool layer', () => {
     }
     expect(before.style.colors[0]).toMatchObject({ color: '#f6f3ea' })
     expect(before.style.colors[0].uses).toContain('background')
-    expect(before.style.fonts.map((font) => font.fontFamily)).toContain('Songti SC, serif')
+    expect(before.style.fonts.map((font) => font.fontFamily)).toContain("'Noto Serif SC', serif")
     expect(before.style.bodySize).toBeGreaterThan(0)
 
     const restyled = await call(client, 'apply_actions', {
@@ -407,6 +415,27 @@ describe('dingcard-mcp tool layer', () => {
     const preflight = await fetch(opened.documentUrl, { method: 'OPTIONS' })
     expect(preflight.headers.get('access-control-allow-private-network')).toBe('true')
     expect((await fetch(opened.documentUrl.replace(/[0-9a-f]{12}\.json$/, '000000000000.json'))).status).toBe(404)
+    await client.close()
+  })
+
+  test('list_text_styles gives 花字 patches that node/update-style applies', async () => {
+    const client = await connect()
+    const listed = await call<{ styles: Array<{ id: string; name: string; backdrop: string; patch: Record<string, unknown> }> }>(client, 'list_text_styles', {})
+    expect(listed.styles.length).toBeGreaterThanOrEqual(12)
+    const label = listed.styles.find((style) => style.id === 'label')!
+    expect(label.patch).toMatchObject({ effect: { type: 'background' }, fontWeight: 'bold', stroke: null, shadow: null })
+
+    const created = await call<{ documentId: string; slides: Array<{ id: string }> }>(client, 'create_document_from_template', { templateId: 'editorial-freeform' })
+    const inspected = await call<{ slides: Array<{ nodes: Array<{ id: string; name: string }> }> }>(client, 'inspect_document', { documentId: created.documentId })
+    const title = inspected.slides[0].nodes.find((node) => node.name === '主标题')!
+    const applied = await call<{ ok: boolean; changes: boolean[] }>(client, 'apply_actions', {
+      documentId: created.documentId,
+      actions: [{ type: 'node/update-style', slideId: created.slides[0].id, updates: [{ path: [title.id], patch: label.patch }] }],
+    })
+    expect(applied).toMatchObject({ ok: true, changes: [true] })
+    const kept = await call<{ document: { documentVersion: number; slides: Array<{ nodes: Array<{ id: string; effect?: unknown }> }> } }>(client, 'get_document', { documentId: created.documentId })
+    expect(kept.document.documentVersion).toBe(17)
+    expect(kept.document.slides[0].nodes.find((node) => node.id === title.id)?.effect).toEqual(label.patch.effect)
     await client.close()
   })
 

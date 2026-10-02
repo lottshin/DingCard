@@ -12,6 +12,7 @@ import type {
   FreeformTextElement,
   ShadowPaint,
   SlideBackground,
+  TextEffect,
 } from './types'
 
 /** A curated palette: the page, the words on it, and the colours that stand out. */
@@ -51,6 +52,25 @@ export const FONT_SETS: readonly FontSet[] = [
   { id: 'handwritten', name: '手写文楷', heading: "'LXGW WenKai TC', cursive", body: "'LXGW WenKai TC', cursive" },
   { id: 'poster', name: '海报小薇', heading: "'ZCOOL XiaoWei', serif", body: "'Noto Sans SC', sans-serif" },
   { id: 'system', name: '系统苹方', heading: 'PingFang SC', body: 'PingFang SC' },
+]
+
+/** A ready look: a palette with the font set that suits it, put on together. */
+export interface StyleLook {
+  id: string
+  name: string
+  palette: string
+  fontSet: string
+}
+
+export const STYLE_LOOKS: readonly StyleLook[] = [
+  { id: 'magazine', name: '杂志', palette: 'paper', fontSet: 'editorial' },
+  { id: 'fresh', name: '清新', palette: 'sea-salt', fontSet: 'modern-sans' },
+  { id: 'forest', name: '森系', palette: 'pine', fontSet: 'book' },
+  { id: 'sweet', name: '甜美', palette: 'berry', fontSet: 'handwritten' },
+  { id: 'literary', name: '文艺', palette: 'latte', fontSet: 'book' },
+  { id: 'minimal', name: '极简', palette: 'mono', fontSet: 'system' },
+  { id: 'midnight', name: '夜读', palette: 'night-flight', fontSet: 'editorial' },
+  { id: 'neon-night', name: '霓虹夜', palette: 'neon', fontSet: 'poster' },
 ]
 
 /** What `document/restyle` changes; palette and font set first, then the exact replacements. */
@@ -164,6 +184,14 @@ function recolorShadow(shadow: ShadowPaint | undefined, recolor: Recolor): Shado
 }
 
 /** Apply a patch, or keep the node when nothing in it changed; undefined entries are left out, never written. */
+function recolorEffect(effect: TextEffect | undefined, recolor: Recolor): TextEffect | undefined {
+  if (!effect || !('color' in effect)) return effect
+  const color = recolor(effect.color)
+  const color2 = effect.type === 'glitch' ? recolor(effect.color2) : undefined
+  if (color === effect.color && (effect.type !== 'glitch' || color2 === effect.color2)) return effect
+  return effect.type === 'glitch' ? { ...effect, color, color2: color2! } : { ...effect, color }
+}
+
 function patched<T extends object>(node: T, patch: Partial<T>): T {
   const keys = (Object.keys(patch) as Array<keyof T>).filter((key) => patch[key] !== undefined)
   if (keys.every((key) => patch[key] === node[key])) return node
@@ -189,6 +217,7 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
       return patched(node, {
         textFill: recolorPaint(node.textFill, recolor),
         shadow: recolorShadow(node.shadow, recolor),
+        effect: recolorEffect(node.effect, recolor),
         ...(node.stroke !== undefined ? { stroke: recolor(node.stroke) } : {}),
         ...(spans && spans.some((span, index) => span !== node.spans![index]) ? { spans } : {}),
       })
@@ -298,6 +327,14 @@ function visitColors(
             const share = (span.end - span.start) * (node.fontSize * factor) ** 2
             if (span.color) add([span.color], 'text', share)
             if (span.highlight) add([span.highlight], 'fill', share * 1.3)
+          }
+          // A label or highlighter is a fill behind the words; outlines, glows and shadows hug them.
+          const effect = node.effect
+          if (effect && 'color' in effect) {
+            if (effect.type === 'background') add([effect.color], 'fill', glyphs * 1.3)
+            else if (effect.type === 'marker') add([effect.color], 'fill', glyphs * 0.6)
+            else if (effect.type === 'outline') add([effect.color], 'line', glyphs * 0.3)
+            else add(effect.type === 'glitch' ? [effect.color, effect.color2] : [effect.color], 'shadow', glyphs * 0.3)
           }
         } else if (node.type === 'shape') {
           // A shape covering most of the page is its backdrop.
@@ -475,8 +512,11 @@ function keepWordsReadable(document: FreeformDocument): FreeformDocument {
       }
       const needed = contrastNeeded(node) + CONTRAST_MARGIN
       const words = solidOf(node.textFill)
+      // Words on their own label read against the label; an outline that stands off them keeps them readable anywhere.
+      if (node.effect?.type === 'background') background = node.effect.color.toLowerCase()
+      const outlined = node.effect?.type === 'outline' && words !== null && contrast(words, node.effect.color) >= needed
       let next = node
-      if (background && words) {
+      if (background && words && !outlined) {
         const color = readableOn(words, background, needed)
         if (color !== words) next = { ...next, textFill: { type: 'solid', color } }
       }

@@ -479,8 +479,8 @@ describe('checkDocument', () => {
       const found = await checkDocument(cut)
       if (!found.ok) throw new Error(found.error)
       const overflow = found.issues.find((issue) => issue.kind === 'text-overflow' && issue.node === '标题上')
-      expect(overflow?.message).toMatch(/多出 [23]\dpx/)
-      expect(overflow?.fitFontSize).toBeLessThan(116)
+      expect(overflow?.message).toMatch(/多出 \d+px/)
+      expect(overflow?.fitFontSize).toBeLessThan(title.type === 'text' ? title.fontSize : 0)
     },
     420_000,
   )

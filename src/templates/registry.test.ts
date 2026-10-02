@@ -90,7 +90,7 @@ describe('template registry', () => {
         const leaves = sceneLeaves(slide.nodes)
         expect(leaves.length, `${template.id}/${slide.name}`).toBeGreaterThanOrEqual(8)
         expect(leaves.filter((node) => node.type === 'text').length, `${template.id}/${slide.name}`).toBeGreaterThanOrEqual(3)
-        expect(leaves.some((node) => node.type === 'shape'), `${template.id}/${slide.name}`).toBe(true)
+        expect(leaves.some((node) => node.type === 'shape' || node.type === 'path'), `${template.id}/${slide.name}`).toBe(true)
         expect(leaves.some((node) => node.type === 'line'), `${template.id}/${slide.name}`).toBe(true)
       }
     }
@@ -156,7 +156,7 @@ describe('template registry', () => {
     expect(seamRisks).toEqual([])
   })
 
-  it('showcases v6 through v9 appearance fields across every freeform template', () => {
+  it('shows off the appearance features across the freeform templates, three or more in each', () => {
     const capabilities = new Set<string>()
     for (const template of templatesForWorkspace('freeform')) {
       const document = template.createFreeform?.()
@@ -190,6 +190,8 @@ describe('template registry', () => {
           }
         }
         if (leaf.type === 'line' && leaf.dash !== undefined) used.add('dash')
+        if (leaf.type === 'path') used.add('path')
+        if (leaf.type === 'text' && leaf.effect !== undefined) used.add('textEffect')
       }
       expect(
         used.size,
@@ -198,18 +200,17 @@ describe('template registry', () => {
       for (const capability of used) capabilities.add(capability)
     }
     expect([...capabilities].sort()).toEqual([
-      'blendMode',
       'cornerRadius',
       'dash',
       'filter',
       'gradientStops',
-      'italic',
       'letterSpacing',
       'lineHeight',
       'newShapes',
       'opacity',
+      'path',
       'shadow',
-      'textStroke',
+      'textEffect',
       'verticalText',
     ])
   })
@@ -229,6 +230,8 @@ describe('template registry', () => {
     expect(direction).toBeDefined()
     expect(arrowText).toBeDefined()
     expect(direction!.y + direction!.height / 2).toBe(headline!.y + headline!.height / 2)
-    expect(arrowText!.y - direction!.y).toBe(-2)
+    // The arrow sits in the middle of its disc.
+    expect(Math.abs(arrowText!.y + arrowText!.height / 2 - (direction!.y + direction!.height / 2))).toBeLessThanOrEqual(2)
+    expect(arrowText!.x + arrowText!.width / 2).toBe(direction!.x + direction!.width / 2)
   })
 })

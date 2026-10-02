@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { getLang, t } from '../i18n'
 import { Select } from '../Select'
-import { FONTS } from '../theme'
 import {
   CopyIcon,
   GraphicIcon,
@@ -14,6 +13,8 @@ import {
   TextIcon,
   TrashIcon,
 } from '../ui/icons'
+import { fontOptions, fontPickerValue } from './fontChoices'
+import { useImportedFonts } from './fontLibrary'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorGlyph, type InspectorGlyphName } from './InspectorGlyph'
 import { InspectorNumberInput } from './InspectorNumberInput'
@@ -231,6 +232,7 @@ function nextFontSize(current: number, direction: 1 | -1): number {
  */
 export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
   const { subject, resetKey, suspended = false } = props
+  const importedFonts = useImportedFonts()
   const objectSelected = subject.kind !== 'page'
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -290,12 +292,12 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
             <Divider />
             <div className="ctx-font">
               <Select
-                value={subject.node.fontFamily}
+                value={fontPickerValue(subject.node.fontFamily)}
                 onChange={props.onFontFamily}
                 title={t('字体')}
                 testId="ctx-font-select"
                 previewFonts
-                options={FONTS.map((font) => ({ id: font.id, label: t(font.label) }))}
+                options={fontOptions(importedFonts, { current: subject.node.fontFamily, withImport: true })}
               />
             </div>
             <div className="ctx-stepper">

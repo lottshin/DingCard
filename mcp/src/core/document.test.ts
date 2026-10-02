@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 16,
+    documentVersion: 17,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(16)
+    expect(result.document.documentVersion).toBe(17)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 

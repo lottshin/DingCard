@@ -10,15 +10,20 @@ import {
   FONT_SETS,
   HEADING_SCALE,
   PALETTES,
+  STYLE_LOOKS,
   type FontSet,
   type Palette,
+  type StyleLook,
 } from '../../../src/freeform/restyle'
-import type { FreeformDocument } from '../../../src/freeform/types'
+import { TEXT_STYLE_PRESETS, textStylePatch } from '../../../src/freeform/textStyles'
+import type { FreeformDocument, FreeformNodeStylePatch } from '../../../src/freeform/types'
 
 /** How many of a deck's colours inspect_document lists, the most prominent first. */
 const STYLE_COLOR_LIMIT = 12
 
 export interface StyleCatalogue {
+  /** Ready looks: a palette and the font set that suits it, put on together. */
+  looks: StyleLook[]
   palettes: Palette[]
   fontSets: FontSet[]
   /** Texts at least this many times the deck's body size take a font set's heading font. */
@@ -27,6 +32,7 @@ export interface StyleCatalogue {
 
 export function listStyles(): StyleCatalogue {
   return {
+    looks: STYLE_LOOKS.map((look) => ({ ...look })),
     palettes: PALETTES.map((palette) => ({ ...palette, accents: [...palette.accents] })),
     fontSets: FONT_SETS.map((set) => ({ ...set })),
     headingScale: HEADING_SCALE,
@@ -54,5 +60,26 @@ export function deckStyle(document: FreeformDocument): DeckStyle {
     })),
     fonts: deckFonts(document).map((font) => ({ ...font, largest: Math.round(font.largest * 10) / 10 })),
     bodySize: deckBodySize(document),
+  }
+}
+
+export interface TextStyleEntry {
+  id: string
+  name: string
+  /** The page colour the look reads best on. */
+  backdrop: string
+  /** A node/update-style patch that gives a text this look. */
+  patch: FreeformNodeStylePatch
+}
+
+/** The ready-made text looks (花字). */
+export function listTextStyles(): { styles: TextStyleEntry[] } {
+  return {
+    styles: TEXT_STYLE_PRESETS.map((preset) => ({
+      id: preset.id,
+      name: preset.name,
+      backdrop: preset.backdrop,
+      patch: textStylePatch(preset),
+    })),
   }
 }

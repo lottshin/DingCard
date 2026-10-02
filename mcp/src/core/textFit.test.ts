@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { FreeformTextElement } from '../../../src/freeform/types'
-import { fittingFontSize, measureText, textFits } from './textFit'
+import { balancedHeading, fittingFontSize, measureText, textFits } from './textFit'
 
 const box = (overrides: Partial<FreeformTextElement> = {}): FreeformTextElement => ({
   id: 'text',
@@ -63,4 +63,23 @@ describe('text fitting', () => {
     // So a two-line point gets no second line the box can't show.
     expect(textFits(row, '一起煮二十分钟；最后焖五分钟', 32, '删掉不能支撑判断的材料')).toBe(false)
   })
+
+  test('breaks a heading of two or three lines where they come out even, at words and after a pause', () => {
+    const heading = box({ width: 920, fontSize: 112 })
+    // Eight characters a line: a full line over a lone "下来" becomes two even ones, between words.
+    expect(balancedHeading(heading, '先把睡眠时间固定下来', 112)).toBe('先把睡眠时间\n固定下来')
+    expect(balancedHeading(heading, '30 天养成早起习惯', 112)).toBe('30 天养成\n早起习惯')
+    expect(balancedHeading(heading, '坚持的秘诀，是降低门槛', 112)).toBe('坚持的秘诀，\n是降低门槛')
+    // A line never starts with closing punctuation.
+    expect(balancedHeading(heading, '先别急着把它修成成品。', 112).split('\n')[1]).not.toMatch(/^。/)
+    // Three lines come out even too, broken between words.
+    const poster = box({ width: 752, fontSize: 158 })
+    expect(balancedHeading(poster, '坚持的秘诀是降低门槛', 158)).toBe('坚持的\n秘诀是\n降低门槛')
+    // One line, its own break, or more than three lines: left alone.
+    expect(balancedHeading(heading, '早起习惯', 112)).toBe('早起习惯')
+    expect(balancedHeading(heading, '先把睡眠\n时间固定下来', 112)).toBe('先把睡眠\n时间固定下来')
+    const long = '一二三四五六七八九十'.repeat(4)
+    expect(balancedHeading(heading, long, 112)).toBe(long)
+  })
 })
+

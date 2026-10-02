@@ -6,6 +6,7 @@ import {
 } from './constants'
 import { isHexColor } from './paint'
 import { normalizeRichTextSpans } from './richText'
+import { isValidTextEffect } from './textEffects'
 import {
   cloneGradientStops,
   clonePathViewBox,
@@ -526,6 +527,7 @@ function ownTextLeaf(leaf: FreeformTextElement): FreeformTextElement {
   return {
     ...ownLeafAppearance(leaf),
     ...(leaf.spans ? { spans: leaf.spans.map((span) => ({ ...span })) } : {}),
+    ...(leaf.effect ? { effect: { ...leaf.effect } } : {}),
   }
 }
 
@@ -928,6 +930,7 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   blendMode: BLEND_FIELD_CHECK,
   stroke: (record) => isHexColor(record.stroke),
   strokeWidth: (record) => isValidTextStrokeWidth(record.strokeWidth),
+  effect: (record) => isValidTextEffect(record.effect),
 }
 
 const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {

@@ -7,6 +7,7 @@ import { isStyledRun, splitTextRuns, textRunStyle } from './richText'
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
+import { effectHollowsWords, textEffectLayer, textEffectWordsStyle } from './textEffects'
 import { scenePathKey } from './sceneTree'
 import type { ImageDecodeIdentity, ImageDecodeReport } from './imageReadiness'
 import type {
@@ -112,16 +113,23 @@ function SceneLeafContent({
   }
 
   if (leaf.type === 'text') {
-    const style = {
+    // What lays the words out; the effect layer copies it so its words land exactly under the text's.
+    const layout = {
       fontFamily: leaf.fontFamily,
       fontSize: leaf.fontSize,
-      ...textFillToStyle(leaf.textFill),
       textAlign: leaf.align,
       fontWeight: leaf.fontWeight,
       ...(leaf.lineHeight !== undefined ? { lineHeight: leaf.lineHeight } : {}),
       ...(leaf.letterSpacing !== undefined ? { letterSpacing: `${leaf.letterSpacing}px` } : {}),
       ...(leaf.italic ? { fontStyle: 'italic' as const } : {}),
       ...(leaf.vertical ? { writingMode: 'vertical-rl' as const } : {}),
+    }
+    const effect = leaf.effect
+    const effectLayer = effect ? textEffectLayer(effect, leaf.fontSize) : null
+    const textColor = leaf.textFill.type === 'solid' ? leaf.textFill.color : paintFallbackColor(leaf.textFill)
+    const style = {
+      ...layout,
+      ...textFillToStyle(leaf.textFill),
       ...(leaf.stroke !== undefined
         ? {
           WebkitTextStroke: `${leaf.strokeWidth ?? 1}px ${leaf.stroke}`,
@@ -129,23 +137,40 @@ function SceneLeafContent({
         }
         : {}),
       ...(leaf.shadow ? { textShadow: shadowCss(leaf.shadow) } : {}),
+      ...(effect ? textEffectWordsStyle(effect, leaf.fontSize, textColor) : {}),
+      // Above the effect layer, which sits under it in the same box.
+      ...(effectLayer ? { position: 'relative' as const } : {}),
     }
+    const runs = splitTextRuns(leaf.text, leaf.spans)
     // Gradient text shows its gradient through see-through glyphs; styled runs
-    // that paint over it fall back to the gradient's first colour.
-    const runFallbackColor = leaf.textFill.type === 'solid' ? undefined : paintFallbackColor(leaf.textFill)
+    // that paint over it fall back to the gradient's first colour. Hollow words keep only their outline.
+    const runFallbackColor = leaf.textFill.type === 'solid' || effectHollowsWords(effect)
+      ? undefined
+      : paintFallbackColor(leaf.textFill)
+    const layerWords = runs.map((run, index) => (run.bold ? <span key={index} style={{ fontWeight: 700 }}>{run.text}</span> : run.text))
+    const layer = effectLayer && (
+      <div className="freeform-text-effect" aria-hidden="true" style={{ ...layout, ...effectLayer.style }}>
+        {effectLayer.band ? <span className="freeform-text-effect-band" style={effectLayer.band}>{layerWords}</span> : layerWords}
+      </div>
+    )
     if (presentationOnly) {
       return (
-        <div className="freeform-preview-textbox" style={style}>
-          {splitTextRuns(leaf.text, leaf.spans).map((run, index) =>
-            isStyledRun(run)
-              ? <span key={index} style={textRunStyle(run, runFallbackColor)}>{run.text}</span>
-              : run.text,
-          )}
-        </div>
+        <>
+          {layer}
+          <div className="freeform-preview-textbox" style={style}>
+            {runs.map((run, index) =>
+              isStyledRun(run)
+                ? <span key={index} style={textRunStyle(run, runFallbackColor)}>{run.text}</span>
+                : run.text,
+            )}
+          </div>
+        </>
       )
     }
 
     return (
+      <>
+      {layer}
       <PlainTextEditable
         className="freeform-textbox"
         ariaLabel={t('文本内容')}
@@ -158,6 +183,7 @@ function SceneLeafContent({
         onSelectionChange={onTextSelectionChange}
         style={style}
       />
+      </>
     )
   }
 

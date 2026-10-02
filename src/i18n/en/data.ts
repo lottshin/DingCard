@@ -27,7 +27,15 @@ export const data: Record<string, Translation> = {
   '系统宋体': 'System serif',
   '系统默认': 'System default',
 
-  // Palettes and font sets (restyle.ts); 夜航, 霓虹 and 蓝图 share their template names
+  // Looks, palettes and font sets (restyle.ts); 夜航, 霓虹 and 蓝图 share their template names
+  '杂志': 'Magazine',
+  '清新': 'Fresh',
+  '森系': 'Forest',
+  '甜美': 'Sweet',
+  '文艺': 'Literary',
+  '极简': 'Minimal',
+  '夜读': 'Midnight',
+  '霓虹夜': 'Neon Night',
   '纸墨': 'Paper & Ink',
   '海盐': 'Sea Salt',
   '松林': 'Pine',
@@ -41,6 +49,18 @@ export const data: Record<string, Translation> = {
   '手写文楷': 'Handwritten Kai',
   '海报小薇': 'Poster XiaoWei',
   '系统苹方': 'System PingFang',
+
+  // 花字 presets (textStyles.ts)
+  '霓虹青': 'Neon cyan',
+  '霓虹粉': 'Neon pink',
+  '贴纸白边': 'Sticker',
+  '糖果描边': 'Candy outline',
+  '复古投影': 'Retro shadow',
+  '黑底标签': 'Black label',
+  '黄色底块': 'Yellow tag',
+  '日落渐变': 'Sunset',
+  '极光渐变': 'Aurora',
+  '金色': 'Gold',
 
   // Template metadata
   '编辑档案': 'Editorial Archive',
@@ -58,13 +78,13 @@ export const data: Record<string, Translation> = {
   '夜航': 'Night Flight',
   '沿时间和路线展开一段记录，适合随笔与灵感。': 'A record told along a time line and a route, for essays and ideas.',
   '霓虹': 'Neon',
-  '深色夜景配发光与滤色叠加，适合夜间观察与城市话题。': 'Night scenes with glow and screen blending, for city and after-dark topics.',
+  '深色夜景配霓虹灯牌和发光标题，适合夜间观察与城市话题。': 'Night scenes with neon signs and glowing titles, for city and after-dark topics.',
   '粗野': 'Brutalist',
-  '硬阴影、粗线和六边形印章，适合宣言与规则清单。': 'Hard shadows, heavy rules and hexagon stamps, for manifestos and rule lists.',
+  '黄黑撞色、硬阴影和粗线，适合宣言与规则清单。': 'Yellow on black, hard shadows and heavy rules, for manifestos and rule lists.',
   '柔光': 'Soft Light',
-  '低透明粉彩、大圆角与松行高，适合随笔与生活记录。': 'Translucent pastels, big corner radii and loose leading, for essays and daily life.',
+  '柔光粉彩、便签和信纸，配手写字体，适合随笔与生活记录。': 'Soft pastels, sticky notes and letter paper in a handwritten face, for essays and daily life.',
   '蓝图': 'Blueprint',
-  '虚线网格、六边形螺母与尺寸标注，适合计划与结构拆解。': 'Dashed grids, hex nuts and dimension marks, for plans and structure breakdowns.',
+  '工程网格、尺寸标注和图签，适合计划与结构拆解。': 'Drafting grids, dimension marks and a title block, for plans and structure breakdowns.',
   '复盘': 'Review',
   '长文': 'Long-form',
   '观点': 'Opinion',

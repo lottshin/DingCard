@@ -72,7 +72,7 @@
   --freeform-ruler-bg: #ffffff;
   --freeform-ruler-tick: rgba(26, 25, 23, 0.2);
   --freeform-ruler-label: #9a978f;
-  --freeform-guide: #e5488a;
+  --freeform-guide: #8e8b85;
 
   /* Names the legacy stylesheet reads but never defined. */
   --surface-raised: var(--surface);
@@ -148,7 +148,7 @@
   --freeform-ruler-bg: #191918;
   --freeform-ruler-tick: rgba(255, 255, 255, 0.18);
   --freeform-ruler-label: #6f6c66;
-  --freeform-guide: #f472b6;
+  --freeform-guide: #a19e97;
 }
 
 :root {

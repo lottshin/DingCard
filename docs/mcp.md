@@ -22,17 +22,18 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
-| `validate_document` | 严格校验 v16 文档（v1–v15 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时保存在服务端并返回 `documentId`（`includeDocument: true` 时附上规范化后的文档）。 |
+| `validate_document` | 严格校验 v17 文档（v1–v16 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时保存在服务端并返回 `documentId`（`includeDocument: true` 时附上规范化后的文档）。 |
 | `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，其他图形给出 `d` 开头），以及整套卡片的 `style`：用到的颜色（按面积排序，附占比 `share` 和用在哪：`background`/`fill`/`text`/`line`/`shadow`）、字体（几段文字用、最大字号）和正文字号 `bodySize`，为编辑提供目标。 |
 | `list_icons` | 查内置图标（97 个线性图标）：不带参数列出全部图标的 id 和中英文名，`query` 用中文或英文关键词搜，`ids` 按 id 取；带上路径数据 `d`、统一画法 `style` 和一个可以直接插入的完整节点 `example`（见下文「图形与图标」）。 |
-| `list_styles` | 列出可一键套到整套卡片上的配色（底色、文字色、强调色）和字体组合（标题字体、正文字体），配合 `document/restyle` 使用（见下文「整套换风格」）。 |
+| `list_text_styles` | 列出 16 套现成的花字：每套有 `id`、`name`、适合的底色 `backdrop` 和 `patch`，`patch` 直接作为 `node/update-style` 的补丁就能把文字变成这个样子（见下文「花字与文字效果」）。 |
+| `list_styles` | 列出可一键套到整套卡片上的搭配（一组配色加上相配的字体组合）、配色（底色、文字色、强调色）和字体组合（标题字体、正文字体），配合 `document/restyle` 使用（见下文「整套换风格」）。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效；按 `documentId` 就地更新（`version` 加一）。 |
 | `get_document` | 取回完整文档 JSON，或用 `path` 写成 `.json` 文件（之后可拖进「我的项目」，或用 `documentPath` 传回来）。 |
 | `open_in_editor` | 在浏览器里的叮卡编辑器打开这份文档，存成一个新项目，人接着手改（见下文「在叮卡里打开」）。 |
-| `render_document` | 无头渲染自由画布 v16 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
+| `render_document` | 无头渲染自由画布 v17 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 
-工具描述内嵌了 v16 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
+工具描述内嵌了 v17 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景、文字效果）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
 
 ## 文档句柄
 
@@ -62,6 +63,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 - 封面的目录位（清单、柔光模板）列出各页标题。
 - 模板里个别文本框画得盖住了旁边的条目或下面的说明（示例字短，碰不到）。填内容时这种框先收到那段文字为止，长文字在自己那一栏里换行，不会压上去。
 - 文字放不下时先占用下方或上方的空位（不越过它所在的卡片、不压到别的元素），再缩小字号，最小到原字号的 72%；仍放不下的列在 `summary.overflowing`，请删短或换一个容量大的模板。被缩小的文字列在 `summary.shrunk`。
+- 排成两三行的标题、要点和引文在词的边界上断得一样长（「先把睡眠时间 / 固定下来」，而不是一整行下面挂一个「下来」），不让标点打头，有逗号顿号时优先在它后面断；自己写了换行的照原样。信号模板封面的标题分成上下两段大字，也按两段排出来一样宽来分。
 - 没有给结尾页（`ending`，或大纲里的 `## 结尾：标题`）就不出结尾页。
 
 大纲写法：
@@ -105,10 +107,10 @@ list_templates → create_document_from_content / create_document_from_outline�
 
 | URI | 内容 |
 | --- | --- |
-| `dingcard://schema/freeform` | 自由画布 v16 文档模型与校验规则说明。 |
+| `dingcard://schema/freeform` | 自由画布 v17 文档模型与校验规则说明。 |
 | `dingcard://schema/actions` | `FreeformAction` 动作联合类型说明（`apply_actions` 的入参结构）。 |
 | `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
-| `dingcard://examples/freeform` | 完整自由画布 v16 文档示例（编辑部模板实例）。 |
+| `dingcard://examples/freeform` | 完整自由画布 v17 文档示例（编辑部模板实例）。 |
 | `dingcard://icons` | 内置图标全集：每个图标的 id、中英文名、关键词与 24×24 路径数据 `d`。 |
 | `dingcard://examples/markdown` | 完整 Markdown 文档信封示例（编辑档案模板实例）。 |
 
@@ -153,9 +155,25 @@ list_templates → create_document_from_content / create_document_from_outline�
 { "type": "document/restyle", "palette": "night-flight", "fontSet": "editorial", "colors": { "#d94836": "#ff5a36" } }
 ```
 
-- `palette` / `fontSet` 取 `list_styles` 的 id。配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅（按 `check_document` 的对比度门槛）；字体组合把不小于正文字号 1.4 倍（`headingScale`）的文字换成标题字体，其余换成正文字体。
-- `colors`（`{ "#原色": "#新色" }`）和 `fonts`（`{ "原字体": "新字体" }`）精确替换，键是文档里现有的颜色和字体，可以从 `inspect_document` 的 `style` 里取；颜色在文字、片段标色和高亮、填充、描边、投影、渐变色标里一起换。同时给时先套 `palette` / `fontSet`，再按 `colors` / `fonts` 覆盖（键仍指原来的颜色和字体）。精确替换不会自动调对比度，换完用 `check_document` 看一遍。
+- `palette` / `fontSet` 取 `list_styles` 的 id；`looks` 里每套搭配给出一对 `palette` 和 `fontSet`，两个一起传就是这套搭配。配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅（按 `check_document` 的对比度门槛）；字体组合把不小于正文字号 1.4 倍（`headingScale`）的文字换成标题字体，其余换成正文字体。
+- `colors`（`{ "#原色": "#新色" }`）和 `fonts`（`{ "原字体": "新字体" }`）精确替换，键是文档里现有的颜色和字体，可以从 `inspect_document` 的 `style` 里取；颜色在文字、片段标色和高亮、填充、描边、投影、渐变色标和文字效果里一起换。同时给时先套 `palette` / `fontSet`，再按 `colors` / `fonts` 覆盖（键仍指原来的颜色和字体）。精确替换不会自动调对比度，换完用 `check_document` 看一遍。
 - 和其他动作一样，不认识的 id、不合法的颜色或什么都没换时，这一步被忽略（`changes` 里是 `false`）。
+
+## 花字与文字效果
+
+- 文字节点 v17 起可以带一个 `effect`：`neon` 发光、`outline` 字外描边、`hollow` 镂空、`splice` 错位、`offset` 硬投影、`echo` 回声、`glitch` 故障、`extrude` 立体、`background` 每行后面的底色块、`marker` 荧光笔；`amount`（0–100）按字号比例算大小，所以同一个效果放在什么字号上都合适。写法见工具描述里的文档模型，`node/update-style` 的 `effect: null` 去掉。
+- 想直接用现成的样子，`list_text_styles` 给出 16 套花字，把其中的 `patch` 交给 `node/update-style`：
+
+```json
+{ "type": "node/update-style", "slideId": "cover", "updates": [{ "path": ["title"], "patch": { "textFill": { "type": "solid", "color": "#ffffff" }, "effect": { "type": "background", "color": "#18181b", "amount": 40, "radius": 30 }, "fontWeight": "bold", "stroke": null, "strokeWidth": null, "shadow": null } }] }
+```
+
+- 深色 `backdrop` 的花字（霓虹、故障、立体、极光、金色）放在深色页面上才好看。`check_document` 会把带底色块的文字和底色块比对比度，带字外描边的文字只要描边和字反差够就不报看不清。
+
+## 字体
+
+- `fontFamily` 写字体名或字体栈；内置字体（苹方、思源黑体、思源宋体、霞鹜文楷、站酷小薇、系统宋体、系统默认）在编辑器和渲染里都有。渲染在本机的无头浏览器里进行，本机装了的字体也能用名字直接写。
+- 编辑器里「导入字体」的字体只存在导入它的那个浏览器里，MCP 渲染时没有，会退回默认无衬线字体；要交给别人的卡片用内置字体。
 
 ## 线段与旋转几何
 
@@ -163,7 +181,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 
 ## 回到编辑器精修
 
-最省事的是 `open_in_editor`（见上文）。也可以把 `get_document` 写出的 `.json` 文件导入：在工作台「我的项目」点击「导入 JSON」，或把文件拖进页面。自由画布文档（v1–v16，旧版自动迁移为 v16）和 Markdown 文档都会存为项目，并在对应的编辑器里打开；非法文件会给出可读的错误提示。由此形成完整闭环：
+最省事的是 `open_in_editor`（见上文）。也可以把 `get_document` 写出的 `.json` 文件导入：在工作台「我的项目」点击「导入 JSON」，或把文件拖进页面。自由画布文档（v1–v17，旧版自动迁移为 v17）和 Markdown 文档都会存为项目，并在对应的编辑器里打开；非法文件会给出可读的错误提示。由此形成完整闭环：
 
 ```text
 AI 生成文档 → 导入叮卡精修 → 编辑器导出 PNG
@@ -226,7 +244,7 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 ## 当前限制
 
-- `render_document` 仅支持自由画布文档（v16；v1–v15 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
+- `render_document` 仅支持自由画布文档（v17；v1–v16 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
 - 自由画布文本节点的可选 `spans` 富文本片段（局部加粗/标色）在渲染与校验中与编辑器一致支持；编辑器内改动文字时片段会按编辑位置自动保留或收缩。
 - 模板只有仓库里内置的这几套（社区通过 PR 共建，见 docs/templates.md）。需要渲染自己的文档时，把文档直接传给 `render_document` / `render_markdown`。
 - 文档中的图片 `src`（自由画布）可以是浏览器可加载的 URL、data URL 或本机文件路径（自动嵌入）；Markdown 文档的图片通过信封的 `images` 映射（`img:<id>` → data URL）提供，本地文件请先转为 data URL。
