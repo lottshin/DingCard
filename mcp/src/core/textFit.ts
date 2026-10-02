@@ -40,11 +40,18 @@ function tokens(paragraph: string): string[] {
   return result
 }
 
-function lineCount(paragraph: string, available: number, fontSize: number, spacing: number, weight: number): number {
-  const width = (token: string) => [...token].reduce(
-    (sum, char) => sum + glyphEm(char) * fontSize * weight * WIDTH_SAFETY + spacing,
-    0,
-  )
+function lineCount(
+  paragraph: string,
+  available: number,
+  fontSize: number,
+  spacing: number,
+  weight: number,
+  tight: boolean,
+): number {
+  // Tight drops the slack: bold widens Latin letters, not CJK, and no line runs long.
+  const glyph = (char: string) => glyphEm(char) * fontSize
+    * (tight && WIDE.test(char) ? 1 : weight) * (tight ? 1 : WIDTH_SAFETY)
+  const width = (token: string) => [...token].reduce((sum, char) => sum + glyph(char) + spacing, 0)
   let lines = 1
   let used = 0
   for (const token of tokens(paragraph)) {
@@ -72,13 +79,22 @@ function lineCount(paragraph: string, available: number, fontSize: number, spaci
   return lines
 }
 
-/** The room `text` needs at `fontSize` in `node`'s box: lines along the flow and their total depth. */
-export function measureText(node: FreeformTextElement, text: string, fontSize: number): { lines: number; depth: number } {
+/**
+ * The room `text` needs at `fontSize` in `node`'s box: lines along the flow
+ * and their total depth. `tight` drops the safety slack, for a count close to
+ * how the words really lay out rather than the most they might need.
+ */
+export function measureText(
+  node: FreeformTextElement,
+  text: string,
+  fontSize: number,
+  tight = false,
+): { lines: number; depth: number } {
   const along = (node.vertical ? node.height : node.width) - PADDING * 2
   const spacing = node.letterSpacing ?? 0
   const weight = node.fontWeight === 'bold' ? 1.04 : 1
   const lines = text.split('\n').reduce(
-    (sum, paragraph) => sum + lineCount(paragraph, Math.max(1, along), fontSize, spacing, weight),
+    (sum, paragraph) => sum + lineCount(paragraph, Math.max(1, along), fontSize, spacing, weight, tight),
     0,
   )
   return { lines, depth: lines * fontSize * (node.lineHeight ?? DEFAULT_LINE_HEIGHT) }
@@ -88,11 +104,12 @@ export function measureText(node: FreeformTextElement, text: string, fontSize: n
  * Whether `text` fits `node`'s box at `fontSize`. Templates sometimes draw
  * boxes a hair tighter than their own sample's line box (the glyphs still
  * show); `sample` lends the box that much room, so copy no longer than the
- * sample is never shrunk.
+ * sample is never shrunk. The sample is measured tight: it lends only the
+ * lines it really fills, never one the box can't show.
  */
 export function textFits(node: FreeformTextElement, text: string, fontSize: number, sample?: string): boolean {
   const across = (node.vertical ? node.width : node.height) - PADDING * 2
-  const room = sample === undefined ? across : Math.max(across, measureText(node, sample, node.fontSize).depth)
+  const room = sample === undefined ? across : Math.max(across, measureText(node, sample, node.fontSize, true).depth)
   return measureText(node, text, fontSize).depth <= room + 0.5
 }
 

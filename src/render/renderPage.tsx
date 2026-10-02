@@ -79,7 +79,7 @@ export interface InspectedSlide {
   nodes: Array<{ nodeId: string; rect: Rect }>
   texts: Array<{
     nodeId: string
-    /** How far the words run past the box, down and across. */
+    /** How far the words run past the box, down (what the glyphs lose) and across. */
     overflowY: number
     overflowX: number
     /** The largest whole font size at which they fit; null when they already do. */
@@ -149,6 +149,101 @@ function relativeRect(rect: DOMRect, origin: DOMRect): Rect {
   }
 }
 
+/** Whether nothing between the artboard and an element rotates or scales it, so client rects are its own pixels. */
+function drawnUpright(element: HTMLElement, artboard: HTMLElement): boolean {
+  for (let current: HTMLElement | null = element; current && current !== artboard; current = current.parentElement) {
+    const transform = getComputedStyle(current).transform
+    if (transform !== 'none' && transform !== 'matrix(1, 0, 0, 1, 0, 0)') return false
+  }
+  return true
+}
+
+/** A text node's characters as [start, end) offsets, from either end, keeping surrogate pairs whole. */
+function* characters(text: Text, fromEnd: boolean): Generator<[number, number]> {
+  const data = text.data
+  if (fromEnd) {
+    for (let end = data.length; end > 0;) {
+      const start = end >= 2 && /[\uDC00-\uDFFF]/.test(data[end - 1]) && /[\uD800-\uDBFF]/.test(data[end - 2]) ? end - 2 : end - 1
+      yield [start, end]
+      end = start
+    }
+  } else {
+    for (let start = 0; start < data.length;) {
+      const end = /[\uD800-\uDBFF]/.test(data[start]) && /[\uDC00-\uDFFF]/.test(data[start + 1] ?? '') ? start + 2 : start + 1
+      yield [start, end]
+      start = end
+    }
+  }
+}
+
+/**
+ * How far a text's glyphs reach past its box, which clips them. A box can be
+ * shorter than its lines without losing a stroke (fonts' line metrics run
+ * taller than their glyphs, and templates draw some boxes to the glyphs), so
+ * this measures the ink of the first and last lines: each run sits on its
+ * baseline (its line's top plus the font's ascent) and reaches as far as its
+ * glyphs do.
+ */
+function clippedInk(box: HTMLElement): number {
+  const context = document.createElement('canvas').getContext('2d')
+  if (!context) return Math.max(0, box.scrollHeight - box.clientHeight)
+  const clip = box.getBoundingClientRect()
+  const style = getComputedStyle(box)
+  const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.2
+  const stroke = (Number.parseFloat(style.webkitTextStrokeWidth) || 0) / 2
+  const texts: Text[] = []
+  const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) texts.push(node as Text)
+
+  // The ink of one edge line, walking characters in from that end until the line changes.
+  const edgeLine = (fromEnd: boolean): { top: number; bottom: number } | null => {
+    let lineTop: number | null = null
+    let top = Infinity
+    let bottom = -Infinity
+    let run = ''
+    let runStyle: Element | null = null
+    let runTop = 0
+    const flush = () => {
+      if (!run || !runStyle) return
+      const font = getComputedStyle(runStyle)
+      context.font = `${font.fontStyle} ${font.fontWeight} ${font.fontSize} ${font.fontFamily}`
+      const metrics = context.measureText(run)
+      const baseline = runTop + metrics.fontBoundingBoxAscent
+      top = Math.min(top, baseline - metrics.actualBoundingBoxAscent)
+      bottom = Math.max(bottom, baseline + metrics.actualBoundingBoxDescent)
+      run = ''
+    }
+    for (const text of fromEnd ? [...texts].reverse() : texts) {
+      for (const [start, end] of characters(text, fromEnd)) {
+        const range = document.createRange()
+        range.setStart(text, start)
+        range.setEnd(text, end)
+        const rect = range.getClientRects()[0]
+        if (!rect || rect.width === 0) continue
+        if (lineTop === null) lineTop = rect.top
+        else if (Math.abs(rect.top - lineTop) >= lineHeight / 2) {
+          flush()
+          return { top, bottom }
+        }
+        if (text.parentElement !== runStyle) {
+          flush()
+          runStyle = text.parentElement
+          runTop = rect.top
+        }
+        const char = text.data.slice(start, end)
+        run = fromEnd ? char + run : run + char
+      }
+    }
+    flush()
+    return lineTop === null ? null : { top, bottom }
+  }
+
+  const first = edgeLine(false)
+  const last = edgeLine(true)
+  if (!first || !last) return 0
+  return Math.max(0, last.bottom + stroke - clip.bottom, clip.top - (first.top - stroke))
+}
+
 /** Measure the mounted slide: node boxes, text overflow, and the size each overflowing text would fit at. */
 function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: string | null): InspectedSlide {
   const origin = artboard.getBoundingClientRect()
@@ -171,7 +266,13 @@ function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: str
     }
     const box = element.querySelector<HTMLElement>(':scope > .freeform-preview-textbox')
     if (!box) continue
-    const overflowY = Math.max(0, box.scrollHeight - box.clientHeight)
+    // Upright horizontal text is judged by what its glyphs lose; the rest by its line boxes.
+    const byInk = drawnUpright(element, artboard) && getComputedStyle(box).writingMode === 'horizontal-tb'
+    const overflowDown = () => {
+      const lines = Math.max(0, box.scrollHeight - box.clientHeight)
+      return byInk && lines > 1 ? clippedInk(box) : lines
+    }
+    const overflowY = overflowDown()
     const overflowX = Math.max(0, box.scrollWidth - box.clientWidth)
     let fitFontSize: number | null = null
     if (overflowY > 1 || overflowX > 1) {
@@ -179,7 +280,7 @@ function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: str
       const start = Math.floor(Number.parseFloat(getComputedStyle(box).fontSize))
       for (let size = start - 1; size >= 8; size -= 1) {
         box.style.fontSize = `${size}px`
-        if (box.scrollHeight <= box.clientHeight + 1 && box.scrollWidth <= box.clientWidth + 1) {
+        if (overflowDown() <= 1 && box.scrollWidth <= box.clientWidth + 1) {
           fitFontSize = size
           break
         }

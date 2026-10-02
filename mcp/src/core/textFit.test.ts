@@ -54,4 +54,13 @@ describe('text fitting', () => {
     expect(textFits(tight, '同样长', 40)).toBe(false)
     expect(textFits(tight, '同样长', 40, '原来的')).toBe(true)
   })
+
+  test('lends only the lines the sample really fills', () => {
+    // Eleven bold characters fill one 364px line (32px each), though the safe estimate wraps them.
+    const row = box({ width: 380, height: 76, fontSize: 32, fontWeight: 'bold' })
+    expect(measureText(row, '删掉不能支撑判断的材料', 32).lines).toBe(2)
+    expect(measureText(row, '删掉不能支撑判断的材料', 32, true).lines).toBe(1)
+    // So a two-line point gets no second line the box can't show.
+    expect(textFits(row, '一起煮二十分钟；最后焖五分钟', 32, '删掉不能支撑判断的材料')).toBe(false)
+  })
 })

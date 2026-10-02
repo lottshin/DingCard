@@ -62,7 +62,7 @@ list_templates → create_document_from_content / create_document_from_outline
 
 | kind | 说明 |
 | --- | --- |
-| `text-overflow` | 文字超出文本框被裁掉，附 `fitFontSize`（实测能放下的最大字号）。 |
+| `text-overflow` | 字被文本框裁掉了笔画，附 `fitFontSize`（实测不再裁字的最大字号）。只看字形本身：行高超出文本框、但笔画都还在框里的不算。 |
 | `text-overlap` | 两段文字叠在一起。 |
 | `covered-text` | 文字被上层不透明的色块或图片挡住三成以上。 |
 | `off-page` | 文字跑出页面。 |

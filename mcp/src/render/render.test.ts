@@ -412,13 +412,41 @@ describe('checkDocument', () => {
     420_000,
   )
 
+  test(
+    'reports the glyphs a box cuts, not a line box running past it',
+    async () => {
+      // Signal's cover titles sit in boxes drawn to their glyphs: the lines run past, nothing is cut.
+      const generated = createDocumentFromOutline('# 一周早餐不重样\n\n## 周一：燕麦杯\n- 燕麦：前一晚泡好', 'signal-freeform')
+      if (!generated.ok) throw new Error(generated.error)
+      const clean = await checkDocument(generated.document)
+      if (!clean.ok) throw new Error(clean.error)
+      expect(clean.issues.filter((issue) => issue.kind === 'text-overflow')).toEqual([])
+
+      // A shorter box cuts the glyphs, and the report says by about how much.
+      const cover = generated.document.slides[0]
+      const title = cover.nodes.find((node) => node.name === '标题上')!
+      const cut = reduceFreeformDocument(generated.document, {
+        type: 'node/update-geometry',
+        slideId: cover.id,
+        updates: [{ path: [title.id], patch: { height: 100 } }],
+      })
+      const found = await checkDocument(cut)
+      if (!found.ok) throw new Error(found.error)
+      const overflow = found.issues.find((issue) => issue.kind === 'text-overflow' && issue.node === '标题上')
+      expect(overflow?.message).toMatch(/多出 [23]\dpx/)
+      expect(overflow?.fitFontSize).toBeLessThan(116)
+    },
+    420_000,
+  )
+
   test('flags an untouched template as sample copy', async () => {
     const instantiation = instantiateTemplate('signal-freeform')
     if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
     const result = await checkDocument(instantiation.document)
     if (!result.ok) throw new Error(result.error)
     expect(result.summary.byKind['sample-text']).toBeGreaterThan(5)
-    expect(result.issues.every((issue) => issue.kind === 'sample-text' || issue.kind === 'text-overflow')).toBe(true)
+    // Its titles' boxes are drawn to their glyphs, so nothing reads as cut.
+    expect(result.issues.every((issue) => issue.kind === 'sample-text')).toBe(true)
   }, 420_000)
 
   test('refuses invalid documents without a browser', async () => {
