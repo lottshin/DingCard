@@ -559,68 +559,6 @@
   white-space: nowrap;
 }
 
-/* Imported fonts sit among the font sets, a remove button at their right end; the import button closes the list. */
-.freeform-drawer .freeform-my-font {
-  position: relative;
-  min-width: 0;
-}
-
-.freeform-drawer .freeform-my-font .freeform-font-set {
-  padding-right: 44px;
-}
-
-.freeform-drawer .freeform-my-font-remove {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-3);
-  cursor: pointer;
-  transform: translateY(-50%);
-}
-
-.freeform-drawer .freeform-my-font-remove:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.freeform-drawer .freeform-my-font-remove svg {
-  width: 14px;
-  height: 14px;
-}
-
-.freeform-drawer .freeform-font-import {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 40px;
-  border: 1px dashed var(--line-strong, var(--line-2));
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-2);
-  font: 500 13px/1 var(--ui-font);
-  cursor: pointer;
-}
-
-.freeform-drawer .freeform-font-import:hover {
-  border-color: var(--text-3);
-  background: var(--hover);
-  color: var(--text);
-}
-
-.freeform-drawer .freeform-font-import svg {
-  width: 16px;
-  height: 16px;
-}
-
 /* 搭配: each look as a little page in its colours and fonts, two to a row. */
 .freeform-drawer .freeform-looks {
   display: grid;

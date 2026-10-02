@@ -5,7 +5,10 @@ import { SearchIcon, UploadIcon } from '../ui/icons'
 import { AssetCard, AssetPreview } from './AssetCard'
 import { ASSET_ACCEPT, imageFiles } from './assetFiles'
 import { ConfirmDialog } from './ConfirmDialog'
+import { FontLibraryPanel, importFontFiles } from './FontLibraryPanel'
 import type { AssetsState } from './useAssets'
+import { FONT_FILE_ACCEPT } from '../freeform/fontFiles'
+import { useImportedFonts } from '../freeform/fontLibrary'
 import { t } from '../i18n'
 
 interface AssetsPageProps {
@@ -33,10 +36,21 @@ export function AssetsPage({ ownerId, assets, usage, onUpload, onRename, onDelet
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<Asset | null>(null)
   const [dragging, setDragging] = useState(false)
+  // Pictures, or the fonts imported in this browser.
+  const [kind, setKind] = useState<'images' | 'fonts'>('images')
+  const [fontError, setFontError] = useState<string | null>(null)
+  const fonts = useImportedFonts()
   const dragDepthRef = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const fontInputRef = useRef<HTMLInputElement>(null)
   const onUploadRef = useRef(onUpload)
   onUploadRef.current = onUpload
+  const kindRef = useRef(kind)
+  kindRef.current = kind
+  const importFonts = (files: File[]) => {
+    setFontError(null)
+    void importFontFiles(files).then(setFontError)
+  }
 
   const all = assets.assets
   const totalBytes = all.reduce((sum, asset) => sum + asset.bytes, 0)
@@ -51,7 +65,7 @@ export function AssetsPage({ ownerId, assets, usage, onUpload, onRename, onDelet
   useEffect(() => {
     if (!ownerId) return
     const onPaste = (event: ClipboardEvent) => {
-      if (isTextTarget(event.target)) return
+      if (isTextTarget(event.target) || kindRef.current !== 'images') return
       const files = imageFiles(event.clipboardData?.files)
       if (files.length === 0) return
       event.preventDefault()
@@ -85,12 +99,15 @@ export function AssetsPage({ ownerId, assets, usage, onUpload, onRename, onDelet
           dragDepthRef.current = 0
           setDragging(false)
           const files = Array.from(event.dataTransfer.files)
-          if (files.length > 0) onUpload(files)
+          if (files.length === 0) return
+          if (kind === 'fonts') importFonts(files)
+          else onUpload(files)
         },
       }
     : {}
 
   const pick = () => inputRef.current?.click()
+  const pickFonts = () => fontInputRef.current?.click()
 
   return (
     <section className="page page-assets" aria-label={t('素材库')} {...dropHandlers}>
@@ -100,12 +117,39 @@ export function AssetsPage({ ownerId, assets, usage, onUpload, onRename, onDelet
         </div>
         {ownerId && (
           <div className="page-actions">
-            <button className="accent" type="button" onClick={pick} data-testid="asset-upload">
-              <UploadIcon />{t('上传图片')}
-            </button>
+            <div className="tabs" role="group" aria-label={t('素材类型')}>
+              <button type="button" aria-pressed={kind === 'images'} data-testid="asset-kind-images" onClick={() => setKind('images')}>
+                {t('图片')} <span className="tnum">{all.length}</span>
+              </button>
+              <button type="button" aria-pressed={kind === 'fonts'} data-testid="asset-kind-fonts" onClick={() => setKind('fonts')}>
+                {t('字体')} <span className="tnum">{fonts.length}</span>
+              </button>
+            </div>
+            {kind === 'images' ? (
+              <button className="accent" type="button" onClick={pick} data-testid="asset-upload">
+                <UploadIcon />{t('上传图片')}
+              </button>
+            ) : (
+              <button className="accent" type="button" onClick={pickFonts} data-testid="font-import">
+                <UploadIcon />{t('导入字体')}
+              </button>
+            )}
           </div>
         )}
       </div>
+      <input
+        ref={fontInputRef}
+        type="file"
+        accept={FONT_FILE_ACCEPT}
+        multiple
+        hidden
+        data-testid="font-file-input"
+        onChange={(event) => {
+          const files = Array.from(event.currentTarget.files ?? [])
+          event.currentTarget.value = ''
+          if (files.length > 0) importFonts(files)
+        }}
+      />
       <input
         ref={inputRef}
         type="file"
@@ -120,7 +164,9 @@ export function AssetsPage({ ownerId, assets, usage, onUpload, onRename, onDelet
         }}
       />
 
-      {!ownerId ? null : (
+      {ownerId && kind === 'fonts' && <FontLibraryPanel error={fontError} onPick={pickFonts} />}
+
+      {!ownerId || kind !== 'images' ? null : (
         <>
           <div className="toolbar-row">
             <label className="search-field">
@@ -192,7 +238,7 @@ export function AssetsPage({ ownerId, assets, usage, onUpload, onRename, onDelet
 
       {dragging && (
         <div className="asset-drop-overlay" aria-hidden="true">
-          <div><UploadIcon /><b>{t('松开，上传到素材库')}</b></div>
+          <div><UploadIcon /><b>{kind === 'fonts' ? t('松开，导入字体') : t('松开，上传到素材库')}</b></div>
         </div>
       )}
       {previewing && (

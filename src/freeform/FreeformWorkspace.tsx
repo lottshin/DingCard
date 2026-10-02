@@ -1314,8 +1314,6 @@ export function FreeformWorkspace({
   const propertiesTabRef = useRef<HTMLButtonElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const fontInputRef = useRef<HTMLInputElement>(null)
-  // Whether the font being imported goes onto the selected texts (picked from a text's font menu).
-  const fontImportForSelectionRef = useRef(false)
   const importedFonts = useImportedFonts()
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
   const pageBackgroundInputRef = useRef<HTMLInputElement>(null)
@@ -3159,8 +3157,8 @@ export function FreeformWorkspace({
     }
   }
 
-  function openFontImport(forSelection: boolean) {
-    fontImportForSelectionRef.current = forSelection
+  /** Import a font from a text's font menu; it goes onto the selected text. */
+  function openFontImport() {
     fontInputRef.current?.click()
   }
 
@@ -3169,7 +3167,7 @@ export function FreeformWorkspace({
     if (!file) return
     try {
       const font = await fontLibrary.importFile(file)
-      if (fontImportForSelectionRef.current && selectedElement?.type === 'text') {
+      if (selectedElement?.type === 'text') {
         updateSelectedStyle({ fontFamily: importedFontStack(font.family) })
       }
     } catch (error) {
@@ -6163,7 +6161,7 @@ export function FreeformWorkspace({
                 <CloseIcon />
               </button>
             </div>
-            <FreeformStylePanel document={doc} onRestyle={restyleDeck} onImportFont={() => openFontImport(false)} />
+            <FreeformStylePanel onRestyle={restyleDeck} />
           </aside>
         )}
 
@@ -6565,7 +6563,7 @@ export function FreeformWorkspace({
             onProperty={(edit) => { commitSceneProperty(edit) }}
             onFontFamily={(fontFamily) => {
               if (fontFamily === IMPORT_FONT_OPTION) {
-                openFontImport(true)
+                openFontImport()
                 return
               }
               if (selectedElement?.type === 'text') {
@@ -7300,7 +7298,7 @@ export function FreeformWorkspace({
                           value={fontPickerValue(selectedElement.fontFamily)}
                           onChange={(fontFamily) => {
                             if (fontFamily === IMPORT_FONT_OPTION) {
-                              openFontImport(true)
+                              openFontImport()
                               return
                             }
                             void buildFontEmbedCSS(

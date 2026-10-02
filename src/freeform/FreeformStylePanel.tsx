@@ -1,36 +1,21 @@
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 import { t, useLang } from '../i18n'
-import { CloseIcon, UploadIcon } from '../ui/icons'
 import { fontLabel } from './fontChoices'
-import { importedFontStack } from './fontFiles'
-import { fontLibrary, useImportedFonts } from './fontLibrary'
-import { deckFonts, FONT_SETS, PALETTES, STYLE_LOOKS, type RestyleRequest } from './restyle'
-import type { FreeformDocument } from './types'
+import { FONT_SETS, PALETTES, STYLE_LOOKS, type RestyleRequest } from './restyle'
 
 /**
  * The 风格 drawer puts a whole look on every page at once: a look (palette
- * and fonts together), a palette, or a font set — imported fonts among them,
- * each setting all the text. Every choice is one undo step. Changing one
- * colour or font of the deck everywhere is done where that colour or font is
- * edited (全部替换 in the settings panel).
+ * and fonts together), a palette, or a font set. Every choice is one undo
+ * step. One colour or font changed everywhere is done where it is edited
+ * (全部替换 in the settings panel); fonts are imported from the font menus
+ * and kept in 素材库.
  */
 export const FreeformStylePanel = memo(function FreeformStylePanel({
-  document,
   onRestyle,
-  onImportFont,
 }: {
-  document: FreeformDocument
   onRestyle: (request: RestyleRequest) => void
-  /** Opens the font file picker; the font joins the font sets. */
-  onImportFont: () => void
 }) {
   useLang()
-  const families = useMemo(() => deckFonts(document).map((font) => font.fontFamily), [document])
-  const imported = useImportedFonts()
-  const setEverywhere = (stack: string) => {
-    const changed = families.filter((family) => family !== stack)
-    if (changed.length > 0) onRestyle({ fonts: Object.fromEntries(changed.map((family) => [family, stack])) })
-  }
 
   return (
     <>
@@ -96,33 +81,6 @@ export const FreeformStylePanel = memo(function FreeformStylePanel({
             </span>
           </button>
         ))}
-        {imported.map((font) => (
-          <div key={font.id} className="freeform-my-font">
-            <button
-              type="button"
-              className="freeform-font-set"
-              data-testid={`style-my-font-${font.id}`}
-              title={font.family}
-              onClick={() => setEverywhere(importedFontStack(font.family))}
-            >
-              <span className="freeform-font-set-name" style={{ fontFamily: importedFontStack(font.family) }}>{font.family}</span>
-              <span className="freeform-font-set-body">{t('我的字体')}</span>
-            </button>
-            <button
-              type="button"
-              className="freeform-my-font-remove"
-              aria-label={t('删除字体 {font}', { font: font.family })}
-              title={t('删除字体 {font}', { font: font.family })}
-              onClick={() => { void fontLibrary.remove(font.id).catch(() => undefined) }}
-            >
-              <CloseIcon />
-            </button>
-          </div>
-        ))}
-        <button type="button" className="freeform-font-import" data-testid="style-import-font" onClick={onImportFont}>
-          <UploadIcon />
-          {t('导入字体')}
-        </button>
       </div>
     </>
   )

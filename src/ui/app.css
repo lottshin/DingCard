@@ -2462,3 +2462,80 @@ kbd {
     align-items: flex-start;
   }
 }
+
+/* 素材库 · 字体: each font imported in this browser, shown in its own face. */
+.font-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.font-card {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-bottom: 14px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.font-card-sample {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-height: 150px;
+  padding: 18px 20px;
+  overflow: hidden;
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.font-card-big {
+  font-size: 46px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.font-card-line {
+  color: var(--text-2);
+  font-size: 18px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.font-card-info {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 52px 0 16px;
+}
+
+.font-card-name {
+  overflow: hidden;
+  font: 600 13.5px/1.3 var(--ui-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-card-meta {
+  color: var(--text-3);
+  font: 400 12px/1 var(--ui-font);
+}
+
+.font-card-remove {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}
+
+.font-library-error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--danger-weak);
+  color: var(--danger);
+  font: 500 13px/1.4 var(--ui-font);
+}
