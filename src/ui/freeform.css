@@ -2700,13 +2700,6 @@
   flex: 1;
 }
 
-.ff-export-hint {
-  margin: -2px 0 0;
-  color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .ff-export-actions {
   display: grid;
   gap: 8px;

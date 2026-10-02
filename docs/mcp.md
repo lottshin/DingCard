@@ -5,7 +5,7 @@
 ```text
 list_templates → create_document_from_content / create_document_from_outline
       → check_document（排版后列出问题，可自动缩字号）→ apply_actions 修改
-      → render_document → PNG 文件 + 每页缩略图（直接给模型看）
+      → render_document → PNG / JPG / PDF / 长图 + 每页缩略图（直接给模型看）
 ```
 
 渲染与编辑器导出走同一套管线：自由画布逐页 `pixelRatio: 1` 导出；Markdown 走工作台自己的管线（DOM 实测分页、平台头部与主题、`---` 手动分页、`pixelRatio: 3` 导出）；两者都做网页字体按字符子集嵌入与图片就绪等待。
@@ -24,10 +24,10 @@ list_templates → create_document_from_content / create_document_from_outline
 | `list_icons` | 查内置图标（97 个线性图标）：不带参数列出全部图标的 id 和中英文名，`query` 用中文或英文关键词搜，`ids` 按 id 取；带上路径数据 `d`、统一画法 `style` 和一个可以直接插入的完整节点 `example`（见下文「图形与图标」）。 |
 | `list_styles` | 列出可一键套到整套卡片上的配色（底色、文字色、强调色）和字体组合（标题字体、正文字体），配合 `document/restyle` 使用（见下文「整套换风格」）。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效。 |
-| `render_document` | 无头渲染自由画布 v16 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录，并默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
+| `render_document` | 无头渲染自由画布 v16 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 
-工具描述内嵌了 v16 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG 并看缩略图。
+工具描述内嵌了 v16 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
 
 ## 生成整套卡片
 

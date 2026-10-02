@@ -427,6 +427,16 @@ export function ShapePreviewIcon({ shape, ...props }: IconProps & { shape: strin
   )
 }
 
+/** A tall page with page breaks, for the long image export. */
+export function LongImageIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4.25" y="1.75" width="7.5" height="12.5" rx="1.5" />
+      <path d="M4.25 6h7.5M4.25 10h7.5" />
+    </Icon>
+  )
+}
+
 export function BookmarkIcon(props: IconProps) {
   return (
     <Icon {...props}>

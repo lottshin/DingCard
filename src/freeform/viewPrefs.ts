@@ -3,7 +3,8 @@
 // options), persisted so the toggles survive reloads. Storage failures degrade to the defaults — blocked
 // storage must never break the app.
 
-export type ExportFormat = 'png' | 'jpeg'
+/** PNG and JPG export pictures; PDF puts each page in one file. */
+export type ExportFormat = 'png' | 'jpeg' | 'pdf'
 
 export interface FreeformViewPrefs {
   /** Rulers along the stage's top and left edges; off keeps the canvas quiet. */
@@ -35,7 +36,7 @@ export const DEFAULT_VIEW_PREFS: FreeformViewPrefs = {
 }
 
 function isExportFormat(value: unknown): value is ExportFormat {
-  return value === 'png' || value === 'jpeg'
+  return value === 'png' || value === 'jpeg' || value === 'pdf'
 }
 
 export function loadViewPrefs(): FreeformViewPrefs {

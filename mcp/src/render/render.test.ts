@@ -151,6 +151,52 @@ describe('renderDocument', () => {
     420_000,
   )
 
+  test(
+    'writes the pages as JPEGs at twice the size, one PDF holding them all, or one long image',
+    async () => {
+      const instantiation = instantiateTemplate('editorial-freeform')
+      if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
+      const document = instantiation.document
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-export-'))
+      const jpegSize = (bytes: Buffer) => {
+        // Walk the JPEG segments to the start-of-frame marker, which holds the size.
+        for (let at = 2; at < bytes.length;) {
+          const marker = bytes[at + 1]
+          const length = bytes.readUInt16BE(at + 2)
+          if (marker >= 0xc0 && marker <= 0xc2) return { height: bytes.readUInt16BE(at + 5), width: bytes.readUInt16BE(at + 7) }
+          at += 2 + length
+        }
+        throw new Error('no frame in JPEG')
+      }
+
+      const jpegs = await renderDocument(document, { outputDir, baseName: 'big', format: 'jpeg', scale: 2, slideIds: [document.slides[1].id] })
+      if (!jpegs.ok) throw new Error(jpegs.error)
+      expect(jpegs.files.map((file) => path.basename(file.path))).toEqual(['big-01.jpg'])
+      expect(jpegs.files[0]).toMatchObject({ width: 2160, height: 2880 })
+      expect(jpegSize(readFileSync(jpegs.files[0].path))).toEqual({ width: 2160, height: 2880 })
+
+      const pdf = await renderDocument(document, { outputDir, baseName: 'deck', format: 'pdf' })
+      if (!pdf.ok) throw new Error(pdf.error)
+      expect(pdf.files).toHaveLength(1)
+      expect(pdf.files[0].path).toBe(path.join(outputDir, 'deck.pdf'))
+      expect(pdf.files[0].pages?.map((page) => page.slideId)).toEqual(document.slides.map((slide) => slide.id))
+      const source = readFileSync(pdf.files[0].path).toString('latin1')
+      expect(source.startsWith('%PDF-1.4')).toBe(true)
+      expect(source).toContain('/Count 3')
+      expect(source.match(/\/MediaBox \[0 0 810 1080\]/g)).toHaveLength(3)
+      expect(pdf.previews).toHaveLength(3)
+
+      const long = await renderDocument(document, { outputDir, baseName: 'deck', long: true })
+      if (!long.ok) throw new Error(long.error)
+      expect(long.files).toHaveLength(1)
+      expect(long.files[0]).toMatchObject({ path: path.join(outputDir, 'deck-long.png'), width: 1080, height: 4320, scale: 1 })
+      expect(pngIhdr(readFileSync(long.files[0].path))).toEqual({ width: 1080, height: 4320 })
+
+      expect(await renderDocument(document, { outputDir, format: 'pdf', long: true })).toMatchObject({ ok: false })
+    },
+    420_000,
+  )
+
   test('refuses invalid documents and empty slide selections without a browser', async () => {
     const invalid = await renderDocument({ documentVersion: 4 }, { outputDir: tmpdir() })
     expect(invalid.ok).toBe(false)

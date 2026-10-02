@@ -66,7 +66,7 @@
 - 图层面板可以修改名称和顺序；相关对象也可以编成一组。
 - 暂时不需要的对象可以隐藏，正在调整的对象可以锁定，避免误操作。
 - 多页作品可以分别设置尺寸，页面之间也可以复制和调整。
-- 导出时可以选择当前页面，也可以把全部页面打包成 ZIP。
+- 导出 PNG、JPG 或 PDF：可以只导出当前页，也可以把全部页面打包成 ZIP、合成一个 PDF，或从上到下拼成一张长图。
 
 ![叮卡自由画布轻设计工作区](docs/assets/freeform-workspace.png)
 
@@ -87,7 +87,7 @@ npm --prefix mcp ci
 npm run mcp   # 以 stdio 启动 dingcard-mcp
 ```
 
-可用工具包括 `list_templates`（含每套模板能放多少内容）、`create_document_from_template`、`create_document_from_content` 与 `create_document_from_outline`（按结构化内容或 Markdown 大纲一次生成整套卡片，模板示例文字全部换成内容）、`check_document`（按导出的样子排版后列出文字被裁、叠住、对比度低、残留示例文字等问题，可自动缩字号）、`list_icons`（查内置图标，返回可直接插入的图形节点）、`list_styles`（可一键套用的配色和字体组合，配合 `apply_actions` 的 `document/restyle` 给整套卡片换风格）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为 PNG，附每页缩略图给模型看）和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
+可用工具包括 `list_templates`（含每套模板能放多少内容）、`create_document_from_template`、`create_document_from_content` 与 `create_document_from_outline`（按结构化内容或 Markdown 大纲一次生成整套卡片，模板示例文字全部换成内容）、`check_document`（按导出的样子排版后列出文字被裁、叠住、对比度低、残留示例文字等问题，可自动缩字号）、`list_icons`（查内置图标，返回可直接插入的图形节点）、`list_styles`（可一键套用的配色和字体组合，配合 `apply_actions` 的 `document/restyle` 给整套卡片换风格）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为逐页 PNG / JPG、一个 PDF 或一张长图，附每页缩略图给模型看）和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
 
 AI 生成的文档也可以一键回到编辑器精修：在工作台「我的项目」点击「导入 JSON」或直接把 `.json` 文件拖进页面，文档会存为项目并在对应的编辑器里打开（自由画布旧版本自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
 

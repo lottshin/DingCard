@@ -222,16 +222,20 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v16 文档（v1–v15 输入自动迁移）无头渲染为 PNG 文件（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir，并默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
+    `把自由画布 v16 文档（v1–v15 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
       document: z.unknown().describe('v16 文档 JSON'),
-      outputDir: z.string().describe('PNG 输出目录（不存在会创建）'),
+      outputDir: z.string().describe('输出目录（不存在会创建）'),
       baseName: z.string().optional().describe('输出文件名前缀，默认 "dingcard"'),
-      slideIds: z.array(z.string()).optional().describe('只渲染这些页（默认全部）'),
+      slideIds: z.array(z.string()).optional().describe('只渲染这些页（默认全部，按文档页序）；长图和 PDF 也只包含这些页'),
+      format: z.enum(['png', 'jpeg', 'pdf']).optional().describe('png（默认，保留透明）、jpeg（白底）或 pdf（所有页在一个文件里）'),
+      scale: z.union([z.literal(1), z.literal(2)]).optional().describe('像素倍率，默认 1'),
+      quality: z.number().min(0.5).max(1).optional().describe('jpeg 和 pdf 的 JPEG 质量，默认 0.92'),
+      long: z.boolean().optional().describe('png / jpeg：所有页拼成一张长图，代替逐页文件'),
       previews: z.boolean().optional().describe('是否附上缩略图，默认 true'),
     },
-    async ({ document, outputDir, baseName, slideIds, previews }) =>
-      renderResult(await renderDocument(document, { outputDir, baseName, slideIds }), previews !== false),
+    async ({ document, outputDir, baseName, slideIds, format, scale, quality, long, previews }) =>
+      renderResult(await renderDocument(document, { outputDir, baseName, slideIds, format, scale, quality, long }), previews !== false),
   )
 
   server.tool(

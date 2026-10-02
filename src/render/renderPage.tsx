@@ -7,7 +7,7 @@
 //     → renders every slide through the same artboard markup and export
 //       pipeline the freeform editor uses (presentation-only scene nodes,
 //       framed-image readiness wait, character-subset font embedding,
-//       html-to-image toBlob at pixelRatio 1).
+//       html-to-image to a canvas at pixelRatio 1, encoded as PNG).
 //
 //   window.__DINGCARD_RENDER__ = { markdown: <MarkdownCardDocument JSON> }
 //     → renders the markdown workspace's card pipeline: register embedded
@@ -22,6 +22,12 @@
 //     | { ok: true; slides: Array<{ slideId; name; width; height; dataUrl; previewDataUrl }> }
 //     | { ok: false; error: string }
 //
+//   window.__DINGCARD_RENDER__ = { document, output: { format, scale, quality, long } }
+//     → the same, as PNG or JPEG (on white) at `scale` times the page size;
+//       with `long`, every page also goes into one tall picture, written
+//       back as `long: { dataUrl, width, height, scale }` (the scale drops
+//       when the pages wouldn't fit one canvas).
+//
 //   window.__DINGCARD_RENDER__ = { document, inspect: true }
 //     → mounts every slide the same way but exports nothing: it measures the
 //       laid-out page instead (each node's box, each text's lines, whether
@@ -33,7 +39,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createRoot } from 'react-dom/client'
-import { toBlob, toPng } from 'html-to-image'
+import { toCanvas, toPng } from 'html-to-image'
 import { FreeformPageBackground } from '../freeform/FreeformPageBackground'
 import { FreeformSceneNodeView } from '../freeform/FreeformSceneNodeView'
 import { waitForFramedImages } from '../freeform/imageReadiness'
@@ -48,12 +54,36 @@ import { Card } from '../Card'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { PLATFORMS, buildConfig, resolveTheme } from '../theme'
 import { store } from '../storage'
+import { createLongImage, longImageScale } from '../exportLongImage'
 import '../styles.css'
+
+/** How a freeform document's pages are written out. */
+interface RenderOutput {
+  format: 'png' | 'jpeg'
+  /** Pixel ratio: 1 renders each page at its own size. */
+  scale: number
+  /** JPEG quality, 0–1. */
+  quality: number
+  /** Also stack every page into one tall picture. */
+  long: boolean
+}
 
 interface RenderPayload {
   document?: unknown
   markdown?: unknown
   inspect?: boolean
+  output?: Partial<RenderOutput>
+}
+
+const DEFAULT_OUTPUT: RenderOutput = { format: 'png', scale: 1, quality: 0.92, long: false }
+
+function renderOutputOf(value: Partial<RenderOutput> | undefined): RenderOutput {
+  return {
+    format: value?.format === 'jpeg' ? 'jpeg' : 'png',
+    scale: value?.scale === 2 ? 2 : 1,
+    quality: typeof value?.quality === 'number' && value.quality >= 0.5 && value.quality <= 1 ? value.quality : DEFAULT_OUTPUT.quality,
+    long: value?.long === true,
+  }
 }
 
 interface RenderedSlide {
@@ -96,7 +126,7 @@ export interface InspectedSlide {
 }
 
 export type RenderResult =
-  | { ok: true; slides: RenderedSlide[] }
+  | { ok: true; slides: RenderedSlide[]; long?: { dataUrl: string; width: number; height: number; scale: number } }
   | { ok: true; inspected: InspectedSlide[] }
   | { ok: false; error: string }
 
@@ -111,15 +141,6 @@ declare global {
 
 function writeResult(result: RenderResult): void {
   window.__DINGCARD_RENDER_RESULT__ = result
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(reader.error ?? new Error('blob read failed'))
-    reader.readAsDataURL(blob)
-  })
 }
 
 const PREVIEW_WIDTH = 432
@@ -392,7 +413,7 @@ function waitForCardImages(root: HTMLElement, timeoutMs: number): Promise<void> 
   return new Promise(tick)
 }
 
-function RenderApp({ document: doc, inspect }: { document: FreeformDocument; inspect: boolean }) {
+function RenderApp({ document: doc, inspect, output }: { document: FreeformDocument; inspect: boolean; output: RenderOutput }) {
   const [index, setIndex] = useState(0)
   const artboardRef = useRef<HTMLDivElement>(null)
   const startedRef = useRef(false)
@@ -430,8 +451,12 @@ function RenderApp({ document: doc, inspect }: { document: FreeformDocument; ins
           return
         }
         const slides: RenderedSlide[] = []
+        const jpeg = output.format === 'jpeg'
+        const longScale = output.long ? longImageScale(doc.slides, output.scale) : null
+        if (output.long && longScale === null) throw new Error('页面太多，拼不成一张长图（最长 32000 像素），请分批渲染')
+        const long = longScale === null ? null : createLongImage(doc.slides, longScale, jpeg ? '#ffffff' : undefined)
         // Sequential slide rendering, mirroring the editor's ZIP export: one
-        // artboard, one slide mounted at a time, one blob per slide.
+        // artboard, one slide mounted at a time, one picture per slide.
         for (let i = 0; i < doc.slides.length; i++) {
           setIndex(i)
           const current = doc.slides[i]
@@ -448,14 +473,17 @@ function RenderApp({ document: doc, inspect }: { document: FreeformDocument; ins
               : '图片加载失败，渲染已取消')
           }
           await waitForDoubleFrame()
-          const blob = await toBlob(artboard, {
-            pixelRatio: 1,
+          // JPEG has no alpha channel: composite on white, as the editor's JPG export does.
+          const draw = (pixelRatio: number) => toCanvas(artboard, {
+            pixelRatio,
             width: current.width,
             height: current.height,
+            ...(jpeg ? { backgroundColor: '#ffffff' } : {}),
             fontEmbedCSS: fontCSS,
           })
-          if (!blob) throw new Error('页面导出失败')
-          const dataUrl = await blobToDataUrl(blob)
+          const canvas = await draw(output.scale)
+          const dataUrl = jpeg ? canvas.toDataURL('image/jpeg', output.quality) : canvas.toDataURL('image/png')
+          if (long && longScale !== null) long.draw(i, longScale === output.scale ? canvas : await draw(longScale))
           slides.push({
             slideId: current.id,
             name: current.name,
@@ -465,7 +493,20 @@ function RenderApp({ document: doc, inspect }: { document: FreeformDocument; ins
             previewDataUrl: await previewOf(dataUrl, current.width, current.height),
           })
         }
-        writeResult({ ok: true, slides })
+        writeResult({
+          ok: true,
+          slides,
+          ...(long && longScale !== null
+            ? {
+                long: {
+                  dataUrl: jpeg ? long.canvas.toDataURL('image/jpeg', output.quality) : long.canvas.toDataURL('image/png'),
+                  width: long.canvas.width,
+                  height: long.canvas.height,
+                  scale: longScale,
+                },
+              }
+            : {}),
+        })
       } catch (error) {
         writeResult({
           ok: false,
@@ -642,6 +683,8 @@ if (!payload || typeof payload !== 'object') {
   if (!doc) {
     writeResult({ ok: false, error: '文档未通过自由画布文档校验' })
   } else {
-    createRoot(document.getElementById('root')!).render(<RenderApp document={doc} inspect={payload.inspect === true} />)
+    createRoot(document.getElementById('root')!).render(
+      <RenderApp document={doc} inspect={payload.inspect === true} output={renderOutputOf(payload.output)} />,
+    )
   }
 }

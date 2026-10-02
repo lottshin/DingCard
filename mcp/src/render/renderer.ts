@@ -1,11 +1,12 @@
-// Headless renderer — document JSON in, PNG files on disk.
+// Headless renderer — document JSON in, PNG / JPEG / PDF files on disk.
 //
 // Pipeline: validate → ensure the built render page exists (one `npm run
 // build` at the repo root, output kept off stdout to protect the stdio MCP
 // protocol) → serve dist/ on a loopback port → drive Chromium via
 // playwright-core (system Chrome first, matching the e2e suites'
 // zero-download setup — playwright-core never downloads browsers) →
-// collect the PNG data URLs the render page produced → write files.
+// collect the data URLs the render page produced → write files (a PDF is
+// assembled here from the pages' JPEGs, with the editor's own PDF writer).
 //
 // Two payload variants reach the render page: `{ document }` for freeform
 // documents and `{ markdown }` for markdown card envelopes. Every resource
@@ -18,6 +19,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
+import { buildPdf, pdfPageFor } from '../../../src/exportPdf'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import type { FreeformDocument } from '../../../src/freeform/types'
 import { isMarkdownDocument } from '../../../src/drafts'
@@ -28,10 +30,16 @@ const BUILD_TIMEOUT_MS = 5 * 60_000
 
 export interface RenderFile {
   path: string
-  slideId: string
-  name: string
+  /** The page in it; a PDF or long image lists its `pages` instead. */
+  slideId?: string
+  name?: string
+  /** A PDF's or long image's pages, in order. */
+  pages?: Array<{ slideId: string; name: string }>
+  /** Pixels of a picture; a PDF gives its first page's size in CSS px. */
   width: number
   height: number
+  /** A long image's pixel ratio, lower than asked for when the pages wouldn't fit one picture. */
+  scale?: number
   bytes: number
 }
 
@@ -57,6 +65,14 @@ export interface RenderOptions {
   outputDir: string
   baseName?: string
   slideIds?: string[]
+  /** png (default) or jpeg: one picture per page; pdf: one file holding every page. */
+  format?: 'png' | 'jpeg' | 'pdf'
+  /** Pixel ratio, 1 (default) or 2. */
+  scale?: 1 | 2
+  /** JPEG quality for jpeg and pdf, 0.5–1 (default 0.92). */
+  quality?: number
+  /** png / jpeg: every page stacked into one tall picture, <baseName>-long.png, instead of one per page. */
+  long?: boolean
 }
 
 /** Walk up from this module (bundled or source) to the repo root. */
@@ -180,9 +196,31 @@ export interface InspectedSlide {
   imageError: string | null
 }
 
-type RenderPayload = { document: unknown; inspect?: boolean } | { markdown: unknown }
+interface RenderPageOutput {
+  format: 'png' | 'jpeg'
+  scale: number
+  quality: number
+  long: boolean
+}
 
-type PageResult = { ok?: boolean; error?: string; slides?: RenderPageSlide[]; inspected?: InspectedSlide[] }
+type RenderPayload =
+  | { document: unknown; inspect?: boolean; output?: RenderPageOutput }
+  | { markdown: unknown }
+
+interface RenderPageLong {
+  dataUrl: string
+  width: number
+  height: number
+  scale: number
+}
+
+type PageResult = {
+  ok?: boolean
+  error?: string
+  slides?: RenderPageSlide[]
+  long?: RenderPageLong
+  inspected?: InspectedSlide[]
+}
 
 async function runInBrowser(payload: RenderPayload, port: number): Promise<PageResult> {
   const browser = await launchBrowser()
@@ -221,10 +259,60 @@ async function runInBrowser(payload: RenderPayload, port: number): Promise<PageR
   }
 }
 
-async function renderInBrowser(payload: RenderPayload, port: number): Promise<RenderPageSlide[]> {
+async function renderInBrowser(payload: RenderPayload, port: number): Promise<{ slides: RenderPageSlide[]; long?: RenderPageLong }> {
   const result = await runInBrowser(payload, port)
   if (!result.slides) throw new Error('渲染页未返回页面')
-  return result.slides
+  return { slides: result.slides, long: result.long }
+}
+
+const EXTENSIONS = { png: 'png', jpeg: 'jpg', pdf: 'pdf' } as const
+
+/** The pages the render page produced, in the order asked for. */
+function inOrder(rendered: RenderPageSlide[], order: Array<{ slideId: string; name: string }>): RenderPageSlide[] {
+  const bySlideId = new Map(rendered.map((slide) => [slide.slideId, slide]))
+  return order.map((expected) => {
+    const produced = bySlideId.get(expected.slideId)
+    if (!produced) throw new Error(`渲染结果缺少页面 ${expected.slideId}`)
+    return produced
+  })
+}
+
+async function writeOneFile(options: RenderOptions, suffix: string, bytes: Uint8Array): Promise<string> {
+  const outputDir = path.resolve(options.outputDir)
+  await mkdir(outputDir, { recursive: true })
+  const filePath = path.join(outputDir, `${sanitizeBaseName(options.baseName)}${suffix}`)
+  await writeFile(filePath, bytes)
+  return filePath
+}
+
+/** Every page in one PDF, each page as large as its slide, from the JPEGs the render page made. */
+async function writePdfFile(slides: RenderPageSlide[], options: RenderOptions): Promise<RenderFile> {
+  const scale = options.scale ?? 1
+  const bytes = buildPdf(slides.map((slide) => pdfPageFor(
+    new Uint8Array(dataUrlToBuffer(slide.dataUrl)),
+    slide,
+    { width: Math.round(slide.width * scale), height: Math.round(slide.height * scale) },
+  )))
+  return {
+    path: await writeOneFile(options, '.pdf', bytes),
+    pages: slides.map((slide) => ({ slideId: slide.slideId, name: slide.name })),
+    width: slides[0].width,
+    height: slides[0].height,
+    bytes: bytes.length,
+  }
+}
+
+async function writeLongFile(slides: RenderPageSlide[], long: RenderPageLong, options: RenderOptions): Promise<RenderFile> {
+  const bytes = dataUrlToBuffer(long.dataUrl)
+  if (bytes.length === 0) throw new Error('长图渲染出了空文件')
+  return {
+    path: await writeOneFile(options, `-long.${EXTENSIONS[options.format === 'jpeg' ? 'jpeg' : 'png']}`, bytes),
+    pages: slides.map((slide) => ({ slideId: slide.slideId, name: slide.name })),
+    width: long.width,
+    height: long.height,
+    scale: long.scale,
+    bytes: bytes.length,
+  }
 }
 
 async function writeResultFiles(
@@ -243,19 +331,20 @@ async function writeResultFiles(
     if (!produced) {
       throw new Error(`渲染结果缺少页面 ${expected.slideId}`)
     }
-    const fileName = `${baseName}-${String(index + 1).padStart(2, '0')}.png`
+    const fileName = `${baseName}-${String(index + 1).padStart(2, '0')}.${EXTENSIONS[options.format === 'jpeg' ? 'jpeg' : 'png']}`
     const filePath = path.join(outputDir, fileName)
     const bytes = dataUrlToBuffer(produced.dataUrl)
     if (bytes.length === 0) {
       throw new Error(`页面 ${expected.slideId} 渲染出了空文件`)
     }
     await writeFile(filePath, bytes)
+    const scale = options.scale ?? 1
     files.push({
       path: filePath,
       slideId: expected.slideId,
       name: produced.name || expected.name,
-      width: produced.width,
-      height: produced.height,
+      width: Math.round(produced.width * scale),
+      height: Math.round(produced.height * scale),
       bytes: bytes.length,
     })
   }
@@ -313,7 +402,7 @@ async function runRender(
 
   const server = await createStaticServer(distDir)
   try {
-    const rendered = await renderInBrowser(payload, server.port)
+    const { slides: rendered, long } = await renderInBrowser(payload, server.port)
     if (rendered.length === 0) {
       return { ok: false, error: '没有可渲染的页面' }
     }
@@ -321,7 +410,10 @@ async function runRender(
       slideId: slide.slideId,
       name: slide.name,
     }))
-    const files = await writeResultFiles(rendered, expected, options)
+    let files: RenderFile[]
+    if (options.format === 'pdf') files = [await writePdfFile(inOrder(rendered, expected), options)]
+    else if (options.long && long) files = [await writeLongFile(inOrder(rendered, expected), long, options)]
+    else files = await writeResultFiles(rendered, expected, options)
     const previews = rendered.map((slide) => ({
       slideId: slide.slideId,
       name: slide.name,
@@ -349,8 +441,20 @@ export async function renderDocument(
   if (selected.length === 0) {
     return { ok: false, error: '没有可渲染的页面（slideIds 过滤后为空或不匹配）' }
   }
+  if (options.long && options.format === 'pdf') {
+    return { ok: false, error: 'long（拼成长图）只用于 png / jpeg；PDF 本来就把每页放在同一个文件里' }
+  }
   const order = selected.map((slide) => ({ slideId: slide.id, name: slide.name }))
-  return runRender({ document }, order, options)
+  const output = {
+    // A PDF is assembled here from JPEG pages.
+    format: options.format === 'jpeg' || options.format === 'pdf' ? 'jpeg' as const : 'png' as const,
+    scale: options.scale === 2 ? 2 : 1,
+    quality: options.quality ?? 0.92,
+    long: options.long === true,
+  }
+  // Only the pages asked for, so a long image or PDF holds just those.
+  const shown: FreeformDocument = { ...document, slides: selected, activeSlideId: selected[0].id }
+  return runRender({ document: shown, output }, order, options)
 }
 
 export async function renderMarkdownDocument(

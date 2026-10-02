@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useDismiss } from '../app/useDismiss'
 import { t } from '../i18n'
-import { ChevronDownIcon, DownloadIcon, StackIcon } from '../ui/icons'
+import { ChevronDownIcon, DownloadIcon, LongImageIcon, StackIcon } from '../ui/icons'
 import type { FreeformViewPrefs } from './viewPrefs'
 
 type ExportPrefs = Pick<FreeformViewPrefs, 'exportFormat' | 'exportScale' | 'exportQuality'>
@@ -16,7 +16,11 @@ interface FreeformExportMenuProps {
   onPrefsChange: (patch: Partial<ExportPrefs>) => void
   onExportCurrent: () => void
   onExportAll: () => void
+  /** Every page stacked into one tall picture (PNG or JPG). */
+  onExportLong: () => void
 }
+
+const FORMAT_LABELS = { png: 'PNG', jpeg: 'JPG', pdf: 'PDF' } as const
 
 /** The editor's main action: one button that opens format, size and what to download. */
 export function FreeformExportMenu({
@@ -28,6 +32,7 @@ export function FreeformExportMenu({
   onPrefsChange,
   onExportCurrent,
   onExportAll,
+  onExportLong,
 }: FreeformExportMenuProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -66,7 +71,7 @@ export function FreeformExportMenu({
           <div className="ff-export-row">
             <span className="field-label">{t('格式')}</span>
             <div className="seg stretch">
-              {(['png', 'jpeg'] as const).map((format) => (
+              {(['png', 'jpeg', 'pdf'] as const).map((format) => (
                 <button
                   key={format}
                   type="button"
@@ -75,7 +80,7 @@ export function FreeformExportMenu({
                   data-testid={`export-format-${format}`}
                   onClick={() => onPrefsChange({ exportFormat: format })}
                 >
-                  {format === 'png' ? 'PNG' : 'JPG'}
+                  {FORMAT_LABELS[format]}
                 </button>
               ))}
             </div>
@@ -97,7 +102,7 @@ export function FreeformExportMenu({
               ))}
             </div>
           </div>
-          {prefs.exportFormat === 'jpeg' && (
+          {prefs.exportFormat !== 'png' && (
             <div className="ff-export-row">
               <span className="field-label">{t('质量')}</span>
               <div className="paint-row">
@@ -115,9 +120,6 @@ export function FreeformExportMenu({
               </div>
             </div>
           )}
-          <p className="ff-export-hint">
-            {prefs.exportFormat === 'jpeg' ? t('JPG 不支持透明，导出自动衬白底。') : t('PNG 保留透明背景。')}
-          </p>
           <div className="ff-export-actions">
             <button
               className="accent"
@@ -137,8 +139,24 @@ export function FreeformExportMenu({
               onClick={onExportAll}
             >
               <StackIcon />
-              {progress ? t('导出 {current}/{total}', progress) : t('打包下载全部 {n} 页', { n: pageCount })}
+              {progress
+                ? t('导出 {current}/{total}', progress)
+                : prefs.exportFormat === 'pdf'
+                  ? t('下载全部 {n} 页', { n: pageCount })
+                  : t('打包下载全部 {n} 页', { n: pageCount })}
             </button>
+            {prefs.exportFormat !== 'pdf' && (
+              <button
+                className="ghost"
+                type="button"
+                data-testid="freeform-export-long"
+                disabled={disabled || exporting}
+                onClick={onExportLong}
+              >
+                <LongImageIcon />
+                {t('拼成一张长图')}
+              </button>
+            )}
           </div>
         </div>
       )}

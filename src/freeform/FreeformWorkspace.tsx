@@ -7,6 +7,8 @@ import { navigate, routes } from '../app/router'
 import type { Asset } from '../assets'
 import { Select } from '../Select'
 import type { Draft } from '../drafts'
+import { createLongImage, longImageScale } from '../exportLongImage'
+import { buildPdf, pdfPageFor, type PdfPage } from '../exportPdf'
 import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
@@ -642,8 +644,14 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
-function slideExportName(index: number, format: 'png' | 'jpeg'): string {
-  return `slide-${String(index + 1).padStart(2, '0')}.${format === 'jpeg' ? 'jpg' : 'png'}`
+const EXPORT_EXTENSIONS = { png: 'png', jpeg: 'jpg', pdf: 'pdf' } as const
+
+function slideExportName(index: number, format: keyof typeof EXPORT_EXTENSIONS): string {
+  return `slide-${String(index + 1).padStart(2, '0')}.${EXPORT_EXTENSIONS[format]}`
+}
+
+function canvasBlob(canvas: HTMLCanvasElement, type: 'image/png' | 'image/jpeg', quality?: number): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality))
 }
 
 function hasMixedSlideSizes(slides: FreeformSlide[]): boolean {
@@ -5237,7 +5245,13 @@ export function FreeformWorkspace({
     window.addEventListener('blur', onBlur)
   }
 
-  async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS: string): Promise<Blob | null> {
+  /** The slide as pixels, as export draws it; `opaque` sets it on white (JPEG and PDF have no transparency). */
+  async function renderSlideCanvas(
+    slide: FreeformSlide,
+    fontEmbedCSS: string,
+    pixelRatio: number,
+    opaque: boolean,
+  ): Promise<HTMLCanvasElement | null> {
     const node = artboardRef.current
     if (!node) return null
     const imageWait = await waitForFramedImages(node, {
@@ -5250,13 +5264,13 @@ export function FreeformWorkspace({
     }
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     // html-to-image's toBlob drops the type/quality options, so render to a
-    // canvas and encode it here. JPEG has no alpha channel: composite on
-    // white instead of letting transparent areas turn black.
-    const canvas = await toCanvas(node, {
-      pixelRatio: viewPrefs.exportScale,
+    // canvas and encode it at the caller. JPEG has no alpha channel: composite
+    // on white instead of letting transparent areas turn black.
+    return toCanvas(node, {
+      pixelRatio,
       width: slide.width,
       height: slide.height,
-      ...(viewPrefs.exportFormat === 'jpeg' ? { backgroundColor: '#ffffff' } : {}),
+      ...(opaque ? { backgroundColor: '#ffffff' } : {}),
       style: {
         transform: 'none',
       },
@@ -5264,14 +5278,26 @@ export function FreeformWorkspace({
       filter: (element) =>
         !(element instanceof HTMLElement && element.classList.contains('freeform-ui-only')),
     })
-    if (viewPrefs.exportFormat === 'jpeg') {
-      return new Promise<Blob | null>((resolve) => {
-        canvas.toBlob(resolve, 'image/jpeg', viewPrefs.exportQuality)
-      })
-    }
-    return new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, 'image/png')
-    })
+  }
+
+  async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS: string): Promise<Blob | null> {
+    const jpeg = viewPrefs.exportFormat === 'jpeg'
+    const canvas = await renderSlideCanvas(slide, fontEmbedCSS, viewPrefs.exportScale, jpeg)
+    if (!canvas) return null
+    return jpeg ? canvasBlob(canvas, 'image/jpeg', viewPrefs.exportQuality) : canvasBlob(canvas, 'image/png')
+  }
+
+  /** One PDF page for a slide: its JPEG at the export scale, the page as large as the slide. */
+  async function renderSlidePdfPage(slide: FreeformSlide, fontEmbedCSS: string): Promise<PdfPage | null> {
+    const canvas = await renderSlideCanvas(slide, fontEmbedCSS, viewPrefs.exportScale, true)
+    if (!canvas) return null
+    const blob = await canvasBlob(canvas, 'image/jpeg', viewPrefs.exportQuality)
+    if (!blob) return null
+    return pdfPageFor(new Uint8Array(await blob.arrayBuffer()), slide, canvas)
+  }
+
+  function downloadPdf(pages: PdfPage[], filename: string) {
+    downloadBlob(new Blob([buildPdf(pages)], { type: 'application/pdf' }), filename)
   }
 
   async function freeformFontEmbedOnce(slides: FreeformSlide[]): Promise<string> {
@@ -5290,13 +5316,16 @@ export function FreeformWorkspace({
       setSelection([])
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       const fontCSS = await freeformFontEmbedOnce([activeSlide])
-      const blob = await renderSlideBlob(activeSlide, fontCSS)
-      if (blob) {
-        const activeIndex = Math.max(
-          0,
-          doc.slides.findIndex((slide) => slide.id === activeSlide.id),
-        )
-        downloadBlob(blob, slideExportName(activeIndex, viewPrefs.exportFormat))
+      const activeIndex = Math.max(
+        0,
+        doc.slides.findIndex((slide) => slide.id === activeSlide.id),
+      )
+      if (viewPrefs.exportFormat === 'pdf') {
+        const page = await renderSlidePdfPage(activeSlide, fontCSS)
+        if (page) downloadPdf([page], slideExportName(activeIndex, 'pdf'))
+      } else {
+        const blob = await renderSlideBlob(activeSlide, fontCSS)
+        if (blob) downloadBlob(blob, slideExportName(activeIndex, viewPrefs.exportFormat))
       }
     } catch (error) {
       showOperationError(error, t('导出失败，请稍后重试'))
@@ -5314,21 +5343,68 @@ export function FreeformWorkspace({
     try {
       setSelection([])
       const fontCSS = await freeformFontEmbedOnce(doc.slides)
+      const pdf = viewPrefs.exportFormat === 'pdf'
       const entries: Array<{ name: string; blob: Blob }> = []
+      const pages: PdfPage[] = []
       for (let index = 0; index < doc.slides.length; index++) {
         const slide = doc.slides[index]
         setExportProgress({ current: index + 1, total: doc.slides.length })
         replaceCurrent({ type: 'slide/select', slideId: slide.id })
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-        const blob = await renderSlideBlob(slide, fontCSS)
-        if (blob) entries.push({ name: slideExportName(index, viewPrefs.exportFormat), blob })
+        if (pdf) {
+          const page = await renderSlidePdfPage(slide, fontCSS)
+          if (page) pages.push(page)
+        } else {
+          const blob = await renderSlideBlob(slide, fontCSS)
+          if (blob) entries.push({ name: slideExportName(index, viewPrefs.exportFormat), blob })
+        }
       }
-      if (entries.length > 0) {
-        const stamp = new Date().toISOString().slice(0, 10)
-        await downloadZip(entries, `freeform-slides-${stamp}.zip`)
-      }
+      const stamp = new Date().toISOString().slice(0, 10)
+      if (pages.length > 0) downloadPdf(pages, `freeform-slides-${stamp}.pdf`)
+      if (entries.length > 0) await downloadZip(entries, `freeform-slides-${stamp}.zip`)
     } catch (error) {
-      showOperationError(error, t('打包导出失败，请稍后重试'))
+      showOperationError(error, viewPrefs.exportFormat === 'pdf' ? t('导出失败，请稍后重试') : t('打包导出失败，请稍后重试'))
+    } finally {
+      replaceCurrent({ type: 'slide/select', slideId: originalSlideId })
+      setExportProgress(null)
+      setExporting(false)
+    }
+  }
+
+  /** Every page stacked into one tall picture, at the export scale or less if it would be too tall. */
+  async function exportLongImage() {
+    if (doc.slides.length === 0 || renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) return
+    const scale = longImageScale(doc.slides, viewPrefs.exportScale)
+    if (scale === null) {
+      setOperationNotice(t('页面太多，拼不成一张长图，请改用打包下载'))
+      return
+    }
+    setExporting(true)
+    setExportProgress(null)
+    const originalSlideId = activeSlide.id
+    try {
+      setSelection([])
+      const fontCSS = await freeformFontEmbedOnce(doc.slides)
+      const jpeg = viewPrefs.exportFormat === 'jpeg'
+      const long = createLongImage(doc.slides, scale, jpeg ? '#ffffff' : undefined)
+      for (let index = 0; index < doc.slides.length; index++) {
+        const slide = doc.slides[index]
+        setExportProgress({ current: index + 1, total: doc.slides.length })
+        replaceCurrent({ type: 'slide/select', slideId: slide.id })
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        const canvas = await renderSlideCanvas(slide, fontCSS, scale, jpeg)
+        if (canvas) long.draw(index, canvas)
+      }
+      const blob = jpeg
+        ? await canvasBlob(long.canvas, 'image/jpeg', viewPrefs.exportQuality)
+        : await canvasBlob(long.canvas, 'image/png')
+      if (!blob) throw new Error(t('长图导出失败，请稍后重试'))
+      const stamp = new Date().toISOString().slice(0, 10)
+      downloadBlob(blob, `freeform-long-${stamp}.${jpeg ? 'jpg' : 'png'}`)
+      if (scale < viewPrefs.exportScale) setOperationNotice(t('长图太长，已缩小到 {scale}x 导出', { scale }))
+    } catch (error) {
+      showOperationError(error, t('长图导出失败，请稍后重试'))
     } finally {
       replaceCurrent({ type: 'slide/select', slideId: originalSlideId })
       setExportProgress(null)
@@ -5339,7 +5415,8 @@ export function FreeformWorkspace({
   function requestExportAllSlides() {
     if (renderScale === null) return
     if (blockDocumentMutationDuringInteraction()) return
-    if (hasMixedSlideSizes(doc.slides)) {
+    // A PDF's pages keep their own sizes; only a ZIP of pictures warns about mixed sizes.
+    if (viewPrefs.exportFormat !== 'pdf' && hasMixedSlideSizes(doc.slides)) {
       setShowMixedSizeWarning(true)
       return
     }
@@ -5755,6 +5832,7 @@ export function FreeformWorkspace({
               onPrefsChange={updateViewPrefs}
               onExportCurrent={() => void exportCurrentSlide()}
               onExportAll={requestExportAllSlides}
+              onExportLong={() => void exportLongImage()}
             />
           )}
         />
