@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
+import { FILTER_PRESETS } from '../../../src/freeform/filterPresets'
 import type { FreeformPathElement, FreeformTextElement } from '../../../src/freeform/types'
 import { listIcons } from '../core/icons'
 import { createDocumentFromOutline } from '../core/outline'
@@ -100,6 +101,38 @@ describe('renderDocument', () => {
       const ihdr = pngIhdr(readFileSync(styled.files[0].path))
       expect(ihdr.width).toBe(slide.width)
       expect(ihdr.height).toBe(slide.height)
+      expect(readFileSync(styled.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
+    },
+    420_000,
+  )
+
+  test(
+    'renders a filter preset as a visible pixel change',
+    async () => {
+      const instantiation = instantiateTemplate('editorial-freeform')
+      if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
+      const base = instantiation.document
+      const slide = base.slides[0]
+      // The biggest shape on the cover: a filter on it changes real pixels.
+      const shapeLeaf = base.slides[0].nodes
+        .filter((node): node is Extract<typeof node, { type: 'shape' }> => node.type === 'shape')
+        .sort((a, b) => b.width * b.height - a.width * a.height)[0]
+      if (!shapeLeaf) throw new Error('expected a shape node on the cover')
+      const mono = FILTER_PRESETS.find((preset) => preset.id === 'mono')!
+      const filtered = reduceFreeformDocument(base, {
+        type: 'node/update-style',
+        slideId: slide.id,
+        updates: [{ path: [shapeLeaf.id], patch: { filter: { ...mono.filter } } }],
+      })
+      expect(filtered).not.toBe(base)
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-render-'))
+      const plain = await renderDocument(base, { outputDir, baseName: 'plain', slideIds: [slide.id] })
+      const styled = await renderDocument(filtered, { outputDir, baseName: 'mono', slideIds: [slide.id] })
+      expect(plain.ok).toBe(true)
+      expect(styled.ok).toBe(true)
+      if (!plain.ok || !styled.ok) throw new Error('expected both renders to succeed')
+      expect(styled.files).toHaveLength(1)
       expect(readFileSync(styled.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
     },
     420_000,

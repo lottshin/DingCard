@@ -1674,6 +1674,60 @@ test('inspector appearance controls style leaves end to end', async ({ page }) =
   await expect(page.getByTestId('inspector-appearance')).toHaveCount(0)
 })
 
+test('filter presets apply looks, fine-tune sliders, and persist through reload', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertShape(page)
+  const appearance = page.getByTestId('inspector-appearance')
+  const presets = appearance.getByTestId('filter-presets')
+  // The filter stack renders on the leaf wrapper, not the inner shape div.
+  const shapeView = page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-shape'),
+  })
+
+  // The gallery offers 原图 plus the looks; nothing is on yet.
+  await expect(presets.getByTestId('filter-preset-none')).toBeVisible()
+  await expect(presets.getByTestId('filter-preset-mono')).toBeVisible()
+  await expect(shapeView).toHaveCSS('filter', 'none')
+
+  // One tap applies a whole look (v18 grayscale) and lights the tile up.
+  await presets.getByTestId('filter-preset-mono').click()
+  await expect(shapeView).toHaveCSS('filter', /grayscale\(1\)/)
+  await expect(presets.getByTestId('filter-preset-mono')).toHaveClass(/on/)
+  // The sliders show the preset's numbers and fine-tune on top.
+  const contrast = appearance.getByLabel('滤镜对比度', { exact: true })
+  await contrast.fill('1.5')
+  await contrast.press('Enter')
+  await expect(shapeView).toHaveCSS('filter', /contrast\(1\.5\)/)
+  // The fine-tuned stack no longer matches the preset tile.
+  await expect(presets.getByTestId('filter-preset-mono')).not.toHaveClass(/on/)
+
+  // The other v18-only keys reach the CSS stack too.
+  await presets.getByTestId('filter-preset-cool').click()
+  await expect(shapeView).toHaveCSS('filter', /hue-rotate\(345deg\)/)
+
+  // 原图 clears back to no filter at all.
+  await presets.getByTestId('filter-preset-none').click()
+  await expect(shapeView).toHaveCSS('filter', 'none')
+
+  // A preset is one undo step: applying one and undoing lands back at 原图.
+  await presets.getByTestId('filter-preset-vintage').click()
+  await expect(shapeView).toHaveCSS('filter', /sepia\(0\.45\)/)
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(shapeView).toHaveCSS('filter', 'none')
+
+  await presets.getByTestId('filter-preset-film').click()
+  await expect(shapeView).toHaveCSS('filter', /sepia\(0\.2\)/)
+  await signUpToSave(page, `filters-${Date.now().toString(36)}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+
+  await page.reload()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  await expect(page.getByTestId('freeform-element').filter({
+    has: page.locator('.freeform-shape'),
+  })).toHaveCSS('filter', /sepia\(0\.2\)/)
+})
+
 test('shared inspector controls expose a visible accent focus ring', async ({ page }) => {
   await openFreeform(page)
   const accentColor = await page.evaluate(() => {
@@ -5578,7 +5632,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(17)
+  expect(storedDocument.documentVersion).toBe(18)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 17
+  documentVersion: 18
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -81,6 +81,12 @@ export interface SceneFilter {
   contrast?: number
   saturation?: number
   blur?: number
+  /** Colour-wheel rotation in degrees (v18); 0/360 leaves colours alone. */
+  hue?: number
+  /** Desaturation towards grey (v18), 0–1. */
+  grayscale?: number
+  /** Yellowed vintage cast (v18), 0–1. */
+  sepia?: number
 }
 
 export type BlendMode =

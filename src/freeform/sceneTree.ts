@@ -912,7 +912,7 @@ function hasValidOptionalFields(
 const OPACITY_FIELD_CHECK: NodeFieldCheck = (record) => isValidOpacity(record.opacity)
 const SHADOW_FIELD_CHECK: NodeFieldCheck = (record) => cloneShadowPaint(record.shadow) !== null
 
-const FILTER_FIELD_CHECK: NodeFieldCheck = (record) => cloneSceneFilter(record.filter) !== null
+const FILTER_FIELD_CHECK: NodeFieldCheck = (record) => cloneSceneFilter(record.filter, true) !== null
 const BLEND_FIELD_CHECK: NodeFieldCheck = (record) => isValidBlendMode(record.blendMode)
 
 const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {

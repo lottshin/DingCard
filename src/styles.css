@@ -3017,6 +3017,52 @@ html.theme-anim * {
   margin-top: 7px;
 }
 
+/* 滤镜预设: one-tap looks. Every tile previews on the same swatch so the
+   differences between looks read at a glance. */
+.filter-presets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.filter-preset-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.filter-preset-tile:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.filter-preset-tile.on {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.filter-preset-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.filter-preset-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--line-2) 76%, transparent);
+}
+
 :is(.freeform-inspector, .freeform-drawer) .paint-swatch-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

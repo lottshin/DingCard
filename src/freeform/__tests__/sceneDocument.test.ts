@@ -26,6 +26,8 @@ import {
   normalizeFreeformDocumentV14,
   normalizeFreeformDocumentV15,
   normalizeFreeformDocumentV16,
+  normalizeFreeformDocumentV17,
+  normalizeFreeformDocumentV18,
 } from '../sceneDocument'
 import {
   countSceneNodes,
@@ -237,7 +239,7 @@ function nestedGroups(depth: number): unknown {
 
 describe('freeform scene types and limits', () => {
   it('uses the current recursive scene types', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<17>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<18>()
     expectTypeOf<FreeformSlide>().toHaveProperty('nodes')
     expectTypeOf<FreeformSceneLeaf>().toHaveProperty('scale')
     expectTypeOf<FreeformGroupNode>().toHaveProperty('children')
@@ -256,7 +258,7 @@ describe('freeform scene types and limits', () => {
 
 describe('strict v4/v5 freeform document contract', () => {
   it('uses versionless v4 runtime types with required image framing', () => {
-    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<17>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<18>()
     expectTypeOf<Extract<FreeformSceneLeaf, { type: 'image' }>>()
       .toHaveProperty('framing')
       .toEqualTypeOf<ImageFraming>()
@@ -286,7 +288,7 @@ describe('strict v4/v5 freeform document contract', () => {
     const deepGroup = hiddenGroup?.type === 'group' ? hiddenGroup.children[1] : undefined
     const deepFill = deepGroup?.type === 'group' ? deepGroup.children[0] : undefined
 
-    expect(migrated?.documentVersion).toBe(17)
+    expect(migrated?.documentVersion).toBe(18)
     expect(rootImage).toMatchObject({ type: 'image', framing: framing() })
     expect(hiddenImage).toMatchObject({ type: 'image', framing: framing() })
     expect(deepFill).toMatchObject({
@@ -327,7 +329,7 @@ describe('strict v4/v5 freeform document contract', () => {
 
     const normalized = normalizeFreeformDocumentV4(raw)
 
-    expect(normalized).toEqual({ ...raw, documentVersion: 17 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 18 })
     expect(normalized).not.toBe(raw)
     const sourceImage = (raw.slides[0] as { nodes: Array<{ framing: ImageFraming }> }).nodes[0]
     const outputImage = normalized?.slides[0].nodes[0]
@@ -378,11 +380,11 @@ describe('strict v4/v5 freeform document contract', () => {
     const v3 = v3Document([v3Slide('slide-1', [imageLeaf('photo')])])
     const v4 = v4Document([v3Slide('slide-1', [v4ImageLeaf('photo')])])
 
-    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(17)
-    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(17)
-    expect(normalizeFreeformDocument(v3)?.documentVersion).toBe(17)
-    expect(normalizeFreeformDocument(v4)).toEqual({ ...v4, documentVersion: 17 })
-    expect(normalizeFreeformDocument({ ...v4, documentVersion: 18 })).toBeNull()
+    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(18)
+    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(18)
+    expect(normalizeFreeformDocument(v3)?.documentVersion).toBe(18)
+    expect(normalizeFreeformDocument(v4)).toEqual({ ...v4, documentVersion: 18 })
+    expect(normalizeFreeformDocument({ ...v4, documentVersion: 19 })).toBeNull()
     expect(normalizeFreeformDocument(null)).toBeNull()
   })
 
@@ -465,7 +467,7 @@ describe('legacy freeform document migration', () => {
 
     expect(raw).toEqual(snapshot)
     expect(migrated).not.toBeNull()
-    expect(migrated?.documentVersion).toBe(17)
+    expect(migrated?.documentVersion).toBe(18)
     expect(migrated?.slides[0].nodes.map((node) => node.id)).toEqual([
       'text-1',
       'image-1',
@@ -731,7 +733,7 @@ describe('strict v3 freeform normalization', () => {
 
     const normalized = migrateFreeformDocumentV3ToV9(raw)
 
-    expect(normalized).toEqual({ ...raw, documentVersion: 17 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 18 })
     expect(normalized).not.toBe(raw)
     expect(normalized?.slides[1]).not.toBe(raw.slides[1])
     expect(raw).toEqual(snapshot)
@@ -742,10 +744,10 @@ describe('strict v3 freeform normalization', () => {
     const v2 = legacyDocument([legacySlide('slide-1')])
     const v3 = v3Document()
 
-    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(17)
-    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(17)
-    expect(normalizeFreeformDocument(v3)).toEqual({ ...v3, documentVersion: 17 })
-    expect(normalizeFreeformDocument({ ...v3, documentVersion: 18 })).toBeNull()
+    expect(normalizeFreeformDocument(v1)?.documentVersion).toBe(18)
+    expect(normalizeFreeformDocument(v2)?.documentVersion).toBe(18)
+    expect(normalizeFreeformDocument(v3)).toEqual({ ...v3, documentVersion: 18 })
+    expect(normalizeFreeformDocument({ ...v3, documentVersion: 19 })).toBeNull()
     expect(normalizeFreeformDocument(null)).toBeNull()
   })
 
@@ -762,7 +764,7 @@ describe('strict v3 freeform normalization', () => {
     expect(normalized).not.toBeNull()
     expect(normalized?.slides[0].nodes[0].name).toBe('')
     expect(normalized?.slides[0].nodes[1].name).toBe('   ')
-    expect(normalized).toEqual({ ...raw, documentVersion: 17 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 18 })
   })
 
   it.each([
@@ -1052,9 +1054,9 @@ describe('strict v5 freeform document contract', () => {
 
   it('normalizes any historical version to v9 while still accepting v6 through v8 documents', () => {
     const v4 = v4Document([v3Slide('slide-1', [textLeaf('text-1')])])
-    expect(normalizeFreeformDocument(v4)?.documentVersion).toBe(17)
+    expect(normalizeFreeformDocument(v4)?.documentVersion).toBe(18)
     const v6 = { ...v4, documentVersion: 6 }
-    expect(normalizeFreeformDocument(v6)?.documentVersion).toBe(17)
+    expect(normalizeFreeformDocument(v6)?.documentVersion).toBe(18)
   })
 
   it.each([
@@ -1700,7 +1702,7 @@ describe('strict v11 freeform document contract', () => {
     const v10 = shapeDocument({ type: 'linear-gradient', from: '#111111', to: '#f97316', angle: 45 }, 10)
     const normalized = normalizeFreeformDocumentV10(v10)
     if (!normalized) throw new Error('Expected valid v10 document')
-    expect(normalized.documentVersion).toBe(17)
+    expect(normalized.documentVersion).toBe(18)
     expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
     expect(normalizeFreeformDocument(v10)).toEqual(normalized)
 
@@ -1770,7 +1772,7 @@ describe('strict v12 freeform document contract', () => {
     const v11 = radialDocument({ type: 'linear-gradient', stops: radialStops, angle: 45 }, 11)
     const normalized = normalizeFreeformDocumentV11(v11)
     if (!normalized) throw new Error('Expected valid v11 document')
-    expect(normalized.documentVersion).toBe(17)
+    expect(normalized.documentVersion).toBe(18)
     expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
     expect(normalizeFreeformDocument(v11)).toEqual(normalized)
     const shape = normalized.slides[0].nodes[0]
@@ -1830,7 +1832,7 @@ describe('strict v13 freeform document contract', () => {
     const v12 = lineDocument({}, 12)
     const normalized = normalizeFreeformDocumentV12(v12)
     if (!normalized) throw new Error('Expected valid v12 document')
-    expect(normalized.documentVersion).toBe(17)
+    expect(normalized.documentVersion).toBe(18)
     expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
     expect(normalizeFreeformDocument(v12)).toEqual(normalized)
     const line = normalized.slides[0].nodes[0]
@@ -1887,7 +1889,7 @@ describe('strict v14 freeform document contract', () => {
     }
     const normalized = normalizeFreeformDocumentV13(v13)
     if (!normalized) throw new Error('Expected valid v13 document')
-    expect(normalized.documentVersion).toBe(17)
+    expect(normalized.documentVersion).toBe(18)
     expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
     expect(normalizeFreeformDocument(v13)).toEqual(normalized)
   })
@@ -1952,7 +1954,7 @@ describe('strict v15 freeform document contract', () => {
     }))
     const normalized = normalizeFreeformDocumentV15(raw)
     expect(normalized).not.toBeNull()
-    expect(normalized).toEqual({ ...raw, documentVersion: 17 })
+    expect(normalized).toEqual({ ...raw, documentVersion: 18 })
     const path = normalized?.slides[0].nodes[0]
     if (path?.type !== 'path') throw new Error('Expected path node')
     expect(path.viewBox).not.toBe((raw.slides[0] as { nodes: Array<{ viewBox: unknown }> }).nodes[0].viewBox)
@@ -1968,7 +1970,7 @@ describe('strict v15 freeform document contract', () => {
     const v14 = { ...v4Document([v3Slide('slide-1', [lineLeaf('line-1')])]), documentVersion: 14 }
     const normalized = normalizeFreeformDocumentV14(v14)
     if (!normalized) throw new Error('Expected valid v14 document')
-    expect(normalized.documentVersion).toBe(17)
+    expect(normalized.documentVersion).toBe(18)
     expect(normalizeFreeformDocument(normalized)).toEqual(normalized)
     expect(normalizeFreeformDocument(v14)).toEqual(normalized)
   })
@@ -2044,6 +2046,24 @@ describe('strict v16 freeform document contract', () => {
     const plain = pageDocument({ type: 'solid', color: '#ffffff' }, [
       textLeaf('text-1', { text: '重点在这里', spans: [{ start: 0, end: 2, bold: true }] }),
     ], 15)
-    expect(normalizeFreeformDocumentV15(plain)?.documentVersion).toBe(17)
+    expect(normalizeFreeformDocumentV15(plain)?.documentVersion).toBe(18)
+  })
+
+  it('accepts extended filter keys only on v18 documents', () => {
+    const image = v4ImageLeaf('photo-1', { filter: { hue: 345, grayscale: 1, sepia: 0.5 } })
+    const raw = pageDocument({ type: 'solid', color: '#ffffff' }, [image], 18)
+    const normalized = normalizeFreeformDocumentV18(raw)
+    const node = normalized?.slides[0].nodes[0]
+    if (node?.type !== 'image') throw new Error('Expected image node')
+    expect(node.filter).toEqual({ hue: 345, grayscale: 1, sepia: 0.5 })
+
+    // The same look on older versions is rejected — they only know the four
+    // base keys.
+    const legacy = pageDocument({ type: 'solid', color: '#ffffff' }, [image], 17)
+    expect(normalizeFreeformDocumentV17(legacy)).toBeNull()
+    const base = pageDocument({ type: 'solid', color: '#ffffff' }, [
+      v4ImageLeaf('photo-1', { filter: { brightness: 1.1, blur: 4 } }),
+    ], 17)
+    expect(normalizeFreeformDocumentV17(base)?.documentVersion).toBe(18)
   })
 })

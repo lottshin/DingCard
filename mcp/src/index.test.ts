@@ -36,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the eighteen tools', async () => {
+  test('exposes the nineteen tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -51,6 +51,7 @@ describe('dingcard-mcp tool layer', () => {
       'get_document',
       'inspect_document',
       'list_decorations',
+      'list_filter_presets',
       'list_icons',
       'list_styles',
       'list_templates',
@@ -194,7 +195,7 @@ describe('dingcard-mcp tool layer', () => {
     }
     expect(created.ok).toBe(true)
     const kept = await call<{ document: { documentVersion: number; slides: unknown[] } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(17)
+    expect(kept.document.documentVersion).toBe(18)
     // Cover and two sections: the outline asked for no closing page.
     expect(kept.document.slides).toHaveLength(3)
     expect(created.summary.slideCount).toBe(3)
@@ -295,7 +296,7 @@ describe('dingcard-mcp tool layer', () => {
     const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
       documentVersion: number
     }
-    expect(document.documentVersion).toBe(17)
+    expect(document.documentVersion).toBe(18)
 
     const envelope = JSON.parse(await readText('dingcard://examples/markdown')) as {
       source: string
@@ -461,8 +462,38 @@ describe('dingcard-mcp tool layer', () => {
     })
     expect(applied).toMatchObject({ ok: true, changes: [true] })
     const kept = await call<{ document: { documentVersion: number; slides: Array<{ nodes: Array<{ id: string; effect?: unknown }> }> } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(17)
+    expect(kept.document.documentVersion).toBe(18)
     expect(kept.document.slides[0].nodes.find((node) => node.id === title.id)?.effect).toEqual(label.patch.effect)
+    await client.close()
+  })
+
+  test('list_filter_presets gives photo looks that node/update-style applies', async () => {
+    const client = await connect()
+    const listed = await call<{ presets: Array<{ id: string; name: string; patch: Record<string, unknown> }> }>(client, 'list_filter_presets', {})
+    expect(listed.presets.length).toBeGreaterThanOrEqual(8)
+    const mono = listed.presets.find((preset) => preset.id === 'mono')!
+    expect(mono.patch).toMatchObject({ filter: { grayscale: 1 } })
+
+    const created = await call<{ documentId: string; slides: Array<{ id: string }> }>(client, 'create_document_from_template', { templateId: 'editorial-freeform' })
+    const inspected = await call<{ slides: Array<{ nodes: Array<{ id: string; name: string }> }> }>(client, 'inspect_document', { documentId: created.documentId })
+    const title = inspected.slides[0].nodes.find((node) => node.name === '主标题')!
+    const applied = await call<{ ok: boolean; changes: boolean[] }>(client, 'apply_actions', {
+      documentId: created.documentId,
+      actions: [{ type: 'node/update-style', slideId: created.slides[0].id, updates: [{ path: [title.id], patch: mono.patch }] }],
+    })
+    expect(applied).toMatchObject({ ok: true, changes: [true] })
+    const kept = await call<{ document: { documentVersion: number; slides: Array<{ nodes: Array<{ id: string; filter?: unknown }> }> } }>(client, 'get_document', { documentId: created.documentId })
+    expect(kept.document.documentVersion).toBe(18)
+    expect(kept.document.slides[0].nodes.find((node) => node.id === title.id)?.filter).toEqual(mono.patch.filter)
+
+    // The v18-only keys are rejected on older input versions.
+    const legacy = await client.callTool({
+      name: 'validate_document',
+      arguments: { document: { documentVersion: 17, activeSlideId: 's', slides: [{ id: 's', name: '第 1 页', width: 1080, height: 1440, background: { type: 'solid', color: '#ffffff' }, nodes: [{ id: 'n', name: 'N', locked: false, hidden: false, x: 0, y: 0, width: 100, height: 100, rotation: 0, scale: 1, type: 'shape', shape: 'rect', fill: { type: 'solid', color: '#ffffff' }, stroke: '#000000', strokeWidth: 2, filter: { hue: 345 } }] }] } },
+    })
+    const legacyText = (legacy as { content: Array<{ type: string; text?: string }> }).content[0].text ?? ''
+    // The v18-only hue key on a v17 document fails strict validation.
+    expect(legacyText).toContain('"ok": false')
     await client.close()
   })
 

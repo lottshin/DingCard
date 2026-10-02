@@ -70,7 +70,8 @@ import { pathStrokeScale } from './pathData'
 import { deckColors, deckFonts, type RestyleRequest } from './restyle'
 import { DeckColorsContext, type DeckColorsValue } from './deckColors'
 import { rangeHasRichTextStyle, restyleRichTextRange, type RichTextStyle } from './richText'
-import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
+import { BLEND_MODES, LINE_POINTS_MIN, sceneFilterEquals } from './appearance'
+import { FILTER_PRESETS, FILTER_PRESET_SWATCH, filterPresetCss } from './filterPresets'
 import { FreeformExportMenu } from './FreeformExportMenu'
 import { FreeformContextToolbar, type ContextToolbarSubject } from './FreeformContextToolbar'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
@@ -859,7 +860,9 @@ function isPathElement(element: FreeformElement | undefined): element is Freefor
   return element?.type === 'path'
 }
 
-/** Filter stack editor shared by every leaf type; `null` clears the stored filter. */
+/** Filter stack editor shared by every leaf type; `null` clears the stored
+ * filter. The preset gallery applies whole looks in one tap; the sliders then
+ * fine-tune whichever look (or manual stack) is set. */
 function FilterField({
   filter,
   resetKey,
@@ -869,53 +872,89 @@ function FilterField({
   resetKey: unknown
   onChange: (filter: SceneFilter | null) => void
 }) {
-  if (!filter) {
-    return (
-      <div className="inspector-actions">
-        <button
-          className="ghost"
-          type="button"
-          data-testid="filter-add"
-          onClick={() => onChange({ brightness: 1.1, contrast: 1.1 })}
-        >
-          {t('添加滤镜')}
-        </button>
-      </div>
-    )
-  }
   const fields: Array<{ key: keyof SceneFilter; label: string; min: number; max: number; fallback: number }> = [
     { key: 'brightness', label: t('亮度'), min: 0, max: 3, fallback: 1 },
     { key: 'contrast', label: t('对比度'), min: 0, max: 3, fallback: 1 },
     { key: 'saturation', label: t('饱和度'), min: 0, max: 3, fallback: 1 },
+    { key: 'hue', label: t('色调'), min: 0, max: 360, fallback: 0 },
+    { key: 'grayscale', label: t('灰度'), min: 0, max: 1, fallback: 0 },
+    { key: 'sepia', label: t('复古黄'), min: 0, max: 1, fallback: 0 },
     { key: 'blur', label: t('模糊'), min: 0, max: 100, fallback: 0 },
   ]
   return (
     <>
-      <div className="field-grid">
-        {fields.map(({ key, label, min, max, fallback }) => (
-          <label key={key}>
-            {label}
-            <InspectorNumberInput
-              ariaLabel={t('滤镜{name}', { name: label })}
-              min={min}
-              max={max}
-              resetKey={resetKey}
-              value={filter[key] ?? fallback}
-              onCommit={(value) => onChange({ ...filter, [key]: value })}
-            />
-          </label>
-        ))}
-      </div>
-      <div className="inspector-actions">
+      <div className="filter-presets" role="group" aria-label={t('滤镜预设')} data-testid="filter-presets">
         <button
-          className="ghost"
+          className={filter ? 'filter-preset-tile' : 'filter-preset-tile on'}
           type="button"
-          data-testid="filter-clear"
+          data-testid="filter-preset-none"
+          aria-pressed={!filter}
           onClick={() => onChange(null)}
         >
-          {t('清除滤镜')}
+          <span className="filter-preset-swatch" style={{ background: FILTER_PRESET_SWATCH }} />
+          {t('原图')}
         </button>
+        {FILTER_PRESETS.map((preset) => {
+          const active = filter !== undefined && sceneFilterEquals(filter, preset.filter)
+          return (
+            <button
+              key={preset.id}
+              className={active ? 'filter-preset-tile on' : 'filter-preset-tile'}
+              type="button"
+              data-testid={`filter-preset-${preset.id}`}
+              aria-pressed={active}
+              title={t('滤镜预设{name}', { name: t(preset.name) })}
+              onClick={() => onChange({ ...preset.filter })}
+            >
+              <span
+                className="filter-preset-swatch"
+                style={{ background: FILTER_PRESET_SWATCH, filter: filterPresetCss(preset) }}
+              />
+              {t(preset.name)}
+            </button>
+          )
+        })}
       </div>
+      {!filter ? (
+        <div className="inspector-actions">
+          <button
+            className="ghost"
+            type="button"
+            data-testid="filter-add"
+            onClick={() => onChange({ brightness: 1.1, contrast: 1.1 })}
+          >
+            {t('添加滤镜')}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="field-grid">
+            {fields.map(({ key, label, min, max, fallback }) => (
+              <label key={key}>
+                {label}
+                <InspectorNumberInput
+                  ariaLabel={t('滤镜{name}', { name: label })}
+                  min={min}
+                  max={max}
+                  resetKey={resetKey}
+                  value={filter[key] ?? fallback}
+                  onCommit={(value) => onChange({ ...filter, [key]: value })}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="inspector-actions">
+            <button
+              className="ghost"
+              type="button"
+              data-testid="filter-clear"
+              onClick={() => onChange(null)}
+            >
+              {t('清除滤镜')}
+            </button>
+          </div>
+        </>
+      )}
     </>
   )
 }

@@ -139,7 +139,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 17,
+    documentVersion: 18,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -514,7 +514,7 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
     } else if (key === 'cornerRadius') {
       if (value !== null && !isValidCornerRadius(value)) return false
     } else if (key === 'filter') {
-      if (value !== null && !cloneSceneFilter(value)) return false
+      if (value !== null && !cloneSceneFilter(value, true)) return false
     } else if (key === 'blendMode') {
       if (value !== null && !isValidBlendMode(value)) return false
     } else if (key === 'dash') {
@@ -561,7 +561,7 @@ function withAppearancePatch<T extends object>(
       [key]: key === 'shadow'
         ? cloneShadowPaint(value)
         : key === 'filter'
-          ? cloneSceneFilter(value)
+          ? cloneSceneFilter(value, true)
           : key === 'effect'
             ? { ...(value as TextEffect) }
             : value,

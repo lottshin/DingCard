@@ -16,6 +16,7 @@ import {
   type StyleLook,
 } from '../../../src/freeform/restyle'
 import { TEXT_STYLE_PRESETS, textStylePatch } from '../../../src/freeform/textStyles'
+import { FILTER_PRESETS } from '../../../src/freeform/filterPresets'
 import type { FreeformDocument, FreeformNodeStylePatch } from '../../../src/freeform/types'
 
 /** How many of a deck's colours inspect_document lists, the most prominent first. */
@@ -80,6 +81,24 @@ export function listTextStyles(): { styles: TextStyleEntry[] } {
       name: preset.name,
       backdrop: preset.backdrop,
       patch: textStylePatch(preset),
+    })),
+  }
+}
+
+export interface FilterPresetEntry {
+  id: string
+  name: string
+  /** A node/update-style patch that gives an element this look (v18 filter). */
+  patch: FreeformNodeStylePatch
+}
+
+/** The ready-made photo looks (滤镜预设). */
+export function listFilterPresets(): { presets: FilterPresetEntry[] } {
+  return {
+    presets: FILTER_PRESETS.map((preset) => ({
+      id: preset.id,
+      name: preset.name,
+      patch: { filter: { ...preset.filter } },
     })),
   }
 }

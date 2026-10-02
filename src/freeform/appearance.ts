@@ -25,6 +25,8 @@ import type {
 
 const SHADOW_KEYS = new Set(['color', 'blur', 'offsetX', 'offsetY'])
 const FILTER_KEYS = new Set(['brightness', 'contrast', 'saturation', 'blur'])
+/** v18 filter keys; rejected on documents from before that version. */
+const EXTENDED_FILTER_KEYS = new Set(['hue', 'grayscale', 'sepia'])
 
 export const BLEND_MODES: readonly BlendMode[] = [
   'normal',
@@ -104,15 +106,22 @@ export function isValidBlendMode(value: unknown): value is BlendMode {
   return typeof value === 'string' && BLEND_MODE_SET.has(value)
 }
 
-/** Validate + clone a filter stack; null rejects. At least one key required. */
-export function cloneSceneFilter(value: unknown): SceneFilter | null {
+/** Validate + clone a filter stack; null rejects. At least one key required.
+ * `extended` also accepts the v18 keys (hue/grayscale/sepia); live documents
+ * always pass true, strict validation gates it on the input version. */
+export function cloneSceneFilter(value: unknown, extended: boolean): SceneFilter | null {
   if (!isRecord(value)) return null
   const keys = Object.keys(value)
-  if (keys.length === 0 || !keys.every((key) => FILTER_KEYS.has(key))) return null
+  if (
+    keys.length === 0 ||
+    !keys.every((key) => FILTER_KEYS.has(key) || (extended && EXTENDED_FILTER_KEYS.has(key)))
+  ) {
+    return null
+  }
   const out: SceneFilter = {}
   for (const key of keys) {
-    const clamp = key === 'blur' ? 100 : 3
-    if (!isFiniteIn(value[key], 0, clamp)) return null
+    const max = key === 'blur' ? 100 : key === 'hue' ? 360 : key === 'grayscale' || key === 'sepia' ? 1 : 3
+    if (!isFiniteIn(value[key], 0, max)) return null
     out[key as keyof SceneFilter] = value[key] as number
   }
   return out
@@ -133,6 +142,9 @@ export function sceneFilterCss(filter: SceneFilter): string {
   if (filter.brightness !== undefined) parts.push(`brightness(${filter.brightness})`)
   if (filter.contrast !== undefined) parts.push(`contrast(${filter.contrast})`)
   if (filter.saturation !== undefined) parts.push(`saturate(${filter.saturation})`)
+  if (filter.grayscale !== undefined) parts.push(`grayscale(${filter.grayscale})`)
+  if (filter.sepia !== undefined) parts.push(`sepia(${filter.sepia})`)
+  if (filter.hue !== undefined) parts.push(`hue-rotate(${filter.hue}deg)`)
   if (filter.blur !== undefined) parts.push(`blur(${filter.blur}px)`)
   return parts.join(' ')
 }

@@ -18,7 +18,7 @@ import { listDecorations, placeDecorations } from './core/decorations'
 import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
 import { composePoster } from './core/poster'
-import { listStyles, listTextStyles } from './core/styles'
+import { listFilterPresets, listStyles, listTextStyles } from './core/styles'
 import { instantiateTemplate, listTemplates } from './core/templates'
 import { checkDocument } from './render/check'
 import { handOff, openInBrowser } from './render/handoff'
@@ -65,13 +65,13 @@ function errorResult(error: unknown) {
 }
 
 const SHADOW_HINT = "shadow?({ color, blur(0–400), offsetX(-1000–1000), offsetY(-1000–1000) } 投影)"
-const FILTER_HINT = "filter?({ brightness?(0–3), contrast?(0–3), saturation?(0–3), blur?(0–100 px) } 滤镜，至少一键)"
+const FILTER_HINT = "filter?({ brightness?(0–3), contrast?(0–3), saturation?(0–3), blur?(0–100 px), hue?(0–360 色相环旋转，仅 v18), grayscale?(0–1 灰度，仅 v18), sepia?(0–1 复古黄，仅 v18) } 滤镜，至少一键；现成的滤镜预设见 list_filter_presets)"
 const BLEND_HINT = "blendMode?('normal'|'multiply'|'screen'|'overlay'|'darken'|'lighten'|'color-dodge'|'color-burn'|'hard-light'|'soft-light'|'difference'|'exclusion'|'hue'|'saturation'|'color'|'luminosity' 混合模式)"
 const TEXT_STROKE_HINT = "stroke?(#RRGGBB 文字描边色，仅 v8；配 strokeWidth 使用), strokeWidth?(0.5–100 px 文字描边宽度，仅 v8), vertical?(true 竖排文字，仅 v9)"
 const TEXT_EFFECT_HINT = `文字效果，仅 v17，一段文字一种：{ type: 'neon', color, amount } 发光 | { type: 'outline', color, amount } 字外描边（贴纸字） | { type: 'hollow', amount } 镂空（只留文字颜色的轮廓） | { type: 'splice', color, amount, angle } 镂空字叠在错开的实心字上 | { type: 'offset', color, amount, angle } 硬投影 | { type: 'echo', color, amount, angle } 两层渐淡的重影 | { type: 'glitch', color, color2, amount } 左右错开的双色故障 | { type: 'extrude', color, amount, angle } 立体 | { type: 'background', color, amount, radius } 每行文字后面一块底色（标签） | { type: 'marker', color, amount } 每行下半截的荧光笔；color/color2 为 #RRGGBB，amount 0–100（按字号比例的强度或大小，50 为默认），angle 0–360（0 向右、90 向下），radius 0–100（底色圆角）；node/update-style 的 effect 传 null 去掉。现成的花字见 list_text_styles`
 
-const DOCUMENT_SCHEMA_HINT = `document：自由画布 v17 文档（JSON；v1–v16 输入会自动迁移为 v17）。
-顶层 { documentVersion: 17, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes, guides? }。
+const DOCUMENT_SCHEMA_HINT = `document：自由画布 v18 文档（JSON；v1–v17 输入会自动迁移为 v18）。
+顶层 { documentVersion: 18, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes, guides? }。
 guides? 为该页编辑器参考线（仅 v10）：[{ id(非空且页内唯一), axis('x' 竖线 | 'y' 横线), position(页面内坐标，x ∈ [0, 页宽]，y ∈ [0, 页高]) }]，每页至多 64 条；仅用于编辑器显示与吸附，不参与渲染导出。
 background 为 { type: 'solid', color } | { type: 'linear-gradient', from, to, angle } | { type: 'linear-gradient', stops: [{ offset(0–1 递增), color }×2–8], angle } (仅 v8) | { type: 'radial-gradient', stops: [{ offset(0–1 递增), color }×2–8] } (仅 v12，居中圆 radial-gradient，半径为最远角) | { type: 'transparent' } | { type: 'image', src(URL 或 data URL), fit('cover' 铺满裁切 | 'contain' 完整显示，留空处透明), framing({ focusX(0–1), focusY(0–1), zoom(1–4) } 取景，默认 { focusX: 0.5, focusY: 0.5, zoom: 1 }) } (仅 v16，整页背景图，画在所有节点下面；混合模式会和它混合)。
 ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle }（stops 仅 v8）与径向 { type: 'radial-gradient', stops }（仅 v12）；可用于页面背景、文字填充、形状填充与图形填充。
@@ -123,7 +123,7 @@ export function createDingcardServer(): McpServer {
 
   const documentInput = {
     documentId: z.string().optional().describe('创建或修改文档的工具返回的 documentId（推荐：不必来回传整份文档）'),
-    document: z.unknown().optional().describe('完整的 v17（或 v1–v16 旧版）文档 JSON，可替代 documentId'),
+    document: z.unknown().optional().describe('完整的 v18（或 v1–v17 旧版）文档 JSON，可替代 documentId'),
     documentPath: z.string().optional().describe('文档 JSON 文件的路径，可替代 documentId'),
   }
   const includeDocument = z.boolean().optional().describe('同时返回完整文档 JSON（默认只返回 documentId 和 version）')
@@ -187,7 +187,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_content',
-    `按结构化内容生成一整套自由画布卡片（v17）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容。${CONTENT_SCHEMA_HINT}`,
+    `按结构化内容生成一整套自由画布卡片（v18）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容。${CONTENT_SCHEMA_HINT}`,
     {
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
       content: z.object({
@@ -240,7 +240,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_outline',
-    `按 Markdown 大纲生成一整套自由画布卡片（v17）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板。${OUTLINE_SCHEMA_HINT}`,
+    `按 Markdown 大纲生成一整套自由画布卡片（v18）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板。${OUTLINE_SCHEMA_HINT}`,
     {
       outline: z.string().describe('Markdown 大纲：# 总标题 + 若干 ## 小节（小节下正文行填入该页正文）'),
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
@@ -323,8 +323,15 @@ export function createDingcardServer(): McpServer {
   )
 
   server.tool(
+    'list_filter_presets',
+    '列出现成的滤镜预设（照片风格）：每个有 id、name，以及 patch——直接作为 apply_actions 里 node/update-style 的 patch，就能把图片、形状等元素一键变成这个风格（整体替换滤镜，黑白/复古/暖阳/冷调/胶片/褪色/高对比/柔焦；用到 v18 的 hue/grayscale/sepia）。传 null 清除滤镜回到原图。',
+    {},
+    async () => jsonResult(listFilterPresets()),
+  )
+
+  server.tool(
     'validate_document',
-    `校验文档是否为合法的自由画布 v17 文档（v1–v16 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
+    `校验文档是否为合法的自由画布 v18 文档（v1–v17 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
     { ...documentInput, includeDocument },
     async ({ includeDocument: withDocument, ...input }) => {
       const resolved = await documentFor(input)
@@ -387,7 +394,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v17 文档（v1–v16 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
+    `把自由画布 v18 文档（v1–v17 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
       ...documentInput,
       outputDir: z.string().describe('输出目录（不存在会创建）'),
@@ -469,7 +476,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-schema',
     'dingcard://schema/freeform',
-    { description: '自由画布 v17 文档模型与校验规则说明' },
+    { description: '自由画布 v18 文档模型与校验规则说明' },
     textResource(DOCUMENT_SCHEMA_HINT),
   )
   server.registerResource(
@@ -517,7 +524,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-example',
     'dingcard://examples/freeform',
-    { description: '完整自由画布 v17 文档示例（编辑部模板实例）', mimeType: 'application/json' },
+    { description: '完整自由画布 v18 文档示例（编辑部模板实例）', mimeType: 'application/json' },
     async (uri: URL) => ({
       contents: [{
         uri: uri.href,
