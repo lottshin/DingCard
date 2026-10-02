@@ -6,7 +6,7 @@ import { imageFiles } from '../app/assetFiles'
 import { navigate, routes } from '../app/router'
 import type { Asset } from '../assets'
 import { Select } from '../Select'
-import type { Draft } from '../drafts'
+import { importDraftFromJson, type Draft } from '../drafts'
 import { createLongImage, longImageScale } from '../exportLongImage'
 import { buildPdf, pdfPageFor, type PdfPage } from '../exportPdf'
 import { downloadZip } from '../exportZip'
@@ -5491,6 +5491,52 @@ export function FreeformWorkspace({
     setTitleDirty(true)
   }
 
+  /**
+   * A freeform document at a URL on this computer (the MCP server's
+   * open_in_editor hands one over) opens as a new project; documents from
+   * other sites are refused.
+   */
+  async function importFromUrl(url: string, title: string | null) {
+    const generation = restoreGenerationRef.current
+    let target: URL | null = null
+    try {
+      target = new URL(url, window.location.href)
+    } catch {
+      target = null
+    }
+    const onThisComputer = target !== null
+      && /^https?:$/.test(target.protocol)
+      && (target.origin === window.location.origin || ['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname))
+    if (!target || !onThisComputer) {
+      setOperationNotice(t('只能导入本机上的文档'))
+      return
+    }
+    let text: string
+    try {
+      const response = await fetch(target.href, { cache: 'no-store' })
+      if (!response.ok) throw new Error(String(response.status))
+      text = await response.text()
+    } catch {
+      setOperationNotice(t('读取导入的文档失败，请重试'))
+      return
+    }
+    // Something else opened meanwhile: that wins.
+    if (restoreGenerationRef.current !== generation) return
+    const outcome = importDraftFromJson(text)
+    if (!outcome.ok) {
+      setOperationNotice(t(outcome.error))
+      return
+    }
+    if (outcome.data.mode !== 'freeform-slide') {
+      setOperationNotice(t('这里只能导入自由画布文档'))
+      return
+    }
+    startFreshDocument(outcome.data.document, title?.trim() || t('导入的设计'))
+    // Unlike a template, an import is finished work: it becomes a project now, not after a first edit.
+    titleDirtyRef.current = true
+    setTitleDirty(true)
+  }
+
   function applyFreeformTemplate(template: TemplateDefinition) {
     if (template.workspace !== 'freeform') return
     const document = template.createFreeform?.()
@@ -5565,7 +5611,7 @@ export function FreeformWorkspace({
             ? { kind: 'saved', at: savedAt ?? Date.now(), onDevice: isGuestOwner(ownerId) }
             : { kind: 'none' }
 
-  // One-shot instructions from the workbench (open / new / template / removed / renamed).
+  // One-shot instructions from the workbench (open / new / template / import / removed / renamed).
   useEffect(() => {
     if (!request || handledRequestRef.current === request.nonce) return
     if (request.kind === 'open' && !ownerId) return
@@ -5590,6 +5636,8 @@ export function FreeformWorkspace({
       startFreshDocument({ ...createFreeformDocument(), activeSlideId: slide.id, slides: [slide] })
     } else if (request.kind === 'template') {
       applyFreeformTemplate(request.template)
+    } else if (request.kind === 'import') {
+      void importFromUrl(request.url, request.title)
     } else if (ownerId && currentDraftIdRef.current !== request.draftId) {
       const owner = ownerId
       const id = request.draftId

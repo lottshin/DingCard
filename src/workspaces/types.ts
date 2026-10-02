@@ -10,6 +10,7 @@ export type WorkspaceRequest =
   | { nonce: number; kind: 'open'; draftId: string }
   | { nonce: number; kind: 'new'; platformId: string | null; width: number | null; height: number | null }
   | { nonce: number; kind: 'template'; template: TemplateDefinition }
+  | { nonce: number; kind: 'import'; url: string; title: string | null }
   | { nonce: number; kind: 'removed'; draftId: string }
   | { nonce: number; kind: 'renamed'; draftId: string; title: string }
 

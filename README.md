@@ -80,14 +80,14 @@ Markdown 目前有“编辑档案”“公共剧场”“议题封面”三套�
 
 ## MCP 自动化
 
-`mcp/` 内置一个 stdio MCP 服务器 `dingcard-mcp`，让 AI 客户端和其他程序不必走浏览器 UI，直接完成"选模板 → 生成整套卡片 → 检查 → 无头渲染 PNG"的闭环。文档校验与编辑使用和编辑器完全相同的校验器与动作归约器，渲染复用编辑器导出管线（网页字体按字符子集嵌入、图片就绪等待、逐页导出）。
+`mcp/` 内置一个 stdio MCP 服务器 `dingcard-mcp`，让 AI 客户端和其他程序不必走浏览器 UI，直接完成"选模板 → 生成整套卡片 → 检查 → 无头渲染 → 交给编辑器"的闭环；工具之间传 `documentId`，图片可以直接写本机路径。文档校验与编辑使用和编辑器完全相同的校验器与动作归约器，渲染复用编辑器导出管线（网页字体按字符子集嵌入、图片就绪等待、逐页导出）。
 
 ```bash
 npm --prefix mcp ci
 npm run mcp   # 以 stdio 启动 dingcard-mcp
 ```
 
-可用工具包括 `list_templates`（含每套模板能放多少内容）、`create_document_from_template`、`create_document_from_content` 与 `create_document_from_outline`（按结构化内容或 Markdown 大纲一次生成整套卡片，模板示例文字全部换成内容）、`check_document`（按导出的样子排版后列出文字被裁、叠住、对比度低、残留示例文字等问题，可自动缩字号）、`list_icons`（查内置图标，返回可直接插入的图形节点）、`list_styles`（可一键套用的配色和字体组合，配合 `apply_actions` 的 `document/restyle` 给整套卡片换风格）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为逐页 PNG / JPG、一个 PDF 或一张长图，附每页缩略图给模型看）和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
+可用工具包括 `list_templates`（含每套模板能放多少内容）、`create_document_from_template`、`create_document_from_content` 与 `create_document_from_outline`（按结构化内容或 Markdown 大纲一次生成整套卡片，模板示例文字全部换成内容）、`check_document`（按导出的样子排版后列出文字被裁、叠住、对比度低、残留示例文字等问题，可自动缩字号）、`list_icons`（查内置图标，返回可直接插入的图形节点）、`list_styles`（可一键套用的配色和字体组合，配合 `apply_actions` 的 `document/restyle` 给整套卡片换风格）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为逐页 PNG / JPG、一个 PDF 或一张长图，附每页缩略图给模型看）、`open_in_editor`（在叮卡编辑器里打开文档，人接着改）、`get_document`和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
 
 AI 生成的文档也可以一键回到编辑器精修：在工作台「我的项目」点击「导入 JSON」或直接把 `.json` 文件拖进页面，文档会存为项目并在对应的编辑器里打开（自由画布旧版本自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
 

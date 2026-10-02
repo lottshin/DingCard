@@ -176,6 +176,8 @@ export function AppShell() {
     if (intent.kind === 'open') sendRequest(system, { kind: 'open', draftId: intent.draftId })
     else if (intent.kind === 'new') {
       sendRequest(system, { kind: 'new', platformId: intent.platformId, width: intent.width, height: intent.height })
+    } else if (intent.kind === 'import') {
+      sendRequest(system, { kind: 'import', url: intent.url, title: intent.title })
     } else {
       const template = findTemplate(system, intent.templateId)
       if (template) sendRequest(system, { kind: 'template', template })

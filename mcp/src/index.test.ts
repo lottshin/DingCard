@@ -3,6 +3,9 @@
 // zod argument parsing, JSON result payloads). render_document, render_markdown
 // and check_document need a browser and are covered by the pipeline test instead.
 
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -17,6 +20,13 @@ function parseContent(result: { content: Array<{ type: string; text?: string }> 
   return JSON.parse(result.content[0].text ?? '')
 }
 
+type Content = { content: Array<{ type: string; text?: string }> }
+
+/** Call a tool and parse its JSON answer. */
+async function call<T = Record<string, unknown>>(client: Client, name: string, args: Record<string, unknown>): Promise<T> {
+  return parseContent((await client.callTool({ name, arguments: args })) as Content) as T
+}
+
 async function connect(): Promise<Client> {
   const server: McpServer = createDingcardServer()
   const client = new Client({ name: 'dingcard-mcp-test', version: '0.0.0' })
@@ -26,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the twelve tools', async () => {
+  test('exposes the fourteen tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -36,10 +46,12 @@ describe('dingcard-mcp tool layer', () => {
       'create_document_from_content',
       'create_document_from_outline',
       'create_document_from_template',
+      'get_document',
       'inspect_document',
       'list_icons',
       'list_styles',
       'list_templates',
+      'open_in_editor',
       'render_document',
       'render_markdown',
       'validate_document',
@@ -63,53 +75,100 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
-  test('create → inspect → apply_actions round trip', async () => {
+  test('create → inspect → apply_actions round trip, passing the documentId the server keeps', async () => {
     const client = await connect()
 
-    const created = parseContent(
-      (await client.callTool({
-        name: 'create_document_from_template',
-        arguments: { templateId: 'editorial-freeform' },
-      })) as { content: Array<{ type: string; text?: string }> },
-    ) as { workspace: string; document: unknown }
+    const created = await call<{ workspace: string; documentId: string; version: number; slides: Array<{ id: string; name: string }>; document?: unknown }>(
+      client, 'create_document_from_template', { templateId: 'editorial-freeform' },
+    )
     expect(created.workspace).toBe('freeform')
+    expect(created.documentId).toMatch(/^doc_[0-9a-f]{12}$/)
+    expect(created.version).toBe(1)
+    expect(created.slides).toHaveLength(3)
+    // No whole document unless asked for.
+    expect(created.document).toBeUndefined()
 
-    const inspected = parseContent(
-      (await client.callTool({
-        name: 'inspect_document',
-        arguments: { document: created.document },
-      })) as { content: Array<{ type: string; text?: string }> },
-    ) as { ok: boolean; slides: Array<{ nodes: Array<{ id: string; name: string; text?: string }> }> }
+    const inspected = await call<{ ok: boolean; documentId: string; slides: Array<{ nodes: Array<{ id: string; name: string }> }> }>(
+      client, 'inspect_document', { documentId: created.documentId },
+    )
     expect(inspected.ok).toBe(true)
-    expect(inspected.slides).toHaveLength(3)
+    expect(inspected.documentId).toBe(created.documentId)
     const titleNode = inspected.slides[0].nodes.find((node) => node.name === '主标题')
     expect(titleNode).toBeDefined()
 
-    const edited = parseContent(
-      (await client.callTool({
-        name: 'apply_actions',
-        arguments: {
-          document: created.document,
-          actions: [
-            {
-              type: 'node/update-content',
-              slideId: (created.document as { slides: Array<{ id: string }> }).slides[0].id,
-              updates: [{ path: [titleNode!.id], patch: { text: 'AI 改写的标题' } }],
-            },
-          ],
-        },
-      })) as { content: Array<{ type: string; text?: string }> },
-    ) as { ok: boolean; changes: boolean[]; document: unknown }
-    expect(edited.ok).toBe(true)
-    expect(edited.changes).toEqual([true])
+    const edited = await call<{ ok: boolean; documentId: string; version: number; changes: boolean[] }>(client, 'apply_actions', {
+      documentId: created.documentId,
+      actions: [{
+        type: 'node/update-content',
+        slideId: created.slides[0].id,
+        updates: [{ path: [titleNode!.id], patch: { text: 'AI 改写的标题' } }],
+      }],
+    })
+    expect(edited).toMatchObject({ ok: true, documentId: created.documentId, version: 2, changes: [true] })
 
-    const validated = parseContent(
-      (await client.callTool({
-        name: 'validate_document',
-        arguments: { document: edited.document },
-      })) as { content: Array<{ type: string; text?: string }> },
-    ) as { ok: boolean }
-    expect(validated.ok).toBe(true)
+    // The kept document has the edit; get_document hands it back, or writes it to a file.
+    const fetched = await call<{ ok: boolean; document: { slides: Array<{ nodes: Array<{ id: string; text?: string }> }> } }>(
+      client, 'get_document', { documentId: created.documentId },
+    )
+    expect(fetched.document.slides[0].nodes.find((node) => node.id === titleNode!.id)?.text).toBe('AI 改写的标题')
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dingcard-doc-')), 'deck', 'cards.json')
+    const written = await call<{ ok: boolean; path: string; bytes: number }>(client, 'get_document', { documentId: created.documentId, path: file })
+    expect(written).toMatchObject({ ok: true, path: file })
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(fetched.document)
+
+    // A file comes back in by documentPath, kept under a new id.
+    const reopened = await call<{ ok: boolean; documentId: string; version: number }>(client, 'validate_document', { documentPath: file })
+    expect(reopened.ok).toBe(true)
+    expect(reopened.documentId).not.toBe(created.documentId)
+    expect((await call<{ ok: boolean; documentId: string }>(client, 'validate_document', { documentId: created.documentId })).documentId)
+      .toBe(created.documentId)
+    await client.close()
+  })
+
+  test('says what is wrong with a document input instead of guessing', async () => {
+    const client = await connect()
+    const missing = await call<{ ok: boolean; error: string }>(client, 'inspect_document', { documentId: 'doc_000000000000' })
+    expect(missing.ok).toBe(false)
+    expect(missing.error).toContain('doc_000000000000')
+    const both = await call<{ ok: boolean; error: string }>(client, 'inspect_document', { documentId: 'doc_1', document: {} })
+    expect(both.error).toContain('只给')
+    const unreadable = await call<{ ok: boolean; error: string }>(client, 'inspect_document', { documentPath: '/nonexistent/cards.json' })
+    expect(unreadable.error).toContain('/nonexistent/cards.json')
+    await client.close()
+  })
+
+  test('reads pictures given as file paths into the document', async () => {
+    const client = await connect()
+    const folder = mkdtempSync(path.join(tmpdir(), 'dingcard-pictures-'))
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+    writeFileSync(path.join(folder, 'dot.png'), png)
+    const created = await call<{ documentId: string; slides: Array<{ id: string }> }>(client, 'create_document_from_template', { templateId: 'editorial-freeform' })
+    const picture = {
+      id: 'photo', name: '照片', locked: false, hidden: false, type: 'image', x: 0, y: 0, width: 200, height: 200,
+      rotation: 0, scale: 1, src: path.join(folder, 'dot.png'), alt: '', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 },
+    }
+    const applied = await call<{ ok: boolean; changes: boolean[] }>(client, 'apply_actions', {
+      documentId: created.documentId,
+      actions: [
+        { type: 'node/insert-children', slideId: created.slides[0].id, parentPath: [], nodes: [picture] },
+        { type: 'slide/update', slideId: created.slides[1].id, patch: { background: { type: 'image', src: `file://${path.join(folder, 'dot.png')}`, fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } } },
+      ],
+    })
+    expect(applied).toMatchObject({ ok: true, changes: [true, true] })
+    const fetched = await call<{ document: { slides: Array<{ background: { src?: string }; nodes: Array<{ id: string; src?: string }> }> } }>(
+      client, 'get_document', { documentId: created.documentId },
+    )
+    const embedded = `data:image/png;base64,${png.toString('base64')}`
+    expect(fetched.document.slides[0].nodes.find((node) => node.id === 'photo')?.src).toBe(embedded)
+    expect(fetched.document.slides[1].background.src).toBe(embedded)
+
+    // A path that names a file that isn't there is an error, not a broken picture.
+    const broken = await call<{ ok: boolean; error: string }>(client, 'apply_actions', {
+      documentId: created.documentId,
+      actions: [{ type: 'node/insert-children', slideId: created.slides[0].id, parentPath: [], nodes: [{ ...picture, id: 'gone', src: `${folder}/../missing.png`.replace(folder, './nowhere') }] }],
+    })
+    expect(broken.ok).toBe(false)
+    expect(broken.error).toContain('missing.png')
     await client.close()
   })
 
@@ -126,13 +185,14 @@ describe('dingcard-mcp tool layer', () => {
       })) as { content: Array<{ type: string; text?: string }> },
     ) as {
       ok: boolean
-      document: { documentVersion: number; slides: Array<{ id: string }> }
+      documentId: string
       summary: { slideCount: number; coverTitle: string; pages: Array<{ title: string; role: string }> }
     }
     expect(created.ok).toBe(true)
-    expect(created.document.documentVersion).toBe(16)
+    const kept = await call<{ document: { documentVersion: number; slides: unknown[] } }>(client, 'get_document', { documentId: created.documentId })
+    expect(kept.document.documentVersion).toBe(16)
     // Cover and two sections: the outline asked for no closing page.
-    expect(created.document.slides).toHaveLength(3)
+    expect(kept.document.slides).toHaveLength(3)
     expect(created.summary.slideCount).toBe(3)
     expect(created.summary.coverTitle).toBe('大纲标题')
     expect(created.summary.pages.map((page) => page.title)).toEqual(['大纲标题', '第一节', '第二节'])
@@ -140,7 +200,7 @@ describe('dingcard-mcp tool layer', () => {
     const validated = parseContent(
       (await client.callTool({
         name: 'validate_document',
-        arguments: { document: created.document },
+        arguments: { documentId: created.documentId },
       })) as { content: Array<{ type: string; text?: string }> },
     ) as { ok: boolean }
     expect(validated.ok).toBe(true)
@@ -162,9 +222,11 @@ describe('dingcard-mcp tool layer', () => {
           },
         },
       })) as { content: Array<{ type: string; text?: string }> },
-    ) as { ok: boolean; document: { slides: unknown[] }; summary: { pages: Array<{ role: string }> } }
+    ) as { ok: boolean; documentId: string; document?: unknown; summary: { slideCount: number; pages: Array<{ role: string }> } }
     expect(created.ok).toBe(true)
-    expect(created.document.slides).toHaveLength(3)
+    expect(created.documentId).toMatch(/^doc_/)
+    expect(created.document).toBeUndefined()
+    expect(created.summary.slideCount).toBe(3)
     expect(created.summary.pages.map((page) => page.role)).toEqual(['cover', 'section', 'ending'])
 
     const rejected = parseContent(
@@ -269,11 +331,11 @@ describe('dingcard-mcp tool layer', () => {
           actions: [{ type: 'node/insert-children', slideId, parentPath: [], nodes: [picked.example] }],
         },
       })) as { content: Array<{ type: string; text?: string }> },
-    ) as { ok: boolean; changes: boolean[]; document: unknown }
+    ) as { ok: boolean; changes: boolean[]; documentId: string }
     expect(applied.changes).toEqual([true])
 
     const inspected = parseContent(
-      (await client.callTool({ name: 'inspect_document', arguments: { document: applied.document } })) as {
+      (await client.callTool({ name: 'inspect_document', arguments: { documentId: applied.documentId } })) as {
         content: Array<{ type: string; text?: string }>
       },
     ) as { slides: Array<{ nodes: Array<{ id: string; type: string; icon?: string }> }> }
@@ -283,10 +345,7 @@ describe('dingcard-mcp tool layer', () => {
 
   test('list_styles offers palettes and font sets that document/restyle takes, and inspect_document shows the deck\'s own', async () => {
     const client = await connect()
-    const call = async (name: string, args: Record<string, unknown>) => parseContent(
-      (await client.callTool({ name, arguments: args })) as { content: Array<{ type: string; text?: string }> },
-    )
-    const styles = await call('list_styles', {}) as {
+    const styles = await call(client, 'list_styles', {}) as unknown as {
       palettes: Array<{ id: string; background: string; text: string; accents: string[] }>
       fontSets: Array<{ id: string; heading: string; body: string }>
       headingScale: number
@@ -296,8 +355,8 @@ describe('dingcard-mcp tool layer', () => {
     expect(styles.headingScale).toBeGreaterThan(1)
     const night = styles.palettes.find((palette) => palette.id === 'night-flight')!
 
-    const created = await call('create_document_from_template', { templateId: 'editorial-freeform' }) as { document: { slides: Array<{ background: { type: string; color?: string } }> } }
-    const before = await call('inspect_document', { document: created.document }) as {
+    const created = await call<{ documentId: string }>(client, 'create_document_from_template', { templateId: 'editorial-freeform' })
+    const before = await call(client, 'inspect_document', { documentId: created.documentId }) as unknown as {
       style: { colors: Array<{ color: string; share: number; uses: string[] }>; fonts: Array<{ fontFamily: string; texts: number }>; bodySize: number }
     }
     expect(before.style.colors[0]).toMatchObject({ color: '#f6f3ea' })
@@ -305,19 +364,49 @@ describe('dingcard-mcp tool layer', () => {
     expect(before.style.fonts.map((font) => font.fontFamily)).toContain('Songti SC, serif')
     expect(before.style.bodySize).toBeGreaterThan(0)
 
-    const restyled = await call('apply_actions', {
-      document: created.document,
+    const restyled = await call(client, 'apply_actions', {
+      documentId: created.documentId,
+      includeDocument: true,
       actions: [
         { type: 'document/restyle', palette: 'night-flight', fontSet: 'editorial' },
         { type: 'document/restyle', fonts: { "'Noto Sans SC', sans-serif": 'PingFang SC' } },
         { type: 'document/restyle', palette: 'no-such-palette' },
       ],
-    }) as { ok: boolean; changes: boolean[]; document: { slides: Array<{ background: { type: string; color?: string } }> } }
+    }) as unknown as { ok: boolean; changes: boolean[]; document: { slides: Array<{ background: { type: string; color?: string } }> } }
     expect(restyled.ok).toBe(true)
     expect(restyled.changes).toEqual([true, true, false])
     expect(restyled.document.slides[0].background).toEqual({ type: 'solid', color: night.background })
-    const after = await call('inspect_document', { document: restyled.document }) as { style: { fonts: Array<{ fontFamily: string }> } }
+    const after = await call(client, 'inspect_document', { documentId: created.documentId }) as unknown as { style: { fonts: Array<{ fontFamily: string }> } }
     expect(after.style.fonts.map((font) => font.fontFamily).sort()).toEqual(["'Noto Serif SC', serif", 'PingFang SC'])
+    await client.close()
+  })
+
+  test('open_in_editor hands the document to the editor at a loopback URL', async () => {
+    // An editor of the client's own, so the test needs no built frontend; any free port.
+    process.env.DINGCARD_APP_URL = 'http://127.0.0.1:5173'
+    process.env.DINGCARD_APP_PORT = '0'
+    const client = await connect()
+    const created = await call<{ documentId: string }>(client, 'create_document_from_template', { templateId: 'editorial-freeform' })
+    const opened = await call<{ ok: boolean; url: string; documentUrl: string; appUrl: string; opened: boolean; documentId: string }>(
+      client, 'open_in_editor', { documentId: created.documentId, title: '编辑部试稿', open: false },
+    )
+    expect(opened).toMatchObject({ ok: true, opened: false, appUrl: 'http://127.0.0.1:5173', documentId: created.documentId })
+    const link = new URL(opened.url)
+    expect(link.origin).toBe('http://127.0.0.1:5173')
+    const query = new URLSearchParams(link.hash.replace(/^#\/edit\/canvas\/import\?/, ''))
+    expect(query.get('url')).toBe(opened.documentUrl)
+    expect(query.get('title')).toBe('编辑部试稿')
+    expect(new URL(opened.documentUrl).hostname).toBe('127.0.0.1')
+
+    // The editor reads it from any origin; the document is the kept one.
+    const fetched = await fetch(opened.documentUrl)
+    expect(fetched.status).toBe(200)
+    expect(fetched.headers.get('access-control-allow-origin')).toBe('*')
+    const kept = await call<{ document: unknown }>(client, 'get_document', { documentId: created.documentId })
+    expect(await fetched.json()).toEqual(kept.document)
+    const preflight = await fetch(opened.documentUrl, { method: 'OPTIONS' })
+    expect(preflight.headers.get('access-control-allow-private-network')).toBe('true')
+    expect((await fetch(opened.documentUrl.replace(/[0-9a-f]{12}\.json$/, '000000000000.json'))).status).toBe(404)
     await client.close()
   })
 

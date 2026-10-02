@@ -405,6 +405,12 @@ export const editor: Record<string, Translation> = {
   '自由编辑面板': 'Freeform panel',
   '拖动顶点 {n}': 'Drag vertex {n}',
 
+  // Importing a document handed over by the MCP server
+  '只能导入本机上的文档': 'Only documents on this computer can be imported',
+  '读取导入的文档失败，请重试': "Couldn't read the imported document. Try again.",
+  '这里只能导入自由画布文档': 'Only freeform documents can be imported here',
+  '导入的设计': 'Imported design',
+
   // Styles panel
   '风格': 'Styles',
   '配色': 'Palettes',

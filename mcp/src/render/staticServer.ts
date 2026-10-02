@@ -5,7 +5,7 @@
 // This keeps the MCP package dependency-free on the server side — node:http
 // plus a small MIME table is all the render path needs.
 
-import { createServer, type Server } from 'node:http'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -33,9 +33,35 @@ export interface StaticServer {
   close: () => Promise<void>
 }
 
-export async function createStaticServer(rootDir: string): Promise<StaticServer> {
+export interface StaticServerOptions {
+  /** Listen on this port, falling back to a free one when it is taken; 0 (default) picks a free one. */
+  port?: number
+  /** Answers some requests itself, returning true when it did; the rest are files under the root. */
+  handle?: (request: IncomingMessage, response: ServerResponse) => boolean
+  /** Let the process exit while the server still listens. */
+  unref?: boolean
+}
+
+function listen(server: Server, port: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => {
+      server.off('listening', onListening)
+      reject(error)
+    }
+    const onListening = () => {
+      server.off('error', onError)
+      resolve()
+    }
+    server.once('error', onError)
+    server.once('listening', onListening)
+    server.listen(port, '127.0.0.1')
+  })
+}
+
+export async function createStaticServer(rootDir: string, options: StaticServerOptions = {}): Promise<StaticServer> {
   const root = path.resolve(rootDir)
   const server: Server = createServer(async (req, res) => {
+    if (options.handle?.(req, res)) return
     try {
       const url = new URL(req.url ?? '/', 'http://127.0.0.1')
       let pathname = decodeURIComponent(url.pathname)
@@ -63,10 +89,14 @@ export async function createStaticServer(rootDir: string): Promise<StaticServer>
     }
   })
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolve())
-  })
+  const port = options.port ?? 0
+  try {
+    await listen(server, port)
+  } catch (error) {
+    if (port === 0 || (error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error
+    await listen(server, 0)
+  }
+  if (options.unref) server.unref()
 
   const address = server.address()
   if (address === null || typeof address === 'string') {

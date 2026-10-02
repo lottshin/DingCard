@@ -20,6 +20,8 @@ export type EditIntent =
   | { kind: 'open'; draftId: string }
   | { kind: 'new'; platformId: string | null; width: number | null; height: number | null }
   | { kind: 'template'; templateId: string }
+  /** A freeform document at a URL (handed over by the MCP server), opened as a new project. */
+  | { kind: 'import'; url: string; title: string | null }
 
 const SYSTEM_SEGMENTS: Record<string, WorkspaceMode> = { md: 'markdown-card', canvas: 'freeform-slide' }
 
@@ -67,6 +69,8 @@ export function parseRoute(hash: string): AppRoute {
         }
       } else if (system && action === 'template' && segments[3]) {
         intent = { kind: 'template', templateId: decodeURIComponent(segments[3]) }
+      } else if (system === 'freeform-slide' && action === 'import' && query.get('url')) {
+        intent = { kind: 'import', url: query.get('url')!, title: query.get('title') }
       } else if (system && action) {
         intent = { kind: 'open', draftId: decodeURIComponent(action) }
       }

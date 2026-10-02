@@ -702,6 +702,8 @@ export function MarkdownWorkspace({
       resetDocument(NEW_DOCUMENT_SOURCE, null)
       return
     }
+    // Imports (from the MCP server) are freeform documents; this editor has none to take.
+    if (request.kind === 'import') return
     restoreGenerationRef.current += 1
     explicitDocumentRef.current = true
     if (request.kind === 'new') {

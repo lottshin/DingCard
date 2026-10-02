@@ -91,10 +91,10 @@ export function resolveRepoRoot(): string {
   }
 }
 
-function resolveDistDir(repoRoot: string): string {
-  const override = process.env.DINGCARD_DIST_DIR?.trim()
-  if (override) return path.resolve(override)
-  return path.join(repoRoot, 'dist')
+/** The frontend an installed package carries next to its server bundle (dist/app, copied in by build:app). */
+function bundledFrontendDir(): string | null {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'app')
+  return existsSync(path.join(dir, 'render.html')) ? dir : null
 }
 
 async function runFrontendBuild(repoRoot: string): Promise<void> {
@@ -123,18 +123,36 @@ async function runFrontendBuild(repoRoot: string): Promise<void> {
   }
 }
 
-async function ensureRenderPage(repoRoot: string, distDir: string): Promise<void> {
-  if (existsSync(path.join(distDir, 'render.html'))) return
+/**
+ * The built frontend: DINGCARD_DIST_DIR if set; inside the repository its
+ * dist/ (built first if missing, so a checkout just works); else the copy an
+ * installed package carries.
+ */
+async function resolveFrontend(): Promise<string> {
   const override = process.env.DINGCARD_DIST_DIR?.trim()
   if (override) {
-    throw new Error(
-      `DINGCARD_DIST_DIR=${override} 下没有 render.html；请先在仓库根执行 npm run build，或去掉该环境变量`,
-    )
+    const distDir = path.resolve(override)
+    if (!existsSync(path.join(distDir, 'render.html'))) {
+      throw new Error(`DINGCARD_DIST_DIR=${override} 下没有 render.html；请先在仓库根执行 npm run build，或去掉该环境变量`)
+    }
+    return distDir
   }
-  await runFrontendBuild(repoRoot)
-  if (!existsSync(path.join(distDir, 'render.html'))) {
-    throw new Error('前端构建完成但仍未找到 dist/render.html')
+  let repoRoot: string | null
+  try {
+    repoRoot = resolveRepoRoot()
+  } catch {
+    repoRoot = null
   }
+  if (repoRoot) {
+    const distDir = path.join(repoRoot, 'dist')
+    if (existsSync(path.join(distDir, 'render.html'))) return distDir
+    await runFrontendBuild(repoRoot)
+    if (!existsSync(path.join(distDir, 'render.html'))) throw new Error('前端构建完成但仍未找到 dist/render.html')
+    return distDir
+  }
+  const bundled = bundledFrontendDir()
+  if (bundled) return bundled
+  throw new Error('找不到叮卡前端：不在叮卡仓库里，安装包里也没有 dist/app；请设 DINGCARD_DIST_DIR 指向构建好的 dist/')
 }
 
 /** Prefer the system Chrome (like the e2e suites); playwright-core ships no
@@ -351,12 +369,14 @@ async function writeResultFiles(
   return files
 }
 
+/** The built frontend (dist/), built first if it isn't there yet. */
+export async function builtFrontendDir(): Promise<string> {
+  return resolveFrontend()
+}
+
 /** The built render page, served on a loopback port for the duration of `work`. */
 async function withRenderPage<T>(work: (port: number) => Promise<T>): Promise<T> {
-  const repoRoot = resolveRepoRoot()
-  const distDir = resolveDistDir(repoRoot)
-  await ensureRenderPage(repoRoot, distDir)
-  const server = await createStaticServer(distDir)
+  const server = await createStaticServer(await resolveFrontend())
   try {
     return await work(server.port)
   } finally {
@@ -386,16 +406,9 @@ async function runRender(
     return { ok: false, error: '缺少 outputDir（PNG 输出目录）' }
   }
 
-  let repoRoot: string
+  let distDir: string
   try {
-    repoRoot = resolveRepoRoot()
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
-  }
-
-  const distDir = resolveDistDir(repoRoot)
-  try {
-    await ensureRenderPage(repoRoot, distDir)
+    distDir = await resolveFrontend()
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }

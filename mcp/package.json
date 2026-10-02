@@ -4,11 +4,36 @@
   "private": true,
   "type": "module",
   "description": "叮卡 MCP 服务器 — AI 客户端自动化操作自由画布文档与无头渲染",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lottshin/DingCard.git",
+    "directory": "mcp"
+  },
+  "homepage": "https://github.com/lottshin/DingCard/blob/master/docs/mcp.md",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "design",
+    "cards",
+    "dingcard"
+  ],
+  "bin": {
+    "dingcard-mcp": "dist/index.mjs"
+  },
+  "files": [
+    "dist/index.mjs",
+    "dist/app",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --external:@modelcontextprotocol/sdk --external:playwright-core --external:zod",
+    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --external:@modelcontextprotocol/sdk --external:playwright-core --external:zod --banner:js='#!/usr/bin/env node'",
     "start": "node dist/index.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "test:render": "vitest run --config vitest.render.config.ts"
+    "test:render": "vitest run --config vitest.render.config.ts",
+    "build:app": "node -e \"const fs=require('fs');fs.rmSync('dist/app',{recursive:true,force:true});fs.cpSync('../dist','dist/app',{recursive:true});fs.copyFileSync('../LICENSE','LICENSE')\"",
+    "prepack": "npm --prefix .. run build && npm run build:app && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

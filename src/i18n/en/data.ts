@@ -171,6 +171,11 @@ export const data: Record<string, Translation> = {
   '初始文档': 'Initial document',
 
   // Messages thrown by storage, auth and model code (shown through t(error.message))
+  '文件不是有效的 JSON': "The file isn't valid JSON",
+  'JSON 顶层必须是文档对象': 'The JSON must be a document object at the top level',
+  '自由画布文档未通过校验：需要 v1–v16 之一的完整文档结构': "The freeform document didn't pass validation: it needs a complete v1–v16 document",
+  'Markdown 文档缺少必填字段：source、platformId、themeId、fontFamily、profile': 'The Markdown document is missing required fields: source, platformId, themeId, fontFamily, profile',
+  '无法识别的文档：需要自由画布文档或 Markdown 文档': 'Unrecognized document: it needs to be a freeform or Markdown document',
   '用户名至少 2 个字符': 'Usernames need at least 2 characters',
   '密码至少 4 个字符': 'Passwords need at least 4 characters',
   '该用户名已被占用': 'That username is taken',

@@ -4,17 +4,22 @@
 // Protocol: stdio. All diagnostics go to stderr; stdout is JSON-RPC only.
 
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import type { FreeformDocument } from '../../src/freeform/types'
 import { composeDeck } from './core/compose'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
+import { DocumentStore, resolveDocumentInput, writeDocumentFile, type DocumentInput, type StoredDocument } from './core/documents'
+import { embedLocalImages } from './core/localImages'
 import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
 import { listStyles } from './core/styles'
 import { instantiateTemplate, listTemplates } from './core/templates'
 import { checkDocument } from './render/check'
+import { handOff, openInBrowser } from './render/handoff'
 import { renderDocument, renderMarkdownDocument, type RenderResult } from './render/renderer'
 
 function jsonResult(value: unknown) {
@@ -110,6 +115,34 @@ export function createDingcardServer(): McpServer {
     name: 'dingcard-mcp',
     version: '0.20.0',
   })
+  const documents = new DocumentStore()
+
+  const documentInput = {
+    documentId: z.string().optional().describe('创建或修改文档的工具返回的 documentId（推荐：不必来回传整份文档）'),
+    document: z.unknown().optional().describe('完整的 v16（或 v1–v15 旧版）文档 JSON，可替代 documentId'),
+    documentPath: z.string().optional().describe('文档 JSON 文件的路径，可替代 documentId'),
+  }
+  const includeDocument = z.boolean().optional().describe('同时返回完整文档 JSON（默认只返回 documentId 和 version）')
+
+  /** A tool's document, validated, with its pictures on disk embedded; or why not. */
+  const documentFor = async (input: DocumentInput) => {
+    const resolved = await resolveDocumentInput(input, documents)
+    if (!resolved.ok) return resolved
+    const validated = validateDocument(resolved.value)
+    if (!validated.ok) return validated
+    const embedded = await embedLocalImages(validated.document, resolved.baseDir)
+    if (!embedded.ok) return embedded
+    return { ok: true as const, document: embedded.document, documentId: resolved.documentId, baseDir: resolved.baseDir }
+  }
+  /** Keep what a tool made or changed: in place when it came by id, else under a new id. */
+  const keep = (document: FreeformDocument, documentId: string | null): StoredDocument =>
+    documentId ? documents.update(documentId, document) : documents.add(document)
+  /** The part of an answer naming the kept document, with the whole document if asked for. */
+  const handleOf = (stored: StoredDocument, withDocument: boolean | undefined) => ({
+    documentId: stored.documentId,
+    version: stored.version,
+    ...(withDocument ? { document: stored.document } : {}),
+  })
 
   server.tool(
     'list_templates',
@@ -120,11 +153,21 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_template',
-    '按模板 id 实例化一份完整的可编辑文档数据：自由画布模板返回 v16 文档（可直接传给 apply_actions / render_document），Markdown 模板返回 { source, platformId, themeId, fontFamily, radius, profile, images? } 信封（可用 render_markdown 无头渲染）。',
-    { templateId: z.string().describe('list_templates 返回的模板 id，如 "editorial-freeform"') },
-    async ({ templateId }) => {
+    '按模板 id 实例化一份完整的可编辑文档：自由画布模板保存在服务端，返回 documentId（之后传给 inspect_document / apply_actions / check_document / render_document 等）和各页 id、名称；Markdown 模板返回 { source, platformId, themeId, fontFamily, radius, profile, images? } 信封（可用 render_markdown 无头渲染）。',
+    {
+      templateId: z.string().describe('list_templates 返回的模板 id，如 "editorial-freeform"'),
+      includeDocument,
+    },
+    async ({ templateId, includeDocument: withDocument }) => {
       try {
-        return jsonResult(instantiateTemplate(templateId))
+        const instance = instantiateTemplate(templateId)
+        if (instance.workspace !== 'freeform') return jsonResult(instance)
+        const stored = documents.add(instance.document)
+        return jsonResult({
+          workspace: 'freeform',
+          ...handleOf(stored, withDocument),
+          slides: stored.document.slides.map((slide) => ({ id: slide.id, name: slide.name })),
+        })
       } catch (error) {
         return errorResult(error)
       }
@@ -149,8 +192,14 @@ export function createDingcardServer(): McpServer {
         pages: z.array(pageSchema).min(1).describe('内页，一项一页'),
         ending: pageSchema.optional().describe('结尾页；不给就没有结尾页'),
       }),
+      includeDocument,
     },
-    async ({ templateId, content }) => jsonResult(composeDeck(templateId, content)),
+    async ({ templateId, content, includeDocument: withDocument }) => {
+      const composed = composeDeck(templateId, content)
+      if (!composed.ok) return jsonResult(composed)
+      const { document, ...rest } = composed
+      return jsonResult({ ...rest, ...handleOf(documents.add(document), withDocument) })
+    },
   )
 
   server.tool(
@@ -159,10 +208,14 @@ export function createDingcardServer(): McpServer {
     {
       outline: z.string().describe('Markdown 大纲：# 总标题 + 若干 ## 小节（小节下正文行填入该页正文）'),
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
+      includeDocument,
     },
-    async ({ outline, templateId }) => {
+    async ({ outline, templateId, includeDocument: withDocument }) => {
       try {
-        return jsonResult(createDocumentFromOutline(outline, templateId))
+        const composed = createDocumentFromOutline(outline, templateId)
+        if (!composed.ok) return jsonResult(composed)
+        const { document, ...rest } = composed
+        return jsonResult({ ...rest, ...handleOf(documents.add(document), withDocument) })
       } catch (error) {
         return errorResult(error)
       }
@@ -188,43 +241,72 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'validate_document',
-    `校验 JSON 是否为合法的自由画布 v16 文档（v1–v15 输入自动迁移）；合法时返回规范化后的文档，非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
-    { document: z.unknown().describe('待校验的 v16（或 v1–v15 旧版）文档 JSON') },
-    async ({ document }) => jsonResult(validateDocument(document)),
+    `校验文档是否为合法的自由画布 v16 文档（v1–v15 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
+    { ...documentInput, includeDocument },
+    async ({ includeDocument: withDocument, ...input }) => {
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      const stored = resolved.documentId ? documents.get(resolved.documentId)! : documents.add(resolved.document)
+      return jsonResult({ ok: true, ...handleOf(stored, withDocument) })
+    },
   )
 
   server.tool(
     'inspect_document',
     `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要），以及整套卡片的 style：用到的颜色（按占的面积排序，附 share 和用在 background/fill/text/line/shadow 哪些地方）、字体（texts 用了几段文字、largest 最大字号）和正文字号 bodySize。改文档前先 inspect，拿到节点 id / 路径再发动作。${DOCUMENT_SCHEMA_HINT}`,
-    { document: z.unknown().describe('v16（或 v1–v15 旧版）文档 JSON') },
-    async ({ document }) => jsonResult(inspectDocument(document)),
+    documentInput,
+    async (input) => {
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      return jsonResult({ ...inspectDocument(resolved.document), ...(resolved.documentId ? { documentId: resolved.documentId } : {}) })
+    },
   )
 
   server.tool(
     'apply_actions',
-    `对文档应用一串编辑动作（与编辑器 UI 同一归约器，语义完全一致），返回应用后的新文档与每个动作是否生效。${DOCUMENT_SCHEMA_HINT}。${ACTIONS_SCHEMA_HINT}`,
+    `对文档应用一串编辑动作（与编辑器 UI 同一归约器，语义完全一致），返回每个动作是否生效（changes）。用 documentId 时就地更新这份文档（version 加一），传 document / documentPath 时另存为一份新文档并返回它的 documentId；动作里图片 src 写成本机文件路径的会读进来嵌入。${DOCUMENT_SCHEMA_HINT}。${ACTIONS_SCHEMA_HINT}`,
     {
-      document: z.unknown().describe('v16 文档 JSON'),
+      ...documentInput,
       actions: z.array(z.unknown()).describe('FreeformAction 数组'),
+      includeDocument,
     },
-    async ({ document, actions }) => jsonResult(applyActions(document, actions)),
+    async ({ actions, includeDocument: withDocument, ...input }) => {
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      const applied = applyActions(resolved.document, actions)
+      if (!applied.ok) return jsonResult(applied)
+      const embedded = await embedLocalImages(applied.document, resolved.baseDir)
+      if (!embedded.ok) return jsonResult(embedded)
+      return jsonResult({ ok: true, ...handleOf(keep(embedded.document, resolved.documentId), withDocument), changes: applied.changes })
+    },
   )
 
   server.tool(
     'check_document',
-    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下被裁掉（附能放下的字号 fitFontSize）、文字互相叠住、文字被上层色块挡住、跑出页面、文字和底色对比太低、还留着模板示例文字、空文本框、图片没加载出来、图形画到了自己的框外（viewBox 没包住 d）、图形既无填充也无描边而看不见。每条带 page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法。fix: true 时把放不下的文字改成能放下的字号，返回改好的 document、改了哪些（fixed）和剩下的问题。${DOCUMENT_SCHEMA_HINT}`,
+    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下被裁掉（附能放下的字号 fitFontSize）、文字互相叠住、文字被上层色块挡住、跑出页面、文字和底色对比太低、还留着模板示例文字、空文本框、图片没加载出来、图形画到了自己的框外（viewBox 没包住 d）、图形既无填充也无描边而看不见。每条带 page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法。fix: true 时把放不下的文字改成能放下的字号并保存（用 documentId 时就地更新，返回 documentId 和 version），附改了哪些（fixed）和剩下的问题。${DOCUMENT_SCHEMA_HINT}`,
     {
-      document: z.unknown().describe('v16 文档 JSON'),
-      fix: z.boolean().optional().describe('把放不下的文字自动缩到能放下的字号'),
+      ...documentInput,
+      fix: z.boolean().optional().describe('把放不下的文字自动缩到能放下的字号（改动保存回这份文档，返回 documentId 和 version）'),
+      includeDocument,
     },
-    async ({ document, fix }) => jsonResult(await checkDocument(document, { fix })),
+    async ({ fix, includeDocument: withDocument, ...input }) => {
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      const checked = await checkDocument(resolved.document, { fix })
+      if (!checked.ok || !checked.document || !checked.fixed?.length) {
+        const { document: _unchanged, ...rest } = checked as typeof checked & { document?: unknown }
+        return jsonResult(rest)
+      }
+      const { document, ...rest } = checked
+      return jsonResult({ ...rest, ...handleOf(keep(document, resolved.documentId), withDocument) })
+    },
   )
 
   server.tool(
     'render_document',
     `把自由画布 v16 文档（v1–v15 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
-      document: z.unknown().describe('v16 文档 JSON'),
+      ...documentInput,
       outputDir: z.string().describe('输出目录（不存在会创建）'),
       baseName: z.string().optional().describe('输出文件名前缀，默认 "dingcard"'),
       slideIds: z.array(z.string()).optional().describe('只渲染这些页（默认全部，按文档页序）；长图和 PDF 也只包含这些页'),
@@ -234,8 +316,49 @@ export function createDingcardServer(): McpServer {
       long: z.boolean().optional().describe('png / jpeg：所有页拼成一张长图，代替逐页文件'),
       previews: z.boolean().optional().describe('是否附上缩略图，默认 true'),
     },
-    async ({ document, outputDir, baseName, slideIds, format, scale, quality, long, previews }) =>
-      renderResult(await renderDocument(document, { outputDir, baseName, slideIds, format, scale, quality, long }), previews !== false),
+    async ({ outputDir, baseName, slideIds, format, scale, quality, long, previews, ...input }) => {
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      return renderResult(await renderDocument(resolved.document, { outputDir, baseName, slideIds, format, scale, quality, long }), previews !== false)
+    },
+  )
+
+  server.tool(
+    'get_document',
+    '取回一份文档的完整 JSON：给 path 时写成 JSON 文件（目录不存在会创建）并返回路径，不给时直接返回文档。写成文件的文档可以拖进叮卡「我的项目」，或之后用 documentPath 传回来。',
+    {
+      ...documentInput,
+      path: z.string().optional().describe('写到这个 .json 文件，而不是直接返回文档'),
+    },
+    async ({ path: filePath, ...input }) => {
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      const named = resolved.documentId ? { documentId: resolved.documentId } : {}
+      if (filePath) return jsonResult({ ok: true, ...named, ...(await writeDocumentFile(resolved.document, filePath)) })
+      return jsonResult({ ok: true, ...named, document: resolved.document })
+    },
+  )
+
+  server.tool(
+    'open_in_editor',
+    '在叮卡编辑器里打开这份自由画布文档，方便人接着手改：服务端把文档放在本机地址上，在浏览器里打开编辑器的导入链接，编辑器读进来存成一个新项目（不登录也行，存在这台设备的浏览器里）。默认打开服务端自带的编辑器 http://127.0.0.1:5390（DINGCARD_APP_PORT 可改端口，被占用时换一个空闲端口）；设了环境变量 DINGCARD_APP_URL 或传 appUrl，就在那个叮卡里打开。open: false 只返回链接（url）不打开浏览器。',
+    {
+      ...documentInput,
+      title: z.string().optional().describe('项目名，默认「导入的设计」'),
+      appUrl: z.string().optional().describe('在这个叮卡编辑器里打开，如 http://127.0.0.1:5173'),
+      open: z.boolean().optional().describe('是否打开浏览器，默认 true'),
+    },
+    async ({ title, appUrl, open, ...input }) => {
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      try {
+        const handed = await handOff(resolved.document, { title, appUrl })
+        const opened = open === false ? false : openInBrowser(handed.url)
+        return jsonResult({ ok: true, ...handed, opened, ...(resolved.documentId ? { documentId: resolved.documentId } : {}) })
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
   )
 
   server.tool(
@@ -328,10 +451,18 @@ async function main() {
   await server.connect(new StdioServerTransport())
 }
 
-// Run as a server only when executed directly (import.meta.main equivalent);
-// tests import this module without opening stdio.
-const entryPath = process.argv[1]
-if (entryPath && import.meta.url === pathToFileURL(path.resolve(entryPath)).href) {
+/** Whether this module is the program being run (through any symlink, like npx's bin); tests import it instead. */
+function runDirectly(): boolean {
+  const entryPath = process.argv[1]
+  if (!entryPath) return false
+  try {
+    return realpathSync(path.resolve(entryPath)) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+}
+
+if (runDirectly()) {
   main().catch((error) => {
     console.error('[dingcard-mcp] 启动失败：', error)
     process.exit(1)

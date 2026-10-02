@@ -3,10 +3,13 @@
 叮卡自带一个 MCP（Model Context Protocol）服务器 `dingcard-mcp`，让 AI 客户端（Claude Desktop、Cursor、ZCode 等任何支持 MCP 的工具）和其他程序可以不走浏览器 UI，直接完成“选模板 → 生成整套卡片 → 检查 → 无头渲染 PNG”的完整闭环，并且能看到自己做出来的样子：
 
 ```text
-list_templates → create_document_from_content / create_document_from_outline
+list_templates → create_document_from_content / create_document_from_outline（返回 documentId）
       → check_document（排版后列出问题，可自动缩字号）→ apply_actions 修改
       → render_document → PNG / JPG / PDF / 长图 + 每页缩略图（直接给模型看）
+      → open_in_editor → 在叮卡编辑器里打开，人接着改
 ```
+
+服务端保存它创建和修改的文档：工具之间传 `documentId` 即可，不必每次把整份文档 JSON 传来传去（见下文「文档句柄」）。
 
 渲染与编辑器导出走同一套管线：自由画布逐页 `pixelRatio: 1` 导出；Markdown 走工作台自己的管线（DOM 实测分页、平台头部与主题、`---` 手动分页、`pixelRatio: 3` 导出）；两者都做网页字体按字符子集嵌入与图片就绪等待。
 
@@ -15,19 +18,39 @@ list_templates → create_document_from_content / create_document_from_outline
 | 工具 | 作用 |
 | --- | --- |
 | `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台）。自由画布模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么，按内容挑模板。 |
-| `create_document_from_template` | 按模板 id 实例化完整文档：自由画布返回 v16 文档，Markdown 返回源文信封。 |
+| `create_document_from_template` | 按模板 id 实例化完整文档：自由画布文档保存在服务端，返回 `documentId` 和各页 id、名称；Markdown 返回源文信封。 |
 | `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
-| `validate_document` | 严格校验 v16 文档（v1–v15 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时返回规范化结果。 |
+| `validate_document` | 严格校验 v16 文档（v1–v15 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时保存在服务端并返回 `documentId`（`includeDocument: true` 时附上规范化后的文档）。 |
 | `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，其他图形给出 `d` 开头），以及整套卡片的 `style`：用到的颜色（按面积排序，附占比 `share` 和用在哪：`background`/`fill`/`text`/`line`/`shadow`）、字体（几段文字用、最大字号）和正文字号 `bodySize`，为编辑提供目标。 |
 | `list_icons` | 查内置图标（97 个线性图标）：不带参数列出全部图标的 id 和中英文名，`query` 用中文或英文关键词搜，`ids` 按 id 取；带上路径数据 `d`、统一画法 `style` 和一个可以直接插入的完整节点 `example`（见下文「图形与图标」）。 |
 | `list_styles` | 列出可一键套到整套卡片上的配色（底色、文字色、强调色）和字体组合（标题字体、正文字体），配合 `document/restyle` 使用（见下文「整套换风格」）。 |
-| `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效。 |
+| `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效；按 `documentId` 就地更新（`version` 加一）。 |
+| `get_document` | 取回完整文档 JSON，或用 `path` 写成 `.json` 文件（之后可拖进「我的项目」，或用 `documentPath` 传回来）。 |
+| `open_in_editor` | 在浏览器里的叮卡编辑器打开这份文档，存成一个新项目，人接着手改（见下文「在叮卡里打开」）。 |
 | `render_document` | 无头渲染自由画布 v16 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 
 工具描述内嵌了 v16 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
+
+## 文档句柄
+
+- 创建或修改自由画布文档的工具（`create_document_from_*`、`validate_document`、`apply_actions`、`check_document` 的 `fix`）把结果保存在服务端，返回 `documentId`（形如 `doc_1a2b3c4d5e6f`）和 `version`；默认不再附上整份文档，要的话传 `includeDocument: true`，或用 `get_document` 取。
+- 需要文档的工具都接受三种写法之一：`documentId`（推荐）、`document`（整份 JSON）、`documentPath`（JSON 文件路径，`~` 会展开）。用 `documentId` 修改时就地更新这份文档；传 `document` / `documentPath` 时另存为一份新文档。
+- 服务端最多保留 32 份文档（最久没用的先清掉），重启后清空。要长期保存，用 `get_document` 的 `path` 写成文件。
+
+## 本机图片
+
+文档里图片的 `src`（图片节点、形状的图片填充、页面背景图）可以直接写本机文件路径：`/Users/me/photo.jpg`、`~/Pictures/a.png`、`./cover.webp`（相对 `documentPath` 所在目录，其他情况相对服务器的工作目录）或 `file://` 地址。保存、检查、渲染之前服务端会把文件读进来，嵌成 data URL，文档因此可以单独拿到编辑器和别的机器上用。支持 PNG、JPEG、GIF、WebP、AVIF 和 SVG，单张最大 20 MB。写成 `file://`、`~/`、`./`、`../` 的路径读不到会直接报错；以 `/` 开头但本机没有这个文件的，当作网址原样保留（比如 `/uploads/…`）。
+
+## 在叮卡里打开
+
+`open_in_editor` 把文档交给叮卡编辑器：服务端把文档放在本机的一个地址上，在默认浏览器里打开 `#/edit/canvas/import?url=…` 链接，编辑器读进来存成一个新项目（`title` 是项目名），不登录也行，存在这台设备的浏览器里。
+
+- 默认打开服务端自带的编辑器：`http://127.0.0.1:5390`（同一份构建产物，离线可用；端口用 `DINGCARD_APP_PORT` 改，被占用时换一个空闲端口）。项目存在这个地址的浏览器存储里。
+- 平时用的是别的叮卡（本地开发的 `http://127.0.0.1:5173`，或部署好的网站），设环境变量 `DINGCARD_APP_URL`，或调用时传 `appUrl`，就在那里打开；编辑器跨域读取本机地址上的文档。
+- `open: false` 只返回链接（`url`）不打开浏览器。编辑器只接受本机（`127.0.0.1`、`localhost`）或同源地址上的文档，别的网站的链接会被拒绝。
 
 ## 生成整套卡片
 
@@ -140,7 +163,7 @@ list_templates → create_document_from_content / create_document_from_outline
 
 ## 回到编辑器精修
 
-AI 生成的文档 JSON 可以直接回到叮卡里精修：在工作台「我的项目」点击「导入 JSON」，或把 `.json` 文件拖进页面。自由画布文档（v1–v16，旧版自动迁移为 v16）和 Markdown 文档都会存为项目，并在对应的编辑器里打开；非法文件会给出可读的错误提示。由此形成完整闭环：
+最省事的是 `open_in_editor`（见上文）。也可以把 `get_document` 写出的 `.json` 文件导入：在工作台「我的项目」点击「导入 JSON」，或把文件拖进页面。自由画布文档（v1–v16，旧版自动迁移为 v16）和 Markdown 文档都会存为项目，并在对应的编辑器里打开；非法文件会给出可读的错误提示。由此形成完整闭环：
 
 ```text
 AI 生成文档 → 导入叮卡精修 → 编辑器导出 PNG
@@ -158,7 +181,17 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 ## 客户端接入
 
-任何支持 stdio MCP 的客户端都可以用如下命令接入（在仓库根目录执行）：
+`mcp/` 也可以打成独立 npm 包（`npm --prefix mcp pack`，打包前会构建前端并放进包里的 `dist/app`，装好后不依赖仓库）。发布到 npm 之后，客户端配置是：
+
+```json
+{
+  "mcpServers": {
+    "dingcard": { "command": "npx", "args": ["-y", "dingcard-mcp"] }
+  }
+}
+```
+
+在仓库里直接用的话，任何支持 stdio MCP 的客户端都可以用如下命令接入（在仓库根目录执行）：
 
 ```json
 {
@@ -175,7 +208,9 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `DINGCARD_DIST_DIR` | `<仓库>/dist` | 渲染使用的构建产物目录。目录里没有 `render.html` 时，默认目录会自动执行一次 `npm run build`；自定义目录缺失则直接报错。 |
+| `DINGCARD_DIST_DIR` | `<仓库>/dist` | 渲染使用的构建产物目录。在仓库里、目录里没有 `render.html` 时会自动执行一次 `npm run build`；不在仓库里时用 npm 包自带的 `dist/app`；自定义目录缺失则直接报错。 |
+| `DINGCARD_APP_URL` | （空） | `open_in_editor` 在这个叮卡编辑器里打开文档；不设时用服务端自带的编辑器。 |
+| `DINGCARD_APP_PORT` | `5390` | 服务端自带编辑器的端口（被占用时换一个空闲端口）。 |
 
 其他要求：
 
@@ -185,8 +220,8 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 ## 安全与边界
 
-- 静态文件服务器只监听 `127.0.0.1` 的随机端口，带路径穿越防护，渲染结束即关闭。
-- MCP 服务器只读写本地文件（PNG 输出目录由调用方指定）；不连接远程账号、草稿或图片存储。
+- 静态文件服务器只监听 `127.0.0.1` 的随机端口，带路径穿越防护，渲染结束即关闭。`open_in_editor` 的服务器也只监听 `127.0.0.1`，交出去的文档地址带随机 id，只保留最近 16 份。
+- MCP 服务器只读写本地文件（输出目录、`documentPath`、图片路径由调用方指定）；不连接远程账号、草稿或图片存储。
 - stdout 只承载 JSON-RPC 协议，构建日志与诊断一律走 stderr。
 
 ## 当前限制
@@ -194,7 +229,8 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 - `render_document` 仅支持自由画布文档（v16；v1–v15 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
 - 自由画布文本节点的可选 `spans` 富文本片段（局部加粗/标色）在渲染与校验中与编辑器一致支持；编辑器内改动文字时片段会按编辑位置自动保留或收缩。
 - 模板只有仓库里内置的这几套（社区通过 PR 共建，见 docs/templates.md）。需要渲染自己的文档时，把文档直接传给 `render_document` / `render_markdown`。
-- 文档中的图片 `src`（自由画布）必须是浏览器可加载的 URL 或 data URL；Markdown 文档的图片通过信封的 `images` 映射（`img:<id>` → data URL）提供，本地文件请先转为 data URL。
+- 文档中的图片 `src`（自由画布）可以是浏览器可加载的 URL、data URL 或本机文件路径（自动嵌入）；Markdown 文档的图片通过信封的 `images` 映射（`img:<id>` → data URL）提供，本地文件请先转为 data URL。
+- 文档句柄只存在服务器进程里，重启后清空；`open_in_editor` 目前只交自由画布文档。
 - 一次调用串行渲染全部所选页面，没有并发渲染池；`check_document` 同样要启动一次浏览器（一套 4–6 页的卡片约几秒）。
 - 生成整套卡片只按模板画好的位置排版，不会改版式：内容明显超过模板容量时，换一个 `capacity` 更大的模板，或把内容拆成更多页。
 - Markdown 平台头部中的时间戳（微博/推特）按渲染时刻生成，与编辑器导出行为一致。
