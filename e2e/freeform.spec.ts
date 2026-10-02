@@ -12157,7 +12157,7 @@ test.describe('freeform editing chrome', () => {
     await openFreeform(page)
     await expect(page.getByTestId('freeform-canvas')).toBeVisible()
     const images = page.getByTestId('freeform-element').filter({ has: page.locator('.freeform-image') })
-    const pastePicture = () => page.evaluate((base64) => {
+    const pastePicture = (picture: Buffer = TEST_PNG) => page.evaluate((base64) => {
       const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))
       const clipboard = new DataTransfer()
       clipboard.items.add(new File([bytes], 'screenshot.png', { type: 'image/png' }))
@@ -12166,12 +12166,19 @@ test.describe('freeform editing chrome', () => {
         cancelable: true,
         clipboardData: clipboard,
       }))
-    }, TEST_PNG.toString('base64'))
+    }, picture.toString('base64'))
+    // A different blue pixel: swapping to it is visible in the src.
+    const BLUE_PNG = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMwSPkPAAJbAZRxR3Z2AAAAAElFTkSuQmCC',
+      'base64',
+    )
 
     await pastePicture()
     await expect(images).toHaveCount(1)
     await expect(images.first()).toHaveAttribute('data-selected', 'true')
-    // A second paste steps clear of the first.
+    // With nothing selected (a click on empty canvas), a second paste steps
+    // clear of the first.
+    await page.getByTestId('freeform-canvas').click({ position: { x: 10, y: 10 } })
     await pastePicture()
     await expect(images).toHaveCount(2)
     const [first, second] = await images.evaluateAll((nodes) => nodes.map((node) => ({
@@ -12180,6 +12187,33 @@ test.describe('freeform editing chrome', () => {
     })))
     expect(second.x - first.x).toBe(32)
     expect(second.y - first.y).toBe(32)
+
+    // A single selected shape takes the pasted picture as its fill — no new
+    // image element appears. (Parked in the corner first so it stays clear
+    // of the images for the clicks that follow.)
+    await insertShape(page)
+    await setSelectedElementPosition(page, 40, 40)
+    await pastePicture()
+    await expect(page.getByTestId('freeform-shape-image-fill')).toHaveCount(1)
+    await expect(page.getByTestId('freeform-shape-image-fill')
+      .locator('[data-framed-image="true"]')).toHaveAttribute('data-image-load-state', 'ready')
+    await expect(images).toHaveCount(2)
+
+    // A single selected image node swaps its picture instead of adding one.
+    // (The second image only steps 32px clear, so the click goes to the
+    // first image's uncovered top-left corner.)
+    await images.first().click({ position: { x: 10, y: 10 } })
+    await expect(images.first()).toHaveAttribute('data-selected', 'true')
+    const srcBefore = await images.first().locator('img').getAttribute('src')
+    await pastePicture(BLUE_PNG)
+    await expect(images).toHaveCount(2)
+    await expect(images.first().locator('[data-framed-image="true"]'))
+      .toHaveAttribute('data-image-load-state', 'ready')
+    // The picture itself was swapped in place, not just left alone: pasting a
+    // different picture changes the image's source. (The paste pipeline runs
+    // on after the event itself, so the change is polled for.)
+    await expect.poll(async () => images.first().locator('img').getAttribute('src'))
+      .not.toBe(srcBefore)
 
     // Without a picture, a paste brings back what was copied in the editor.
     await page.keyboard.press('Control+c')

@@ -263,6 +263,8 @@ export const editor: Record<string, Translation> = {
   '滤镜{name}': 'Filter {name}',
   '清除滤镜': 'Clear filters',
   '图片填充失败，请稍后重试': 'Could not fill with that picture, please try again',
+  '粘贴填充图片': 'Paste picture fill',
+  '粘贴替换图片': 'Paste-replace picture',
   '拼图': 'Collage',
   '两张并排': 'Side by side',
   '一大两小': 'One big, two small',

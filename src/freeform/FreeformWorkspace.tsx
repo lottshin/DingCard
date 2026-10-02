@@ -368,6 +368,18 @@ const IMAGE_CROP_ASPECT_RATIOS: Record<ImageCropAspectId, number | 'original'> =
 
 type LiveEditCommitResult = 'committed' | 'cancelled' | 'rejected'
 
+/** Where an async picture read may land, captured before the read: a shape
+ * or path picture frame, or an image node's own picture. */
+interface PictureTargetBase {
+  slideId: string
+  path: ScenePath
+  identityGeneration: number
+  userId: string | null
+}
+type PictureTarget =
+  | ({ kind: 'frame' } & PictureTargetBase)
+  | ({ kind: 'image' } & PictureTargetBase)
+
 interface ImageFramingTarget {
   /** A picture node, a shape's or path's picture fill, or the page's picture background (path []). */
   targetKind: 'image' | 'shape-fill' | 'page-background'
@@ -1871,7 +1883,9 @@ export function FreeformWorkspace({
   }, [slideContextMenu?.slideId, slideContextMenu?.fromButton])
 
   // Pictures on the system clipboard (a screenshot, an image copied from a
-  // page) paste into the middle of the page, stepped clear like any insert.
+  // page) fill a single selected picture frame or swap a selected picture;
+  // with anything else selected they paste into the middle of the page,
+  // stepped clear like any insert.
   useEffect(() => {
     if (!isActive) return
     const onPaste = (event: ClipboardEvent) => {
@@ -1883,7 +1897,7 @@ export function FreeformWorkspace({
       const pictures = imageFiles(event.clipboardData?.files).slice(0, MAX_DROPPED_IMAGES)
       event.preventDefault()
       if (pictures.length > 0) {
-        void insertDroppedImages(pictures, null)
+        void pasteClipboardPictures(pictures)
         return
       }
       pasteClipboard(pending?.inPlace ?? false)
@@ -3308,48 +3322,149 @@ export function FreeformWorkspace({
     }
   }
 
+  /**
+   * The picture target captured BEFORE an async picture read: a delayed
+   * completion must not write into a different document, scope or account,
+   * so the guards compare against this snapshot, not the live state.
+   */
+  function selectedPictureTarget(): PictureTarget | null {
+    const targetPath = selectedPath ? [...selectedPath] : null
+    if (!targetPath) return null
+    const slide = currentDocumentRef.current.slides.find((candidate) => candidate.id === activeSlide.id)
+    const node = slide ? findNodeAtPath(slide.nodes, targetPath) : undefined
+    const identityGeneration = documentIdentityGenerationRef.current
+    const userId = currentOwnerIdRef.current
+    if (node?.type === 'shape' || node?.type === 'path') {
+      return { kind: 'frame', slideId: activeSlide.id, path: targetPath, identityGeneration, userId }
+    }
+    if (node?.type === 'image') {
+      return { kind: 'image', slideId: activeSlide.id, path: targetPath, identityGeneration, userId }
+    }
+    return null
+  }
+
   /** A picture from disk fills the selected shape or path picture frame. */
   async function fillSelectedPictureFrameFromFile(file: File) {
-    const targetPath = selectedPath ? [...selectedPath] : null
-    const targetSlideId = activeSlide.id
-    const targetIdentityGeneration = documentIdentityGenerationRef.current
-    const targetUserId = currentOwnerIdRef.current
-    const targetNode = targetPath
-      ? findNodeAtPath(
-          currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)?.nodes ?? [],
-          targetPath,
-        )
-      : undefined
-    if (
-      (targetNode?.type !== 'shape' && targetNode?.type !== 'path')
-      || !targetPath
-    ) return
-    const operation = beginShapeFillOperation(targetSlideId, targetPath)
-    const images = ownerStore
+    const target = selectedPictureTarget()
+    if (!target || target.kind !== 'frame') return
+    // The operation starts before the read: a second fill on the same target
+    // cancels this one while its read is still pending.
+    const operation = beginShapeFillOperation(target.slideId, target.path)
     try {
-      if (images.remote) await retainImagesNow()
       const raw = await readFileAsDataUrl(file)
-      const downscaled = await downscaleDataUrl(raw, 1800)
-      const src = await images.images.put(downscaled)
-      if (
-        shapeFillOperationTokensRef.current.get(operation.key) !== operation.token ||
-        targetIdentityGeneration !== documentIdentityGenerationRef.current ||
-        targetUserId !== currentOwnerIdRef.current
-      ) return
-      if (blockDocumentMutationDuringInteraction()) return
-      const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
-      const currentTarget = currentSlide ? findNodeAtPath(currentSlide.nodes, targetPath) : undefined
-      if (currentTarget?.type !== 'shape' && currentTarget?.type !== 'path') return
-      updateNodeStyleAtPath(targetSlideId, targetPath, {
-        fill: {
-          type: 'image',
-          src,
-          fit: 'cover',
-          framing: createDefaultImageFraming(),
-        },
-      })
+      await fillSelectedPictureFrameFromDataUrl(raw, target, operation)
     } finally {
       finishShapeFillOperation(operation)
+    }
+  }
+
+  /**
+   * A picture fills the selected shape or path picture frame (the target is
+   * captured before the read). Returns false when nothing fillable is
+   * selected, so a paste can fall back to inserting a new image element.
+   */
+  async function fillSelectedPictureFrameFromDataUrl(
+    raw: string,
+    target: Extract<PictureTarget, { kind: 'frame' }>,
+    operation: { key: string; token: symbol },
+    label?: string,
+  ): Promise<boolean> {
+    const images = ownerStore
+    if (images.remote) await retainImagesNow()
+    const downscaled = await downscaleDataUrl(raw, 1800)
+    const src = await images.images.put(downscaled)
+    if (
+      shapeFillOperationTokensRef.current.get(operation.key) !== operation.token ||
+      target.identityGeneration !== documentIdentityGenerationRef.current ||
+      target.userId !== currentOwnerIdRef.current
+    ) return true
+    if (blockDocumentMutationDuringInteraction()) return true
+    const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === target.slideId)
+    const currentTarget = currentSlide ? findNodeAtPath(currentSlide.nodes, target.path) : undefined
+    if (currentTarget?.type !== 'shape' && currentTarget?.type !== 'path') return true
+    applyAction({
+      type: 'node/update-style',
+      slideId: target.slideId,
+      updates: [{
+        path: target.path,
+        patch: {
+          fill: {
+            type: 'image',
+            src,
+            fit: 'cover',
+            framing: createDefaultImageFraming(),
+          },
+        },
+      }],
+    }, label)
+    return true
+  }
+
+  /**
+   * A pasted picture swaps the selected image node's picture (the target is
+   * captured before the read). Returns false when no image is selected, so a
+   * paste can fall back to inserting.
+   */
+  async function replaceSelectedImageFromDataUrl(
+    raw: string,
+    target: Extract<PictureTarget, { kind: 'image' }>,
+    operation: { key: string; token: symbol },
+  ): Promise<boolean> {
+    const images = ownerStore
+    if (images.remote) await retainImagesNow()
+    const downscaled = await downscaleDataUrl(raw, 1800)
+    const src = await images.images.put(downscaled)
+    if (
+      shapeFillOperationTokensRef.current.get(operation.key) !== operation.token ||
+      target.identityGeneration !== documentIdentityGenerationRef.current ||
+      target.userId !== currentOwnerIdRef.current
+    ) return true
+    if (blockDocumentMutationDuringInteraction()) return true
+    const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === target.slideId)
+    const currentTarget = currentSlide ? findNodeAtPath(currentSlide.nodes, target.path) : undefined
+    if (currentTarget?.type !== 'image') return true
+    // A fresh picture starts from the default framing; the old one would
+    // misframe a different photo.
+    applyAction({
+      type: 'node/update-content',
+      slideId: target.slideId,
+      updates: [{ path: target.path, patch: { src } }],
+    }, t('粘贴替换图片'))
+    return true
+  }
+
+  /**
+   * Clipboard pictures: one fillable leaf selected → fill it (shape/path) or
+   * swap its picture (image node); anything else → new image elements, as
+   * pasting has always done. The target is captured before the picture is
+   * read, so a slow read cannot land in the wrong place.
+   */
+  async function pasteClipboardPictures(pictures: readonly File[]) {
+    const file = pictures[0]
+    if (!file) return
+    const target = selectedPictureTarget()
+    if (target && (effectiveLockedSelection || lockedDescendantSelection)) {
+      showLockedOperationNotice()
+      return
+    }
+    const operation = target
+      ? beginShapeFillOperation(target.slideId, target.path)
+      : null
+    try {
+      const raw = await readFileAsDataUrl(file)
+      if (blockDocumentMutationDuringInteraction()) return
+      if (target && operation) {
+        if (target.kind === 'image') {
+          if (await replaceSelectedImageFromDataUrl(raw, target, operation)) return
+        } else if (await fillSelectedPictureFrameFromDataUrl(raw, target, operation, t('粘贴填充图片'))) {
+          return
+        }
+      }
+      await insertDroppedImages(pictures, null)
+    } catch (error) {
+      showOperationError(error, t('图片插入失败，请稍后重试'))
+    } finally {
+      if (operation) finishShapeFillOperation(operation)
     }
   }
 
