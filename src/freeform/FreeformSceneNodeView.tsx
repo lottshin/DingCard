@@ -326,18 +326,74 @@ function SceneLeafContent({
   if (leaf.type === 'path') {
     // The drawing is redrawn in box pixels, then stroked at one even width.
     const strokeScale = pathStrokeScale(leaf.viewBox, leaf.width, leaf.height)
-    const gradient = leaf.fill.type === 'transparent'
-      ? null
-      : svgGradientOf(leaf.fill, leaf.width, leaf.height)
     const paintId = `${markerIdPrefix}-paint-${svgIdPart(leaf.id)}`
-    const fill = leaf.fill.type === 'transparent'
-      ? 'none'
-      : leaf.fill.type === 'solid'
-        ? leaf.fill.color
-        : `url(#${paintId})`
     // Three decimals keep float noise out of the markup.
     const strokeWidth = Math.round(leaf.strokeWidth * strokeScale * 1000) / 1000
     const dash = leaf.dash !== undefined ? Math.round(leaf.dash * strokeScale * 1000) / 1000 : undefined
+    const boxPathData = fitPathData(leaf.d, leaf.viewBox, leaf.width, leaf.height) ?? ''
+    // A picture fill turns the outline into an image frame: the picture sits
+    // in a div clipped to the path (like shape picture fills), the stroke
+    // redraws on top so its width keeps scaling with the drawing.
+    const imageFill = leaf.fill.type === 'image' ? leaf.fill : null
+    const resolvedFillSrc = imageFill ? store.images.resolve(imageFill.src) : ''
+    const strokePath = (
+      <path
+        d={boxPathData}
+        fill={imageFill ? 'none' : leaf.fill.type === 'transparent'
+          ? 'none'
+          : leaf.fill.type === 'solid'
+            ? leaf.fill.color
+            : `url(#${paintId})`}
+        fillRule={leaf.fillRule ?? 'nonzero'}
+        stroke={leaf.strokeWidth > 0 ? leaf.stroke : 'none'}
+        strokeWidth={strokeWidth}
+        strokeLinecap={leaf.cap ?? 'round'}
+        strokeLinejoin={leaf.join ?? 'round'}
+        strokeDasharray={dash !== undefined ? `${dash} ${dash}` : undefined}
+      />
+    )
+    if (imageFill) {
+      return (
+        <div
+          className="freeform-path-image-root"
+          style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
+        >
+          <div
+            className="freeform-path-image-clip"
+            data-testid={presentationOnly ? undefined : 'freeform-path-image-fill'}
+            style={{ clipPath: `path("${boxPathData}")` }}
+          >
+            <FramedImage
+              logicalSrc={imageFill.src}
+              resolvedSrc={resolvedFillSrc}
+              fit={imageFill.fit}
+              framing={imageFill.framing}
+              frameWidth={leaf.width}
+              frameHeight={leaf.height}
+              className="freeform-path-image"
+              alt={presentationOnly ? '' : leaf.name}
+              decodeIdentity={decodeIdentity(imageFill.src, resolvedFillSrc)}
+              onDecodeReport={presentationOnly ? undefined : onImageDecodeReport}
+            />
+          </div>
+          <svg
+            className={presentationOnly ? 'freeform-preview-path' : 'freeform-path'}
+            data-testid={presentationOnly ? undefined : 'freeform-path'}
+            viewBox={`0 0 ${leaf.width} ${leaf.height}`}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            style={{ overflow: 'visible' }}
+          >
+            {strokePath}
+          </svg>
+        </div>
+      )
+    }
+    // Picture fills returned above; what is left paints with a colour.
+    const colorFill = leaf.fill.type === 'image' ? null : leaf.fill
+    const gradient = colorFill && colorFill.type !== 'transparent'
+      ? svgGradientOf(colorFill, leaf.width, leaf.height)
+      : null
     return (
       <svg
         className={presentationOnly ? 'freeform-preview-path' : 'freeform-path'}
@@ -380,16 +436,7 @@ function SceneLeafContent({
             )}
           </defs>
         )}
-        <path
-          d={fitPathData(leaf.d, leaf.viewBox, leaf.width, leaf.height) ?? ''}
-          fill={fill}
-          fillRule={leaf.fillRule ?? 'nonzero'}
-          stroke={leaf.strokeWidth > 0 ? leaf.stroke : 'none'}
-          strokeWidth={strokeWidth}
-          strokeLinecap={leaf.cap ?? 'round'}
-          strokeLinejoin={leaf.join ?? 'round'}
-          strokeDasharray={dash !== undefined ? `${dash} ${dash}` : undefined}
-        />
+        {strokePath}
       </svg>
     )
   }

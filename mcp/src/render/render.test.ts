@@ -3,6 +3,7 @@
 // and launches a real browser); run via `npm run test:render`.
 
 import { mkdtempSync, readFileSync } from 'node:fs'
+import { inflateSync as zlib_inflateSync } from 'node:zlib'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
@@ -19,6 +20,48 @@ function pngIhdr(png: Buffer): { width: number; height: number } {
   expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
   expect(png.subarray(12, 16).toString('ascii')).toBe('IHDR')
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+}
+
+/** Decode an 8-bit RGBA PNG into raw pixels (test helper for pixel truth). */
+function decodePngRgba(png: Buffer): Buffer {
+  const { width, height } = pngIhdr(png)
+  const idat: Buffer[] = []
+  let offset = 8
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset)
+    const type = png.subarray(offset + 4, offset + 8).toString('ascii')
+    if (type === 'IDAT') idat.push(png.subarray(offset + 8, offset + 8 + length))
+    if (type === 'IEND') break
+    offset += 12 + length
+  }
+  const raw = zlib_inflateSync(Buffer.concat(idat))
+  const stride = width * 4
+  const out = Buffer.alloc(height * stride)
+  let input = 0
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[input]
+    input += 1
+    raw.copy(out, y * stride, input, input + stride)
+    input += stride
+    for (let x = 0; x < stride; x += 1) {
+      const index = y * stride + x
+      const left = x >= 4 ? out[index - 4] : 0
+      const up = y > 0 ? out[index - stride] : 0
+      const upLeft = y > 0 && x >= 4 ? out[index - stride - 4] : 0
+      if (filter === 1) out[index] = (out[index] + left) & 0xff
+      else if (filter === 2) out[index] = (out[index] + up) & 0xff
+      else if (filter === 3) out[index] = (out[index] + ((left + up) >> 1)) & 0xff
+      else if (filter === 4) {
+        const p = left + up - upLeft
+        const pa = Math.abs(p - left)
+        const pb = Math.abs(p - up)
+        const pc = Math.abs(p - upLeft)
+        const nearest = pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft
+        out[index] = (out[index] + nearest) & 0xff
+      }
+    }
+  }
+  return out
 }
 
 describe('renderDocument', () => {
@@ -134,6 +177,68 @@ describe('renderDocument', () => {
       if (!plain.ok || !styled.ok) throw new Error('expected both renders to succeed')
       expect(styled.files).toHaveLength(1)
       expect(readFileSync(styled.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
+    },
+    420_000,
+  )
+
+  test(
+    'renders a picture-filled path clipped to its outline',
+    async () => {
+      // An 8×8 solid red PNG fills a big heart; only the heart itself may
+      // show red — the rest of its box stays the page's white.
+      const redPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC'
+      const document = {
+        documentVersion: 19,
+        activeSlideId: 's',
+        slides: [{
+          id: 's',
+          name: '第 1 页',
+          width: 400,
+          height: 400,
+          background: { type: 'solid', color: '#ffffff' },
+          nodes: [{
+            id: 'heart',
+            name: '爱心相框',
+            locked: false,
+            hidden: false,
+            type: 'path',
+            x: 0,
+            y: 0,
+            width: 400,
+            height: 400,
+            rotation: 0,
+            scale: 1,
+            d: 'M200 360s-160-110-160-220a160 160 0 0 1 320 0c0 110-160 220-160 220z',
+            viewBox: { x: 0, y: 0, width: 400, height: 400 },
+            fill: { type: 'image', src: redPng, fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } },
+            stroke: '#000000',
+            strokeWidth: 0,
+          }],
+        }],
+      } as const
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-render-'))
+      const result = await renderDocument(document, { outputDir, baseName: 'heart' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error(result.error)
+
+      // Pixel truth: the heart's middle is red, the box corners outside the
+      // outline stay white.
+      const png = readFileSync(result.files[0].path)
+      const redInside = png.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
+      expect(redInside).toBe(true)
+      const decoded = decodePngRgba(png)
+      const at = (x: number, y: number) => {
+        const offset = (y * 400 + x) * 4
+        return [decoded[offset], decoded[offset + 1], decoded[offset + 2]] as const
+      }
+      const [heartR, heartG, heartB] = at(200, 200)
+      expect(heartR).toBeGreaterThan(200)
+      expect(heartG).toBeLessThan(80)
+      expect(heartB).toBeLessThan(80)
+      const [cornerR, cornerG, cornerB] = at(10, 10)
+      expect(cornerR).toBeGreaterThan(230)
+      expect(cornerG).toBeGreaterThan(230)
+      expect(cornerB).toBeGreaterThan(230)
     },
     420_000,
   )

@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 18,
+    documentVersion: 19,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(18)
+    expect(result.document.documentVersion).toBe(19)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -261,6 +261,39 @@ describe('validateDocument', () => {
 
     const legacy = structuredClone(marked)
     legacy.documentVersion = 15
+    expect(validateDocument(legacy).ok).toBe(false)
+  })
+
+  test('accepts v19 picture fills on paths and rejects them on v18 inputs', () => {
+    const framed = seedDocument() as unknown as Record<string, unknown>
+    const slide = (framed.slides as Array<Record<string, unknown>>)[0]
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    const path = {
+      locked: false,
+      hidden: false,
+      type: 'path',
+      x: 200,
+      y: 300,
+      width: 400,
+      height: 400,
+      rotation: 0,
+      scale: 1,
+      d: 'M12 21s-8-5.5-8-11a8 8 0 0 1 16 0c0 5.5-8 11-8 11z',
+      viewBox: { x: 0, y: 0, width: 24, height: 24 },
+      fill: {
+        type: 'image',
+        src: 'https://cdn.example/paper.jpg',
+        fit: 'cover',
+        framing: { focusX: 0.5, focusY: 0.5, zoom: 1 },
+      },
+      stroke: '#17293c',
+      strokeWidth: 2,
+    }
+    nodes.push({ ...path, id: 'heart-1', name: '爱心相框' })
+    expect(validateDocument(framed).ok).toBe(true)
+
+    const legacy = structuredClone(framed)
+    legacy.documentVersion = 18
     expect(validateDocument(legacy).ok).toBe(false)
   })
 

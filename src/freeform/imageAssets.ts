@@ -9,6 +9,7 @@ import type { FreeformDocument, FreeformSceneLeaf, FreeformSlide } from './types
 function imageSource(leaf: FreeformSceneLeaf): string | undefined {
   if (leaf.type === 'image') return leaf.src
   if (leaf.type === 'shape' && leaf.fill.type === 'image') return leaf.fill.src
+  if (leaf.type === 'path' && leaf.fill.type === 'image') return leaf.fill.src
   return undefined
 }
 
@@ -18,6 +19,9 @@ function cloneLeafWithSource(
 ): FreeformSceneLeaf {
   if (leaf.type === 'image') return { ...leaf, src: source ?? leaf.src }
   if (leaf.type === 'shape' && leaf.fill.type === 'image') {
+    return { ...leaf, fill: { ...leaf.fill, src: source ?? leaf.fill.src } }
+  }
+  if (leaf.type === 'path' && leaf.fill.type === 'image') {
     return { ...leaf, fill: { ...leaf.fill, src: source ?? leaf.fill.src } }
   }
   return leaf

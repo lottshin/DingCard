@@ -39,7 +39,7 @@ export type ContextToolbarSubject =
   | { kind: 'shape'; node: FreeformShapeElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'image'; node: FreeformImageElement; canCrop: boolean; cropDisabledReason: string | null }
   | { kind: 'line'; node: FreeformLineElement; strokeWidth: number }
-  | { kind: 'path'; node: FreeformPathElement; strokeWidth: number }
+  | { kind: 'path'; node: FreeformPathElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'group'; name: string }
   | { kind: 'multi'; count: number }
   | { kind: 'locked'; name: string }
@@ -502,13 +502,29 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
           <>
             <SubjectChip icon={<GraphicIcon />} label={t('图形')} />
             <Divider />
-            <span className="ctx-label">{t('填充')}</span>
-            <ColorPickerButton
-              label={t('图形填充颜色')}
-              testId="ctx-path-fill"
-              color={subject.node.fill.type === 'transparent' ? 'transparent' : paintFallbackColor(subject.node.fill)}
-              onChange={(color) => props.onStyle({ fill: { type: 'solid', color } })}
-            />
+            {subject.node.fill.type === 'image' ? (
+              <button
+                type="button"
+                className="ctx-btn is-text"
+                data-testid="ctx-adjust-framing"
+                disabled={!subject.canFrame}
+                title={subject.canFrame ? t('调整取景') : subject.frameDisabledReason ?? undefined}
+                onClick={props.onAdjustFraming}
+              >
+                <PathIcon d="M6 2.5V14h11.5M2.5 6H14v11.5" />
+                <span>{t('调整取景')}</span>
+              </button>
+            ) : (
+              <>
+                <span className="ctx-label">{t('填充')}</span>
+                <ColorPickerButton
+                  label={t('图形填充颜色')}
+                  testId="ctx-path-fill"
+                  color={subject.node.fill.type === 'transparent' ? 'transparent' : paintFallbackColor(subject.node.fill)}
+                  onChange={(color) => props.onStyle({ fill: { type: 'solid', color } })}
+                />
+              </>
+            )}
             <span className="ctx-label">{t('描边')}</span>
             <ColorPickerButton
               label={t('图形描边颜色')}

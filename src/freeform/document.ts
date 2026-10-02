@@ -139,7 +139,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 18,
+    documentVersion: 19,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -353,7 +353,16 @@ function cloneShapeFill(fill: ShapeFill): ShapeFill {
 }
 
 function clonePathFill(fill: PathFill): PathFill {
-  return fill.type === 'transparent' ? { type: 'transparent' } : cloneColorPaint(fill)
+  if (fill.type === 'transparent') return { type: 'transparent' }
+  if (fill.type === 'image') {
+    return {
+      type: 'image',
+      src: fill.src,
+      fit: fill.fit,
+      framing: cloneImageFraming(fill.framing),
+    }
+  }
+  return cloneColorPaint(fill)
 }
 
 function shapeFillEquals(left: ShapeFill, right: ShapeFill): boolean {
@@ -906,7 +915,7 @@ function applyStylePatch(
   if (node.type === 'path') {
     const allowed = new Set(['fill', 'stroke', 'strokeWidth', 'dash', ...PATH_APPEARANCE_KEYS])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
-    // Paths fill with a color paint or nothing; their strokes are hex colors.
+    // Path fills are colors, nothing, or (v19) pictures; strokes are hex colors.
     if ('fill' in patch && !isValidScenePathFill(patch.fill)) return { ok: false, node }
     if ('stroke' in patch && !isHexColor(patch.stroke)) return { ok: false, node }
     if ('strokeWidth' in patch && !isValidPathStrokeWidth(patch.strokeWidth)) {
@@ -930,7 +939,10 @@ function applyStylePatch(
       PATH_APPEARANCE_KEYS.has(key)
         ? true
         : key === 'fill'
-          ? paintEquals(node.fill, next.fill)
+          ? shapeFillEquals(
+              node.fill as ShapeFill,
+              next.fill as ShapeFill,
+            )
           : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
     ) && appearanceKeysSame(node, next, patch, PATH_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }

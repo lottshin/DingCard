@@ -34,7 +34,7 @@ export interface PosterSuccess {
   ok: true
   document: FreeformDocument
   summary: {
-    documentVersion: 18
+    documentVersion: 19
     templateId: string
     width: number
     height: number
@@ -272,13 +272,13 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   })
 
   const placed = settle(nodes, slide.nodes, slots, lines.length)
-  const document = normalizeFreeformDocument({ documentVersion: 18, activeSlideId: slide.id, slides: [{ ...slide, nodes: placed }] })
+  const document = normalizeFreeformDocument({ documentVersion: 19, activeSlideId: slide.id, slides: [{ ...slide, nodes: placed }] })
   if (!document) return { ok: false, error: '生成的海报没有通过 v17 校验。' }
   return {
     ok: true,
     document,
     summary: {
-      documentVersion: 18,
+      documentVersion: 19,
       templateId,
       width: slide.width,
       height: slide.height,

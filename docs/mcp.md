@@ -135,7 +135,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 `path` 节点（v15）画任意矢量图：图标、徽章、对话气泡、波浪分隔线、曲线箭头、折线图、不规则色块。
 
 - `d` 是 SVG 路径数据（`M/L/H/V/C/S/Q/T/A/Z` 及小写相对命令，必须以 `M`/`m` 开头，最长 20000 字符），写在 `viewBox` 坐标系里；渲染时图形拉伸铺满节点盒。节点盒与 `viewBox` 宽高比相同就不变形，不同就跟着盒子拉伸，描边始终粗细均匀。
-- `fill` 是 ColorPaint（纯色、线性渐变、径向渐变）或 `{ type: 'transparent' }`；`stroke` 是 `#RRGGBB`；`strokeWidth` 用 `viewBox` 单位，随图形一起缩放，`0` 即不描边。可选 `dash`（`viewBox` 单位）、`cap`、`join`（`round`/`miter`/`bevel`）、`fillRule`（`nonzero`/`evenodd`，画圆环这类镂空图形用 `evenodd`），以及通用的 `opacity`、`shadow`、`filter`、`blendMode`。
+- `fill` 是 ColorPaint（纯色、线性渐变、径向渐变）、`{ type: 'transparent' }`，或（v19 起）`{ type: 'image', src, fit, framing }` 图片填充——任意轮廓（手绘线、图标、贴纸）变成图片框，取景与形状图片填充同一套（`node/update-style` 改 `framing`）；v18 及更早的输入带图片填充会被拒绝。`stroke` 是 `#RRGGBB`；`strokeWidth` 用 `viewBox` 单位，随图形一起缩放，`0` 即不描边。可选 `dash`（`viewBox` 单位）、`cap`、`join`（`round`/`miter`/`bevel`）、`fillRule`（`nonzero`/`evenodd`，画圆环这类镂空图形用 `evenodd`），以及通用的 `opacity`、`shadow`、`filter`、`blendMode`。
 - `viewBox` 要正好包住 `d` 用到的坐标，画到框外 `check_document` 会报 `path-overflow` 并给出合适的 `viewBox`。
 - 换图形用 `node/update-content` 的 `{ d, viewBox }`，改样式用 `node/update-style`。
 

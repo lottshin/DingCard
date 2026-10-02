@@ -540,7 +540,11 @@ function ownPathLeaf(leaf: FreeformPathElement): FreeformPathElement {
   return ownLeafAppearance({
     ...leaf,
     viewBox: { ...leaf.viewBox },
-    fill: leaf.fill.type === 'transparent' ? { type: 'transparent' } : clonePaint(leaf.fill),
+    fill: leaf.fill.type === 'transparent'
+      ? { type: 'transparent' }
+      : leaf.fill.type === 'image'
+        ? copyShapeFill(leaf.fill)
+        : clonePaint(leaf.fill),
   })
 }
 
@@ -1001,12 +1005,15 @@ export function isValidSceneColorPaint(value: unknown): boolean {
   )
 }
 
-/** A path fill: a color paint or no fill; paths take no picture fills. */
+/** A path fill: a color paint, no fill, or (v19) a picture fill — same rules
+ * as a shape's picture fill. */
 export function isValidScenePathFill(value: unknown): boolean {
   if (isValidSceneColorPaint(value)) return true
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const fill = value as Record<string, unknown>
-  return fill.type === 'transparent' && hasExactKeys(fill, TRANSPARENT_PAINT_KEYS)
+  if (fill.type === 'transparent') return hasExactKeys(fill, TRANSPARENT_PAINT_KEYS)
+  if (fill.type === 'image') return isValidSceneShapeFill(value)
+  return false
 }
 
 export function isValidSceneShapeFill(value: unknown): boolean {

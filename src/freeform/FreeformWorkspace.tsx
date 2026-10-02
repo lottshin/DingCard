@@ -66,7 +66,7 @@ import { fontLibrary, useImportedFonts } from './fontLibrary'
 import { TextEffectField } from './TextEffectField'
 import { TextEffectSample } from './TextEffectSample'
 import { TEXT_STYLE_PRESETS, presetOnDarkPage, textStylePatch, type TextStylePreset } from './textStyles'
-import { pathStrokeScale } from './pathData'
+import { fitPathData, pathStrokeScale } from './pathData'
 import { deckColors, deckFonts, type RestyleRequest } from './restyle'
 import { DeckColorsContext, type DeckColorsValue } from './deckColors'
 import { rangeHasRichTextStyle, restyleRichTextRange, type RichTextStyle } from './richText'
@@ -368,7 +368,7 @@ const IMAGE_CROP_ASPECT_RATIOS: Record<ImageCropAspectId, number | 'original'> =
 type LiveEditCommitResult = 'committed' | 'cancelled' | 'rejected'
 
 interface ImageFramingTarget {
-  /** A picture node, a shape's picture fill, or the page's picture background (path []). */
+  /** A picture node, a shape's or path's picture fill, or the page's picture background (path []). */
   targetKind: 'image' | 'shape-fill' | 'page-background'
   logicalSrc: string
   resolvedSrc: string
@@ -376,6 +376,8 @@ interface ImageFramingTarget {
   framing: ImageFraming
   frameSize: ImageFrameSize
   shape: FreeformShapeElement['shape'] | null
+  /** CSS clip-path of a path picture fill; the framing surface shows it. */
+  clipPath?: string
 }
 
 interface ImageFramingSession {
@@ -426,6 +428,19 @@ function imageFramingTargetForNode(node: FreeformSceneNode | undefined): ImageFr
       framing: node.fill.framing,
       frameSize: { width: node.width, height: node.height },
       shape: node.shape,
+    }
+  }
+  if (node?.type === 'path' && node.fill.type === 'image') {
+    const boxPathData = fitPathData(node.d, node.viewBox, node.width, node.height)
+    return {
+      targetKind: 'shape-fill',
+      logicalSrc: node.fill.src,
+      resolvedSrc: store.images.resolve(node.fill.src),
+      fit: node.fill.fit,
+      framing: node.fill.framing,
+      frameSize: { width: node.width, height: node.height },
+      shape: null,
+      ...(boxPathData !== null ? { clipPath: `path("${boxPathData}")` } : {}),
     }
   }
   return null
@@ -3280,7 +3295,8 @@ export function FreeformWorkspace({
     }
   }
 
-  async function fillSelectedShapeFromFile(file: File) {
+  /** A picture from disk fills the selected shape or path picture frame. */
+  async function fillSelectedPictureFrameFromFile(file: File) {
     const targetPath = selectedPath ? [...selectedPath] : null
     const targetSlideId = activeSlide.id
     const targetIdentityGeneration = documentIdentityGenerationRef.current
@@ -3291,7 +3307,10 @@ export function FreeformWorkspace({
           targetPath,
         )
       : undefined
-    if (targetNode?.type !== 'shape' || !targetPath) return
+    if (
+      (targetNode?.type !== 'shape' && targetNode?.type !== 'path')
+      || !targetPath
+    ) return
     const operation = beginShapeFillOperation(targetSlideId, targetPath)
     const images = ownerStore
     try {
@@ -3307,7 +3326,7 @@ export function FreeformWorkspace({
       if (blockDocumentMutationDuringInteraction()) return
       const currentSlide = currentDocumentRef.current.slides.find((slide) => slide.id === targetSlideId)
       const currentTarget = currentSlide ? findNodeAtPath(currentSlide.nodes, targetPath) : undefined
-      if (currentTarget?.type !== 'shape') return
+      if (currentTarget?.type !== 'shape' && currentTarget?.type !== 'path') return
       updateNodeStyleAtPath(targetSlideId, targetPath, {
         fill: {
           type: 'image',
@@ -3325,9 +3344,9 @@ export function FreeformWorkspace({
     const file = files?.[0]
     if (!file) return
     try {
-      await fillSelectedShapeFromFile(file)
+      await fillSelectedPictureFrameFromFile(file)
     } catch (error) {
-      showOperationError(error, t('形状图片填充失败，请稍后重试'))
+      showOperationError(error, t('图片填充失败，请稍后重试'))
     } finally {
       if (shapeFillInputRef.current) shapeFillInputRef.current.value = ''
     }
@@ -5880,6 +5899,8 @@ export function FreeformWorkspace({
         node: selectedElement,
         strokeWidth: leafProperties?.strokeWidth
           ?? selectedElement.strokeWidth * pathStrokeScale(selectedElement.viewBox, selectedElement.width, selectedElement.height),
+        canFrame: canAdjustSelectedFraming && selectedImageTarget?.targetKind === 'shape-fill',
+        frameDisabledReason: selectedFramingDisabledReason,
       }
     }
     return {
@@ -6929,7 +6950,12 @@ export function FreeformWorkspace({
                       role="application"
                       aria-label={t('调整图片取景')}
                       tabIndex={0}
-                      style={framingOverlayStyle}
+                      style={{
+                        ...framingOverlayStyle,
+                        ...(framingRenderTarget.target.clipPath
+                          ? { clipPath: framingRenderTarget.target.clipPath }
+                          : {}),
+                      }}
                       onPointerDown={onImageFramingPointerDown}
                     >
                       <span className="freeform-framing-third freeform-framing-third-v first" aria-hidden="true" />
@@ -7733,15 +7759,41 @@ export function FreeformWorkspace({
                         </>
                       )}
                       {isPathElement(selectedElement) && (
-                        <div data-testid="path-fill-paint">
-                          <PaintField
-                            label={t('填充')}
-                            value={selectedElement.fill}
-                            modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent']}
-                            fallbackPaint={DEFAULT_SHAPE_PAINT}
-                            onChange={(fill) => updateSelectedStyle({ fill: fill as PathFill })}
+                        <>
+                          <div data-testid="path-fill-paint">
+                            <PaintField
+                              label={t('填充')}
+                              value={selectedElement.fill}
+                              modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent', 'image']}
+                              fallbackPaint={DEFAULT_SHAPE_PAINT}
+                              onChange={(fill) =>
+                                updateSelectedShapeFill(fill as PathFill)
+                              }
+                              onChooseImage={() => shapeFillInputRef.current?.click()}
+                              onClearImage={() =>
+                                updateSelectedShapeFill({ ...DEFAULT_SHAPE_PAINT })
+                              }
+                              onImageFitChange={(fit) => {
+                                if (selectedElement.fill.type !== 'image') return
+                                updateSelectedShapeFill({ ...selectedElement.fill, fit })
+                              }}
+                              onAdjustImageFraming={() => {
+                                if (selectedPath) startImageFraming(selectedPath)
+                              }}
+                              onResetImageFraming={resetSelectedImageFraming}
+                              imageFramingDisabled={!canAdjustSelectedFraming}
+                              imageFramingDisabledReason={selectedFramingDisabledReason ?? undefined}
+                              imageFramingResetDisabled={!canResetSelectedFraming}
+                            />
+                          </div>
+                          <input
+                            ref={shapeFillInputRef}
+                            className="freeform-file"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => handleShapeFillInput(event.currentTarget.files)}
                           />
-                        </div>
+                        </>
                       )}
                       {isImageElement(selectedElement) && (
                         <>

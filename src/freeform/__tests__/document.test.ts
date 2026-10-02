@@ -72,7 +72,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(18)
+    expect(doc.documentVersion).toBe(19)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -1291,7 +1291,6 @@ describe('v15 path nodes', () => {
   })
 
   it.each([
-    ['picture fill', { fill: { type: 'image', src: 'a.png', fit: 'cover', framing: framing() } }],
     ['named stroke', { stroke: 'blue' }],
     ['cleared stroke', { stroke: null }],
     ['negative width', { strokeWidth: -2 }],
@@ -1303,6 +1302,22 @@ describe('v15 path nodes', () => {
   ])('rejects a style patch with %s', (_label, patch) => {
     const document = documentWith([icon()])
     expect(update(document, 'node/update-style', patch)).toBe(document)
+  })
+
+  it('fills a path with a picture and adjusts its framing (v19)', () => {
+    const picture = { type: 'image', src: 'img:photo', fit: 'cover', framing: framing() }
+    const document = documentWith([icon()])
+    const filled = update(document, 'node/update-style', { fill: picture })
+    expect(pathOf(filled).fill).toEqual(picture)
+    // A different framing changes the node; the same picture is a no-op.
+    const reframed = update(filled, 'node/update-style', {
+      fill: { ...picture, framing: { focusX: 0.2, focusY: 0.8, zoom: 2 } },
+    })
+    expect(pathOf(reframed).fill).toMatchObject({ framing: { focusX: 0.2, focusY: 0.8, zoom: 2 } })
+    expect(update(reframed, 'node/update-style', { fill: { ...picture, framing: { focusX: 0.2, focusY: 0.8, zoom: 2 } } })).toBe(reframed)
+    // Clearing back to transparent removes the picture.
+    const cleared = update(reframed, 'node/update-style', { fill: { type: 'transparent' } })
+    expect(pathOf(cleared).fill).toEqual({ type: 'transparent' })
   })
 
   it('replaces the drawing and its viewBox as content', () => {

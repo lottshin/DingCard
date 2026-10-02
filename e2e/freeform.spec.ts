@@ -5632,7 +5632,7 @@ test('persists shape framing and image crops through node copy, page copy, save,
     }>
   }
 
-  expect(storedDocument.documentVersion).toBe(18)
+  expect(storedDocument.documentVersion).toBe(19)
   expect(storedDocument.slides).toHaveLength(2)
   const firstImage = storedDocument.slides[0].nodes.find((node) => node.type === 'image')
   expect(firstImage).toBeDefined()
@@ -12274,6 +12274,49 @@ test('the Elements panel finds icons and drops them in as vector paths to style'
 
   await page.getByTestId('freeform-layers-tool').click()
   await expect(page.getByRole('treeitem', { name: '星星', exact: true })).toHaveCount(1)
+})
+
+test('a path fills with a picture and frames it inside the outline (v19)', async ({ page }) => {
+  await openFreeform(page)
+
+  // A heart icon becomes the picture frame.
+  await withToolPanel(page, 'elements', (panel) => panel.getByTestId('insert-icon-heart').click())
+  const pathFill = page.getByTestId('path-fill-paint')
+  // The path fill offers the same picture mode shapes get.
+  await expect(pathFill.getByTestId('paint-mode-image')).toBeVisible()
+
+  await page.getByTestId('inspector-fill').locator('input.freeform-file').setInputFiles({
+    name: 'path-fill.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  const frame = page.getByTestId('freeform-path-image-fill')
+  await expect(frame).toHaveCount(1)
+  // The picture is clipped to the outline, not to a rectangle.
+  await expect(frame).toHaveCSS('clip-path', /^path\(/)
+  await expect(frame.locator('[data-framed-image="true"]'))
+    .toHaveAttribute('data-image-load-state', 'ready')
+  // The stroke still draws on top of the picture.
+  await expect(page.getByTestId('freeform-path').locator('path')).toHaveAttribute('fill', 'none')
+
+  // Double-click opens the framing session; the surface shows the outline.
+  const pathElement = page.getByTestId('freeform-element').filter({ has: frame })
+  await pathElement.dblclick()
+  const surface = page.getByTestId('freeform-framing-surface')
+  await expect(surface).toBeVisible()
+  await expect(surface).toHaveCSS('clip-path', /^path\(/)
+  await page.getByTestId('freeform-framing-cancel').click()
+  await expect(surface).toHaveCount(0)
+  await expect(frame).toHaveCount(1)
+
+  await signUpToSave(page, `path-fill-${Date.now().toString(36)}`)
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+
+  await page.reload()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  await expect(page.getByTestId('freeform-path-image-fill')).toHaveCSS('clip-path', /^path\(/)
+  await expect(page.getByTestId('freeform-path-image-fill')
+    .locator('[data-framed-image="true"]')).toHaveAttribute('data-image-load-state', 'ready')
 })
 
 test('a path keeps its proportions from a corner handle and stretches from an edge', async ({ page }) => {

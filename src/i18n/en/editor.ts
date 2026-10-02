@@ -262,6 +262,7 @@ export const editor: Record<string, Translation> = {
   '模糊': 'Blur',
   '滤镜{name}': 'Filter {name}',
   '清除滤镜': 'Clear filters',
+  '图片填充失败，请稍后重试': 'Could not fill with that picture, please try again',
   '滤镜预设': 'Filter presets',
   '滤镜预设{name}': 'Filter preset {name}',
   '原图': 'Original',

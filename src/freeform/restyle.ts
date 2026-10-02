@@ -232,7 +232,7 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
       return patched(node, { stroke: recolor(node.stroke), shadow: recolorShadow(node.shadow, recolor) })
     case 'path':
       return patched(node, {
-        fill: node.fill.type === 'transparent' ? node.fill : recolorPaint(node.fill, recolor),
+        fill: node.fill.type === 'transparent' || node.fill.type === 'image' ? node.fill : recolorPaint(node.fill, recolor),
         stroke: recolor(node.stroke),
         shadow: recolorShadow(node.shadow, recolor),
       })

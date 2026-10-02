@@ -86,7 +86,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -266,6 +266,13 @@ function cloneStrictPathFill(
 ): PathFill | null {
   if (isRecord(value) && value.type === 'transparent') {
     return hasExactKeys(value, TRANSPARENT_PAINT_KEYS) ? { type: 'transparent' } : null
+  }
+  // Picture fills on paths arrived with v19; older input versions must reject
+  // them. The image payload is validated exactly like a shape's picture fill.
+  if (isRecord(value) && value.type === 'image') {
+    if (inputVersion < 19) return null
+    const image = cloneStrictShapeFill(value, inputVersion)
+    return image !== null && image.type === 'image' ? image : null
   }
   return cloneStrictColorPaint(value, inputVersion)
 }
@@ -776,7 +783,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 18,
+    documentVersion: 19,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -860,6 +867,11 @@ export function normalizeFreeformDocumentV17(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v18 document. */
 export function normalizeFreeformDocumentV18(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 18)
+}
+
+/** Strictly validates and clones an already-v19 document. */
+export function normalizeFreeformDocumentV19(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 19)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1126,9 +1138,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v18 object. */
+/** Normalize any supported freeform document version to a fresh v19 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 19) return normalizeFreeformDocumentV19(value)
   if (value.documentVersion === 18) return normalizeFreeformDocumentV18(value)
   if (value.documentVersion === 17) return normalizeFreeformDocumentV17(value)
   if (value.documentVersion === 16) return normalizeFreeformDocumentV16(value)
@@ -1186,7 +1199,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 18,
+    documentVersion: 19,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1219,7 +1232,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 18,
+    documentVersion: 19,
     activeSlideId: document.activeSlideId,
     slides,
   }

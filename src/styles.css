@@ -2110,13 +2110,30 @@ html.theme-anim * {
 .freeform-image,
 .freeform-preview-image,
 .freeform-shape-image,
-.freeform-page-background-image {
+.freeform-page-background-image,
+.freeform-path-image {
   position: absolute;
   display: block;
   max-width: none;
   max-height: none;
   pointer-events: none;
   user-select: none;
+}
+
+/* A path with a picture fill: the picture sits in a div clipped to the path,
+   the stroke redraws on top of it. */
+.freeform-path-image-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.freeform-path-image-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .shape-rect {

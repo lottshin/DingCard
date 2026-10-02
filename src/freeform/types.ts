@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 18
+  documentVersion: 19
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -250,8 +250,9 @@ export interface PathViewBox {
   height: number
 }
 
-/** A path fills with a color paint or not at all; there are no picture fills. */
-export type PathFill = ColorPaint | { type: 'transparent' }
+/** A path fills with a color paint, not at all, or (v19) a picture — turning
+ * any hand-drawn outline, icon or sticker into an image frame. */
+export type PathFill = ColorPaint | { type: 'transparent' } | ImagePaint
 
 /**
  * A vector drawing (v15): SVG path data in its own viewBox, stretched to the
