@@ -5,6 +5,7 @@
 // (registry.ts); anything not listed here is decoration and stays as drawn.
 
 import type { ColorPaint } from '../freeform/types'
+import { TIMETABLE_SAMPLE, TIMETABLE_TABLE, tableCellNames, type TableLayout } from './tables'
 import type { FreeformDeckSeriesId, FreeformPosterSeriesId } from './types'
 
 /** One fillable text, with the shapes, lines and labels that only make sense beside it. */
@@ -306,13 +307,33 @@ export interface PosterDetail {
   extras?: readonly string[]
 }
 
+/** A table the poster redraws at the content's size (tables.ts), and the sample it is drawn with. */
+export interface PosterTable {
+  layout: TableLayout
+  sample: readonly (readonly string[])[]
+}
+
 /** Where a one-page template's content goes. Anything it doesn't name is decoration. */
 export interface PosterSlots {
   title: string
   subtitle?: SlotItem
   body?: SlotItem
+  /** Who it is for: the name on a certificate. */
+  recipient?: SlotItem
   /** Information lines, in order; unused ones go with their extras. */
   details?: readonly PosterDetail[]
+  /** Decoration for the lines as a whole (the card they sit on), removed when there are none. */
+  detailsExtras?: readonly string[]
+  /** Fewer lines than rows spread out over the rows' span (at most 1.6 times as far apart), so a list fills its card. */
+  spreadDetails?: boolean
+  /**
+   * When the title takes fewer lines than its sample, everything whose top is
+   * below the title moves up by the room it left, except `pinned` (a footer
+   * that keeps its place).
+   */
+  titleFlow?: { pinned?: readonly string[] }
+  /** A grid of cells: row 0 is the column headings, column 0 the row labels (a timetable). */
+  table?: PosterTable
   /** The call to action, with the button drawn behind it. */
   cta?: SlotItem
   /** A short label: a corner badge, a price, an episode number. */
@@ -324,15 +345,29 @@ export interface PosterSlots {
    * shape takes `fallback` (a colour block that keeps the layout), anything
    * else goes with its extras.
    */
-  image?: { node: string; fallback?: ColorPaint; extras?: readonly string[] }
+  image?: {
+    node: string
+    fallback?: ColorPaint
+    extras?: readonly string[]
+    /** Without a picture the template's own stays: an illustration that is the design, not a sample photo. */
+    keep?: boolean
+  }
   /** Sample copy with no content of its own: always removed. */
   remove?: readonly SlotItem[]
+  /**
+   * Samples that real content often repeats word for word (a certificate's
+   * 荣誉证书, a menu's prices): check_document doesn't take them for copy
+   * left over from the template.
+   */
+  generic?: readonly string[]
 }
 
 const block = (color: string): ColorPaint => ({ type: 'solid', color })
 
+const NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'] as const
+
 const rows = (count: number, label: (n: string) => string | undefined, value: (n: string) => string, extras?: (n: string) => readonly string[]): PosterDetail[] =>
-  ['一', '二', '三'].slice(0, count).map((n) => ({
+  NUMERALS.slice(0, count).map((n) => ({
     ...(label(n) ? { label: label(n) } : {}),
     value: value(n),
     ...(extras ? { extras: extras(n) } : {}),
@@ -408,6 +443,68 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     image: { node: '主图', fallback: block('#26385e') },
   },
+  'note-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, () => undefined, (n) => `要点${n}`, (n) => [`编号底${n}`, `编号${n}`]),
+    detailsExtras: ['清单卡', '星星'],
+    spreadDetails: true,
+    titleFlow: { pinned: ['品牌'] },
+    brand: { text: '品牌' },
+  },
+  'photo-cover': {
+    title: '标题',
+    subtitle: { text: '副标题', extras: ['波浪线'] },
+    titleFlow: {},
+    tag: { text: '角标', extras: ['角标底'] },
+    brand: { text: '品牌' },
+    image: { node: '主图', fallback: block('#d9cbb8') },
+  },
+  menu: {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    tag: { text: '刊头' },
+    details: rows(8, (n) => `菜品${n}`, (n) => `价格${n}`, (n) => [`虚线${n}`]),
+    spreadDetails: true,
+    brand: { text: '品牌' },
+    image: { node: '主图' },
+    generic: ['标题', ...['一', '二', '三', '四', '五', '六', '七', '八'].map((n) => `价格${n}`)],
+  },
+  'price-list': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    tag: { text: '角标' },
+    details: rows(8, (n) => `项目${n}`, (n) => `价格${n}`, (n) => (n === '一' ? [] : [`隔线${n}`])),
+    spreadDetails: true,
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+    generic: ['标题', ...['一', '二', '三', '四', '五', '六', '七', '八'].map((n) => `价格${n}`)],
+  },
+  certificate: {
+    title: '标题',
+    recipient: { text: '获得者', extras: ['姓名线'] },
+    body: { text: '正文' },
+    details: rows(2, () => undefined, (n) => `信息${n}`),
+    brand: { text: '颁发单位', extras: ['签名线'] },
+    generic: ['标题'],
+  },
+  'moments-grid': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+    image: { node: '主图', keep: true },
+  },
+  timetable: {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    brand: { text: '品牌' },
+    table: { layout: TIMETABLE_TABLE, sample: TIMETABLE_SAMPLE },
+    generic: ['标题'],
+  },
   flyer: {
     title: '标题',
     subtitle: { text: '副标题' },
@@ -421,7 +518,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {
-  return [slots.subtitle, slots.body, slots.cta, slots.tag, slots.brand].filter((item): item is SlotItem => Boolean(item))
+  return [slots.subtitle, slots.body, slots.recipient, slots.cta, slots.tag, slots.brand].filter((item): item is SlotItem => Boolean(item))
 }
 
 /** Every name a poster's slots point at, for checking them against the template. */
@@ -429,18 +526,27 @@ export function posterSlotNames(slots: PosterSlots): string[] {
   const names = [slots.title]
   for (const item of [...posterItems(slots), ...(slots.remove ?? [])]) names.push(item.text, ...(item.note ? [item.note] : []), ...(item.extras ?? []))
   for (const detail of slots.details ?? []) names.push(...(detail.label ? [detail.label] : []), detail.value, ...(detail.extras ?? []))
+  names.push(...(slots.detailsExtras ?? []))
   if (slots.image) names.push(slots.image.node, ...(slots.image.extras ?? []))
+  if (slots.table) {
+    const cells = tableCellNames(slots.table.layout, slots.table.sample)
+    names.push(...cells.blocks, ...cells.texts)
+  }
   return names
 }
 
 /**
  * The texts a poster's slots fill or remove: sample copy that must never
- * reach a finished poster. Line labels ("时间", "地点") are generic words a
- * poster may well keep, so `labels: false` leaves them out.
+ * reach a finished poster. Line labels ("时间", "地点"), table cells ("语文")
+ * and the template's `generic` samples are words a poster may well keep, so
+ * `labels: false` leaves them out.
  */
 export function posterSampleNames(slots: PosterSlots, { labels = true }: { labels?: boolean } = {}): string[] {
   const names = [slots.title]
   for (const item of [...posterItems(slots), ...(slots.remove ?? [])]) names.push(item.text, ...(item.note ? [item.note] : []))
   for (const detail of slots.details ?? []) names.push(...(labels && detail.label ? [detail.label] : []), detail.value)
-  return names
+  if (labels && slots.table) names.push(...tableCellNames(slots.table.layout, slots.table.sample).texts)
+  if (labels) return names
+  const generic = new Set(slots.generic ?? [])
+  return names.filter((name) => !generic.has(name))
 }

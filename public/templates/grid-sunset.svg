@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <title>A sun setting behind layered hills over a still lake</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffcf98"/>
+      <stop offset="0.55" stop-color="#ffa48e"/>
+      <stop offset="1" stop-color="#ec82a0"/>
+    </linearGradient>
+    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f3c78"/>
+      <stop offset="1" stop-color="#2a2149"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="560" fill="url(#sky)"/>
+  <circle cx="540" cy="282" r="214" fill="#ffe7c4" opacity="0.45"/>
+  <circle cx="540" cy="282" r="150" fill="#fff2d6"/>
+  <g fill="#ffd9c4" opacity="0.75">
+    <rect x="300" y="236" width="230" height="16" rx="8"/>
+    <rect x="590" y="268" width="270" height="14" rx="7"/>
+    <rect x="200" y="300" width="180" height="12" rx="6"/>
+  </g>
+  <g fill="none" stroke="#a5527a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M190 150q14-14 26 0q12-14 26 0"/>
+    <path d="M250 112q10-10 19 0q9-10 19 0"/>
+    <path d="M820 170q12-12 22 0q10-12 22 0"/>
+  </g>
+  <path d="M0 470C70 440 120 380 190 392C250 402 280 446 340 430C410 410 440 352 520 360C600 368 630 430 700 424C770 418 800 360 880 368C960 376 1020 430 1080 412V720H0Z" fill="#c06c98"/>
+  <path d="M0 560C90 520 150 470 240 486C320 500 360 548 450 530C540 512 590 462 680 476C770 490 820 548 910 534C980 523 1030 500 1080 506V720H0Z" fill="#8f5592"/>
+  <path d="M0 640C110 600 190 584 290 606C380 626 430 652 540 640C650 628 720 590 820 600C920 610 990 640 1080 628V740H0Z" fill="#634383"/>
+  <rect y="728" width="1080" height="352" fill="url(#lake)"/>
+  <rect y="720" width="1080" height="14" fill="#3e2f68"/>
+  <g fill="#ffd6a8">
+    <rect x="410" y="752" width="260" height="10" rx="5" opacity="0.85"/>
+    <rect x="450" y="776" width="180" height="9" rx="4.5" opacity="0.7"/>
+    <rect x="480" y="798" width="120" height="8" rx="4" opacity="0.55"/>
+    <rect x="505" y="818" width="70" height="7" rx="3.5" opacity="0.4"/>
+  </g>
+</svg>

@@ -48,7 +48,7 @@ export function TemplateCard({ template, onUse }: TemplateCardProps) {
       <div className="tpl-info">
         <div className="tpl-title-row">
           <h3>{t(template.title)}</h3>
-          <span className="chip tnum">{template.kind === 'poster' ? templateFormat(template.format).ratio : t('{n} 页', { n: template.pageCount })}</span>
+          <span className="chip tnum">{template.kind === 'poster' ? t(templateFormat(template.format).ratio) : t('{n} 页', { n: template.pageCount })}</span>
         </div>
         <p>
           <span className={`sys-dot ${system}`} aria-hidden="true" />

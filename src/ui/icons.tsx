@@ -437,6 +437,16 @@ export function LongImageIcon(props: IconProps) {
   )
 }
 
+/** A page cut into nine, for the grid export. */
+export function GridNineIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="1.5" />
+      <path d="M6.08 2.25v11.5M9.92 2.25v11.5M2.25 6.08h11.5M2.25 9.92h11.5" />
+    </Icon>
+  )
+}
+
 export function BookmarkIcon(props: IconProps) {
   return (
     <Icon {...props}>

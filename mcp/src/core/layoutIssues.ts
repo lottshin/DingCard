@@ -84,12 +84,14 @@ export function templateMarks(): TemplateMarks {
         const colour = solidColor(node.textFill)
         if (!colour) return
         const centre = { x: node.x + node.width / 2, y: node.y + node.height / 2 }
+        // What the words sit on: a shape or a filled drawing (a badge), else the page.
         const under = slide.nodes.slice(0, order).reverse().find((candidate) => (
-          candidate.type === 'shape' && (candidate.opacity ?? 1) >= OPAQUE
+          (candidate.type === 'shape' || (candidate.type === 'path' && candidate.fill.type !== 'transparent'))
+          && (candidate.opacity ?? 1) >= OPAQUE
           && centre.x >= candidate.x && centre.x <= candidate.x + candidate.width
           && centre.y >= candidate.y && centre.y <= candidate.y + candidate.height
         ))
-        const background = under?.type === 'shape' ? solidColor(under.fill) : solidColor(slide.background)
+        const background = under?.type === 'shape' || under?.type === 'path' ? solidColor(under.fill) : solidColor(slide.background)
         if (background) result.colourPairs.add(colourKey(colour, background))
       })
     })
@@ -142,12 +144,36 @@ function short(text: string): string {
 
 /** Whether a node hides what lies under its box: opaque shapes, and paths with a fill. */
 function coversBelow(node: FreeformSceneNode): boolean {
+  // Multiplied (a highlighter stroke) or darkened, dark words show through.
+  if (node.type !== 'group' && (node.blendMode === 'multiply' || node.blendMode === 'darken')) return false
   if (node.type === 'shape') return node.fill.type !== 'transparent'
   if (node.type === 'path') return node.fill.type !== 'transparent'
   return node.type === 'image'
 }
 
 const viewBoxNumber = (value: number) => Math.round(value * 100) / 100
+
+/** Whether a page point falls on what a path paints, by its paint mask over its (upright) box. */
+function paintsAt(mask: string, rect: Rect, x: number, y: number): boolean {
+  const grid = Math.round(Math.sqrt(mask.length))
+  if (grid === 0 || x < rect.x || y < rect.y || x >= rect.x + rect.width || y >= rect.y + rect.height) return false
+  const column = Math.min(grid - 1, Math.floor(((x - rect.x) / rect.width) * grid))
+  const row = Math.min(grid - 1, Math.floor(((y - rect.y) / rect.height) * grid))
+  return mask[row * grid + column] === '1'
+}
+
+/** The share of a text's lines a path paints over: a ring round a word paints little of it, a blob all of it. */
+function paintedShare(mask: string, rect: Rect, area: Rect): number {
+  const across = 8
+  const down = 4
+  let painted = 0
+  for (let column = 0; column < across; column += 1) {
+    for (let row = 0; row < down; row += 1) {
+      if (paintsAt(mask, rect, area.x + ((column + 0.5) * area.width) / across, area.y + ((row + 0.5) * area.height) / down)) painted += 1
+    }
+  }
+  return painted / (across * down)
+}
 
 export function layoutIssues(document: FreeformDocument, inspected: readonly InspectedSlide[]): LayoutIssue[] {
   const template = templateMarks()
@@ -158,6 +184,13 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
     const measured = inspected.find((entry) => entry.slideId === slide.id)
     const nodes = new Map<string, { node: FreeformSceneNode; path: ScenePath }>()
     walkScene(slide.nodes, (node, path) => { nodes.set(node.id, { node, path: [...path] }) })
+    // A path's paint mask stands for it only while nothing turns it (its box is then its rect on the page).
+    const masks = new Map<string, string>()
+    for (const drawn of measured?.paths ?? []) {
+      const entry = nodes.get(drawn.nodeId)
+      const turned = entry?.path.some((id) => (nodes.get(id)?.node.rotation ?? 0) % 360 !== 0)
+      if (drawn.mask && entry && !turned) masks.set(drawn.nodeId, drawn.mask)
+    }
     const issue = (kind: LayoutIssueKind, nodeId: string | null, message: string, extra: Partial<LayoutIssue> = {}) => {
       const entry = nodeId ? nodes.get(nodeId) : undefined
       issues.push({
@@ -260,7 +293,11 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         if ((node.opacity ?? 1) < OPAQUE) continue
         if (!coversBelow(node)) continue
         const rect = rectOf.get(above)
-        if (rect && textArea > 0 && intersection(rect, text.area) / textArea > 0.3) {
+        const mask = masks.get(above)
+        const covered = rect && textArea > 0 && (mask
+          ? paintedShare(mask, rect, text.area) > 0.3
+          : intersection(rect, text.area) / textArea > 0.3)
+        if (covered) {
           issue('covered-text', text.nodeId, `被上面的「${node.name}」挡住了：把文字移到它上层，或者挪开。`)
           break
         }
@@ -284,6 +321,9 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         if (entry.node.type === 'path' && entry.node.fill.type === 'transparent') continue
         const rect = rectOf.get(below)
         if (!rect || centre.x < rect.x || centre.x > rect.x + rect.width || centre.y < rect.y || centre.y > rect.y + rect.height) continue
+        // A drawing is behind the words only where it paints (not inside a ring round them).
+        const mask = masks.get(below)
+        if (mask && !paintsAt(mask, rect, centre.x, centre.y)) continue
         if ((entry.node.opacity ?? 1) < OPAQUE) continue
         background = entry.node.type === 'shape' || entry.node.type === 'path' ? solidColor(entry.node.fill) : null
         break

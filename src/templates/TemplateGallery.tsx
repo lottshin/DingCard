@@ -209,7 +209,7 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
             <p>{t(template.description)}</p>
           </div>
           <span className='template-page-count'>
-            {template.kind === 'poster' ? templateFormat(template.format).ratio : t('{n} 页', { n: template.pageCount })}
+            {template.kind === 'poster' ? t(templateFormat(template.format).ratio) : t('{n} 页', { n: template.pageCount })}
           </span>
         </div>
         <div className='template-tags'>

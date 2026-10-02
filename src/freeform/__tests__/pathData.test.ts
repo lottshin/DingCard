@@ -5,6 +5,7 @@ import {
   fitPathData,
   isValidPathData,
   parsePathData,
+  pathDataBounds,
   pathStrokeScale,
   stretchArc,
 } from '../pathData'
@@ -117,5 +118,35 @@ describe('fitting a path into its box', () => {
     expect(fitPathData('nope', { x: 0, y: 0, width: 1, height: 1 }, 1, 1)).toBeNull()
     expect(pathStrokeScale({ x: 0, y: 0, width: 24, height: 24 }, 96, 96)).toBe(4)
     expect(pathStrokeScale({ x: 0, y: 0, width: 10, height: 10 }, 40, 10)).toBe(2)
+  })
+})
+
+describe('path data bounds', () => {
+  const near = (value: { x: number; y: number; width: number; height: number } | null) => value && {
+    x: Math.round(value.x * 10) / 10,
+    y: Math.round(value.y * 10) / 10,
+    width: Math.round(value.width * 10) / 10,
+    height: Math.round(value.height * 10) / 10,
+  }
+
+  it('spans lines, relative moves and closed subpaths', () => {
+    expect(near(pathDataBounds('M10 20L30 60H5V8Z'))).toEqual({ x: 5, y: 8, width: 25, height: 52 })
+    expect(near(pathDataBounds('m4 4 10 0 0 10z m20 0 5 5'))).toEqual({ x: 4, y: 4, width: 25, height: 10 })
+  })
+
+  it('follows curves past their end points, smooth curves included', () => {
+    // A cubic bulging up to y = -15 between two points on y = 0.
+    expect(near(pathDataBounds('M0 0C0 -20 40 -20 40 0'))).toEqual({ x: 0, y: -15, width: 40, height: 15 })
+    expect(near(pathDataBounds('M0 0Q20 20 40 0T80 0'))).toEqual({ x: 0, y: -10, width: 80, height: 20 })
+  })
+
+  it('takes the whole sweep of an arc, the long way round when asked', () => {
+    // Half of a circle of radius 10 centred on (10, 0), drawn below.
+    expect(near(pathDataBounds('M0 0A10 10 0 0 0 20 0'))).toEqual({ x: 0, y: 0, width: 20, height: 10 })
+    expect(near(pathDataBounds('M0 10A10 10 0 1 0 20 10A10 10 0 1 0 0 10Z'))).toEqual({ x: 0, y: 0, width: 20, height: 20 })
+  })
+
+  it('reads nothing from data outside the grammar', () => {
+    expect(pathDataBounds('L1 2')).toBeNull()
   })
 })

@@ -12173,12 +12173,12 @@ test('the Elements panel finds icons and drops them in as vector paths to style'
   await page.getByTestId('freeform-elements-tool').click()
   await expect(drawer).toBeVisible()
 
-  const search = page.getByTestId('freeform-icon-search')
+  const search = page.getByTestId('freeform-element-search')
   await search.fill('购物')
   await expect(drawer.locator('.freeform-icon-tile')).toHaveCount(2)
   await expect(drawer.getByRole('button', { name: '购物车', exact: true })).toBeVisible()
   await search.fill('没有这种图标')
-  await expect(page.getByTestId('freeform-icon-empty')).toBeVisible()
+  await expect(page.getByTestId('freeform-element-empty')).toBeVisible()
   // Escape clears a search before it closes the panel.
   await search.press('Escape')
   await expect(search).toHaveValue('')

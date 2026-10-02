@@ -32,12 +32,16 @@ export interface TemplateCapacity {
 export interface PosterCapacity {
   subtitle: boolean
   body: boolean
-  /** Information lines ("时间：…"). */
+  /** A name to put on it (a certificate's recipient). */
+  recipient: boolean
+  /** Information lines ("时间：…", a menu's "拿铁：28"). */
   details: number
   cta: boolean
   tag: boolean
   brand: boolean
   image: boolean
+  /** A table it draws at the content's size, up to this many rows and columns. */
+  table?: { maxRows: number; maxColumns: number }
 }
 
 export interface TemplateSummary {
@@ -85,11 +89,13 @@ function posterCapacityOf(series: string): PosterCapacity | undefined {
   return {
     subtitle: Boolean(slots.subtitle),
     body: Boolean(slots.body),
+    recipient: Boolean(slots.recipient),
     details: slots.details?.length ?? 0,
     cta: Boolean(slots.cta),
     tag: Boolean(slots.tag),
     brand: Boolean(slots.brand),
     image: Boolean(slots.image),
+    ...(slots.table ? { table: { maxRows: slots.table.layout.maxRows, maxColumns: slots.table.layout.maxColumns } } : {}),
   }
 }
 

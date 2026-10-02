@@ -73,6 +73,9 @@
   --freeform-ruler-tick: rgba(26, 25, 23, 0.2);
   --freeform-ruler-label: #9a978f;
   --freeform-guide: #8e8b85;
+  /* Decoration tiles stay paper-light in both themes: ink lines must show on them. */
+  --freeform-deco-tile: #f3f1ec;
+  --freeform-deco-tile-hover: #e9e6df;
 
   /* Names the legacy stylesheet reads but never defined. */
   --surface-raised: var(--surface);
@@ -149,6 +152,8 @@
   --freeform-ruler-tick: rgba(255, 255, 255, 0.18);
   --freeform-ruler-label: #6f6c66;
   --freeform-guide: #a19e97;
+  --freeform-deco-tile: #dedad3;
+  --freeform-deco-tile-hover: #ebe8e2;
 }
 
 :root {

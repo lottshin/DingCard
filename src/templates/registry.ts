@@ -13,8 +13,10 @@ import type {
   ShadowPaint,
   ShapeFill,
 } from '../freeform/types'
+import { createDecorationNode, decorationById } from '../freeform/decorations'
 import { createDefaultImageFraming } from '../freeform/imageFraming'
 import { DEFAULT_PROFILE, type Profile } from '../theme'
+import { TIMETABLE_SAMPLE, TIMETABLE_TABLE, tableNodes } from './tables'
 import type {
   FreeformTemplateSeriesId,
   MarkdownTemplateSeriesId,
@@ -961,6 +963,9 @@ const LANDSCAPE = { width: 1920, height: 1080 }
 const WECHAT_COVER = { width: 1800, height: 766 }
 const A4 = { width: 1240, height: 1754 }
 
+const MOMENTS_GRID = { width: 3240, height: 3240 }
+const A4_LANDSCAPE = { width: 1754, height: 1240 }
+
 /** A shape filled with a picture (a slot the poster's own picture replaces). */
 function pictureShape(
   name: string,
@@ -969,11 +974,64 @@ function pictureShape(
   y: number,
   width: number,
   height: number,
-  options: { shape?: 'rect' | 'ellipse'; cornerRadius?: number } = {},
+  options: { shape?: 'rect' | 'ellipse'; cornerRadius?: number; rotation?: number } = {},
 ): FreeformSceneNode {
   return shapeNode(options.shape ?? 'rect', x, y, width, height, {
     type: 'image', src, fit: 'cover', framing: createDefaultImageFraming(),
-  }, { name, cornerRadius: options.cornerRadius ?? 0 })
+  }, { name, cornerRadius: options.cornerRadius ?? 0, rotation: options.rotation })
+}
+
+/** A piece of the decoration library (decorations.ts) at `x, y`, `width` across: one node, named as asked. */
+function decorationNode(
+  id: string,
+  x: number,
+  y: number,
+  width: number,
+  options: { name?: string; color?: string; rotation?: number; height?: number; text?: string } = {},
+): FreeformSceneNode {
+  const definition = decorationById(id)
+  if (!definition) throw new Error(`no decoration ${id}`)
+  const node = createDecorationNode(definition, { x, y, width, height: options.height, color: options.color, text: options.text }, uuid)
+  return {
+    ...node,
+    ...(options.name ? { name: options.name } : {}),
+    ...(options.rotation !== undefined ? { rotation: options.rotation } : {}),
+  }
+}
+
+/**
+ * A decoration's parts laid straight onto the page and named one by one, so a
+ * poster slot can take one of them (a burst's words) or drop some (a medal's
+ * star); `names` has a name per part, null for a part left out.
+ */
+function decorationParts(
+  id: string,
+  x: number,
+  y: number,
+  width: number,
+  names: ReadonlyArray<string | null>,
+  options: { color?: string } = {},
+): FreeformSceneNode[] {
+  const node = decorationNode(id, x, y, width, { color: options.color })
+  if (node.type !== 'group' || node.rotation !== 0) throw new Error(`decoration ${id} has no parts to lay out`)
+  return node.children.flatMap((child, index) => {
+    const name = names[index]
+    if (!name || child.type === 'group') return []
+    return [{ ...child, name, x: node.x + child.x, y: node.y + child.y }]
+  })
+}
+
+/** Where a box turned with another lands: its centre carried round the other's centre by `degrees`, as a top-left. */
+function turnedWith(box: { x: number; y: number; width: number; height: number }, around: { x: number; y: number; width: number; height: number }, degrees: number) {
+  const radians = (degrees * Math.PI) / 180
+  const cx = around.x + around.width / 2
+  const cy = around.y + around.height / 2
+  const dx = box.x + box.width / 2 - cx
+  const dy = box.y + box.height / 2 - cy
+  return {
+    x: Math.round((cx + dx * Math.cos(radians) - dy * Math.sin(radians) - box.width / 2) * 10) / 10,
+    y: Math.round((cy + dx * Math.sin(radians) + dy * Math.cos(radians) - box.height / 2) * 10) / 10,
+  }
 }
 
 /** A picture with a see-through background (an illustration), contained in its box. */
@@ -1294,6 +1352,217 @@ function createFlyerDocument(): FreeformDocument {
   ])
 }
 
+const NUMBERED = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'] as const
+
+function createNoteCoverDocument(): FreeformDocument {
+  const paper = '#fbf7ef'
+  const ink = '#1d1b16'
+  const muted = '#6b645a'
+  // Notebook squares, one every 60px.
+  const squares = [
+    ...Array.from({ length: 17 }, (_, index) => `M${(index + 1) * 60} 0V1440`),
+    ...Array.from({ length: 23 }, (_, index) => `M0 ${(index + 1) * 60}H1080`),
+  ].join('')
+  const point = (index: number, text: string) => {
+    const y = 948 + index * 108
+    const n = NUMBERED[index]
+    return [
+      shapeNode('ellipse', 132, y + 8, 56, 56, solid(ink), { name: `编号底${n}` }),
+      textNode(String(index + 1), 124, y + 4, 72, 64, { name: `编号${n}`, fontSize: 30, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', lineHeight: 1.6 }),
+      textNode(text, 212, y, 760, 72, { name: `要点${n}`, fontSize: 42, textFill: solid(ink), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      pathNode(squares, 0, 0, 1080, 1440, { name: '格线', stroke: '#ece4d4', strokeWidth: 2, cap: 'butt' }),
+      shapeNode('rect', 88, 912, 904, 360, solid('#ffffff'), { name: '清单卡', cornerRadius: 32, stroke: ink, strokeWidth: 4, shadow: { color: ink, blur: 0, offsetX: 10, offsetY: 10 } }),
+      decorationNode('sparkles', 858, 96, 132, { color: '#ffb000' }),
+      textNode('干货分享', 88, 120, 400, 64, {
+        name: '角标', fontSize: 34, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: ink, amount: 50, radius: 100 },
+      }),
+      textNode('新手做图\n最该先学的\n5 个排版习惯', 80, 224, 920, 540, {
+        name: '标题', fontSize: 132, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.3, letterSpacing: -2,
+        effect: { type: 'marker', color: '#ffd84d', amount: 55 },
+      }),
+      textNode('收藏起来，做图前对照一遍', 88, 790, 904, 70, { name: '副标题', fontSize: 44, textFill: solid(muted) }),
+      ...point(0, '留白比你想的更重要'),
+      ...point(1, '一页只说一件事'),
+      ...point(2, '字号至少拉开两档'),
+      decorationNode('star', 912, 1218, 112, { name: '星星', rotation: 14 }),
+      textNode('@叮卡设计笔记', 88, 1334, 700, 56, { name: '品牌', fontSize: 32, textFill: solid(muted), fontWeight: 'bold' }),
+    ]),
+  ])
+}
+
+function createPhotoCoverDocument(): FreeformDocument {
+  const sand = '#efe6da'
+  const ink = '#2a211b'
+  const muted = '#6f6156'
+  const tilt = -2
+  const frame = { x: 112, y: 100, width: 856, height: 740 }
+  const photo = { x: 140, y: 128, width: 800, height: 612 }
+  const turned = turnedWith(photo, frame, tilt)
+  return documentFromSlides([
+    slide('封面', solid(sand), [
+      shapeNode('rect', frame.x, frame.y, frame.width, frame.height, solid('#ffffff'), {
+        name: '相框', cornerRadius: 6, rotation: tilt, shadow: { color: '#cbbca8', blur: 36, offsetX: 0, offsetY: 14 },
+      }),
+      pictureShape('主图', '/templates/editorial-building.webp', turned.x, turned.y, photo.width, photo.height, { rotation: tilt }),
+      decorationNode('tape', 54, 74, 240, { rotation: -34 }),
+      decorationNode('tape', 784, 74, 240, { rotation: 34, color: '#b9d3ea' }),
+      ...decorationParts('burst-badge', 806, 676, 200, ['角标底', null]),
+      textNode('必去', 806, 738, 200, 76, { name: '角标', fontSize: 50, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', rotation: -10, lineHeight: 1.2 }),
+      textNode('周末去哪儿\n城市漫步路线', 80, 920, 920, 300, { name: '标题', fontSize: 112, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.24, letterSpacing: -2 }),
+      textNode('6 个小众打卡点，附路线图', 88, 1236, 904, 64, { name: '副标题', fontSize: 42, textFill: solid(muted) }),
+      decorationNode('underline-wave', 88, 1316, 240, { name: '波浪线', color: '#d9503f' }),
+      textNode('@叮卡周末', 88, 1352, 600, 52, { name: '品牌', fontSize: 30, textFill: solid(muted), fontWeight: 'bold' }),
+    ]),
+  ])
+}
+
+function createMenuDocument(): FreeformDocument {
+  const paper = '#f4ede1'
+  const ink = '#2b1d14'
+  const clay = '#a8462c'
+  const muted = '#76665a'
+  const item = (index: number, name: string, price: string) => {
+    const y = 520 + index * 112
+    const n = NUMBERED[index]
+    return [
+      lineNode(110, y + 78, 1020, '#cdbda6', 2, { name: `虚线${n}`, dash: 3, cap: 'round' }),
+      textNode(name, 110, y, 800, 72, { name: `菜品${n}`, fontSize: 44, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode(price, 900, y, 230, 72, { name: `价格${n}`, fontSize: 44, fontFamily: SERIF, textFill: solid(clay), fontWeight: 'bold', align: 'right' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('菜单', solid(paper), [
+      shapeNode('rect', 56, 56, 1128, 1642, { type: 'transparent' }, { name: '边框', cornerRadius: 0, stroke: '#d8c9b2', strokeWidth: 2 }),
+      illustrationNode('主图', '/templates/poster-coffee.svg', '一杯放在碟子上的拿铁', 838, 80, 320, 320),
+      textNode('COFFEE & TEA', 110, 110, 640, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(clay), fontWeight: 'bold', letterSpacing: 8 }),
+      textNode('今日菜单', 100, 170, 760, 180, { name: '标题', fontSize: 140, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('秋冬限定 · 每日 8:00–20:00', 110, 360, 800, 56, { name: '副标题', fontSize: 34, textFill: solid(muted), letterSpacing: 2, lineHeight: 1.4 }),
+      lineNode(110, 452, 1020, ink, 3, { name: '分隔线', cap: 'butt' }),
+      ...item(0, '美式咖啡', '22'),
+      ...item(1, '拿铁', '28'),
+      ...item(2, '燕麦拿铁', '30'),
+      ...item(3, '澳白', '30'),
+      ...item(4, '卡布奇诺', '28'),
+      ...item(5, '桂花拿铁', '32'),
+      ...item(6, '手冲 · 埃塞俄比亚', '38'),
+      ...item(7, '柚子美式', '30'),
+      lineNode(110, 1440, 1020, ink, 3, { name: '底线', cap: 'butt' }),
+      textNode('所有咖啡可换燕麦奶 +3 元，可做冰、可少糖', 110, 1476, 1020, 56, { name: '正文', fontSize: 30, textFill: solid(muted) }),
+      textNode('DINGCARD COFFEE · 城南创意园 B 座 1 层', 110, 1630, 1020, 50, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+    ], A4),
+  ])
+}
+
+function createPriceListDocument(): FreeformDocument {
+  const blush = '#f6e8e3'
+  const ink = '#4a2c2a'
+  const rose = '#b04a5f'
+  const muted = '#755a57'
+  const row = (index: number, service: string, price: string) => {
+    const y = 604 + index * 112
+    const n = NUMBERED[index]
+    return [
+      ...(index > 0 ? [lineNode(140, y - 20, 800, '#f0e1dd', 2, { name: `隔线${n}`, cap: 'butt' })] : []),
+      textNode(service, 140, y, 560, 70, { name: `项目${n}`, fontSize: 40, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode(price, 700, y, 240, 70, { name: `价格${n}`, fontSize: 40, textFill: solid(rose), fontWeight: 'bold', align: 'right' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('价目表', solid(blush), [
+      decorationNode('sparkles', 96, 108, 130, { color: '#e8a0ad' }),
+      decorationNode('sparkle', 900, 150, 84, { color: '#e8a0ad' }),
+      shapeNode('rect', 80, 548, 920, 952, solid('#ffffff'), { name: '价目卡', cornerRadius: 44, shadow: { color: '#e9d3cd', blur: 40, offsetX: 0, offsetY: 16 } }),
+      shapeNode('rect', 290, 1668, 500, 108, solid(ink), { name: '按钮底板', cornerRadius: 54 }),
+      textNode('美甲 · 美睫', 290, 140, 500, 64, {
+        name: '角标', fontSize: 32, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 4,
+        effect: { type: 'background', color: rose, amount: 50, radius: 100 },
+      }),
+      textNode('价目表', 80, 236, 920, 200, { name: '标题', fontSize: 160, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 16 }),
+      textNode('PRICE LIST · 2026', 80, 444, 920, 50, { name: '副标题', fontSize: 30, fontFamily: UI, textFill: solid(muted), align: 'center', letterSpacing: 10 }),
+      ...row(0, '纯色美甲', '¥98'),
+      ...row(1, '猫眼美甲', '¥158'),
+      ...row(2, '法式美甲', '¥138'),
+      ...row(3, '手绘款（单指）', '¥30'),
+      ...row(4, '延长甲', '¥188'),
+      ...row(5, '自然款美睫', '¥168'),
+      ...row(6, '卸甲护理', '¥38'),
+      ...row(7, '手部护理', '¥88'),
+      textNode('以上价格含基础修型 · 节假日正常营业', 80, 1548, 920, 56, { name: '正文', fontSize: 30, textFill: solid(muted), align: 'center' }),
+      textNode('私信预约', 290, 1690, 500, 64, { name: '按钮文字', fontSize: 40, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 6 }),
+      textNode('@叮卡美甲工作室', 80, 1820, 920, 48, { name: '品牌', fontSize: 28, textFill: solid(muted), align: 'center', letterSpacing: 2 }),
+    ], STORY),
+  ])
+}
+
+function createCertificateDocument(): FreeformDocument {
+  const ivory = '#fbf8f1'
+  const gold = '#b8955a'
+  // Gold words a shade deeper than the frames, so they read on ivory.
+  const goldInk = '#8a6a35'
+  const ink = '#2b2118'
+  const muted = '#5d5146'
+  const corner = (x: number, y: number) => shapeNode('rect', x - 11, y - 11, 22, 22, solid(gold), { name: '角饰', cornerRadius: 0, rotation: 45 })
+  return documentFromSlides([
+    slide('证书', solid(ivory), [
+      shapeNode('rect', 44, 44, 1666, 1152, { type: 'transparent' }, { name: '外框', cornerRadius: 0, stroke: gold, strokeWidth: 6 }),
+      shapeNode('rect', 68, 68, 1618, 1104, { type: 'transparent' }, { name: '内框', cornerRadius: 0, stroke: gold, strokeWidth: 2 }),
+      corner(68, 68),
+      corner(1686, 68),
+      corner(68, 1172),
+      corner(1686, 1172),
+      decorationNode('medal', 1360, 808, 210, { color: '#d9a62e' }),
+      lineNode(577, 610, 600, gold, 2, { name: '姓名线', cap: 'butt' }),
+      lineNode(300, 980, 440, ink, 1.5, { name: '签名线', cap: 'butt' }),
+      textNode('CERTIFICATE OF HONOR', 0, 150, 1754, 50, { name: '英文标题', fontSize: 28, fontFamily: UI, textFill: solid(goldInk), fontWeight: 'bold', align: 'center', letterSpacing: 14 }),
+      textNode('荣誉证书', 0, 208, 1754, 176, { name: '标题', fontSize: 128, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 36 }),
+      textNode('林一', 427, 452, 900, 150, { name: '获得者', fontSize: 104, fontFamily: KAI, textFill: solid(ink), align: 'center', letterSpacing: 12 }),
+      textNode('在 2026 年度「叮卡设计挑战赛」中表现突出，荣获一等奖。\n特发此证，以资鼓励。', 227, 652, 1300, 170, {
+        name: '正文', fontSize: 40, fontFamily: SERIF, textFill: solid(muted), align: 'center', lineHeight: 1.75,
+      }),
+      textNode('叮卡设计委员会', 220, 996, 600, 60, { name: '颁发单位', fontSize: 36, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 4 }),
+      textNode('二〇二六年十月', 220, 1060, 600, 52, { name: '信息一', fontSize: 30, fontFamily: SERIF, textFill: solid(muted), align: 'center', letterSpacing: 4 }),
+      textNode('No. 2026-018', 1300, 100, 360, 40, { name: '信息二', fontSize: 22, fontFamily: UI, textFill: solid(goldInk), align: 'right', letterSpacing: 2 }),
+    ], A4_LANDSCAPE),
+  ])
+}
+
+function createMomentsGridDocument(): FreeformDocument {
+  const cream = '#fff4e3'
+  const shade = { color: '#3b2342', blur: 40, offsetX: 0, offsetY: 12 }
+  const page = slide('九宫格', solid('#3d2b52'), [
+    pictureShape('主图', '/templates/grid-sunset.svg', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 3240 + TEMPLATE_EDGE_BLEED * 2, 3240 + TEMPLATE_EDGE_BLEED * 2),
+    lineNode(1440, 2468, 360, cream, 6, { name: '短线', cap: 'round', opacity: 0.8 }),
+    textNode('2026 · 10', 150, 170, 900, 140, { name: '角标', fontSize: 96, fontFamily: UI, textFill: solid('#5b2a4e'), fontWeight: 'bold', letterSpacing: 8 }),
+    textNode('你好，十月', 0, 1290, 3240, 660, { name: '标题', fontSize: 500, fontFamily: SERIF, textFill: solid(cream), fontWeight: 'bold', align: 'center', letterSpacing: 24, lineHeight: 1.2, shadow: shade }),
+    textNode('愿你被温柔以待', 1080, 2520, 1080, 150, { name: '副标题', fontSize: 92, fontFamily: SERIF, textFill: solid(cream), align: 'center', letterSpacing: 8, shadow: shade }),
+    textNode('@叮卡', 2280, 3010, 810, 100, { name: '品牌', fontSize: 64, fontFamily: UI, textFill: solid(cream), fontWeight: 'bold', align: 'right', letterSpacing: 4, shadow: shade }),
+  ], MOMENTS_GRID)
+  // Guides on the cuts, so the nine squares show while laying it out.
+  page.guides = [1080, 2160].flatMap((position) => (['x', 'y'] as const).map((axis) => ({ id: uuid(), axis, position })))
+  return documentFromSlides([page])
+}
+
+function createTimetableDocument(): FreeformDocument {
+  const paper = '#fdf8ee'
+  const ink = '#2f2a24'
+  const muted = '#7a6e60'
+  return documentFromSlides([
+    slide('课程表', solid(paper), [
+      decorationNode('rainbow', 1450, 56, 214),
+      decorationNode('sparkle', 1394, 64, 44, { color: '#ffc53d' }),
+      textNode('课程表', 86, 66, 900, 140, { name: '标题', fontSize: 100, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('三年级二班 · 2026 秋季学期', 92, 206, 1000, 60, { name: '副标题', fontSize: 36, textFill: solid(muted) }),
+      textNode('叮卡实验小学', 1100, 208, 564, 56, { name: '品牌', fontSize: 32, textFill: solid(muted), fontWeight: 'bold', align: 'right', letterSpacing: 2 }),
+      ...tableNodes(TIMETABLE_TABLE, TIMETABLE_SAMPLE, uuid),
+    ], A4_LANDSCAPE),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -1342,6 +1611,13 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'video-cover': poster('视频封面', '超大标题配一张图表卡片，适合视频和直播封面。', ['封面', '视频'], 'landscape'),
   'article-cover': poster('公众号首图', '标题在左、图片在右，适合公众号文章首图。', ['封面', '公众号'], 'wechat-cover'),
   flyer: poster('宣传单', 'A4 单页：大标题、插画、时间地点和预约按钮，适合课程和活动传单。', ['印刷', '课程'], 'a4'),
+  'note-cover': poster('干货笔记', '格子纸、荧光笔大标题和三条要点，适合小红书知识类笔记封面。', ['小红书', '封面'], 'xhs'),
+  'photo-cover': poster('图片拼贴', '照片配胶带和角标贴纸，下面是大标题，适合小红书探店、旅行和生活封面。', ['小红书', '封面'], 'xhs'),
+  menu: poster('菜单', 'A4 单页：店名大标题、八道菜品和价格，适合咖啡店、餐厅和饮品菜单。', ['菜单', '餐饮'], 'a4'),
+  'price-list': poster('价目表', '白色价目卡排八项服务和价格，下面是预约按钮，适合美甲、美发和工作室。', ['价目表', '门店'], 'story'),
+  certificate: poster('证书', '金色双框、居中大字和奖章，适合荣誉证书、获奖证书和结业证书。', ['证书', '印刷'], 'a4-landscape'),
+  'moments-grid': poster('朋友圈九宫格', '一整张插画配横跨中间一排的大标题，导出时切成九张，发朋友圈拼成一张大图。', ['朋友圈', '节日'], 'moments-grid'),
+  timetable: poster('课程表', '表格按科目自动配色，适合学校课程表、培训排课和每周计划。', ['课程表', '学校'], 'a4-landscape'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -1363,6 +1639,13 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'video-cover': createVideoCoverDocument,
   'article-cover': createArticleCoverDocument,
   flyer: createFlyerDocument,
+  'note-cover': createNoteCoverDocument,
+  'photo-cover': createPhotoCoverDocument,
+  menu: createMenuDocument,
+  'price-list': createPriceListDocument,
+  certificate: createCertificateDocument,
+  'moments-grid': createMomentsGridDocument,
+  timetable: createTimetableDocument,
 }
 
 const markdownSeriesIds: MarkdownTemplateSeriesId[] = [
@@ -1379,6 +1662,14 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'brutalist',
   'soft',
   'blueprint',
+  // Posters, the scenes asked for most first.
+  'note-cover',
+  'photo-cover',
+  'menu',
+  'price-list',
+  'certificate',
+  'moments-grid',
+  'timetable',
   'talk-poster',
   'sale-poster',
   'hiring-poster',

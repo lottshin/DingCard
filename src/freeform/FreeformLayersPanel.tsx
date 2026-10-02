@@ -9,6 +9,7 @@ import {
   type MouseEvent,
 } from 'react'
 import { MAX_SCENE_DEPTH } from './constants'
+import { decorationByName } from './decorations'
 import { iconByName } from './icons'
 import { scenePathKey } from './sceneTree'
 import type { FreeformSceneNode, ScenePath } from './types'
@@ -19,9 +20,9 @@ const DEFAULT_LAYER_NAMES = new Set(['文本', '图片', '形状', '直线', '�
 
 export function layerLabel(name: string): string {
   if (DEFAULT_LAYER_NAMES.has(name)) return t(name)
-  // Inserted icons are named after the icon, in Chinese.
-  const icon = getLang() === 'en' ? iconByName(name) : undefined
-  return icon ? icon.en : name
+  // Inserted icons and decorations are named after what they are, in Chinese.
+  if (getLang() !== 'en') return name
+  return iconByName(name)?.en ?? decorationByName(name)?.en ?? name
 }
 
 export interface LayerSelectionOptions {

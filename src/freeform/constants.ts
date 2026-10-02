@@ -15,4 +15,7 @@ export const pageSizePresets = [
   { ratio: '16:9', width: 1920, height: 1080 },
   { ratio: '2.35:1', width: 1800, height: 766 },
   { ratio: 'A4', width: 1240, height: 1754 },
+  { ratio: 'A4 横', width: 1754, height: 1240 },
+  // Exports as nine 1080 px squares (切成九宫格).
+  { ratio: '九宫格', width: 3240, height: 3240 },
 ] as const

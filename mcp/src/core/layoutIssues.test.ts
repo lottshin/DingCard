@@ -221,6 +221,64 @@ describe('path issues', () => {
     expect(kinds(issues)).toEqual(['covered-text:标题'])
     expect(issues[0].message).toContain('色块')
   })
+
+  test('a ring drawn round words covers only what its rim crosses, a blob covers it all', () => {
+    const words = { x: 300, y: 300, width: 400, height: 100 }
+    const ringBox = { x: 250, y: 250, width: 500, height: 200 }
+    // A 32 × 32 paint mask: the ring paints its outermost cells, the blob every cell.
+    const rim = Array.from({ length: 32 * 32 }, (_, index) => {
+      const row = Math.floor(index / 32)
+      const column = index % 32
+      return row < 2 || row > 29 || column < 2 || column > 29 ? '1' : '0'
+    }).join('')
+    const solid = '1'.repeat(32 * 32)
+    const document = deck([
+      text('标题', { ...words }),
+      drawing('手绘圈', { ...ringBox, fill: { type: 'solid', color: '#e8453c' } }),
+    ])
+    const inspected = (mask: string) => {
+      const slides = measured(
+        [{ id: '标题', rect: words }, { id: '手绘圈', rect: ringBox }],
+        [{ id: '标题', area: { x: 308, y: 308, width: 384, height: 84 } }],
+      )
+      slides[0].paths = [{ nodeId: '手绘圈', bounds: { x: 0, y: 0, width: 500, height: 200 }, mask }]
+      return slides
+    }
+    expect(kinds(layoutIssues(document, inspected(rim)))).toEqual([])
+    expect(kinds(layoutIssues(document, inspected(solid)))).toEqual(['covered-text:标题'])
+    // Turned, the mask no longer lines up with the box on the page: the box decides.
+    const turned = deck([text('标题', { ...words }), drawing('手绘圈', { ...ringBox, rotation: 10, fill: { type: 'solid', color: '#e8453c' } })])
+    expect(kinds(layoutIssues(turned, inspected(rim)))).toEqual(['covered-text:标题'])
+  })
+
+  test('words inside a ring read against the page, not the ring\'s colour', () => {
+    const words = { x: 300, y: 300, width: 400, height: 100 }
+    const ringBox = { x: 250, y: 250, width: 500, height: 200 }
+    const rim = Array.from({ length: 32 * 32 }, (_, index) => (Math.floor(index / 32) < 2 ? '1' : '0')).join('')
+    // Red words inside a red ring on a white page: fine, the ring isn't behind them.
+    const document = deck([
+      drawing('手绘圈', { ...ringBox, fill: { type: 'solid', color: '#e8453c' } }),
+      text('标题', { ...words, textFill: { type: 'solid', color: '#c0392b' }, fontSize: 60 }),
+    ])
+    const slides = measured(
+      [{ id: '手绘圈', rect: ringBox }, { id: '标题', rect: words }],
+      [{ id: '标题', area: { x: 308, y: 308, width: 384, height: 84 } }],
+    )
+    slides[0].paths = [{ nodeId: '手绘圈', bounds: { x: 0, y: 0, width: 500, height: 200 }, mask: rim }]
+    expect(kinds(layoutIssues(document, slides))).toEqual([])
+  })
+
+  test('a highlighter stroke multiplied over words leaves them showing', () => {
+    const covered = { x: 100, y: 600, width: 400, height: 100 }
+    const document = deck([
+      text('标题', { ...covered }),
+      drawing('荧光笔', { ...covered, fill: { type: 'solid', color: '#ffe14d' }, blendMode: 'multiply' }),
+    ])
+    expect(layoutIssues(document, measured(
+      [{ id: '标题', rect: covered }, { id: '荧光笔', rect: covered }],
+      [{ id: '标题', area: { x: 108, y: 608, width: 384, height: 48 } }],
+    ))).toEqual([])
+  })
 })
 
 describe('text on a picture background', () => {

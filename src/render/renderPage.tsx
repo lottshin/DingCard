@@ -22,7 +22,7 @@
 //     | { ok: true; slides: Array<{ slideId; name; width; height; dataUrl; previewDataUrl }> }
 //     | { ok: false; error: string }
 //
-//   window.__DINGCARD_RENDER__ = { document, output: { format, scale, quality, long } }
+//   window.__DINGCARD_RENDER__ = { document, output: { format, scale, quality, long, grid } }
 //     → the same, as PNG or JPEG (on white) at `scale` times the page size;
 //       with `long`, every page also goes into one tall picture, written
 //       back as `long: { dataUrl, width, height, scale }` (the scale drops
@@ -55,6 +55,7 @@ import { buildFontEmbedCSS } from '../fontEmbed'
 import { PLATFORMS, buildConfig, resolveTheme } from '../theme'
 import { store } from '../storage'
 import { createLongImage, longImageScale } from '../exportLongImage'
+import { sliceIntoGrid } from '../exportGrid'
 import '../styles.css'
 
 /** How a freeform document's pages are written out. */
@@ -66,6 +67,8 @@ interface RenderOutput {
   quality: number
   /** Also stack every page into one tall picture. */
   long: boolean
+  /** Also cut each (square) page into its nine squares, for WeChat Moments. */
+  grid: boolean
 }
 
 interface RenderPayload {
@@ -75,7 +78,7 @@ interface RenderPayload {
   output?: Partial<RenderOutput>
 }
 
-const DEFAULT_OUTPUT: RenderOutput = { format: 'png', scale: 1, quality: 0.92, long: false }
+const DEFAULT_OUTPUT: RenderOutput = { format: 'png', scale: 1, quality: 0.92, long: false, grid: false }
 
 function renderOutputOf(value: Partial<RenderOutput> | undefined): RenderOutput {
   return {
@@ -83,6 +86,7 @@ function renderOutputOf(value: Partial<RenderOutput> | undefined): RenderOutput 
     scale: value?.scale === 2 ? 2 : 1,
     quality: typeof value?.quality === 'number' && value.quality >= 0.5 && value.quality <= 1 ? value.quality : DEFAULT_OUTPUT.quality,
     long: value?.long === true,
+    grid: value?.grid === true,
   }
 }
 
@@ -93,6 +97,8 @@ interface RenderedSlide {
   height: number
   dataUrl: string
   previewDataUrl: string
+  /** With `grid`: the page's nine squares, left to right, top to bottom. */
+  tiles?: string[]
 }
 
 interface Rect {
@@ -117,8 +123,8 @@ export interface InspectedSlide {
     /** The visible lines (clipped to the box), or null for an empty text. */
     area: Rect | null
   }>
-  /** Each path's drawing (its geometry, stroke left out) in its own box's pixels. */
-  paths: Array<{ nodeId: string; bounds: Rect }>
+  /** Each path's drawing (its geometry, stroke left out) in its own box's pixels, and where over its box it paints. */
+  paths: Array<{ nodeId: string; bounds: Rect; mask: string }>
   /** On a picture background: the picture's average colour behind each text's lines. */
   backdrops: Array<{ nodeId: string; color: string }>
   /** Pictures that didn't load. */
@@ -265,6 +271,30 @@ function clippedInk(box: HTMLElement): number {
   return Math.max(0, last.bottom + stroke - clip.bottom, clip.top - (first.top - stroke))
 }
 
+/** A paint mask's cells across and down a path's box. */
+const PAINT_GRID = 32
+
+/**
+ * Where a path paints over its box, cell by cell ('1' where its fill or
+ * stroke covers the cell's centre, row by row): a ring round a word paints
+ * only its rim, a blob its whole box.
+ */
+function paintMask(drawing: SVGPathElement, width: number, height: number): string {
+  const style = getComputedStyle(drawing)
+  const filled = style.fill !== 'none'
+  const stroked = style.stroke !== 'none' && Number.parseFloat(style.strokeWidth) > 0
+  const point = new DOMPoint()
+  let mask = ''
+  for (let row = 0; row < PAINT_GRID; row += 1) {
+    for (let column = 0; column < PAINT_GRID; column += 1) {
+      point.x = ((column + 0.5) * width) / PAINT_GRID
+      point.y = ((row + 0.5) * height) / PAINT_GRID
+      mask += (filled && drawing.isPointInFill(point)) || (stroked && drawing.isPointInStroke(point)) ? '1' : '0'
+    }
+  }
+  return mask
+}
+
 /** Measure the mounted slide: node boxes, text overflow, and the size each overflowing text would fit at. */
 function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: string | null): InspectedSlide {
   const origin = artboard.getBoundingClientRect()
@@ -282,6 +312,7 @@ function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: str
       paths.push({
         nodeId,
         bounds: { x: round(bounds.x), y: round(bounds.y), width: round(bounds.width), height: round(bounds.height) },
+        mask: paintMask(drawing, element.offsetWidth, element.offsetHeight),
       })
       continue
     }
@@ -482,7 +513,8 @@ function RenderApp({ document: doc, inspect, output }: { document: FreeformDocum
             fontEmbedCSS: fontCSS,
           })
           const canvas = await draw(output.scale)
-          const dataUrl = jpeg ? canvas.toDataURL('image/jpeg', output.quality) : canvas.toDataURL('image/png')
+          const encode = (picture: HTMLCanvasElement) => jpeg ? picture.toDataURL('image/jpeg', output.quality) : picture.toDataURL('image/png')
+          const dataUrl = encode(canvas)
           if (long && longScale !== null) long.draw(i, longScale === output.scale ? canvas : await draw(longScale))
           slides.push({
             slideId: current.id,
@@ -491,6 +523,7 @@ function RenderApp({ document: doc, inspect, output }: { document: FreeformDocum
             height: current.height,
             dataUrl,
             previewDataUrl: await previewOf(dataUrl, current.width, current.height),
+            ...(output.grid ? { tiles: sliceIntoGrid(canvas).map(encode) } : {}),
           })
         }
         writeResult({

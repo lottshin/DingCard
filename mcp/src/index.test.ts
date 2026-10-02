@@ -36,11 +36,12 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the sixteen tools', async () => {
+  test('exposes the eighteen tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
     expect(names).toEqual([
+      'add_decorations',
       'apply_actions',
       'check_document',
       'create_document_from_content',
@@ -49,6 +50,7 @@ describe('dingcard-mcp tool layer', () => {
       'create_poster_from_content',
       'get_document',
       'inspect_document',
+      'list_decorations',
       'list_icons',
       'list_styles',
       'list_templates',
@@ -247,6 +249,7 @@ describe('dingcard-mcp tool layer', () => {
     const listing = await client.listResources()
     const uris = listing.resources.map((resource) => resource.uri).sort()
     expect(uris).toEqual([
+      'dingcard://decorations',
       'dingcard://examples/freeform',
       'dingcard://examples/markdown',
       'dingcard://icons',
@@ -286,6 +289,9 @@ describe('dingcard-mcp tool layer', () => {
     expect(icons.icons.length).toBeGreaterThan(90)
     expect(icons.icons.every((icon) => icon.d.startsWith('M'))).toBe(true)
 
+    const decorations = JSON.parse(await readText('dingcard://decorations')) as { decorations: Array<{ id: string }> }
+    expect(decorations.decorations.map((decoration) => decoration.id)).toContain('circle-scribble')
+
     const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
       documentVersion: number
     }
@@ -295,6 +301,26 @@ describe('dingcard-mcp tool layer', () => {
       source: string
     }
     expect(envelope.source).toContain('#')
+    await client.close()
+  })
+
+  test('add_decorations places library pieces on a kept document', async () => {
+    const client = await connect()
+    const call = async <T>(name: string, args: Record<string, unknown>) => parseContent(
+      (await client.callTool({ name, arguments: args })) as { content: Array<{ type: string; text?: string }> },
+    ) as T
+    const created = await call<{ documentId: string; version: number; slides: Array<{ id: string }> }>('create_document_from_template', { templateId: 'quote-card-freeform' })
+    const placed = await call<{ ok: boolean; documentId: string; version: number; slideId: string; added: Array<{ decoration: string; path: string[] }> }>(
+      'add_decorations',
+      { documentId: created.documentId, items: [{ decoration: 'sparkles', x: 900, y: 80, width: 120 }, { decoration: 'pill', x: 96, y: 60, text: '每日一句' }] },
+    )
+    expect(placed).toMatchObject({ ok: true, documentId: created.documentId, version: 2, slideId: created.slides[0].id })
+    expect(placed.added.map((entry) => entry.decoration)).toEqual(['sparkles', 'pill'])
+    const inspected = await call<{ slides: Array<{ nodes: Array<{ id: string; name: string; text?: string }> }> }>('inspect_document', { documentId: created.documentId })
+    const names = inspected.slides[0].nodes.map((node) => node.name)
+    expect(names.slice(-2)).toEqual(['闪闪', '胶囊标签'])
+    const listed = await call<{ total: number }>('list_decorations', { category: 'sticker' })
+    expect(listed.total).toBeGreaterThanOrEqual(10)
     await client.close()
   })
 

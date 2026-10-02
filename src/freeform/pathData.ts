@@ -261,3 +261,142 @@ function computeFittedPath(
   })
   return parts.join('')
 }
+
+/** Points along an arc in endpoint form (SVG implementation notes F.6.5), `steps` of them after the start. */
+function arcSamples(
+  from: { x: number; y: number },
+  rxIn: number,
+  ryIn: number,
+  rotation: number,
+  largeArc: number,
+  sweep: number,
+  to: { x: number; y: number },
+  steps: number,
+): Array<{ x: number; y: number }> {
+  let rx = Math.abs(rxIn)
+  let ry = Math.abs(ryIn)
+  if (rx === 0 || ry === 0 || (from.x === to.x && from.y === to.y)) return [to]
+  const phi = (rotation * Math.PI) / 180
+  const cos = Math.cos(phi)
+  const sin = Math.sin(phi)
+  const dx = (from.x - to.x) / 2
+  const dy = (from.y - to.y) / 2
+  const x1 = cos * dx + sin * dy
+  const y1 = -sin * dx + cos * dy
+  const lambda = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry)
+  if (lambda > 1) {
+    rx *= Math.sqrt(lambda)
+    ry *= Math.sqrt(lambda)
+  }
+  const numerator = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1
+  const denominator = rx * rx * y1 * y1 + ry * ry * x1 * x1
+  const factor = (largeArc === sweep ? -1 : 1) * Math.sqrt(Math.max(0, numerator / denominator))
+  const cx1 = (factor * rx * y1) / ry
+  const cy1 = (-factor * ry * x1) / rx
+  const centreX = cos * cx1 - sin * cy1 + (from.x + to.x) / 2
+  const centreY = sin * cx1 + cos * cy1 + (from.y + to.y) / 2
+  const angle = (ux: number, uy: number, vx: number, vy: number) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy)
+  const start = angle(1, 0, (x1 - cx1) / rx, (y1 - cy1) / ry)
+  let delta = angle((x1 - cx1) / rx, (y1 - cy1) / ry, (-x1 - cx1) / rx, (-y1 - cy1) / ry)
+  if (!sweep && delta > 0) delta -= 2 * Math.PI
+  if (sweep && delta < 0) delta += 2 * Math.PI
+  return Array.from({ length: steps }, (_, index) => {
+    const theta = start + (delta * (index + 1)) / steps
+    return {
+      x: centreX + rx * Math.cos(theta) * cos - ry * Math.sin(theta) * sin,
+      y: centreY + rx * Math.cos(theta) * sin + ry * Math.sin(theta) * cos,
+    }
+  })
+}
+
+/**
+ * The box a path's outline runs through, in its own coordinates (curves and
+ * arcs sampled finely enough for layout), or null for data it can't read.
+ * The stroke is not included.
+ */
+export function pathDataBounds(d: string): { x: number; y: number; width: number; height: number } | null {
+  const segments = parsePathData(d)
+  if (!segments) return null
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  const add = (x: number, y: number) => {
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x)
+    maxY = Math.max(maxY, y)
+  }
+  const STEPS = 16
+  let current = { x: 0, y: 0 }
+  let start = { x: 0, y: 0 }
+  // The last curve's second control point, for the smooth (S, T) commands.
+  let control = null as { x: number; y: number; cubic: boolean } | null
+  const cubic = (c1: { x: number; y: number }, c2: { x: number; y: number }, end: { x: number; y: number }) => {
+    for (let step = 1; step <= STEPS; step += 1) {
+      const t = step / STEPS
+      const u = 1 - t
+      add(
+        u * u * u * current.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * end.x,
+        u * u * u * current.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * end.y,
+      )
+    }
+  }
+  const quadratic = (c: { x: number; y: number }, end: { x: number; y: number }) => {
+    for (let step = 1; step <= STEPS; step += 1) {
+      const t = step / STEPS
+      const u = 1 - t
+      add(u * u * current.x + 2 * u * t * c.x + t * t * end.x, u * u * current.y + 2 * u * t * c.y + t * t * end.y)
+    }
+  }
+  for (const { command, values } of segments) {
+    const kind = command.toLowerCase()
+    const relative = command === kind
+    const point = (x: number, y: number) => (relative ? { x: current.x + x, y: current.y + y } : { x, y })
+    if (kind === 'z') {
+      current = start
+      control = null
+      continue
+    }
+    const count = ARGUMENT_COUNTS[kind]
+    for (let offset = 0; offset < values.length; offset += count) {
+      const v = values.slice(offset, offset + count)
+      let next = current
+      let nextControl = null as { x: number; y: number; cubic: boolean } | null
+      if (kind === 'm') {
+        next = point(v[0], v[1])
+        // Pairs after a moveto's first are linetos.
+        if (offset === 0) start = next
+      } else if (kind === 'l') {
+        next = point(v[0], v[1])
+      } else if (kind === 'h') {
+        next = { x: relative ? current.x + v[0] : v[0], y: current.y }
+      } else if (kind === 'v') {
+        next = { x: current.x, y: relative ? current.y + v[0] : v[0] }
+      } else if (kind === 'c' || kind === 's') {
+        const c1 = kind === 'c'
+          ? point(v[0], v[1])
+          : control?.cubic ? { x: 2 * current.x - control.x, y: 2 * current.y - control.y } : current
+        const c2 = kind === 'c' ? point(v[2], v[3]) : point(v[0], v[1])
+        next = kind === 'c' ? point(v[4], v[5]) : point(v[2], v[3])
+        cubic(c1, c2, next)
+        nextControl = { ...c2, cubic: true }
+      } else if (kind === 'q' || kind === 't') {
+        const c = kind === 'q'
+          ? point(v[0], v[1])
+          : control && !control.cubic ? { x: 2 * current.x - control.x, y: 2 * current.y - control.y } : current
+        next = kind === 'q' ? point(v[2], v[3]) : point(v[0], v[1])
+        quadratic(c, next)
+        nextControl = { ...c, cubic: false }
+      } else if (kind === 'a') {
+        next = point(v[5], v[6])
+        for (const sample of arcSamples(current, v[0], v[1], v[2], v[3], v[4], next, STEPS)) add(sample.x, sample.y)
+      }
+      add(next.x, next.y)
+      current = next
+      control = nextControl
+    }
+  }
+  if (!Number.isFinite(minX)) return null
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}

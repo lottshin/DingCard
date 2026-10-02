@@ -197,6 +197,31 @@ describe('renderDocument', () => {
     420_000,
   )
 
+  test(
+    'cuts the Moments grid into nine squares in posting order, and refuses pages that are not square',
+    async () => {
+      const grid = instantiateTemplate('moments-grid-freeform')
+      if (grid.workspace !== 'freeform') throw new Error('expected a freeform document')
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-grid-'))
+      const result = await renderDocument(grid.document, { outputDir, baseName: 'moments', grid: true })
+      if (!result.ok) throw new Error(result.error)
+      expect(result.files.map((file) => path.basename(file.path))).toEqual(
+        Array.from({ length: 9 }, (_, index) => `moments-01-${index + 1}.png`),
+      )
+      expect(result.files.map((file) => file.tile)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+      for (const file of result.files) {
+        expect(file).toMatchObject({ width: 1080, height: 1080, slideId: grid.document.slides[0].id })
+        expect(pngIhdr(readFileSync(file.path))).toEqual({ width: 1080, height: 1080 })
+      }
+
+      const deck = instantiateTemplate('editorial-freeform')
+      if (deck.workspace !== 'freeform') throw new Error('expected a freeform document')
+      expect(await renderDocument(deck.document, { outputDir, grid: true })).toMatchObject({ ok: false, error: expect.stringContaining('正方形') })
+      expect(await renderDocument(grid.document, { outputDir, grid: true, long: true })).toMatchObject({ ok: false })
+    },
+    420_000,
+  )
+
   test('refuses invalid documents and empty slide selections without a browser', async () => {
     const invalid = await renderDocument({ documentVersion: 4 }, { outputDir: tmpdir() })
     expect(invalid.ok).toBe(false)

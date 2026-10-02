@@ -38,7 +38,7 @@ export function FreeformPageSizePopover({
     (preset) => preset.width === width && preset.height === height,
   )
   const sizeLabel = matchingPreset
-    ? `${matchingPreset.ratio} · ${width}×${height}px`
+    ? `${t(matchingPreset.ratio)} · ${width}×${height}px`
     : t('自定义 · {width}×{height}px', { width, height })
 
   isActiveRef.current = isActive
@@ -178,11 +178,11 @@ export function FreeformPageSizePopover({
                   key={preset.ratio}
                   type="button"
                   className={selected ? 'page-size-preset on' : 'page-size-preset'}
-                  aria-label={preset.ratio}
+                  aria-label={t(preset.ratio)}
                   aria-pressed={selected}
                   onClick={() => apply(preset.width, preset.height)}
                 >
-                  <span>{preset.ratio}</span>
+                  <span>{t(preset.ratio)}</span>
                   <small>{preset.width}×{preset.height}</small>
                 </button>
               )

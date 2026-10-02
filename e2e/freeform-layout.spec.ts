@@ -146,7 +146,7 @@ test('the templates panel shows first pages and opens the picked one in the gall
   await expect(templatesTool).toHaveAttribute('aria-expanded', 'true')
   const panel = page.getByTestId('freeform-templates-drawer')
   const tiles = panel.locator('.freeform-template-tile')
-  await expect(tiles).toHaveCount(18)
+  await expect(tiles).toHaveCount(25)
   await expect(tiles.first().locator('.freeform-slide-preview-artboard')).toHaveCount(1)
 
   const second = tiles.nth(1)

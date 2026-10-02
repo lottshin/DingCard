@@ -29,6 +29,13 @@ export type FreeformPosterSeriesId =
   | 'video-cover'
   | 'article-cover'
   | 'flyer'
+  | 'note-cover'
+  | 'photo-cover'
+  | 'menu'
+  | 'price-list'
+  | 'certificate'
+  | 'moments-grid'
+  | 'timetable'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId
@@ -38,7 +45,7 @@ export type TemplateWorkspace = 'markdown' | 'freeform'
 export type TemplateKind = 'deck' | 'poster'
 
 /** The page size a template is drawn at (formats.ts). */
-export type TemplateFormatId = 'xhs' | 'story' | 'square' | 'landscape' | 'wechat-cover' | 'a4'
+export type TemplateFormatId = 'xhs' | 'story' | 'square' | 'landscape' | 'wechat-cover' | 'a4' | 'a4-landscape' | 'moments-grid'
 
 export interface MarkdownTemplateDocument {
   source: string

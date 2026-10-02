@@ -32,17 +32,24 @@ describe('listTemplates', () => {
     }
   })
 
-  test('freeform template ids cover the eight decks, poster ids the ten posters', () => {
+  test('freeform template ids cover the eight decks, poster ids the seventeen posters', () => {
     expect(freeformTemplateIds()).toHaveLength(8)
-    expect(posterTemplateIds()).toHaveLength(10)
+    expect(posterTemplateIds()).toHaveLength(17)
   })
 
   test('says what each template makes and the size it is drawn at, and what a poster has room for', () => {
     const templates = listTemplates()
     const talk = templates.find((template) => template.id === 'talk-poster-freeform')!
     expect(talk).toMatchObject({ kind: 'poster', format: { id: 'story', ratio: '9:16', width: 1080, height: 1920 } })
-    expect(talk.posterCapacity).toEqual({ subtitle: true, body: false, details: 3, cta: true, tag: true, brand: true, image: true })
+    expect(talk.posterCapacity).toEqual({ subtitle: true, body: false, recipient: false, details: 3, cta: true, tag: true, brand: true, image: true })
     expect(talk.capacity).toBeUndefined()
+    expect(templates.find((template) => template.id === 'certificate-freeform')).toMatchObject({
+      format: { id: 'a4-landscape', width: 1754, height: 1240 },
+      posterCapacity: { recipient: true, details: 2 },
+    })
+    expect(templates.find((template) => template.id === 'timetable-freeform')!.posterCapacity!.table).toEqual({ maxRows: 12, maxColumns: 8 })
+    expect(templates.find((template) => template.id === 'menu-freeform')!.posterCapacity!.details).toBe(8)
+    expect(templates.find((template) => template.id === 'moments-grid-freeform')).toMatchObject({ format: { id: 'moments-grid', width: 3240, height: 3240 } })
     const editorial = templates.find((template) => template.id === 'editorial-freeform')!
     expect(editorial).toMatchObject({ kind: 'deck', format: { id: 'xhs', width: 1080, height: 1440 } })
     expect(editorial.capacity).toBeDefined()

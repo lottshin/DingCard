@@ -23,6 +23,7 @@ import { buildPdf, pdfPageFor } from '../../../src/exportPdf'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import type { FreeformDocument } from '../../../src/freeform/types'
 import { isMarkdownDocument } from '../../../src/drafts'
+import { gridCells, isGridPage } from '../../../src/exportGrid'
 import { createStaticServer } from './staticServer'
 
 const RENDER_TIMEOUT_MS = 120_000
@@ -40,6 +41,8 @@ export interface RenderFile {
   height: number
   /** A long image's pixel ratio, lower than asked for when the pages wouldn't fit one picture. */
   scale?: number
+  /** A grid square's place in its page's nine, 1–9 left to right, top to bottom. */
+  tile?: number
   bytes: number
 }
 
@@ -73,6 +76,8 @@ export interface RenderOptions {
   quality?: number
   /** png / jpeg: every page stacked into one tall picture, <baseName>-long.png, instead of one per page. */
   long?: boolean
+  /** png / jpeg: each square page cut into nine, <baseName>-01-1.png … -01-9.png, instead of one per page. */
+  grid?: boolean
 }
 
 /** Walk up from this module (bundled or source) to the repo root. */
@@ -193,6 +198,8 @@ interface RenderPageSlide {
   height: number
   dataUrl: string
   previewDataUrl: string
+  /** With grid: the page's nine squares in reading order. */
+  tiles?: string[]
 }
 
 interface Rect {
@@ -207,8 +214,12 @@ export interface InspectedSlide {
   slideId: string
   nodes: Array<{ nodeId: string; rect: Rect }>
   texts: Array<{ nodeId: string; overflowY: number; overflowX: number; fitFontSize: number | null; area: Rect | null }>
-  /** Each path's drawing in its own box's pixels (older render builds leave it out). */
-  paths?: Array<{ nodeId: string; bounds: Rect }>
+  /**
+   * Each path's drawing in its own box's pixels, and its paint mask: '1' for
+   * every cell of an even grid over its box (row by row) that it paints
+   * (older render builds leave these out).
+   */
+  paths?: Array<{ nodeId: string; bounds: Rect; mask?: string }>
   /** On a picture background: its average colour behind each text (older builds leave it out). */
   backdrops?: Array<{ nodeId: string; color: string }>
   imageError: string | null
@@ -219,6 +230,7 @@ interface RenderPageOutput {
   scale: number
   quality: number
   long: boolean
+  grid: boolean
 }
 
 type RenderPayload =
@@ -333,6 +345,31 @@ async function writeLongFile(slides: RenderPageSlide[], long: RenderPageLong, op
   }
 }
 
+/** Each page's nine squares as files: <baseName>-01-1.png … -01-9.png, in the order Moments posts them. */
+async function writeGridFiles(rendered: RenderPageSlide[], options: RenderOptions): Promise<RenderFile[]> {
+  const extension = EXTENSIONS[options.format === 'jpeg' ? 'jpeg' : 'png']
+  const scale = options.scale ?? 1
+  const files: RenderFile[] = []
+  for (const [index, slide] of rendered.entries()) {
+    if (!slide.tiles || slide.tiles.length !== 9) throw new Error(`页面 ${slide.slideId} 没有切出九宫格`)
+    const cells = gridCells(Math.round(slide.width * scale), Math.round(slide.height * scale))
+    for (const [tile, dataUrl] of slide.tiles.entries()) {
+      const bytes = dataUrlToBuffer(dataUrl)
+      if (bytes.length === 0) throw new Error(`页面 ${slide.slideId} 第 ${tile + 1} 格渲染出了空文件`)
+      files.push({
+        path: await writeOneFile(options, `-${String(index + 1).padStart(2, '0')}-${tile + 1}.${extension}`, bytes),
+        slideId: slide.slideId,
+        name: slide.name,
+        tile: tile + 1,
+        width: cells[tile].width,
+        height: cells[tile].height,
+        bytes: bytes.length,
+      })
+    }
+  }
+  return files
+}
+
 async function writeResultFiles(
   rendered: Array<RenderPageSlide>,
   order: Array<{ slideId: string; name: string }>,
@@ -426,6 +463,7 @@ async function runRender(
     let files: RenderFile[]
     if (options.format === 'pdf') files = [await writePdfFile(inOrder(rendered, expected), options)]
     else if (options.long && long) files = [await writeLongFile(inOrder(rendered, expected), long, options)]
+    else if (options.grid) files = await writeGridFiles(inOrder(rendered, expected), options)
     else files = await writeResultFiles(rendered, expected, options)
     const previews = rendered.map((slide) => ({
       slideId: slide.slideId,
@@ -457,6 +495,13 @@ export async function renderDocument(
   if (options.long && options.format === 'pdf') {
     return { ok: false, error: 'long（拼成长图）只用于 png / jpeg；PDF 本来就把每页放在同一个文件里' }
   }
+  if (options.grid) {
+    if (options.format === 'pdf' || options.long) return { ok: false, error: 'grid（切成九宫格）只用于 png / jpeg 的逐页图片，不能和 PDF 或长图一起用' }
+    const uneven = selected.filter((slide) => !isGridPage(slide))
+    if (uneven.length > 0) {
+      return { ok: false, error: `九宫格只切正方形的页面：${uneven.map((slide) => `${slide.name}（${slide.width}×${slide.height}）`).join('、')} 不是正方形；用 slideIds 只选正方形的页，或先把页面改成正方形（如 3240×3240）` }
+    }
+  }
   const order = selected.map((slide) => ({ slideId: slide.id, name: slide.name }))
   const output = {
     // A PDF is assembled here from JPEG pages.
@@ -464,6 +509,7 @@ export async function renderDocument(
     scale: options.scale === 2 ? 2 : 1,
     quality: options.quality ?? 0.92,
     long: options.long === true,
+    grid: options.grid === true,
   }
   // Only the pages asked for, so a long image or PDF holds just those.
   const shown: FreeformDocument = { ...document, slides: selected, activeSlideId: selected[0].id }

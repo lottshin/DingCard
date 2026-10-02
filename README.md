@@ -72,7 +72,7 @@
 
 ## 模板中心
 
-Markdown 目前有“编辑档案”“公共剧场”“议题封面”三套四页模板，自由画布有八套三页作品，外加十套单页海报（竖版海报、方图、横版封面、公众号首图和 A4 宣传单），模板中心可以按尺寸筛选。选中后会带着完整内容进入编辑器，可以继续改字、换图和调整样式。
+Markdown 目前有“编辑档案”“公共剧场”“议题封面”三套四页模板，自由画布有八套三页作品，外加十七套单页模板（小红书封面、菜单、价目表、证书、课程表、朋友圈九宫格、竖版海报、方图、横版封面、公众号首图和 A4 宣传单），模板中心可以按尺寸筛选。「元素」面板里有 48 个手绘线条、贴纸和标签，点一下或拖到画布上就能用。选中后会带着完整内容进入编辑器，可以继续改字、换图和调整样式。
 
 模板由社区共建，全部在仓库里维护：做了一套好看的版式，可以按 [贡献模板](docs/templates.md) 提交 Pull Request，合并后所有人都能用。想复用自己的作品，在「我的项目」里把它复制一份再改即可。
 
@@ -87,7 +87,7 @@ npm --prefix mcp ci
 npm run mcp   # 以 stdio 启动 dingcard-mcp
 ```
 
-可用工具包括 `list_templates`（含每套模板的尺寸、是整套还是单页、能放多少内容）、`create_document_from_template`、`create_document_from_content` 与 `create_document_from_outline`（按结构化内容或 Markdown 大纲一次生成整套卡片，模板示例文字全部换成内容）、`create_poster_from_content`（按标题、信息行、按钮、主图等生成一张海报）、`check_document`（按导出的样子排版后列出文字被裁、叠住、对比度低、残留示例文字等问题，可自动缩字号）、`list_icons`（查内置图标，返回可直接插入的图形节点）、`list_styles`（可一键套用的配色和字体组合，配合 `apply_actions` 的 `document/restyle` 给整套卡片换风格）、`list_text_styles`（现成的花字，直接作为文字的样式补丁）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为逐页 PNG / JPG、一个 PDF 或一张长图，附每页缩略图给模型看）、`open_in_editor`（在叮卡编辑器里打开文档，人接着改）、`get_document`和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
+可用工具包括 `list_templates`（含每套模板的尺寸、是整套还是单页、能放多少内容）、`create_document_from_template`、`create_document_from_content` 与 `create_document_from_outline`（按结构化内容或 Markdown 大纲一次生成整套卡片，模板示例文字全部换成内容）、`create_poster_from_content`（按标题、信息行、按钮、主图等生成一张海报，也能生成菜单、价目表、证书和课程表）、`check_document`（按导出的样子排版后列出文字被裁、叠住、对比度低、残留示例文字等问题，可自动缩字号）、`list_icons`（查内置图标，返回可直接插入的图形节点）、`list_decorations` 与 `add_decorations`（手绘线条、贴纸、标签等装饰素材，一次放好几个）、`list_styles`（可一键套用的配色和字体组合，配合 `apply_actions` 的 `document/restyle` 给整套卡片换风格）、`list_text_styles`（现成的花字，直接作为文字的样式补丁）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为逐页 PNG / JPG、一个 PDF、一张长图或九宫格切图，附每页缩略图给模型看）、`open_in_editor`（在叮卡编辑器里打开文档，人接着改）、`get_document`和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
 
 AI 生成的文档也可以一键回到编辑器精修：在工作台「我的项目」点击「导入 JSON」或直接把 `.json` 文件拖进页面，文档会存为项目并在对应的编辑器里打开（自由画布旧版本自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
 

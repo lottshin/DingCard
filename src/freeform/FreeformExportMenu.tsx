@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useDismiss } from '../app/useDismiss'
 import { t } from '../i18n'
-import { ChevronDownIcon, DownloadIcon, LongImageIcon, StackIcon } from '../ui/icons'
+import { ChevronDownIcon, DownloadIcon, GridNineIcon, LongImageIcon, StackIcon } from '../ui/icons'
 import type { FreeformViewPrefs } from './viewPrefs'
 
 type ExportPrefs = Pick<FreeformViewPrefs, 'exportFormat' | 'exportScale' | 'exportQuality'>
@@ -18,6 +18,8 @@ interface FreeformExportMenuProps {
   onExportAll: () => void
   /** Every page stacked into one tall picture (PNG or JPG). */
   onExportLong: () => void
+  /** The current page cut into nine squares for WeChat Moments; only offered for a square page. */
+  onExportGrid?: () => void
 }
 
 const FORMAT_LABELS = { png: 'PNG', jpeg: 'JPG', pdf: 'PDF' } as const
@@ -33,6 +35,7 @@ export function FreeformExportMenu({
   onExportCurrent,
   onExportAll,
   onExportLong,
+  onExportGrid,
 }: FreeformExportMenuProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -155,6 +158,18 @@ export function FreeformExportMenu({
               >
                 <LongImageIcon />
                 {t('拼成一张长图')}
+              </button>
+            )}
+            {prefs.exportFormat !== 'pdf' && onExportGrid && (
+              <button
+                className="ghost"
+                type="button"
+                data-testid="freeform-export-grid"
+                disabled={disabled || exporting}
+                onClick={onExportGrid}
+              >
+                <GridNineIcon />
+                {t('切成九宫格')}
               </button>
             )}
           </div>

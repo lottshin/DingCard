@@ -9,6 +9,7 @@
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
+import { DECORATIONS } from '../../../src/freeform/decorations'
 import { ICONS } from '../../../src/freeform/icons'
 import { deckStyle, type DeckStyle } from './styles'
 import type {
@@ -49,12 +50,30 @@ export interface NodeSummary {
   shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
+  /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
+  decoration?: string
   /** The start of a path's drawing, for paths that aren't built-in icons. */
   d?: string
   children?: NodeSummary[]
 }
 
 const ICON_BY_PATH = new Map(ICONS.map((icon) => [icon.d, icon.id]))
+
+// A decoration's drawings don't change with its colour or words, so they name it.
+const DECORATION_BY_PATH = new Map<string, string>()
+for (const decoration of DECORATIONS) {
+  for (const part of decoration.parts({ color: decoration.color, text: '' })) {
+    if (part.kind === 'path' && !DECORATION_BY_PATH.has(part.d)) DECORATION_BY_PATH.set(part.d, decoration.id)
+  }
+}
+
+/** The decoration a group is: every drawing in it is one of that decoration's parts. */
+function groupDecoration(children: readonly FreeformSceneNode[]): string | undefined {
+  const found = new Set(children.flatMap((child) => (child.type === 'path' ? [DECORATION_BY_PATH.get(child.d) ?? ''] : [])))
+  if (found.size !== 1) return undefined
+  const [id] = found
+  return id || undefined
+}
 
 export interface SlideSummary {
   id: string
@@ -100,7 +119,8 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
     hidden: node.hidden,
   }
   if (node.type === 'group') {
-    return { ...base, children: node.children.map(summarizeNode) }
+    const decoration = groupDecoration(node.children)
+    return { ...base, ...(decoration ? { decoration } : {}), children: node.children.map(summarizeNode) }
   }
   const leaf = { ...base, width: node.width, height: node.height }
   if (node.type === 'text') {
@@ -117,6 +137,8 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
   if (node.type === 'path') {
     const icon = ICON_BY_PATH.get(node.d)
     if (icon) return { ...leaf, icon }
+    const decoration = DECORATION_BY_PATH.get(node.d)
+    if (decoration) return { ...leaf, decoration }
     return { ...leaf, d: node.d.length > 60 ? `${node.d.slice(0, 60)}…` : node.d }
   }
   return leaf

@@ -17,21 +17,23 @@ list_templates → create_document_from_content / create_document_from_outline�
 
 | 工具 | 作用 |
 | --- | --- |
-| `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台），每个带 `kind`（`deck` 一整套卡片 / `poster` 单页海报）和 `format`（页面尺寸：小红书套图 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷，含宽高）。套图模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么；海报模板另有 `posterCapacity`：副标题、正文、按钮、角标、署名、主图位有没有，信息能放几行。按内容和尺寸挑模板。 |
+| `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台），每个带 `kind`（`deck` 一整套卡片 / `poster` 单页海报）和 `format`（页面尺寸：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240，含宽高）。套图模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么；海报模板另有 `posterCapacity`：副标题、正文、获得者（`recipient`）、按钮、角标、署名、主图位有没有，信息能放几行，有没有表格（`table`，最多几行几列）。按内容和尺寸挑模板。 |
 | `create_document_from_template` | 按模板 id 实例化完整文档：自由画布文档保存在服务端，返回 `documentId` 和各页 id、名称；Markdown 返回源文信封。 |
-| `create_poster_from_content` | 按内容生成一张海报（`kind: 'poster'` 的模板）：`{ title, subtitle?, body?, details?: ["时间：…"…], cta?, tag?, brand?, image? }`，尺寸跟模板走（规则见下文「生成海报」）。 |
+| `create_poster_from_content` | 按内容生成一张海报（`kind: 'poster'` 的模板）：`{ title, subtitle?, body?, recipient?, details?: ["时间：…"…], table?: [["节次", "周一"…]…], cta?, tag?, brand?, image? }`，尺寸跟模板走（规则见下文「生成海报」）。 |
 | `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
 | `validate_document` | 严格校验 v17 文档（v1–v16 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时保存在服务端并返回 `documentId`（`includeDocument: true` 时附上规范化后的文档）。 |
-| `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，其他图形给出 `d` 开头），以及整套卡片的 `style`：用到的颜色（按面积排序，附占比 `share` 和用在哪：`background`/`fill`/`text`/`line`/`shadow`）、字体（几段文字用、最大字号）和正文字号 `bodySize`，为编辑提供目标。 |
+| `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，装饰素材标出 `decoration` id（几部分组成的装饰标在组上），其他图形给出 `d` 开头），以及整套卡片的 `style`：用到的颜色（按面积排序，附占比 `share` 和用在哪：`background`/`fill`/`text`/`line`/`shadow`）、字体（几段文字用、最大字号）和正文字号 `bodySize`，为编辑提供目标。 |
 | `list_icons` | 查内置图标（97 个线性图标）：不带参数列出全部图标的 id 和中英文名，`query` 用中文或英文关键词搜，`ids` 按 id 取；带上路径数据 `d`、统一画法 `style` 和一个可以直接插入的完整节点 `example`（见下文「图形与图标」）。 |
+| `list_decorations` | 查内置装饰素材（48 个，和编辑器「元素」面板同一套）：手绘线条、贴纸、标签。不带参数列出全部，`query` 用中英文关键词搜，`category` 只看一类，`ids` 按 id 取；每个带宽高比 `aspect`、本来的 `color`、标签的示例 `text`、能否单独拉伸 `stretches` 和默认宽度（见下文「装饰素材」）。 |
+| `add_decorations` | 把装饰素材放到一页上，一次可以放多个：每项给 `decoration`、`x`、`y`、`width`，可选 `color`、`text`、`rotation`、`below`（垫在某个顶层节点下面）；返回每个的 `nodeId`、`path` 和盒子。 |
 | `list_text_styles` | 列出 16 套现成的花字：每套有 `id`、`name`、适合的底色 `backdrop` 和 `patch`，`patch` 直接作为 `node/update-style` 的补丁就能把文字变成这个样子（见下文「花字与文字效果」）。 |
 | `list_styles` | 列出可一键套到整套卡片上的搭配（一组配色加上相配的字体组合）、配色（底色、文字色、强调色）和字体组合（标题字体、正文字体），配合 `document/restyle` 使用（见下文「整套换风格」）。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效；按 `documentId` 就地更新（`version` 加一）。 |
 | `get_document` | 取回完整文档 JSON，或用 `path` 写成 `.json` 文件（之后可拖进「我的项目」，或用 `documentPath` 传回来）。 |
 | `open_in_editor` | 在浏览器里的叮卡编辑器打开这份文档，存成一个新项目，人接着手改（见下文「在叮卡里打开」）。 |
-| `render_document` | 无头渲染自由画布 v17 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
+| `render_document` | 无头渲染自由画布 v17 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`grid: true`（png / jpeg，只用于正方形页面）把每页切成九宫格 `<baseName>-01-1.png` … `-01-9.png`（`files[i].tile` 是 1–9，从左到右、从上到下，按这个顺序发朋友圈拼回一整张），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 
 工具描述内嵌了 v17 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景、文字效果）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
@@ -56,10 +58,12 @@ list_templates → create_document_from_content / create_document_from_outline�
 
 ## 生成海报
 
-`create_poster_from_content` 把内容填进单页模板（讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单；内容位置写在 `src/templates/slots.ts` 的 `FREEFORM_POSTER_SLOTS`）：
+`create_poster_from_content` 把内容填进单页模板（小红书封面的干货笔记和图片拼贴、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单；内容位置写在 `src/templates/slots.ts` 的 `FREEFORM_POSTER_SLOTS`）：
 
 - `title` 必填，其余可选：`subtitle` 副标题，`body` 一段正文，`details` 信息行（`"时间：10 月 18 日 14:00"`，冒号前放进这一行的标签，没写冒号就整句放进内容、标签去掉），`cta` 按钮文字，`tag` 角标（活动类型、价格、期数），`brand` 主办或落款，`image` 主图（本机路径、http(s) URL 或 data URL，本机路径读进来嵌成 data URL）。
-- 模板里每一块示例文字都会换成内容，没给的连同它的底板、按钮一起删掉；没给 `image` 时，照片位变成一块和版面相配的色块，插画位直接删掉。
+- 模板里每一块示例文字都会换成内容，没给的连同它的底板、按钮一起删掉；没给 `image` 时，照片位变成一块和版面相配的色块，插画位直接删掉（朋友圈九宫格的插画是版面本身，留着）。
+- 菜单、价目表一项写成 `details` 的一行，`"拿铁：28"` 冒号前是名称、后面是价格；比模板行数少时各行在原来的范围里拉开，清单不会下半截空着。证书上的姓名放 `recipient`。课程表放 `table`：第一行是表头（`["节次", "周一", …]`），之后每行第一格是节次（可以写两行，如 `"第 1 节\n8:00"`），表格按给的行数列数重画、铺满原来的位置，同一个科目同一种颜色，最多 12 行 8 列，画不下的格子列在 `summary.unplaced`。
+- 标题比模板示例少几行时，标题下面的内容一起往上移，不在标题下面留一块空。
 - 文字放不下时缩小字号（最小 72%），列在 `summary.shrunk`，还放不下的在 `summary.overflowing`；信息行比模板多出来的列在 `summary.unplaced`，模板没有位置的字段列在 `summary.unused`。两三行的标题断得一样长。
 - 套图模板传给它会提示改用 `create_document_from_content`，反过来也一样。
 
@@ -100,9 +104,9 @@ list_templates → create_document_from_content / create_document_from_outline�
 | --- | --- |
 | `text-overflow` | 字被文本框裁掉了笔画，附 `fitFontSize`（实测不再裁字的最大字号）。只看字形本身：行高超出文本框、但笔画都还在框里的不算。 |
 | `text-overlap` | 两段文字叠在一起。 |
-| `covered-text` | 文字被上层不透明的色块或图片挡住三成以上。 |
+| `covered-text` | 文字被上层不透明的色块或图片挡住三成以上。图形按它真正画到的地方算（渲染时在图形的框上取 32×32 个点，看哪些落在填充或描边上）：圈住文字的手绘圈只有圈边压到字，不算挡住；正片叠底的荧光笔也不算。图形本身旋转了时按它的框算。 |
 | `off-page` | 文字跑出页面。 |
-| `low-contrast` | 纯色文字和身后的纯色底板、页面背景或背景图（取文字身后那块图片的平均颜色）对比度低于 4.5:1（48 号以上或 40 号以上粗体放宽到 3:1）；高亮片段的字色和它的高亮色之间同样按这个标准算。 |
+| `low-contrast` | 纯色文字和身后的纯色底板、页面背景或背景图（取文字身后那块图片的平均颜色）对比度低于 4.5:1（48 号以上或 40 号以上粗体放宽到 3:1）；高亮片段的字色和它的高亮色之间同样按这个标准算。圈在环形图形里的字和页面比，不和圈的颜色比。 |
 | `sample-text` | 还是模板里的示例文字。 |
 | `empty-text` | 空文本框。 |
 | `image-failed` | 这一页有图片没加载出来。 |
@@ -122,6 +126,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
 | `dingcard://examples/freeform` | 完整自由画布 v17 文档示例（编辑部模板实例）。 |
 | `dingcard://icons` | 内置图标全集：每个图标的 id、中英文名、关键词与 24×24 路径数据 `d`。 |
+| `dingcard://decorations` | 内置装饰素材全集（与 `list_decorations` 不带参数时相同）。 |
 | `dingcard://examples/markdown` | 完整 Markdown 文档信封示例（编辑档案模板实例）。 |
 
 ## 图形与图标
@@ -146,6 +151,27 @@ list_templates → create_document_from_content / create_document_from_outline�
 ```
 
 图标是 [Lucide](https://lucide.dev) 的线性图标（ISC 许可，来自 Feather 的部分为 MIT 许可），每个合并成一条路径，存放在 `src/freeform/iconLibrary.ts`，由 `scripts/icons/build-icon-library.mjs` 生成。
+
+## 装饰素材
+
+手绘圈、下划线、箭头、贴纸、标签这些不用自己写 `d`：`list_decorations` 查到 id，`add_decorations` 一次放好。
+
+```json
+{
+  "documentId": "…",
+  "items": [
+    { "decoration": "circle-scribble", "x": 70, "y": 230, "width": 520 },
+    { "decoration": "marker-band", "x": 80, "y": 600, "width": 640, "below": "标题" },
+    { "decoration": "burst-badge", "x": 820, "y": 90, "width": 200, "text": "限时", "rotation": 8 },
+    { "decoration": "sparkles", "x": 900, "y": 1220, "width": 120, "color": "#ffb000" }
+  ]
+}
+```
+
+- 盒子就是画出来的范围：`x`、`y` 是左上角，`width` 是宽，高度按 `aspect` 算；`stretches` 为 `true` 的单笔画（下划线、波浪线、荧光笔等）可以用 `height` 拉伸。不给 `width` 就按页面短边的默认比例。
+- `color` 换掉装饰本来的主色：手绘线条和贴纸整体换色，标签换底色、字自动取白或黑（大字白字要有 3:1 的对比度）。`text` 换标签上的字，给不是标签的装饰会在 `notes` 里说没用上。
+- 默认放在最上层；`below` 填同一页一个顶层节点的 id 或图层名，就放在它下面一层（荧光笔、胶带垫在字下面）。荧光笔是正片叠底，压在字上也看得清，`check_document` 不算它挡住文字。
+- 一笔画成的放进去是一个 `path` 节点，由几部分组成的（多色贴纸、带字的标签）是一个组，组里的字是 `文本` 图层，用 `inspect_document` 找到路径后可以用 `node/update-content` 改。放完用 `check_document` 看有没有压住文字、对比度够不够。
 
 ## 强调词与背景图
 

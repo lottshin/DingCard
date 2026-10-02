@@ -112,13 +112,14 @@ describe('restyleDocument', () => {
             if (node.type !== 'text' || node.textFill.type !== 'solid' || (node.opacity ?? 1) < 0.7) return
             const centre = { x: node.x + node.width / 2, y: node.y + node.height / 2 }
             const under = nodes.slice(0, index).reverse().find((candidate: FreeformSceneNode) => (
-              (candidate.type === 'shape' || candidate.type === 'image') && !candidate.hidden && (candidate.opacity ?? 1) >= 0.7
+              (candidate.type === 'shape' || candidate.type === 'image' || (candidate.type === 'path' && candidate.fill.type !== 'transparent'))
+              && !candidate.hidden && (candidate.opacity ?? 1) >= 0.7
               && centre.x >= candidate.x && centre.x <= candidate.x + candidate.width
               && centre.y >= candidate.y && centre.y <= candidate.y + candidate.height
             ))
             // Words on their own label read against the label.
             const label = node.effect?.type === 'background' ? { type: 'solid' as const, color: node.effect.color } : null
-            const fill = label ?? (under?.type === 'shape' ? under.fill : under ? null : slide.background)
+            const fill = label ?? (under?.type === 'shape' || under?.type === 'path' ? under.fill : under ? null : slide.background)
             if (!fill || fill.type !== 'solid') return
             const needed = node.fontSize >= 48 || (node.fontWeight === 'bold' && node.fontSize >= 40) ? 3 : 4.5
             expect(

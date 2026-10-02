@@ -14,6 +14,7 @@ import { composeDeck } from './core/compose'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
 import { DocumentStore, resolveDocumentInput, writeDocumentFile, type DocumentInput, type StoredDocument } from './core/documents'
 import { embedLocalImages } from './core/localImages'
+import { listDecorations, placeDecorations } from './core/decorations'
 import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
 import { composePoster } from './core/poster'
@@ -81,7 +82,7 @@ ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle 
 - line：+ width, height, lineKind('line'|'arrow'), stroke, strokeWidth, dash?(1–500 px 虚线长度，缺省实线), cap?('round'|'butt'|'square' 线帽，缺省圆头), startCap?/endCap?('none'|'arrow'|'dot' 端点装饰，仅 v13；缺省时终点装饰跟随 lineKind：'arrow' 即箭头、'line' 即无), points?([{ x, y }×2–64] 多段线顶点，仅 v14；坐标为节点盒内局部坐标，0≤x≤width、0≤y≤height，首末点即线段两端并承载端点装饰；盒子即顶点包围盒（建议留出描边宽度余量），node/update-geometry 改 width/height 时顶点按比例缩放), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
   线段几何：节点是「盒内水平线段」绕盒中心旋转。要画 A→B 的线段：L=|AB|，rotation=atan2(By-Ay, Bx-Ax)（度），width=L+2×strokeWidth，height=任意小正值（如 strokeWidth×2.2），x=(Ax+Bx)/2-width/2，y=(Ay+By)/2-height/2——圆头端点恰落在 A 与 B。要画折线/多段线：先算全部顶点的包围盒并加上描边余量得到节点盒（x,y,width,height），points 用相对盒左上角的局部坐标逐点列出。
 - path：+ width, height, d(SVG 路径数据，仅 v15；M/L/H/V/C/S/Q/T/A/Z 及小写相对命令，必须以 M/m 开头，最长 20000 字符), viewBox({ x, y, width(>0), height(>0) }：d 所在的坐标系，渲染时拉伸铺满节点盒), fill(ColorPaint 或 { type: 'transparent' } 不填充；不支持图片填充), stroke(#RRGGBB), strokeWidth(0–10000，viewBox 单位，随图形缩放；0 即不描边), dash?(>0 的 viewBox 单位虚线长度，缺省实线), cap?('round'|'butt'|'square'，缺省圆头), join?('round'|'miter'|'bevel' 拐角，缺省圆滑), fillRule?('nonzero'|'evenodd'，缺省 nonzero), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
-  图形用法：图标、徽章、对话气泡、波浪分隔线、曲线箭头、折线图等任意矢量图。viewBox 要正好包住 d 用到的坐标（画到框外时 check_document 报 path-overflow）；节点盒与 viewBox 宽高比相同则不变形，不同则图形随盒子拉伸，描边粗细仍保持均匀。内置图标用 list_icons 查：viewBox 0 0 24 24、strokeWidth 2、fill { type: 'transparent' }、圆头圆角，盒子取正方形（如 96×96）即可，换色只改 stroke。
+  图形用法：图标、徽章、对话气泡、波浪分隔线、曲线箭头、折线图等任意矢量图。viewBox 要正好包住 d 用到的坐标（画到框外时 check_document 报 path-overflow）；节点盒与 viewBox 宽高比相同则不变形，不同则图形随盒子拉伸，描边粗细仍保持均匀。内置图标用 list_icons 查：viewBox 0 0 24 24、strokeWidth 2、fill { type: 'transparent' }、圆头圆角，盒子取正方形（如 96×96）即可，换色只改 stroke。手绘圈、下划线、箭头、贴纸、标签等装饰用 list_decorations 查、add_decorations 一次放好，不必手写 d。
 - group：+ children（非空节点数组；组没有 width/height）
 全文档节点 id 必须唯一。`
 
@@ -149,7 +150,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：海报、封面、卡片、宣传单，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书套图 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、按钮、角标、署名、主图位，能放几行信息（details）。按内容和尺寸挑模板。先用它拿到 templateId。',
+    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）。按内容和尺寸挑模板。先用它拿到 templateId。',
     {},
     async () => jsonResult({ templates: listTemplates() }),
   )
@@ -207,14 +208,16 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_poster_from_content',
-    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉。超出模板行数的信息列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。',
+    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色。超出模板行数的信息、画不下的表格格子列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。',
     {
       templateId: z.string().describe('list_templates 里 kind 为 poster 的模板 id，如 "talk-poster-freeform"'),
       content: z.object({
         title: z.string().describe('海报标题；两行时可以自己写换行'),
         subtitle: z.string().optional().describe('副标题或一句导语'),
         body: z.string().optional().describe('一段正文（模板有正文位时）'),
-        details: z.array(z.string()).optional().describe('信息行，一条一行，如 "时间：10 月 18 日 14:00"、"地点：…"，冒号前是标签'),
+        recipient: z.string().optional().describe('证书上的姓名（模板有获得者位时）'),
+        details: z.array(z.string()).optional().describe('信息行，一条一行，如 "时间：10 月 18 日 14:00"、"地点：…"，冒号前是标签；菜单、价目表写 "拿铁：28"'),
+        table: z.array(z.array(z.string())).optional().describe('表格（课程表）：第一行是表头，如 ["节次", "周一", …]，之后每行第一格是节次，如 ["第 1 节\\n8:00", "语文", …]'),
         cta: z.string().optional().describe('按钮文字，如 "扫码报名"'),
         tag: z.string().optional().describe('角标：活动类型、价格、期数等短词'),
         brand: z.string().optional().describe('主办方、品牌或落款'),
@@ -266,6 +269,46 @@ export function createDingcardServer(): McpServer {
   )
 
   server.tool(
+    'list_decorations',
+    '查内置装饰素材（和编辑器「元素」面板同一套）：手绘线条（手绘圈、手绘下划线、波浪线、弧形/绕圈箭头、强调线、手绘对勾/叉、荧光笔、取景框等）、贴纸（闪光、星星、爱心、小花、太阳、云朵、对话气泡、皇冠、奖章、火苗、闪电、笑脸、彩虹、气球、礼物、胶带、回形针、点阵等）和标签（胶囊标签、描边标签、爆炸贴、价签、飘带、分节标题、印章、序号、对话框、便利贴、吊牌、票券，字可以换）。不带参数返回全部；query 用中文或英文关键词搜索，category 只看一类（hand-drawn | sticker | label），ids 按 id 取。每项有 aspect（宽高比）、本来的 color、标签的示例 text、stretches（能否单独拉伸高度）和 defaultWidth。用 add_decorations 放到页面上。',
+    {
+      query: z.string().optional().describe('中文或英文关键词，空格分隔的多个词需同时命中，如 "圈"、"underline"、"促销"'),
+      category: z.enum(['hand-drawn', 'sticker', 'label']).optional().describe('只看一类：hand-drawn 手绘线条、sticker 贴纸、label 标签'),
+      ids: z.array(z.string()).optional().describe('装饰 id 列表，如 ["circle-scribble", "sparkles"]'),
+    },
+    async ({ query, category, ids }) => jsonResult(listDecorations({ query, category, ids })),
+  )
+
+  server.tool(
+    'add_decorations',
+    '把装饰素材放到一页上（一次可放多个，按顺序叠放；list_decorations 查 id）：每项给 decoration、x、y（盒子左上角的页面坐标）、width（不给按页面短边的默认比例），高度按装饰的宽高比算。color（#RRGGBB）换掉装饰本来的主色（手绘线条和贴纸换整体颜色，标签换底色，字色自动取黑或白）；text 换标签上的字；rotation 旋转（度）；below 填同页一个顶层节点的 id 或图层名，装饰就放在它下面一层（荧光笔、胶带、色块垫在文字下面时用），不给则放在最上层。用 documentId 时就地更新这份文档，返回每个装饰的 nodeId、path 和盒子；之后可以用 apply_actions 改，用 check_document 检查有没有压住文字。',
+    {
+      ...documentInput,
+      slideId: z.string().optional().describe('放在哪一页，默认文档当前页（activeSlideId）'),
+      items: z.array(z.object({
+        decoration: z.string().describe('list_decorations 返回的装饰 id'),
+        x: z.number().describe('盒子左边，页面坐标'),
+        y: z.number().describe('盒子上边，页面坐标'),
+        width: z.number().positive().optional().describe('盒子宽度（px）；不给按默认比例'),
+        height: z.number().positive().optional().describe('只对 stretches 为 true 的单笔画有效：拉伸到这个高度'),
+        color: z.string().optional().describe('主色 #RRGGBB'),
+        text: z.string().optional().describe('标签上的字'),
+        rotation: z.number().optional().describe('旋转角度（度，顺时针）'),
+        below: z.string().optional().describe('放在这个顶层节点（id 或图层名）下面一层'),
+      })).min(1).describe('要放的装饰，按顺序叠放'),
+      includeDocument,
+    },
+    async ({ slideId, items, includeDocument: withDocument, ...input }) => {
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      const placed = placeDecorations(resolved.document, slideId, items)
+      if (!placed.ok) return jsonResult(placed)
+      const { document, ...rest } = placed
+      return jsonResult({ ...rest, ...handleOf(keep(document, resolved.documentId), withDocument) })
+    },
+  )
+
+  server.tool(
     'list_styles',
     '列出可一键套到整套卡片上的搭配（looks：id、name 和它的 palette、fontSet，两个一起套就是这套搭配）、配色（palettes：id、name、底色 background、文字色 text、强调色 accents）和字体组合（fontSets：id、name、标题字体 heading、正文字体 body），用 apply_actions 的 { type: "document/restyle", palette, fontSet } 套用；headingScale 是用标题字体的字号门槛（正文字号的倍数）。要换成指定的颜色或字体，用 document/restyle 的 colors / fonts，键取自 inspect_document 的 style。',
     {},
@@ -293,7 +336,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'inspect_document',
-    `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要），以及整套卡片的 style：用到的颜色（按占的面积排序，附 share 和用在 background/fill/text/line/shadow 哪些地方）、字体（texts 用了几段文字、largest 最大字号）和正文字号 bodySize。改文档前先 inspect，拿到节点 id / 路径再发动作。${DOCUMENT_SCHEMA_HINT}`,
+    `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要；内置图标标出 icon id，装饰素材标出 decoration id，组成装饰的组也标在组上），以及整套卡片的 style：用到的颜色（按占的面积排序，附 share 和用在 background/fill/text/line/shadow 哪些地方）、字体（texts 用了几段文字、largest 最大字号）和正文字号 bodySize。改文档前先 inspect，拿到节点 id / 路径再发动作。${DOCUMENT_SCHEMA_HINT}`,
     documentInput,
     async (input) => {
       const resolved = await documentFor(input)
@@ -344,7 +387,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v17 文档（v1–v16 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
+    `把自由画布 v17 文档（v1–v16 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
       ...documentInput,
       outputDir: z.string().describe('输出目录（不存在会创建）'),
@@ -354,12 +397,13 @@ export function createDingcardServer(): McpServer {
       scale: z.union([z.literal(1), z.literal(2)]).optional().describe('像素倍率，默认 1'),
       quality: z.number().min(0.5).max(1).optional().describe('jpeg 和 pdf 的 JPEG 质量，默认 0.92'),
       long: z.boolean().optional().describe('png / jpeg：所有页拼成一张长图，代替逐页文件'),
+      grid: z.boolean().optional().describe('png / jpeg：每个正方形页面切成九宫格（九个文件），代替逐页文件'),
       previews: z.boolean().optional().describe('是否附上缩略图，默认 true'),
     },
-    async ({ outputDir, baseName, slideIds, format, scale, quality, long, previews, ...input }) => {
+    async ({ outputDir, baseName, slideIds, format, scale, quality, long, grid, previews, ...input }) => {
       const resolved = await documentFor(input)
       if (!resolved.ok) return jsonResult(resolved)
-      return renderResult(await renderDocument(resolved.document, { outputDir, baseName, slideIds, format, scale, quality, long }), previews !== false)
+      return renderResult(await renderDocument(resolved.document, { outputDir, baseName, slideIds, format, scale, quality, long, grid }), previews !== false)
     },
   )
 
@@ -455,6 +499,18 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
         uri: uri.href,
         mimeType: 'application/json',
         text: JSON.stringify(iconCatalogue(), null, 2),
+      }],
+    }),
+  )
+  server.registerResource(
+    'decorations',
+    'dingcard://decorations',
+    { description: '内置装饰素材全集（手绘线条、贴纸、标签：id、中英文名、分类、宽高比、主色、示例文字）', mimeType: 'application/json' },
+    async (uri: URL) => ({
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify(listDecorations(), null, 2),
       }],
     }),
   )

@@ -32,12 +32,14 @@ describe('layer tree presentation', () => {
 describe('layer labels', () => {
   afterEach(() => setLang('zh'))
 
-  it('shows default and icon layer names in the interface language', () => {
+  it('shows default, icon and decoration layer names in the interface language', () => {
     expect(layerLabel('图形')).toBe('图形')
     expect(layerLabel('对勾')).toBe('对勾')
+    expect(layerLabel('手绘圈')).toBe('手绘圈')
     setLang('en')
     expect(layerLabel('图形')).toBe('Graphic')
     expect(layerLabel('对勾')).toBe('Check')
+    expect(layerLabel('手绘圈')).toBe('Scribble circle')
     expect(layerLabel('我的图层')).toBe('我的图层')
   })
 })

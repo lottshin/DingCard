@@ -8,6 +8,7 @@ import type { Asset } from '../assets'
 import { Select } from '../Select'
 import { importDraftFromJson, type Draft } from '../drafts'
 import { createLongImage, longImageScale } from '../exportLongImage'
+import { isGridPage, sliceIntoGrid } from '../exportGrid'
 import { buildPdf, pdfPageFor, type PdfPage } from '../exportPdf'
 import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
@@ -55,8 +56,9 @@ import {
   createTextElement,
   freeformReducer,
 } from './document'
-import { ICON_STROKE_WIDTH, ICON_VIEWBOX, type IconDefinition } from './icons'
-import { FreeformIconPicker } from './FreeformIconPicker'
+import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
+import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
+import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
 import { FreeformStylePanel } from './FreeformStylePanel'
 import { fontLabel, fontOptions, fontPickerValue, IMPORT_FONT_OPTION } from './fontChoices'
 import { FONT_FILE_ACCEPT, importedFontStack } from './fontFiles'
@@ -309,19 +311,6 @@ const LINE_ENDPOINT_CAPS: Array<{ id: LineEndpointCap; label: string }> = [
 const LINE_ENDPOINT_SIDES: Array<{ id: 'start' | 'end'; label: string }> = [
   { id: 'start', label: '起点' },
   { id: 'end', label: '终点' },
-]
-
-const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }> = [
-  { id: 'rect', label: '矩形' },
-  { id: 'ellipse', label: '圆形' },
-  { id: 'triangle', label: '三角形' },
-  { id: 'star', label: '五角星' },
-  { id: 'hexagon', label: '六边形' },
-]
-
-const LINES: Array<{ id: FreeformLineElement['lineKind']; label: string }> = [
-  { id: 'line', label: '直线' },
-  { id: 'arrow', label: '箭头' },
 ]
 
 type ToolDrawer = 'templates' | 'styles' | 'text' | 'images' | 'elements'
@@ -741,9 +730,12 @@ function matrixAroundPoint(matrix: Matrix2D, point: { x: number; y: number }): M
   return multiply(translation(point.x, point.y), multiply(matrix, translation(-point.x, -point.y)))
 }
 
+/** A box to place: an element, or the box a decoration is drawn into. */
+type PlacedBox = { x: number; y: number; width: number; height: number }
+
 /** A new element's spot: centred in the page (stepped clear of one already
  *  there) or in the open group. */
-function placeNewElementInScope<T extends FreeformElement>(
+function placeNewElementInScope<T extends PlacedBox>(
   element: T,
   slide: FreeformSlide,
   parentPath: ScenePath,
@@ -752,7 +744,7 @@ function placeNewElementInScope<T extends FreeformElement>(
   return parentPath.length === 0 ? staggerNewElement(centred, slide.nodes, slide) : centred
 }
 
-function centerNewElementInScope<T extends FreeformElement>(
+function centerNewElementInScope<T extends PlacedBox>(
   element: T,
   nodes: readonly FreeformSceneNode[],
   parentPath: ScenePath,
@@ -1162,9 +1154,9 @@ export function FreeformWorkspace({
   const [galleryTemplateId, setGalleryTemplateId] = useState<string | undefined>(undefined)
   /** The insert panel docked beside the tool rail; one at a time. */
   const [toolDrawer, setToolDrawer] = useState<ToolDrawer | null>(null)
-  // The icon picker gets one stable handler, so editor renders skip its grid.
-  const addIconRef = useRef<(icon: IconDefinition) => void>(() => undefined)
-  const pickIcon = useCallback((icon: IconDefinition) => addIconRef.current(icon), [])
+  // The Elements panel gets one stable handler, so editor renders skip its grids.
+  const addElementRef = useRef<(pick: ElementPick) => void>(() => undefined)
+  const pickElement = useCallback((pick: ElementPick) => addElementRef.current(pick), [])
   const [panelTab, setPanelTab] = useState<FreeformRightPanelTab>('properties')
   const [textSelection, setTextSelection] = useState<{
     path: ScenePath
@@ -2955,10 +2947,23 @@ export function FreeformWorkspace({
     })
   }
 
-  function insertNewElement(element: FreeformElement): boolean {
-    if (blockDocumentMutationDuringInteraction()) return false
-    const parentPath = [...activeGroupPath]
-    const node = placeNewElementInScope(element, activeSlide, parentPath)
+  /**
+   * Where a new box goes: centred on `placeAt` (a drop on the page), else in
+   * the middle of the page or open group, clear of anything already there.
+   */
+  function placeNewBox<T extends PlacedBox>(box: T, placeAt: { x: number; y: number } | undefined, parentPath: ScenePath): T {
+    if (placeAt && parentPath.length === 0) {
+      return {
+        ...box,
+        x: Math.round(Math.max(0, Math.min(placeAt.x - box.width / 2, activeSlide.width - box.width))),
+        y: Math.round(Math.max(0, Math.min(placeAt.y - box.height / 2, activeSlide.height - box.height))),
+      }
+    }
+    return placeNewElementInScope(box, activeSlide, parentPath)
+  }
+
+  /** Put a new node into the open page or group and select it, or say why it can't go in. */
+  function insertSceneNode(node: FreeformSceneNode, parentPath: ScenePath): boolean {
     const changed = applyAction({
       type: 'node/insert-children',
       slideId: activeSlide.id,
@@ -2975,6 +2980,12 @@ export function FreeformWorkspace({
       setOperationNotice(sceneStructureFailureMessage('insert', 'invalid-selection'))
     }
     return false
+  }
+
+  function insertNewElement(element: FreeformElement, placeAt?: { x: number; y: number }): boolean {
+    if (blockDocumentMutationDuringInteraction()) return false
+    const parentPath = [...activeGroupPath]
+    return insertSceneNode(placeNewBox(element, placeAt, parentPath), parentPath)
   }
 
   function addTextPreset(preset: TextPresetId, look?: TextStylePreset) {
@@ -3015,24 +3026,49 @@ export function FreeformWorkspace({
     if (!changed && (effectiveLockedSelection || lockedDescendantSelection)) showLockedOperationNotice()
   }
 
-  function addShape(shape: FreeformShapeElement['shape']) {
-    insertNewElement(createShapeElement(activeSlide, shape))
+  function addShape(shape: FreeformShapeElement['shape'], placeAt?: { x: number; y: number }) {
+    insertNewElement(createShapeElement(activeSlide, shape), placeAt)
   }
 
-  function addLine(lineKind: FreeformLineElement['lineKind']) {
-    insertNewElement(createLineElement(activeSlide, lineKind))
+  function addLine(lineKind: FreeformLineElement['lineKind'], placeAt?: { x: number; y: number }) {
+    insertNewElement(createLineElement(activeSlide, lineKind), placeAt)
   }
 
-  function addIcon(icon: IconDefinition) {
+  function addIcon(icon: IconDefinition, placeAt?: { x: number; y: number }) {
     insertNewElement(createPathElement(activeSlide, {
       name: icon.zh,
       d: icon.d,
       viewBox: ICON_VIEWBOX,
       size: Math.max(48, Math.round(Math.min(activeSlide.width, activeSlide.height) * 0.15)),
       strokeWidth: ICON_STROKE_WIDTH,
-    }))
+    }), placeAt)
   }
-  addIconRef.current = addIcon
+
+  /** A hand-drawn line, sticker or label, sized to the page; labels come with words in the interface language. */
+  function addDecoration(decoration: DecorationDefinition, placeAt?: { x: number; y: number }) {
+    if (blockDocumentMutationDuringInteraction()) return
+    const parentPath = [...activeGroupPath]
+    const size = decorationSize(decoration, activeSlide)
+    const box = placeNewBox({
+      x: Math.round((activeSlide.width - size.width) / 2),
+      y: Math.round((activeSlide.height - size.height) / 2),
+      ...size,
+    }, placeAt, parentPath)
+    insertSceneNode(createDecorationNode(decoration, { ...box, language: getLang() === 'en' ? 'en' : 'zh' }), parentPath)
+  }
+
+  function addElement(pick: ElementPick, placeAt?: { x: number; y: number }) {
+    if (pick.kind === 'shape') addShape(pick.id, placeAt)
+    else if (pick.kind === 'line') addLine(pick.id, placeAt)
+    else if (pick.kind === 'icon') {
+      const icon = iconById(pick.id)
+      if (icon) addIcon(icon, placeAt)
+    } else {
+      const decoration = decorationById(pick.id)
+      if (decoration) addDecoration(decoration, placeAt)
+    }
+  }
+  addElementRef.current = addElement
 
   async function insertImageElement(
     loadSource: () => Promise<string>,
@@ -3093,9 +3129,14 @@ export function FreeformWorkspace({
     return Array.from(event.dataTransfer.types).includes('Files')
   }
 
-  // Picture files dragged in from the desktop land where they are dropped.
-  // Every file drag is claimed, so a stray drop never opens the file in the tab.
+  // Picture files dragged in from the desktop land where they are dropped, and
+  // so do tiles dragged from the Elements panel. Every file drag is claimed, so
+  // a stray drop never opens the file in the tab.
   function onStageFileDragEnter(event: React.DragEvent<HTMLDivElement>) {
+    if (carriesElement(event.dataTransfer)) {
+      event.preventDefault()
+      return
+    }
     if (!carriesFiles(event)) return
     event.preventDefault()
     fileDragDepthRef.current += 1
@@ -3103,7 +3144,7 @@ export function FreeformWorkspace({
   }
 
   function onStageFileDragOver(event: React.DragEvent<HTMLDivElement>) {
-    if (!carriesFiles(event)) return
+    if (!carriesElement(event.dataTransfer) && !carriesFiles(event)) return
     event.preventDefault()
     event.dataTransfer.dropEffect = framingSessionRef.current || imageCropSessionRef.current ? 'none' : 'copy'
   }
@@ -3115,6 +3156,17 @@ export function FreeformWorkspace({
   }
 
   function onStageFileDrop(event: React.DragEvent<HTMLDivElement>) {
+    if (carriesElement(event.dataTransfer)) {
+      event.preventDefault()
+      if (framingSessionRef.current || imageCropSessionRef.current) return
+      const pick = droppedElement(event.dataTransfer)
+      const point = rawArtboardPointFromClient(event.clientX, event.clientY)
+      const onPage = point !== null
+        && point.x >= 0 && point.y >= 0
+        && point.x <= activeSlide.width && point.y <= activeSlide.height
+      if (pick) addElement(pick, onPage ? point : undefined)
+      return
+    }
     if (!carriesFiles(event)) return
     event.preventDefault()
     fileDragDepthRef.current = 0
@@ -5488,6 +5540,32 @@ export function FreeformWorkspace({
     }
   }
 
+  /** The current square page cut into nine pictures, zipped in the order WeChat Moments posts them. */
+  async function exportGridSlices() {
+    if (renderScale === null || !isGridPage(activeSlide)) return
+    if (blockDocumentMutationDuringInteraction()) return
+    setExporting(true)
+    try {
+      setSelection([])
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      const fontCSS = await freeformFontEmbedOnce([activeSlide])
+      const jpeg = viewPrefs.exportFormat === 'jpeg'
+      const canvas = await renderSlideCanvas(activeSlide, fontCSS, viewPrefs.exportScale, jpeg)
+      if (!canvas) return
+      const entries: Array<{ name: string; blob: Blob }> = []
+      for (const [index, tile] of sliceIntoGrid(canvas).entries()) {
+        const blob = jpeg ? await canvasBlob(tile, 'image/jpeg', viewPrefs.exportQuality) : await canvasBlob(tile, 'image/png')
+        if (!blob) throw new Error(t('九宫格导出失败，请稍后重试'))
+        entries.push({ name: `grid-${index + 1}.${jpeg ? 'jpg' : 'png'}`, blob })
+      }
+      await downloadZip(entries, `freeform-grid-${new Date().toISOString().slice(0, 10)}.zip`)
+    } catch (error) {
+      showOperationError(error, t('九宫格导出失败，请稍后重试'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   function requestExportAllSlides() {
     if (renderScale === null) return
     if (blockDocumentMutationDuringInteraction()) return
@@ -5958,6 +6036,7 @@ export function FreeformWorkspace({
               onExportCurrent={() => void exportCurrentSlide()}
               onExportAll={requestExportAllSlides}
               onExportLong={() => void exportLongImage()}
+              onExportGrid={isGridPage(activeSlide) ? () => void exportGridSlices() : undefined}
             />
           )}
         />
@@ -6131,7 +6210,7 @@ export function FreeformWorkspace({
                         </Measured>
                         <span className="freeform-template-tile-title">{t(template.title)}</span>
                         <span className="freeform-template-tile-meta">
-                          {template.kind === 'poster' ? format.ratio : t('{n} 页', { n: template.pageCount })}
+                          {template.kind === 'poster' ? t(format.ratio) : t('{n} 页', { n: template.pageCount })}
                         </span>
                       </button>
                     ))}
@@ -6246,38 +6325,7 @@ export function FreeformWorkspace({
                 <CloseIcon />
               </button>
             </div>
-            <div className="freeform-drawer-section">{t('形状')}</div>
-            <div className="freeform-element-tiles" role="group" aria-label={t('形状')}>
-              {SHAPES.map((shape) => (
-                <button
-                  key={shape.id}
-                  type="button"
-                  className="freeform-element-tile"
-                  data-testid={`insert-shape-${shape.id}`}
-                  onClick={() => addShape(shape.id)}
-                >
-                  <ShapePreviewIcon shape={shape.id} />
-                  <span>{t(shape.label)}</span>
-                </button>
-              ))}
-            </div>
-            <div className="freeform-drawer-section">{t('线条')}</div>
-            <div className="freeform-element-tiles" role="group" aria-label={t('线条')}>
-              {LINES.map((line) => (
-                <button
-                  key={line.id}
-                  type="button"
-                  className="freeform-element-tile"
-                  data-testid={`insert-line-${line.id}`}
-                  onClick={() => addLine(line.id)}
-                >
-                  <ShapePreviewIcon shape={line.id} />
-                  <span>{t(line.label)}</span>
-                </button>
-              ))}
-            </div>
-            <div className="freeform-drawer-section">{t('图标')}</div>
-            <FreeformIconPicker onPick={pickIcon} />
+            <FreeformElementsPanel onPick={pickElement} />
           </aside>
         )}
 

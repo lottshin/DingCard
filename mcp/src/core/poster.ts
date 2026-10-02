@@ -8,16 +8,21 @@ import { createDefaultImageFraming } from '../../../src/freeform/imageFraming'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import type { FreeformDocument, FreeformSceneNode, FreeformTextElement } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
-import { FREEFORM_POSTER_SLOTS, type SlotItem } from '../../../src/templates/slots'
+import { FREEFORM_POSTER_SLOTS, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
+import { tableNodes, tableShape } from '../../../src/templates/tables'
 import type { FreeformPosterSeriesId } from '../../../src/templates/types'
-import { balancedHeading, fittingFontSize, MIN_FIT_SCALE, textFits } from './textFit'
+import { balancedHeading, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
 
 export interface PosterContent {
   title: string
   subtitle?: string
   body?: string
+  /** Who it is for: the name on a certificate. */
+  recipient?: string
   /** Information lines; "标签：内容" puts the part before the colon in the line's label. */
   details?: string[]
+  /** A table's rows (a timetable): the first row is the column headings, each row's first cell its label. */
+  table?: string[][]
   cta?: string
   tag?: string
   brand?: string
@@ -37,7 +42,7 @@ export interface PosterSuccess {
     shrunk: Array<{ node: string; from: number; to: number }>
     /** Copy that still doesn't fit at the smallest size: shorten it. */
     overflowing: Array<{ node: string; text: string }>
-    /** Information lines beyond the rows the template has. */
+    /** Information lines beyond the rows the template has, and table cells beyond the rows and columns it can draw. */
     unplaced: string[]
     /** Content the template has no place for. */
     unused: Array<keyof PosterContent>
@@ -63,12 +68,19 @@ export function normalizePosterContent(value: unknown): PosterContent | string {
   if (!title) return 'content.title（海报标题）不能为空'
   if (record.details !== undefined && !Array.isArray(record.details)) return 'content.details 需要是字符串数组'
   const details = Array.isArray(record.details) ? record.details.map(clean).filter((line) => line.length > 0) : []
+  if (record.table !== undefined && (!Array.isArray(record.table) || !record.table.every((row) => Array.isArray(row)))) {
+    return 'content.table 需要是二维字符串数组：[["节次", "周一", …], ["第 1 节", "语文", …], …]'
+  }
+  const table = Array.isArray(record.table) ? (record.table as unknown[][]).map((row) => row.map(clean)) : []
+  // Rows with nothing in them at the end are not rows.
+  while (table.length > 0 && table[table.length - 1].every((cell) => !cell)) table.pop()
   const content: PosterContent = { title }
-  for (const key of ['subtitle', 'body', 'cta', 'tag', 'brand', 'image'] as const) {
+  for (const key of ['subtitle', 'body', 'recipient', 'cta', 'tag', 'brand', 'image'] as const) {
     const text = clean(record[key])
     if (text) content[key] = text
   }
   if (details.length > 0) content.details = details
+  if (table.length > 0) content.table = table
   return content
 }
 
@@ -77,6 +89,47 @@ function posterSeries(templateId: string): { series: FreeformPosterSeriesId; cre
   if (!template || template.workspace !== 'freeform' || template.kind !== 'poster' || !template.createFreeform) return null
   if (!(template.series in FREEFORM_POSTER_SLOTS)) return null
   return { series: template.series as FreeformPosterSeriesId, create: template.createFreeform }
+}
+
+/** A node moved down the page (up when `by` is negative). */
+function shifted(node: FreeformSceneNode, by: number): FreeformSceneNode {
+  return by === 0 ? node : { ...node, y: Math.round((node.y + by) * 10) / 10 }
+}
+
+/**
+ * Close up what the content left open: fewer lines than rows spread over the
+ * rows' span (spreadDetails), and a title shorter than its sample pulls up
+ * what sits below it (titleFlow).
+ */
+function settle(nodes: FreeformSceneNode[], template: readonly FreeformSceneNode[], slots: PosterSlots, used: number): FreeformSceneNode[] {
+  let result = nodes
+  const rows = slots.details ?? []
+  const filled = Math.min(used, rows.length)
+  if (slots.spreadDetails && filled >= 2 && filled < rows.length) {
+    const top = (row: (typeof rows)[number]) => template.find((node) => node.name === row.value)?.y
+    const first = top(rows[0])
+    const second = top(rows[1])
+    if (first !== undefined && second !== undefined && second > first) {
+      const pitch = second - first
+      const spread = Math.min(pitch * 1.6, (pitch * (rows.length - 1)) / (filled - 1))
+      const offsets = new Map<string, number>()
+      rows.slice(0, filled).forEach((row, index) => {
+        for (const name of [row.label, row.value, ...(row.extras ?? [])]) if (name) offsets.set(name, index * (spread - pitch))
+      })
+      result = result.map((node) => shifted(node, offsets.get(node.name) ?? 0))
+    }
+  }
+  if (slots.titleFlow) {
+    const sample = template.find((node) => node.name === slots.title)
+    const title = result.find((node) => node.name === slots.title)
+    if (sample?.type === 'text' && title?.type === 'text') {
+      const room = measureText(sample, sample.text, sample.fontSize, true).depth - measureText(title, title.text, title.fontSize, true).depth
+      const below = sample.y + sample.height - 1
+      const pinned = new Set(slots.titleFlow.pinned ?? [])
+      if (room > 1) result = result.map((node) => (node.y >= below && !pinned.has(node.name) ? shifted(node, -room) : node))
+    }
+  }
+  return result
 }
 
 export function composePoster(templateId: string, value: unknown): PosterSuccess | PosterError {
@@ -108,6 +161,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   const optional: Array<[keyof PosterContent, SlotItem | undefined]> = [
     ['subtitle', slots.subtitle],
     ['body', slots.body],
+    ['recipient', slots.recipient],
     ['cta', slots.cta],
     ['tag', slots.tag],
     ['brand', slots.brand],
@@ -140,6 +194,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     }
   })
   if (lines.length > 0 && rows.length === 0) unused.push('details')
+  if (lines.length === 0) slots.detailsExtras?.forEach((name) => remove.add(name))
   slots.remove?.forEach(dropItem)
 
   const pictured = new Map<string, FreeformSceneNode>()
@@ -152,6 +207,8 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       }
     } else if (node?.type === 'shape' && slots.image.fallback) {
       pictured.set(node.name, { ...node, fill: { ...slots.image.fallback } })
+    } else if (node && slots.image.keep) {
+      // The template's own picture is part of the design: it stays.
     } else if (node) {
       remove.add(node.name)
       slots.image.extras?.forEach((name) => remove.add(name))
@@ -162,7 +219,38 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
 
   const shrunk: PosterSuccess['summary']['shrunk'] = []
   const overflowing: PosterSuccess['summary']['overflowing'] = []
-  const nodes: FreeformSceneNode[] = slide.nodes.flatMap((node): FreeformSceneNode[] => {
+  const unplaced = lines.slice(rows.length)
+
+  // A table is drawn again at the content's own size: as many rows and columns as given, filling the same space.
+  let tableAt = -1
+  const tableCells: FreeformSceneNode[] = []
+  if (slots.table) {
+    const { layout, sample } = slots.table
+    const cells = content.table ?? sample.map((row) => row.map(() => ''))
+    const shape = tableShape(layout, cells)
+    cells.forEach((row, rowIndex) => row.forEach((cell, column) => {
+      if (cell && (rowIndex >= shape.rows || column >= shape.columns)) unplaced.push(`第 ${rowIndex + 1} 行第 ${column + 1} 列：${cell}`)
+    }))
+    const prefixes = [`${layout.name}字 `, `${layout.name}格 `]
+    tableAt = slide.nodes.findIndex((node) => prefixes.some((prefix) => node.name.startsWith(prefix)))
+    for (const cell of tableNodes(layout, cells)) {
+      if (cell.type !== 'text' || textFits(cell, cell.text, cell.fontSize)) {
+        tableCells.push(cell)
+        continue
+      }
+      const size = fittingFontSize(cell, cell.text)
+      const smallest = Math.max(10, Math.floor(cell.fontSize * MIN_FIT_SCALE))
+      shrunk.push({ node: cell.name, from: cell.fontSize, to: size ?? smallest })
+      if (size === null) overflowing.push({ node: cell.name, text: cell.text })
+      tableCells.push({ ...cell, fontSize: size ?? smallest })
+    }
+    slide.nodes.forEach((node) => { if (prefixes.some((prefix) => node.name.startsWith(prefix))) remove.add(node.name) })
+  } else if (content.table) {
+    unused.push('table')
+  }
+
+  const nodes: FreeformSceneNode[] = slide.nodes.flatMap((node, index): FreeformSceneNode[] => {
+    if (index === tableAt) return tableCells
     if (remove.has(node.name)) return []
     const picture = pictured.get(node.name)
     if (picture) return [picture]
@@ -183,7 +271,8 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     return [next]
   })
 
-  const document = normalizeFreeformDocument({ documentVersion: 17, activeSlideId: slide.id, slides: [{ ...slide, nodes }] })
+  const placed = settle(nodes, slide.nodes, slots, lines.length)
+  const document = normalizeFreeformDocument({ documentVersion: 17, activeSlideId: slide.id, slides: [{ ...slide, nodes: placed }] })
   if (!document) return { ok: false, error: '生成的海报没有通过 v17 校验。' }
   return {
     ok: true,
@@ -195,7 +284,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       height: slide.height,
       shrunk,
       overflowing,
-      unplaced: lines.slice(rows.length),
+      unplaced,
       unused,
     },
   }

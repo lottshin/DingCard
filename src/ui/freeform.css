@@ -826,11 +826,62 @@
   outline-offset: 2px;
 }
 
-/* Icons: a searchable grid; a tile drops the icon in as a vector path. */
-.freeform-drawer .freeform-icon-search {
+/* One search over shapes, lines, decorations and icons. */
+.freeform-drawer .freeform-element-search {
   width: auto;
   margin: 0 16px;
 }
+
+/* Decorations: hand-drawn lines, stickers and labels as pictures of themselves; click or drag one onto the page. */
+.freeform-drawer .freeform-decoration-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.freeform-drawer .freeform-decoration-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 16px;
+}
+
+.freeform-drawer .freeform-decoration-grid.is-label {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.freeform-drawer .freeform-decoration-tile {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--freeform-deco-tile);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.freeform-drawer .freeform-decoration-grid.is-label .freeform-decoration-tile {
+  aspect-ratio: 4 / 3;
+}
+
+.freeform-drawer .freeform-decoration-tile:hover {
+  background: var(--freeform-deco-tile-hover);
+}
+
+.freeform-drawer .freeform-decoration-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.freeform-drawer .freeform-decoration-preview {
+  pointer-events: none;
+}
+
+/* Icons: a grid under the same search; a tile drops the icon in as a vector path. */
 
 .freeform-drawer .freeform-icon-grid {
   display: grid;
@@ -872,7 +923,7 @@
   outline-offset: 0;
 }
 
-.freeform-drawer .freeform-icon-empty {
+.freeform-drawer .freeform-element-empty {
   margin: 4px 16px 0;
   color: var(--text-3);
   font: 400 12.5px/1.4 var(--ui-font);

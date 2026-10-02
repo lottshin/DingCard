@@ -1,5 +1,5 @@
 import { sceneNodeBoundsInParent } from './sceneTransform'
-import type { FreeformElement, FreeformSceneNode } from './types'
+import type { FreeformSceneNode } from './types'
 
 /** Each new element steps this share of the page's shorter side away from one already in its spot. */
 const STEP_RATIO = 0.03
@@ -12,7 +12,7 @@ const MAX_STEPS = 12
  * per element already there, so a run of inserts fans out instead of stacking
  * exactly. Off the page's lower right it steps up and to the left instead.
  */
-export function staggerNewElement<T extends FreeformElement>(
+export function staggerNewElement<T extends { x: number; y: number; width: number; height: number }>(
   element: T,
   siblings: readonly FreeformSceneNode[],
   area: { width: number; height: number },
