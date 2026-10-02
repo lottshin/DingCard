@@ -10,6 +10,7 @@ export const app: Record<string, Translation> = {
   '自由编辑': 'Freeform',
   'Markdown 卡片模板': 'Markdown Card templates',
   '自由编辑模板': 'Freeform templates',
+  '海报与封面': 'Posters and covers',
 
   // Login
   '叮卡能做什么': 'What DingCard does',

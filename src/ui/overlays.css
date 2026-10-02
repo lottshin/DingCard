@@ -196,6 +196,8 @@
   display: flex;
   flex-direction: column;
   width: min(1120px, 100%);
+  /* A fixed height: filtering the list doesn't make the dialog jump. */
+  height: min(900px, 92vh);
   border: 0;
   border-radius: 16px;
   background: var(--surface-pop);
@@ -410,4 +412,34 @@
   .template-dialog-head {
     padding: 20px 16px 16px 18px;
   }
+}
+
+/* Size filter above the templates: one chip per size the list has. */
+.template-formats {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.template-formats button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 12.5px/1 var(--ui-font);
+  cursor: pointer;
+}
+
+.template-formats button:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.template-formats button[aria-pressed='true'] {
+  border-color: transparent;
+  background: var(--btn);
+  color: var(--on-btn);
 }

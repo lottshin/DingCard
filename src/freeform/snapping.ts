@@ -410,3 +410,43 @@ export function snapRotationDegrees(degrees: number): number {
   const snapped = Math.round(degrees / ROTATION_SNAP_STEP) * ROTATION_SNAP_STEP
   return snapped === 0 ? 0 : snapped
 }
+
+export interface GuideSnap {
+  position: number
+  /** What it caught: the page's edge or centre, or an object's edge or centre; null when it moved freely. */
+  target: 'page-center' | 'page-edge' | 'element' | null
+}
+
+/**
+ * Where a guide being dragged settles: on the page's centre, its edges or a
+ * top-level object's edges and centre when it comes within `threshold`, the
+ * page centre winning a tie.
+ */
+export function snapGuide(
+  slide: Pick<FreeformSlide, 'width' | 'height'>,
+  nodes: readonly FreeformSceneNode[],
+  axis: Axis,
+  position: number,
+  threshold: number,
+): GuideSnap {
+  if (threshold <= 0) return { position, target: null }
+  const size = axis === 'x' ? slide.width : slide.height
+  const references: Array<{ position: number; target: Exclude<GuideSnap['target'], null>; priority: number }> = [
+    { position: size / 2, target: 'page-center', priority: 0 },
+    { position: 0, target: 'page-edge', priority: 1 },
+    { position: size, target: 'page-edge', priority: 1 },
+  ]
+  for (const node of nodes) {
+    if (node.hidden) continue
+    const world = sceneNodeBoundsInWorld(nodes, [node.id])
+    if (!world) continue
+    const start = axis === 'x' ? world.x : world.y
+    const length = axis === 'x' ? world.width : world.height
+    for (const value of [start, start + length / 2, start + length]) references.push({ position: value, target: 'element', priority: 2 })
+  }
+  const best = references
+    .map((reference) => ({ ...reference, distance: Math.abs(reference.position - position) }))
+    .filter((reference) => reference.distance <= threshold)
+    .sort((a, b) => a.distance - b.distance || a.priority - b.priority)[0]
+  return best ? { position: best.position, target: best.target } : { position, target: null }
+}

@@ -16,6 +16,7 @@ import { DocumentStore, resolveDocumentInput, writeDocumentFile, type DocumentIn
 import { embedLocalImages } from './core/localImages'
 import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
+import { composePoster } from './core/poster'
 import { listStyles, listTextStyles } from './core/styles'
 import { instantiateTemplate, listTemplates } from './core/templates'
 import { checkDocument } from './render/check'
@@ -148,7 +149,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台）。自由画布模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等，按内容挑模板。先用它拿到 templateId。',
+    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：海报、封面、卡片、宣传单，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书套图 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、按钮、角标、署名、主图位，能放几行信息（details）。按内容和尺寸挑模板。先用它拿到 templateId。',
     {},
     async () => jsonResult({ templates: listTemplates() }),
   )
@@ -201,6 +202,36 @@ export function createDingcardServer(): McpServer {
       if (!composed.ok) return jsonResult(composed)
       const { document, ...rest } = composed
       return jsonResult({ ...rest, ...handleOf(documents.add(document), withDocument) })
+    },
+  )
+
+  server.tool(
+    'create_poster_from_content',
+    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉。超出模板行数的信息列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。',
+    {
+      templateId: z.string().describe('list_templates 里 kind 为 poster 的模板 id，如 "talk-poster-freeform"'),
+      content: z.object({
+        title: z.string().describe('海报标题；两行时可以自己写换行'),
+        subtitle: z.string().optional().describe('副标题或一句导语'),
+        body: z.string().optional().describe('一段正文（模板有正文位时）'),
+        details: z.array(z.string()).optional().describe('信息行，一条一行，如 "时间：10 月 18 日 14:00"、"地点：…"，冒号前是标签'),
+        cta: z.string().optional().describe('按钮文字，如 "扫码报名"'),
+        tag: z.string().optional().describe('角标：活动类型、价格、期数等短词'),
+        brand: z.string().optional().describe('主办方、品牌或落款'),
+        image: z.string().optional().describe('主图：本机文件路径（/、~/、./、file://）、http(s) URL 或 data URL'),
+      }),
+      includeDocument,
+    },
+    async ({ templateId, content, includeDocument: withDocument }) => {
+      try {
+        const composed = composePoster(templateId, content)
+        if (!composed.ok) return jsonResult(composed)
+        const embedded = await embedLocalImages(composed.document, process.cwd())
+        if (!embedded.ok) return jsonResult(embedded)
+        return jsonResult({ ok: true, summary: composed.summary, ...handleOf(documents.add(embedded.document), withDocument) })
+      } catch (error) {
+        return errorResult(error)
+      }
     },
   )
 

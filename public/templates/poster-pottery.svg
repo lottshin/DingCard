@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="760" viewBox="0 0 900 760">
+  <title>Three handmade pots: a tall vase with a sprig, a striped pot and a small cup</title>
+  <ellipse cx="450" cy="702" rx="400" ry="40" fill="#2b2118" opacity="0.12"/>
+  <g fill="none" stroke="#5b6b3c" stroke-width="8" stroke-linecap="round">
+    <path d="M300 250c-10-80 10-150 60-210"/>
+    <path d="M296 190c-40-20-80-20-110-6"/>
+    <path d="M300 130c30-24 70-30 104-22"/>
+  </g>
+  <g fill="#6f8048">
+    <ellipse cx="180" cy="186" rx="40" ry="18" transform="rotate(-12 180 186)"/>
+    <ellipse cx="410" cy="106" rx="40" ry="18" transform="rotate(10 410 106)"/>
+    <ellipse cx="366" cy="40" rx="34" ry="15" transform="rotate(-50 366 40)"/>
+  </g>
+  <path d="M250 260h100c0 60 20 90 50 150 40 80 30 210-30 270-20 20-50 26-70 26s-50-6-70-26c-60-60-70-190-30-270 30-60 50-90 50-150z" fill="#c8553d"/>
+  <path d="M260 260h80c-2 8-6 14-10 20h-60c-4-6-8-12-10-20z" fill="#a7432f"/>
+  <path d="M268 420c-30 70-30 170 10 230" fill="none" stroke="#e98a6f" stroke-width="16" stroke-linecap="round" opacity="0.6"/>
+  <path d="M470 430c0-26 90-40 160-40s160 14 160 40c0 140-40 270-160 270s-160-130-160-270z" fill="#e8cfa9"/>
+  <ellipse cx="630" cy="430" rx="160" ry="34" fill="#d8b98d"/>
+  <ellipse cx="630" cy="426" rx="128" ry="22" fill="#b89766"/>
+  <g fill="none" stroke="#c8553d" stroke-width="10" stroke-linecap="round" opacity="0.85">
+    <path d="M486 520c96 30 192 30 288 0"/>
+    <path d="M498 580c88 28 176 28 264 0"/>
+  </g>
+  <path d="M710 610h120v40c0 30-26 52-60 52s-60-22-60-52z" fill="#6b7a46"/>
+  <ellipse cx="770" cy="610" rx="60" ry="14" fill="#56633a"/>
+  <path d="M830 622c28 0 36 30 6 40" fill="none" stroke="#6b7a46" stroke-width="12" stroke-linecap="round"/>
+</svg>

@@ -109,7 +109,7 @@ function FreeformPreview({
 }
 
 /** Renders `children(width)` once the container has a measurable width. */
-export function Measured({ className, children }: { className?: string; children: (width: number) => React.ReactNode }) {
+export function Measured({ className, style, children }: { className?: string; style?: React.CSSProperties; children: (width: number) => React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   useEffect(() => {
@@ -122,7 +122,7 @@ export function Measured({ className, children }: { className?: string; children
     return () => observer.disconnect()
   }, [])
   return (
-    <div ref={ref} className={className}>
+    <div ref={ref} className={className} style={style}>
       {width > 0 ? children(width) : null}
     </div>
   )

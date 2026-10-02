@@ -406,10 +406,19 @@
   cursor: pointer;
 }
 
-/* Each first page fills its column, however much a scrollbar takes from the panel. */
+/* Each first page fills its column at its own proportions, however much a scrollbar takes
+   from the panel; landscape sizes take the whole row. */
 .freeform-drawer .freeform-template-thumb {
   width: 100%;
   aspect-ratio: 3 / 4;
+}
+
+.freeform-drawer .freeform-template-tile.is-wide {
+  grid-column: 1 / -1;
+}
+
+.freeform-drawer .freeform-template-tiles {
+  align-items: start;
 }
 
 .freeform-drawer .freeform-template-tile .template-freeform-preview {

@@ -13,6 +13,7 @@ import type {
   ShadowPaint,
   ShapeFill,
 } from '../freeform/types'
+import { createDefaultImageFraming } from '../freeform/imageFraming'
 import { DEFAULT_PROFILE, type Profile } from '../theme'
 import type {
   FreeformTemplateSeriesId,
@@ -229,12 +230,17 @@ function pathNode(
   }
 }
 
-function slide(name: string, background: ColorPaint, nodes: FreeformSceneNode[]): FreeformSlide {
+function slide(
+  name: string,
+  background: ColorPaint,
+  nodes: FreeformSceneNode[],
+  size: { width: number; height: number } = { width: 1080, height: 1440 },
+): FreeformSlide {
   return {
     id: uuid(),
     name,
-    width: 1080,
-    height: 1440,
+    width: size.width,
+    height: size.height,
     background,
     nodes,
   }
@@ -947,7 +953,348 @@ function createBlueprintDocument(): FreeformDocument {
   ])
 }
 
-type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags'>
+// --- Posters: one page each, drawn at the size they are made for (formats.ts) ---
+
+const STORY = { width: 1080, height: 1920 }
+const SQUARE = { width: 1080, height: 1080 }
+const LANDSCAPE = { width: 1920, height: 1080 }
+const WECHAT_COVER = { width: 1800, height: 766 }
+const A4 = { width: 1240, height: 1754 }
+
+/** A shape filled with a picture (a slot the poster's own picture replaces). */
+function pictureShape(
+  name: string,
+  src: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: { shape?: 'rect' | 'ellipse'; cornerRadius?: number } = {},
+): FreeformSceneNode {
+  return shapeNode(options.shape ?? 'rect', x, y, width, height, {
+    type: 'image', src, fit: 'cover', framing: createDefaultImageFraming(),
+  }, { name, cornerRadius: options.cornerRadius ?? 0 })
+}
+
+/** A picture with a see-through background (an illustration), contained in its box. */
+function illustrationNode(name: string, src: string, alt: string, x: number, y: number, width: number, height: number): FreeformSceneNode {
+  return {
+    id: uuid(),
+    name,
+    locked: false,
+    hidden: false,
+    type: 'image',
+    x,
+    y,
+    width,
+    height,
+    rotation: 0,
+    scale: 1,
+    src,
+    alt,
+    fit: 'contain',
+    framing: createDefaultImageFraming(),
+  }
+}
+
+function createTalkPosterDocument(): FreeformDocument {
+  const paper = '#f2efe8'
+  const ink = '#141414'
+  const orange = '#c7400e'
+  const rust = '#b93a0c'
+  const gray = '#5c5852'
+  const row = (index: number, label: string, value: string) => {
+    const y = 1528 + index * 70
+    const n = ['一', '二', '三'][index]
+    return [
+      textNode(label, 72, y, 140, 56, { name: `标签${n}`, fontSize: 30, fontFamily: UI, textFill: solid(rust), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode(value, 212, y, 796, 56, { name: `信息${n}`, fontSize: 34, textFill: solid(ink), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('海报', solid(paper), [
+      pictureShape('主图', '/templates/editorial-building.webp', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, 980 + TEMPLATE_EDGE_BLEED),
+      lineNode(72, 1488, 936, ink, 3, { name: '分隔线', cap: 'butt' }),
+      shapeNode('rect', 72, 1764, 420, 96, solid(ink), { name: '按钮底板', cornerRadius: 48 }),
+      textNode('公开讲座', 72, 880, 600, 64, {
+        name: '角标', fontSize: 32, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: orange, amount: 45, radius: 6 },
+      }),
+      textNode('城市里的\n第二条路', 64, 1012, 952, 370, { name: '标题', fontSize: 152, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.15, letterSpacing: -4 }),
+      textNode('关于步行、街道和公共空间的一次分享', 72, 1394, 936, 64, { name: '副标题', fontSize: 40, textFill: solid(gray) }),
+      ...row(0, '时间', '10 月 18 日 周六 14:00'),
+      ...row(1, '地点', '城市规划展览馆 3 层报告厅'),
+      ...row(2, '嘉宾', '林一 · 建筑师'),
+      textNode('扫码报名 →', 72, 1784, 420, 56, { name: '按钮文字', fontSize: 36, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center' }),
+      textNode('城市漫游计划', 592, 1788, 416, 48, { name: '主办', fontSize: 28, textFill: solid(gray), align: 'right', letterSpacing: 2 }),
+    ], STORY),
+  ])
+}
+
+function createSalePosterDocument(): FreeformDocument {
+  const cream = '#fff3e3'
+  const orange = '#ff6a2b'
+  const brown = '#3b1f14'
+  const coffee = '#7a4a2c'
+  const yellow = '#ffd23f'
+  return documentFromSlides([
+    slide('海报', solid(cream), [
+      shapeNode('ellipse', 90, 330, 900, 900, solid(orange), { name: '大圆' }),
+      illustrationNode('主图', '/templates/poster-coffee.svg', '一杯放在碟子上的拿铁', 170, 390, 740, 740),
+      shapeNode('ellipse', 770, 300, 230, 230, solid(yellow), { name: '角标底' }),
+      lineNode(440, 240, 200, brown, 4, { name: '副标题线', cap: 'round' }),
+      shapeNode('rect', 290, 1700, 500, 112, solid(brown), { name: '按钮底板', cornerRadius: 56 }),
+      textNode('秋日咖啡季', 64, 120, 952, 100, { name: '副标题', fontSize: 64, textFill: solid(brown), fontWeight: 'bold', align: 'center', letterSpacing: 8 }),
+      textNode('限时\n7 天', 770, 350, 230, 132, { name: '角标', fontSize: 46, textFill: solid(brown), fontWeight: 'bold', align: 'center', lineHeight: 1.15, rotation: 12 }),
+      textNode('第二杯半价', 40, 1214, 1000, 236, {
+        name: '标题', fontSize: 180, textFill: solid(brown), fontWeight: 'bold', align: 'center', letterSpacing: -4,
+        effect: { type: 'offset', color: orange, amount: 40, angle: 45 },
+      }),
+      textNode('拿铁、美式、季节限定，任选两杯', 72, 1468, 936, 64, { name: '正文', fontSize: 40, textFill: solid(brown), align: 'center' }),
+      textNode('活动时间  10.1 – 10.31', 72, 1560, 936, 52, { name: '信息一', fontSize: 34, textFill: solid(coffee), align: 'center' }),
+      textNode('全国直营门店可用', 72, 1616, 936, 52, { name: '信息二', fontSize: 34, textFill: solid(coffee), align: 'center' }),
+      textNode('立即领券', 290, 1724, 500, 64, { name: '按钮文字', fontSize: 44, textFill: solid(cream), fontWeight: 'bold', align: 'center', letterSpacing: 4 }),
+      textNode('DINGCARD COFFEE', 72, 1846, 936, 40, { name: '品牌', fontSize: 24, fontFamily: UI, textFill: solid(brown), fontWeight: 'bold', align: 'center', letterSpacing: 8 }),
+    ], STORY),
+  ])
+}
+
+function createHiringPosterDocument(): FreeformDocument {
+  const blue = '#2447e0'
+  const ink = '#0f1222'
+  const white = '#ffffff'
+  const pale = '#dfe6ff'
+  const lime = '#c6f432'
+  const role = (index: number, title: string, note: string) => {
+    const y = 900 + index * 194
+    const n = ['一', '二', '三'][index]
+    return [
+      shapeNode('rect', 72, y, 936, 170, solid(white), { name: `职位卡${n}`, cornerRadius: 28 }),
+      textNode(title, 116, y + 28, 760, 70, { name: `职位${n}`, fontSize: 48, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode(note, 116, y + 102, 760, 50, { name: `说明${n}`, fontSize: 30, textFill: solid('#4b5170') }),
+      textNode('→', 880, y + 50, 90, 70, { name: `箭头${n}`, fontSize: 56, fontFamily: UI, textFill: solid(blue), fontWeight: 'bold', align: 'center' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('海报', solid(blue), [
+      lineNode(72, 1774, 936, '#4f6ff0', 2, { name: '页脚线', cap: 'butt' }),
+      shapeNode('rect', 72, 1610, 936, 120, solid(lime), { name: '按钮底板', cornerRadius: 60 }),
+      textNode('JOIN US', 40, 60, 1000, 290, {
+        name: '英文标语', fontSize: 250, fontFamily: UI, textFill: solid(white), fontWeight: 'bold', letterSpacing: -4, lineHeight: 1,
+        effect: { type: 'hollow', amount: 30 },
+      }),
+      textNode('急招', 72, 380, 300, 64, {
+        name: '角标', fontSize: 32, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6,
+        effect: { type: 'background', color: lime, amount: 50, radius: 100 },
+      }),
+      textNode('我们在找\n下一位设计师', 64, 470, 952, 300, { name: '标题', fontSize: 120, textFill: solid(white), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -2 }),
+      textNode('做一款给 AI 用的设计编辑器', 72, 790, 936, 64, { name: '副标题', fontSize: 40, textFill: solid(pale) }),
+      ...role(0, '产品设计师', '全职 · 上海 · 3 年以上经验'),
+      ...role(1, '前端工程师', '全职 · 可远程 · React / TypeScript'),
+      ...role(2, '设计实习生', '每周 4 天 · 3 个月起'),
+      textNode('弹性工作 · 不打卡 · 每年一次团队旅行', 72, 1496, 936, 70, { name: '正文', fontSize: 40, textFill: solid(lime), fontWeight: 'bold' }),
+      textNode('简历发到 hr@dingcard.app', 72, 1640, 936, 60, { name: '按钮文字', fontSize: 40, textFill: solid(ink), fontWeight: 'bold', align: 'center' }),
+      textNode('DINGCARD 叮卡', 72, 1806, 936, 44, { name: '品牌', fontSize: 26, fontFamily: UI, textFill: solid(white), fontWeight: 'bold', letterSpacing: 6 }),
+    ], STORY),
+  ])
+}
+
+function createFestivalPosterDocument(): FreeformDocument {
+  const gold = '#f3d58a'
+  const soft = '#d9c9a0'
+  const cloud = 'M 20 140 C 20 100 60 80 100 92 C 110 52 170 40 200 72 C 230 30 300 30 320 80 C 350 60 410 70 420 110 C 460 104 500 120 500 140 Z'
+  return documentFromSlides([
+    slide('海报', stopsPaint([[0, '#0c1a2e'], [1, '#20365e']], 180), [
+      shapeNode('ellipse', 230, 250, 620, 620, { type: 'radial-gradient', stops: [{ offset: 0, color: '#fff8e1' }, { offset: 1, color: '#f2cf86' }] }, {
+        name: '月亮', shadow: { color: '#f6dfa0', blur: 90, offsetX: 0, offsetY: 0 },
+      }),
+      pathNode(cloud, 120, 720, 520, 160, { name: '祥云一', fill: solid('#ffffff'), strokeWidth: 0, opacity: 0.16 }),
+      pathNode(cloud, 520, 790, 520, 160, { name: '祥云二', fill: solid('#ffffff'), strokeWidth: 0, opacity: 0.1 }),
+      shapeNode('ellipse', 160, 200, 8, 8, solid('#ffffff'), { name: '星一', opacity: 0.7 }),
+      shapeNode('ellipse', 900, 160, 6, 6, solid('#ffffff'), { name: '星二', opacity: 0.6 }),
+      shapeNode('ellipse', 960, 520, 6, 6, solid('#ffffff'), { name: '星三', opacity: 0.5 }),
+      shapeNode('rect', 96, 1480, 120, 120, solid('#c8382e'), { name: '印章', cornerRadius: 10, rotation: -4 }),
+      lineNode(96, 1716, 300, gold, 2, { name: '落款线' }),
+      textNode('月满中秋', 770, 980, 210, 720, { name: '标题', fontSize: 150, fontFamily: SERIF, textFill: solid(gold), fontWeight: 'bold', letterSpacing: 20, vertical: true }),
+      textNode('但愿人长久　千里共婵娟', 660, 1000, 90, 640, { name: '副标题', fontSize: 40, fontFamily: SERIF, textFill: solid(soft), letterSpacing: 8, vertical: true }),
+      textNode('中秋', 96, 1498, 120, 84, { name: '印章文字', fontSize: 44, fontFamily: SERIF, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', rotation: -4, lineHeight: 1.4 }),
+      textNode('丙午年 八月十五', 96, 1636, 500, 52, { name: '信息一', fontSize: 34, fontFamily: SERIF, textFill: solid(soft), letterSpacing: 4 }),
+      textNode('2026.10.06', 96, 1742, 500, 44, { name: '信息二', fontSize: 28, fontFamily: UI, textFill: solid(soft), letterSpacing: 4 }),
+      textNode('叮卡 敬贺', 96, 1800, 500, 52, { name: '品牌', fontSize: 32, fontFamily: SERIF, textFill: solid(gold), letterSpacing: 6 }),
+    ], STORY),
+  ])
+}
+
+function createInvitationDocument(): FreeformDocument {
+  const green = '#12352b'
+  const gold = '#c9a45c'
+  const cream = '#f4ecdc'
+  const soft = '#cbbf9f'
+  const row = (index: number, label: string, value: string) => {
+    const y = 960 + index * 170
+    const n = ['一', '二', '三'][index]
+    return [
+      textNode(label, 140, y, 800, 44, { name: `标签${n}`, fontSize: 28, fontFamily: UI, textFill: solid(gold), align: 'center', letterSpacing: 8 }),
+      textNode(value, 140, y + 50, 800, 70, { name: `信息${n}`, fontSize: 46, fontFamily: SERIF, textFill: solid(cream), align: 'center' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('邀请函', solid(green), [
+      shapeNode('rect', 48, 48, 984, 1824, { type: 'transparent' }, { name: '外框', cornerRadius: 0, stroke: gold, strokeWidth: 3 }),
+      shapeNode('rect', 70, 70, 940, 1780, { type: 'transparent' }, { name: '内框', cornerRadius: 0, stroke: gold, strokeWidth: 1 }),
+      lineNode(330, 278, 170, gold, 2, { name: '饰线左' }),
+      lineNode(580, 278, 170, gold, 2, { name: '饰线右' }),
+      shapeNode('rect', 525, 269, 30, 30, solid(gold), { name: '菱形', cornerRadius: 0, rotation: 45 }),
+      lineNode(440, 868, 200, gold, 2, { name: '标题线' }),
+      shapeNode('rect', 340, 1500, 400, 100, { type: 'transparent' }, { name: '按钮底板', cornerRadius: 50, stroke: gold, strokeWidth: 2 }),
+      textNode('INVITATION', 140, 180, 800, 50, { name: '英文标语', fontSize: 28, fontFamily: UI, textFill: solid(gold), align: 'center', letterSpacing: 14 }),
+      textNode('诚邀您参加', 140, 420, 800, 70, { name: '副标题', fontSize: 48, fontFamily: SERIF, textFill: solid(cream), align: 'center', letterSpacing: 8 }),
+      textNode('叮卡五周年\n年度设计之夜', 96, 520, 888, 300, { name: '标题', fontSize: 108, fontFamily: SERIF, textFill: solid(cream), fontWeight: 'bold', align: 'center', lineHeight: 1.3 }),
+      ...row(0, '时间', '2026 年 12 月 20 日 19:00'),
+      ...row(1, '地点', '外滩源壹号 · 宴会厅'),
+      ...row(2, '着装', '深色正装'),
+      textNode('敬请回复', 340, 1522, 400, 56, { name: '按钮文字', fontSize: 36, fontFamily: SERIF, textFill: solid(gold), align: 'center', letterSpacing: 6 }),
+      textNode('叮卡团队 敬邀', 140, 1680, 800, 52, { name: '品牌', fontSize: 32, fontFamily: SERIF, textFill: solid(soft), align: 'center', letterSpacing: 4 }),
+    ], STORY),
+  ])
+}
+
+function createQuoteCardDocument(): FreeformDocument {
+  const paper = '#f5f1ea'
+  const ink = '#1d1b18'
+  const red = '#c23a26'
+  const gray = '#6f675d'
+  const mark = 'M 0 56 C 0 22 18 0 52 0 L 52 22 C 34 22 26 32 26 46 L 52 46 L 52 100 L 0 100 Z M 70 56 C 70 22 88 0 122 0 L 122 22 C 104 22 96 32 96 46 L 122 46 L 122 100 L 70 100 Z'
+  return documentFromSlides([
+    slide('金句', solid(paper), [
+      pathNode(mark, 96, 140, 122, 100, { name: '引号', fill: solid(red), strokeWidth: 0 }),
+      lineNode(96, 874, 888, '#d8d0c4', 2, { name: '分隔线', cap: 'butt' }),
+      textNode('把复杂的事说简单，\n是一种能力。', 96, 300, 888, 380, { name: '标题', fontSize: 80, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.4 }),
+      textNode('—— 林一《写给自己的设计笔记》', 96, 760, 888, 56, { name: '副标题', fontSize: 34, textFill: solid(gray) }),
+      textNode('每日一句 · 第 120 天', 96, 916, 600, 50, { name: '信息一', fontSize: 28, fontFamily: UI, textFill: solid(gray), letterSpacing: 2 }),
+      textNode('DINGCARD', 684, 916, 300, 50, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(ink), fontWeight: 'bold', align: 'right', letterSpacing: 6 }),
+    ], SQUARE),
+  ])
+}
+
+function createProductCardDocument(): FreeformDocument {
+  const green = '#0f5132'
+  const leaf = '#3f7a60'
+  const coral = '#d63d22'
+  const white = '#ffffff'
+  const point = (index: number, text: string) => {
+    const y = 366 + index * 74
+    const n = ['一', '二', '三'][index]
+    return [
+      shapeNode('ellipse', 72, y + 6, 44, 44, solid(green), { name: `勾底${n}` }),
+      textNode('✓', 72, y + 8, 44, 40, { name: `勾${n}`, fontSize: 26, fontFamily: UI, textFill: solid(white), fontWeight: 'bold', align: 'center' }),
+      textNode(text, 132, y, 440, 56, { name: `信息${n}`, fontSize: 34, textFill: solid(green), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('主图', stopsPaint([[0, '#eef8f3'], [1, '#d7efe4']], 160), [
+      shapeNode('ellipse', 470, 110, 580, 580, solid(white), { name: '背景圆', opacity: 0.75 }),
+      illustrationNode('主图', '/templates/poster-bottle.svg', '一瓶植物精华水和两片叶子', 520, 110, 480, 600),
+      lineNode(72, 620, 420, '#bfe0d1', 2, { name: '分隔线', cap: 'butt' }),
+      shapeNode('ellipse', 64, 690, 300, 300, solid(coral), { name: '价格底' }),
+      textNode('植物精华水', 64, 110, 560, 130, { name: '标题', fontSize: 96, textFill: solid(green), fontWeight: 'bold', letterSpacing: -2 }),
+      textNode('补水 · 舒缓 · 不黏腻', 72, 250, 500, 56, { name: '副标题', fontSize: 36, textFill: solid(leaf) }),
+      ...point(0, '72 小时持续补水'),
+      ...point(1, '无酒精 · 无香精'),
+      ...point(2, '敏感肌也能用'),
+      textNode('到手价', 64, 746, 300, 56, { name: '价格标签', fontSize: 40, textFill: solid(white), fontWeight: 'bold', align: 'center', letterSpacing: 4 }),
+      textNode('¥59', 64, 802, 300, 130, { name: '角标', fontSize: 110, fontFamily: UI, textFill: solid(white), fontWeight: 'bold', align: 'center', letterSpacing: -2 }),
+      textNode('DINGCARD 植物所', 560, 980, 456, 44, { name: '品牌', fontSize: 26, fontFamily: UI, textFill: solid(green), fontWeight: 'bold', align: 'right', letterSpacing: 4 }),
+    ], SQUARE),
+  ])
+}
+
+function createVideoCoverDocument(): FreeformDocument {
+  const yellow = '#ffd400'
+  const ink = '#111111'
+  const red = '#ff3b30'
+  const gridLines = [0, 1, 2, 3, 4].map((index) => `M 0 ${index * 160} H 580`).join(' ')
+  return documentFromSlides([
+    slide('封面', solid(yellow), [
+      shapeNode('rect', 1140, 120, 700, 820, solid('#ffffff'), { name: '图表卡', cornerRadius: 48, shadow: { color: ink, blur: 0, offsetX: 18, offsetY: 18 } }),
+      pathNode(gridLines, 1200, 210, 580, 640, { name: '网格', stroke: '#e5e5e5', strokeWidth: 3, cap: 'butt' }),
+      pathNode('M 10 630 C 210 620 380 570 470 420 C 520 330 552 190 572 40', 1200, 210, 580, 640, { name: '曲线', stroke: ink, strokeWidth: 14, cap: 'round' }),
+      shapeNode('ellipse', 1196, 826, 28, 28, solid(ink), { name: '起点' }),
+      shapeNode('ellipse', 1656, 616, 28, 28, solid(ink), { name: '中点' }),
+      shapeNode('ellipse', 1754, 230, 40, 40, solid(red), { name: '终点', shadow: { color: red, blur: 20, offsetX: 0, offsetY: 0 } }),
+      lineNode(96, 920, 160, ink, 8, { name: '标题线', cap: 'butt' }),
+      textNode('EP.12', 96, 88, 320, 80, {
+        name: '角标', fontSize: 44, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 2,
+        effect: { type: 'background', color: ink, amount: 40, radius: 10 },
+      }),
+      textNode('3 分钟\n看懂复利', 88, 210, 1000, 560, { name: '标题', fontSize: 230, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.08, letterSpacing: -8 }),
+      textNode('为什么越早开始越好', 96, 790, 980, 90, { name: '副标题', fontSize: 64, textFill: solid('#3a3a3a'), fontWeight: 'bold' }),
+      textNode('叮卡财经', 96, 952, 600, 60, { name: '品牌', fontSize: 38, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('第 1 年', 1200, 870, 200, 44, { name: '起点标注', fontSize: 28, textFill: solid('#6b6b6b') }),
+      textNode('第 30 年', 1580, 870, 200, 44, { name: '终点标注', fontSize: 28, textFill: solid('#6b6b6b'), align: 'right' }),
+    ], LANDSCAPE),
+  ])
+}
+
+function createArticleCoverDocument(): FreeformDocument {
+  const navy = '#13213c'
+  const cream = '#f6f1e7'
+  const orange = '#f28b30'
+  const muted = '#aab6cc'
+  return documentFromSlides([
+    slide('首图', solid(navy), [
+      pictureShape('主图', '/templates/editorial-building.webp', 1060, -TEMPLATE_EDGE_BLEED, 740 + TEMPLATE_EDGE_BLEED, 766 + TEMPLATE_EDGE_BLEED * 2),
+      shapeNode('rect', 1040, -TEMPLATE_EDGE_BLEED, 20, 766 + TEMPLATE_EDGE_BLEED * 2, solid(orange), { name: '色条', cornerRadius: 0 }),
+      lineNode(96, 636, 120, orange, 6, { name: '标题线', cap: 'butt' }),
+      textNode('深度 · 城市', 96, 112, 500, 60, {
+        name: '角标', fontSize: 30, textFill: solid(navy), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: orange, amount: 45, radius: 6 },
+      }),
+      textNode('一座城市的\n步行友好度', 88, 196, 920, 320, { name: '标题', fontSize: 120, textFill: solid(cream), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -2 }),
+      textNode('我们走了 30 条街，记下这些细节', 96, 536, 920, 64, { name: '副标题', fontSize: 40, textFill: solid(muted) }),
+      textNode('叮卡周刊', 96, 670, 600, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 4 }),
+    ], WECHAT_COVER),
+  ])
+}
+
+function createFlyerDocument(): FreeformDocument {
+  const sand = '#f3e9dc'
+  const clay = '#c8553d'
+  const rust = '#a8432c'
+  const ink = '#2b2118'
+  const muted = '#6e5f52'
+  const row = (index: number, label: string, value: string) => {
+    const y = 940 + index * 130
+    const n = ['一', '二', '三'][index]
+    return [
+      textNode(label, 96, y, 480, 44, { name: `标签${n}`, fontSize: 28, textFill: solid(rust), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode(value, 96, y + 46, 500, 60, { name: `信息${n}`, fontSize: 34, textFill: solid(ink), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('宣传单', solid(sand), [
+      lineNode(96, 146, 1048, ink, 2, { name: '刊头线', cap: 'butt' }),
+      pathNode('M 0 620 V 250 A 250 250 0 0 1 500 250 V 620 Z', 650, 700, 500, 620, { name: '拱门', fill: solid('#e9c3ae'), strokeWidth: 0 }),
+      illustrationNode('主图', '/templates/poster-pottery.svg', '三件手作陶器：插着枝叶的高瓶、条纹罐和小杯', 610, 840, 580, 490),
+      shapeNode('rect', 96, 1400, 480, 110, solid(clay), { name: '按钮底板', cornerRadius: 55 }),
+      lineNode(96, 1616, 1048, ink, 1.5, { name: '页脚线', cap: 'butt' }),
+      textNode('泥土与火 CLAY STUDIO', 96, 76, 800, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('周末限定', 96, 196, 400, 60, {
+        name: '角标', fontSize: 30, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: '#b84a32', amount: 45, radius: 8 },
+      }),
+      textNode('周末\n陶艺工作坊', 88, 276, 1060, 400, { name: '标题', fontSize: 170, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.12, letterSpacing: -6 }),
+      textNode('从揉泥到上釉，\n两天做出自己的第一只杯子', 96, 716, 520, 170, { name: '副标题', fontSize: 40, textFill: solid(muted), lineHeight: 1.5 }),
+      ...row(0, '时间', '每周六、日 10:00–16:00'),
+      ...row(1, '地点', '城南创意园 B 座 2 层'),
+      ...row(2, '费用', '680 元 / 人，含材料与烧制'),
+      textNode('扫码预约', 96, 1426, 480, 60, { name: '按钮文字', fontSize: 42, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 6 }),
+      textNode('预约电话 021-6000 0000　·　城南创意园 B 座', 96, 1646, 1048, 44, { name: '页脚', fontSize: 26, textFill: solid(muted), letterSpacing: 1 }),
+    ], A4),
+  ])
+}
+
+type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
   'editorial-archive': {
@@ -955,30 +1302,46 @@ const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
     description: '标题沿八栏网格展开，正文保留充足的阅读空间。',
     pageCount: 4,
     tags: ['复盘', '长文'],
+    format: 'xhs',
   },
   'public-theatre': {
     title: '公共剧场',
     description: '左侧栏和红线贯穿四页，翻页时仍能看出同一条叙事线。',
     pageCount: 4,
     tags: ['观点', '倡议'],
+    format: 'xhs',
   },
   'issue-cover': {
     title: '议题封面',
     description: '图片和期号先建立主题，后面三页再展开正文。',
     pageCount: 4,
     tags: ['生活', '人物'],
+    format: 'xhs',
   },
 }
 
+const deck = (title: string, description: string, tags: string[]): TemplateMeta => ({ title, description, pageCount: 3, tags, format: 'xhs' })
+const poster = (title: string, description: string, tags: string[], format: TemplateMeta['format']): TemplateMeta => ({ title, description, pageCount: 1, tags, format })
+
 const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
-  editorial: { title: '编辑部', description: '用刊头和正文网格组织长文，适合观点与方法文章。', pageCount: 3, tags: ['观点', '方法'] },
-  checklist: { title: '清单', description: '把步骤排成可以逐项勾选的工作页，适合教程和计划。', pageCount: 3, tags: ['教程', '清单'] },
-  signal: { title: '信号', description: '用海报式大标题亮出判断，适合短观点。', pageCount: 3, tags: ['观点', '短文'] },
-  'night-flight': { title: '夜航', description: '沿时间和路线展开一段记录，适合随笔与灵感。', pageCount: 3, tags: ['随笔', '灵感'] },
-  neon: { title: '霓虹', description: '深色夜景配霓虹灯牌和发光标题，适合夜间观察与城市话题。', pageCount: 3, tags: ['夜景', '观察'] },
-  brutalist: { title: '粗野', description: '黄黑撞色、硬阴影和粗线，适合宣言与规则清单。', pageCount: 3, tags: ['宣言', '海报'] },
-  soft: { title: '柔光', description: '柔光粉彩、便签和信纸，配手写字体，适合随笔与生活记录。', pageCount: 3, tags: ['随笔', '生活'] },
-  blueprint: { title: '蓝图', description: '工程网格、尺寸标注和图签，适合计划与结构拆解。', pageCount: 3, tags: ['计划', '结构'] },
+  editorial: deck('编辑部', '用刊头和正文网格组织长文，适合观点与方法文章。', ['观点', '方法']),
+  checklist: deck('清单', '把步骤排成可以逐项勾选的工作页，适合教程和计划。', ['教程', '清单']),
+  signal: deck('信号', '用海报式大标题亮出判断，适合短观点。', ['观点', '短文']),
+  'night-flight': deck('夜航', '沿时间和路线展开一段记录，适合随笔与灵感。', ['随笔', '灵感']),
+  neon: deck('霓虹', '深色夜景配霓虹灯牌和发光标题，适合夜间观察与城市话题。', ['夜景', '观察']),
+  brutalist: deck('粗野', '黄黑撞色、硬阴影和粗线，适合宣言与规则清单。', ['宣言', '海报']),
+  soft: deck('柔光', '柔光粉彩、便签和信纸，配手写字体，适合随笔与生活记录。', ['随笔', '生活']),
+  blueprint: deck('蓝图', '工程网格、尺寸标注和图签，适合计划与结构拆解。', ['计划', '结构']),
+  'talk-poster': poster('讲座', '大图配大标题，时间、地点、嘉宾一目了然，适合讲座、分享会和活动报名。', ['活动', '讲座'], 'story'),
+  'sale-poster': poster('促销', '大字优惠配产品插画，适合新品、折扣和门店活动。', ['促销', '门店'], 'story'),
+  'hiring-poster': poster('招聘', '大字标语和职位卡片，适合招聘和团队介绍。', ['招聘', '团队'], 'story'),
+  'festival-poster': poster('节日', '月亮、祥云和竖排标题，适合中秋等节日问候。', ['节日', '问候'], 'story'),
+  invitation: poster('邀请函', '金色边框、居中排版，适合晚宴、发布会和典礼邀请。', ['邀请', '活动'], 'story'),
+  'quote-card': poster('金句', '一句话配出处，适合金句、日签和读书摘抄。', ['金句', '日签'], 'square'),
+  'product-card': poster('商品主图', '产品图配卖点和价格角标，适合电商主图和新品介绍。', ['电商', '产品'], 'square'),
+  'video-cover': poster('视频封面', '超大标题配一张图表卡片，适合视频和直播封面。', ['封面', '视频'], 'landscape'),
+  'article-cover': poster('公众号首图', '标题在左、图片在右，适合公众号文章首图。', ['封面', '公众号'], 'wechat-cover'),
+  flyer: poster('宣传单', 'A4 单页：大标题、插画、时间地点和预约按钮，适合课程和活动传单。', ['印刷', '课程'], 'a4'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -990,6 +1353,16 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   brutalist: createBrutalistDocument,
   soft: createSoftDocument,
   blueprint: createBlueprintDocument,
+  'talk-poster': createTalkPosterDocument,
+  'sale-poster': createSalePosterDocument,
+  'hiring-poster': createHiringPosterDocument,
+  'festival-poster': createFestivalPosterDocument,
+  invitation: createInvitationDocument,
+  'quote-card': createQuoteCardDocument,
+  'product-card': createProductCardDocument,
+  'video-cover': createVideoCoverDocument,
+  'article-cover': createArticleCoverDocument,
+  flyer: createFlyerDocument,
 }
 
 const markdownSeriesIds: MarkdownTemplateSeriesId[] = [
@@ -1006,6 +1379,16 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'brutalist',
   'soft',
   'blueprint',
+  'talk-poster',
+  'sale-poster',
+  'hiring-poster',
+  'festival-poster',
+  'invitation',
+  'quote-card',
+  'product-card',
+  'video-cover',
+  'article-cover',
+  'flyer',
 ]
 
 function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {
@@ -1014,16 +1397,19 @@ function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefin
     id: `${series}-markdown`,
     series,
     workspace: 'markdown',
+    kind: 'deck',
     createMarkdown: () => cloneMarkdown(series),
   }
 }
 
 function createFreeformTemplate(series: FreeformTemplateSeriesId): TemplateDefinition {
+  const meta = freeformSeriesMeta[series]
   return {
-    ...freeformSeriesMeta[series],
+    ...meta,
     id: `${series}-freeform`,
     series,
     workspace: 'freeform',
+    kind: meta.pageCount === 1 ? 'poster' : 'deck',
     createFreeform: () => freeformFactories[series](),
   }
 }

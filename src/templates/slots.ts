@@ -4,7 +4,8 @@
 // survives into a finished deck. Nodes are named in the template factories
 // (registry.ts); anything not listed here is decoration and stays as drawn.
 
-import type { FreeformTemplateSeriesId } from './types'
+import type { ColorPaint } from '../freeform/types'
+import type { FreeformDeckSeriesId, FreeformPosterSeriesId } from './types'
 
 /** One fillable text, with the shapes, lines and labels that only make sense beside it. */
 export interface SlotItem {
@@ -47,7 +48,7 @@ export interface TemplateSlots {
 
 const steps = (names: readonly [string, string, string]): SlotItem[] => names.map((text) => ({ text }))
 
-export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformTemplateSeriesId, TemplateSlots> = {
+export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots> = {
   editorial: {
     cover: {
       title: '主标题',
@@ -292,5 +293,154 @@ export function slotSampleNames(slots: SlideSlots): string[] {
   slots.toc?.items?.forEach((item) => { add(item.text); add(item.note) })
   add(slots.toc?.list)
   slots.remove?.forEach((item) => { add(item.text); add(item.note) })
+  return names
+}
+
+// --- Posters ---
+
+/** One information line of a poster ("时间：10 月 18 日"): the label is what comes before the colon. */
+export interface PosterDetail {
+  label?: string
+  value: string
+  /** Removed together with the line when there is nothing to put in it. */
+  extras?: readonly string[]
+}
+
+/** Where a one-page template's content goes. Anything it doesn't name is decoration. */
+export interface PosterSlots {
+  title: string
+  subtitle?: SlotItem
+  body?: SlotItem
+  /** Information lines, in order; unused ones go with their extras. */
+  details?: readonly PosterDetail[]
+  /** The call to action, with the button drawn behind it. */
+  cta?: SlotItem
+  /** A short label: a corner badge, a price, an episode number. */
+  tag?: SlotItem
+  /** Who it is from: the organiser, brand or sign-off. */
+  brand?: SlotItem
+  /**
+   * The picture: an image, or a shape filled with one. Without a picture a
+   * shape takes `fallback` (a colour block that keeps the layout), anything
+   * else goes with its extras.
+   */
+  image?: { node: string; fallback?: ColorPaint; extras?: readonly string[] }
+  /** Sample copy with no content of its own: always removed. */
+  remove?: readonly SlotItem[]
+}
+
+const block = (color: string): ColorPaint => ({ type: 'solid', color })
+
+const rows = (count: number, label: (n: string) => string | undefined, value: (n: string) => string, extras?: (n: string) => readonly string[]): PosterDetail[] =>
+  ['一', '二', '三'].slice(0, count).map((n) => ({
+    ...(label(n) ? { label: label(n) } : {}),
+    value: value(n),
+    ...(extras ? { extras: extras(n) } : {}),
+  }))
+
+export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> = {
+  'talk-poster': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '主办' },
+    image: { node: '主图', fallback: block('#d8d0c2') },
+  },
+  'sale-poster': {
+    title: '标题',
+    subtitle: { text: '副标题', extras: ['副标题线'] },
+    body: { text: '正文' },
+    tag: { text: '角标', extras: ['角标底'] },
+    details: rows(2, () => undefined, (n) => `信息${n}`),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+    image: { node: '主图' },
+  },
+  'hiring-poster': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `职位${n}`, (n) => `说明${n}`, (n) => [`职位卡${n}`, `箭头${n}`]),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+  },
+  'festival-poster': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '印章文字', extras: ['印章'] },
+    details: rows(2, () => undefined, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+  },
+  invitation: {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+  },
+  'quote-card': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    details: rows(1, () => undefined, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+  },
+  'product-card': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标', extras: ['价格底', '价格标签'] },
+    details: rows(3, () => undefined, (n) => `信息${n}`, (n) => [`勾底${n}`, `勾${n}`]),
+    brand: { text: '品牌' },
+    image: { node: '主图' },
+  },
+  'video-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+  },
+  'article-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+    image: { node: '主图', fallback: block('#26385e') },
+  },
+  flyer: {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+    image: { node: '主图' },
+    remove: [{ text: '页脚' }],
+  },
+}
+
+function posterItems(slots: PosterSlots): SlotItem[] {
+  return [slots.subtitle, slots.body, slots.cta, slots.tag, slots.brand].filter((item): item is SlotItem => Boolean(item))
+}
+
+/** Every name a poster's slots point at, for checking them against the template. */
+export function posterSlotNames(slots: PosterSlots): string[] {
+  const names = [slots.title]
+  for (const item of [...posterItems(slots), ...(slots.remove ?? [])]) names.push(item.text, ...(item.note ? [item.note] : []), ...(item.extras ?? []))
+  for (const detail of slots.details ?? []) names.push(...(detail.label ? [detail.label] : []), detail.value, ...(detail.extras ?? []))
+  if (slots.image) names.push(slots.image.node, ...(slots.image.extras ?? []))
+  return names
+}
+
+/**
+ * The texts a poster's slots fill or remove: sample copy that must never
+ * reach a finished poster. Line labels ("时间", "地点") are generic words a
+ * poster may well keep, so `labels: false` leaves them out.
+ */
+export function posterSampleNames(slots: PosterSlots, { labels = true }: { labels?: boolean } = {}): string[] {
+  const names = [slots.title]
+  for (const item of [...posterItems(slots), ...(slots.remove ?? [])]) names.push(item.text, ...(item.note ? [item.note] : []))
+  for (const detail of slots.details ?? []) names.push(...(labels && detail.label ? [detail.label] : []), detail.value)
   return names
 }

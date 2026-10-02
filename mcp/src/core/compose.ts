@@ -15,7 +15,7 @@ import type {
 } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots, type SlotItem } from '../../../src/templates/slots'
-import type { FreeformTemplateSeriesId } from '../../../src/templates/types'
+import type { FreeformDeckSeriesId } from '../../../src/templates/types'
 import { balancedHeading, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
 
 export interface DeckPage {
@@ -115,11 +115,11 @@ export function normalizeDeckContent(value: unknown): DeckContent | string {
   return { title, ...(subtitle ? { subtitle } : {}), pages, ...(ending ? { ending } : {}) }
 }
 
-function seriesOf(templateId: string): { series: FreeformTemplateSeriesId; create: () => FreeformDocument } | null {
+function seriesOf(templateId: string): { series: FreeformDeckSeriesId; create: () => FreeformDocument } | null {
   const template = TEMPLATE_REGISTRY.find((candidate) => candidate.id === templateId)
   if (!template || template.workspace !== 'freeform' || !template.createFreeform) return null
   if (!(template.series in FREEFORM_TEMPLATE_SLOTS)) return null
-  return { series: template.series as FreeformTemplateSeriesId, create: template.createFreeform }
+  return { series: template.series as FreeformDeckSeriesId, create: template.createFreeform }
 }
 
 const pad = (value: number) => String(value).padStart(2, '0')
@@ -535,7 +535,13 @@ function fillSlide(template: FreeformSlide, slots: SlideSlots, fill: SlideFill):
 export function composeDeck(templateId: string, value: unknown): ComposeSuccess | ComposeError {
   const template = seriesOf(templateId)
   if (!template) {
-    return { ok: false, error: `未知的自由画布模板 id：${templateId}（先用 list_templates 查询，id 以 -freeform 结尾）。` }
+    const known = TEMPLATE_REGISTRY.find((candidate) => candidate.id === templateId)
+    return {
+      ok: false,
+      error: known?.kind === 'poster'
+        ? `${templateId} 是单页海报模板，用 create_poster_from_content 生成。`
+        : `未知的自由画布模板 id：${templateId}（先用 list_templates 查询，id 以 -freeform 结尾）。`,
+    }
   }
   const content = normalizeDeckContent(value)
   if (typeof content === 'string') return { ok: false, error: content }

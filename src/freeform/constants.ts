@@ -13,4 +13,6 @@ export const pageSizePresets = [
   { ratio: '4:3', width: 1440, height: 1080 },
   { ratio: '9:16', width: 1080, height: 1920 },
   { ratio: '16:9', width: 1920, height: 1080 },
+  { ratio: '2.35:1', width: 1800, height: 766 },
+  { ratio: 'A4', width: 1240, height: 1754 },
 ] as const

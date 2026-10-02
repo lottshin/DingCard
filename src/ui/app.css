@@ -1454,6 +1454,8 @@ kbd {
 }
 
 .tpl-page-0 { left: 31%; z-index: 3; }
+.tpl-page-solo { z-index: 3; }
+.tpl-stage:hover .tpl-page-solo { transform: translateY(-4px); }
 .tpl-page-1 { left: 12%; transform: rotate(-6deg) scale(0.9); }
 .tpl-page-2 { left: 50%; transform: rotate(6deg) scale(0.9); }
 .tpl-stage:hover .tpl-page-1 { transform: translateX(-8%) rotate(-9deg) scale(0.9); }

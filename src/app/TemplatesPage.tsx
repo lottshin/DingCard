@@ -17,9 +17,10 @@ export const TEMPLATE_GUIDE_URL = 'https://github.com/lottshin/DingCard/blob/mas
 export function TemplatesPage({ system, onUseTemplate }: TemplatesPageProps) {
   const markdown = useMemo(() => templatesFor('markdown-card'), [])
   const freeform = useMemo(() => templatesFor('freeform-slide'), [])
-  const groups = [
-    { system: 'markdown-card' as const, title: t('Markdown 卡片模板'), hint: t('写好正文就能套用，封面、正文、金句、收尾按内容自动分配。'), templates: markdown },
-    { system: 'freeform-slide' as const, title: t('自由编辑模板'), hint: t('每个元素都能拖动、改色、换图，多页一起调整。'), templates: freeform },
+  const groups: Array<{ id: string; system: WorkspaceMode; title: string; hint?: string; templates: readonly TemplateDefinition[] }> = [
+    { id: 'markdown-card', system: 'markdown-card' as const, title: t('Markdown 卡片模板'), hint: t('写好正文就能套用，封面、正文、金句、收尾按内容自动分配。'), templates: markdown },
+    { id: 'freeform-slide', system: 'freeform-slide' as const, title: t('自由编辑模板'), hint: t('每个元素都能拖动、改色、换图，多页一起调整。'), templates: freeform.filter((template) => template.kind === 'deck') },
+    { id: 'freeform-poster', system: 'freeform-slide' as const, title: t('海报与封面'), templates: freeform.filter((template) => template.kind === 'poster') },
   ].filter((group) => !system || group.system === system)
 
   return (
@@ -40,11 +41,11 @@ export function TemplatesPage({ system, onUseTemplate }: TemplatesPageProps) {
       </div>
 
       {groups.map((group) => (
-        <section key={group.system} className="section tpl-group" aria-labelledby={`tpl-${group.system}`}>
+        <section key={group.id} className="section tpl-group" aria-labelledby={`tpl-${group.id}`}>
           <div className="section-head">
             <div>
-              <h2 id={`tpl-${group.system}`}>{group.title}</h2>
-              <p className="section-hint">{group.hint}</p>
+              <h2 id={`tpl-${group.id}`}>{group.title}</h2>
+              {group.hint && <p className="section-hint">{group.hint}</p>}
             </div>
           </div>
           <div className="tpl-grid">

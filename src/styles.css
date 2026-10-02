@@ -6296,3 +6296,26 @@ html.theme-anim * {
   font-weight: 700;
   color: var(--text-3);
 }
+
+/* While a guide is dragged: where it is, in page px, and 居中 when it sits on the page centre. */
+.freeform-guide-readout {
+  position: absolute;
+  z-index: 22;
+  padding: 0.2em 0.5em;
+  border-radius: 999px;
+  background: var(--freeform-guide);
+  color: #fff;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Caught by the page centre, an edge or an object: the guide and its readout turn the accent colour. */
+.freeform-guide-ghost.is-snapped {
+  --freeform-guide: var(--accent);
+}
+
+.freeform-guide-readout.is-snapped {
+  background: var(--accent);
+}

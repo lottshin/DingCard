@@ -11083,6 +11083,37 @@ test.describe('freeform rulers and guides', () => {
     expect(boxes[0].y).toBe(400)
   })
 
+  test('a dragged guide shows where it is and settles on the page centre', async ({ page }) => {
+    await openFreeform(page)
+    if (await page.getByTestId('freeform-ruler-x').count() === 0) await page.getByTestId('freeform-rulers-toggle').click()
+    await page.getByTestId('freeform-ruler-x').waitFor({ state: 'attached' })
+    const geometry = await stageGeometry(page)
+    const scale = await freeformCanvasScale(page)
+    // Drop it 3 page px off the centre of the 1080 page: it lands on 540.
+    const dropX = geometry.artboardLeft + 537 * scale
+    const dropY = geometry.artboardTop + 200 * scale
+    await page.mouse.move(dropX, geometry.rulerTop + 10)
+    await page.mouse.down()
+    await page.mouse.move(dropX, (geometry.rulerTop + dropY) / 2)
+    await page.mouse.move(dropX, dropY)
+    const readout = page.getByTestId('freeform-guide-readout')
+    await expect(readout).toHaveText('居中 · 540')
+    await expect(readout).toHaveClass(/is-snapped/)
+    await page.mouse.up()
+    await expect(readout).toHaveCount(0)
+    const guide = page.getByTestId('freeform-guide')
+    expect(await guide.evaluate((node) => Number.parseFloat(node.style.left))).toBe(540)
+
+    // Pressing a guide shows its position without moving it.
+    const guideX = geometry.artboardLeft + 540 * scale
+    const grabY = (geometry.artboardTop + geometry.artboardBottom) / 2
+    await page.mouse.move(guideX + 2, grabY)
+    await page.mouse.down()
+    await expect(readout).toHaveText('居中 · 540')
+    await page.mouse.up()
+    expect(await guide.evaluate((node) => Number.parseFloat(node.style.left))).toBe(540)
+  })
+
   test('keeps guides scoped to their page', async ({ page }) => {
     await openFreeform(page)
     await dragGuideFromRuler(page, 'x', 420)

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <title>A cup of latte on a saucer</title>
+  <defs>
+    <linearGradient id="cup" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fffdf8"/>
+      <stop offset="0.62" stop-color="#fbf3e7"/>
+      <stop offset="1" stop-color="#ecdcc6"/>
+    </linearGradient>
+    <radialGradient id="coffee" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#b9774a"/>
+      <stop offset="1" stop-color="#6e3f22"/>
+    </radialGradient>
+  </defs>
+  <g fill="none" stroke="#fff6ea" stroke-linecap="round" stroke-width="16" opacity="0.9">
+    <path d="M330 250c-30-36 30-62 0-104"/>
+    <path d="M400 236c-30-40 34-70 0-118"/>
+    <path d="M470 250c-30-36 30-62 0-104"/>
+  </g>
+  <ellipse cx="400" cy="676" rx="318" ry="74" fill="#5a2f19" opacity="0.18"/>
+  <ellipse cx="400" cy="650" rx="312" ry="76" fill="#fbf4ea"/>
+  <ellipse cx="400" cy="640" rx="236" ry="48" fill="#ead8c1"/>
+  <path d="M618 410c96-8 120 156-14 176" fill="none" stroke="#f6eadb" stroke-width="40" stroke-linecap="round"/>
+  <path d="M618 410c96-8 120 156-14 176" fill="none" stroke="#fffaf2" stroke-width="22" stroke-linecap="round"/>
+  <path d="M182 350h436l-36 260c-6 34-34 50-70 50H288c-36 0-64-16-70-50z" fill="url(#cup)"/>
+  <ellipse cx="400" cy="350" rx="218" ry="44" fill="#fffaf2"/>
+  <ellipse cx="400" cy="352" rx="196" ry="34" fill="url(#coffee)"/>
+  <path d="M400 384c-46-26-62-44-52-60 10-17 36-12 52 8 16-20 42-25 52-8 10 16-6 34-52 60z" fill="#f7e6d2"/>
+  <g fill="#6e3f22">
+    <ellipse cx="146" cy="700" rx="30" ry="20" transform="rotate(-24 146 700)"/>
+    <ellipse cx="664" cy="716" rx="30" ry="20" transform="rotate(18 664 716)"/>
+  </g>
+  <g fill="none" stroke="#3f2213" stroke-width="5" stroke-linecap="round">
+    <path d="M128 708c12-4 24-12 36-18"/>
+    <path d="M646 708c12 4 24 10 36 18"/>
+  </g>
+</svg>

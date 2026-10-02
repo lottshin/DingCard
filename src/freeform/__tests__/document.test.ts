@@ -116,7 +116,7 @@ describe('freeform document', () => {
   })
 
   it('exposes required presets', () => {
-    expect(pageSizePresets.map((p) => p.ratio)).toEqual(['1:1', '3:4', '4:3', '9:16', '16:9'])
+    expect(pageSizePresets.map((p) => p.ratio)).toEqual(['1:1', '3:4', '4:3', '9:16', '16:9', '2.35:1', 'A4'])
   })
 
   it('adds a slide that inherits active slide size', () => {

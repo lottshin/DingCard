@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 
-import { ROTATION_SNAP_STEP, snapDrag, snapRotationDegrees, snapSceneDrag } from '../snapping'
+import { ROTATION_SNAP_STEP, snapDrag, snapGuide, snapRotationDegrees, snapSceneDrag } from '../snapping'
 import type { FreeformElement, FreeformSceneNode } from '../types'
 
 const rect = (
@@ -222,4 +222,21 @@ it('snaps rotation deltas to 15° increments without negative zero', () => {
   expect(snapRotationDegrees(-179)).toBe(-180)
   expect(snapRotationDegrees(Number.NaN)).toBe(0)
   expect(snapRotationDegrees(Number.POSITIVE_INFINITY)).toBe(0)
+})
+
+it('settles a dragged guide on the page centre, an edge or an object, centre first', () => {
+  const slide = { width: 1080, height: 1440 }
+  const nodes = [rect('card', 100, 300, 200, 100) as FreeformSceneNode]
+  expect(snapGuide(slide, nodes, 'x', 536, 8)).toEqual({ position: 540, target: 'page-center' })
+  expect(snapGuide(slide, nodes, 'y', 717, 8)).toEqual({ position: 720, target: 'page-center' })
+  expect(snapGuide(slide, nodes, 'x', 6, 8)).toEqual({ position: 0, target: 'page-edge' })
+  // An object's left edge, centre and right edge.
+  expect(snapGuide(slide, nodes, 'x', 104, 8)).toEqual({ position: 100, target: 'element' })
+  expect(snapGuide(slide, nodes, 'x', 197, 8)).toEqual({ position: 200, target: 'element' })
+  expect(snapGuide(slide, nodes, 'y', 396, 8)).toEqual({ position: 400, target: 'element' })
+  // Too far from anything, or snapping off: it stays where it was dropped.
+  expect(snapGuide(slide, nodes, 'x', 620, 8)).toEqual({ position: 620, target: null })
+  expect(snapGuide(slide, nodes, 'x', 536, 0)).toEqual({ position: 536, target: null })
+  // A hidden object catches nothing.
+  expect(snapGuide(slide, [{ ...nodes[0], hidden: true }], 'x', 104, 8)).toEqual({ position: 104, target: null })
 })

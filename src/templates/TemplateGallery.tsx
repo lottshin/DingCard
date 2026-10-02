@@ -4,9 +4,10 @@ import { Card } from '../Card'
 import { FreeformSlidePreview } from '../freeform/FreeformSlidePreview'
 import { buildConfig, DEFAULT_PROFILE, FONTS, PLATFORMS, resolveTheme } from '../theme'
 import { CloseIcon } from '../ui/icons'
+import { TEMPLATE_FORMATS, templateFormat } from './formats'
 import { markdownFirstPage, previewStyle } from './previewModel'
 import { templatesForWorkspace } from './registry'
-import type { TemplateDefinition, TemplateWorkspace } from './types'
+import type { TemplateDefinition, TemplateFormatId, TemplateWorkspace } from './types'
 import { t } from '../i18n'
 
 interface TemplateGalleryProps {
@@ -44,6 +45,13 @@ function MarkdownTemplatePreview({ template, detail = false }: { template: Templ
   )
 }
 
+/** The largest box of the template's own proportions that fits in `maxWidth` × `maxHeight`. */
+export function templateFrame(template: TemplateDefinition, maxWidth: number, maxHeight: number): { width: number; height: number } {
+  const { width, height } = templateFormat(template.format)
+  const scale = Math.min(maxWidth / width, maxHeight / height)
+  return { width: Math.round(width * scale), height: Math.round(height * scale) }
+}
+
 export function FreeformTemplatePreview({ template, detail = false, frame }: {
   template: TemplateDefinition
   detail?: boolean
@@ -53,11 +61,12 @@ export function FreeformTemplatePreview({ template, detail = false, frame }: {
   const document = useMemo(() => template.createFreeform?.(), [template])
   const slide = document?.slides[0]
   if (!slide) return null
+  const size = frame ?? templateFrame(template, detail ? 300 : 300, detail ? 420 : 216)
   return (
     <FreeformSlidePreview
       slide={slide}
-      frameWidth={frame?.width ?? (detail ? 224 : 162)}
-      frameHeight={frame?.height ?? (detail ? 299 : 216)}
+      frameWidth={size.width}
+      frameHeight={size.height}
       className={detail ? 'template-freeform-preview detail' : 'template-freeform-preview'}
       artboardClassName='template-freeform-artboard'
     />
@@ -82,7 +91,10 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
   const pendingReturnFocusRef = useRef<HTMLElement | null>(null)
   const pendingRef = useRef<TemplateDefinition | null>(null)
   const onCloseRef = useRef(onClose)
-  const templates = templatesForWorkspace(workspace)
+  const allTemplates = templatesForWorkspace(workspace)
+  const formats = TEMPLATE_FORMATS.filter((format) => allTemplates.some((template) => template.format === format.id))
+  const [format, setFormat] = useState<TemplateFormatId | null>(null)
+  const templates = format ? allTemplates.filter((template) => template.format === format) : allTemplates
   const [selectedId, setSelectedId] = useState(templates[0]?.id ?? '')
   const [pending, setPending] = useState<TemplateDefinition | null>(null)
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0]
@@ -91,7 +103,10 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
 
   useEffect(() => {
     if (!open || !initialTemplateId) return
-    if (templates.some((template) => template.id === initialTemplateId)) setSelectedId(initialTemplateId)
+    const picked = allTemplates.find((template) => template.id === initialTemplateId)
+    if (!picked) return
+    setSelectedId(initialTemplateId)
+    if (format && picked.format !== format) setFormat(null)
   }, [open, initialTemplateId])
 
   useEffect(() => {
@@ -141,10 +156,17 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
   }, [open, pending])
 
   useEffect(() => {
-    setSelectedId(templates[0]?.id ?? '')
+    setFormat(null)
+    setSelectedId(allTemplates[0]?.id ?? '')
     pendingReturnFocusRef.current = null
     setPending(null)
   }, [workspace])
+
+  function pickFormat(next: TemplateFormatId | null) {
+    setFormat(next)
+    const shown = next ? allTemplates.filter((template) => template.format === next) : allTemplates
+    if (!shown.some((template) => template.id === selectedId)) setSelectedId(shown[0]?.id ?? '')
+  }
 
   if (!open || !selected) return null
 
@@ -186,7 +208,9 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
             <h3>{t(template.title)}</h3>
             <p>{t(template.description)}</p>
           </div>
-          <span className='template-page-count'>{t('{n} 页', { n: template.pageCount })}</span>
+          <span className='template-page-count'>
+            {template.kind === 'poster' ? templateFormat(template.format).ratio : t('{n} 页', { n: template.pageCount })}
+          </span>
         </div>
         <div className='template-tags'>
           {template.tags.map((tag) => <span key={tag}>{t(tag)}</span>)}
@@ -222,6 +246,16 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
 
         <div className='template-dialog-body'>
           <section className='template-list' aria-label={t('模板列表')}>
+            {formats.length > 1 && (
+              <div className='template-formats' role='group' aria-label={t('按尺寸筛选')}>
+                <button type='button' aria-pressed={format === null} onClick={() => pickFormat(null)}>{t('全部')}</button>
+                {formats.map((entry) => (
+                  <button key={entry.id} type='button' aria-pressed={format === entry.id} data-testid={`template-format-${entry.id}`} onClick={() => pickFormat(entry.id)}>
+                    {t(entry.name)}
+                  </button>
+                ))}
+              </div>
+            )}
             {templates.map(renderTile)}
           </section>
 
@@ -229,12 +263,14 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
             <div className='template-detail-preview'><TemplatePreview template={selected} detail /></div>
             <div className='template-detail-copy'>
               <span className='template-detail-series'>{t(selected.title)}</span>
-              <h3>{selected.workspace === 'markdown' ? t('Markdown 长文排版') : t('自由画布轻设计')}</h3>
+              <h3>{selected.workspace === 'markdown' ? t('Markdown 长文排版') : selected.kind === 'poster' ? t('{name} · {width}×{height}', { name: t(templateFormat(selected.format).name), width: templateFormat(selected.format).width, height: templateFormat(selected.format).height }) : t('自由画布轻设计')}</h3>
               <p>{t(selected.description)}</p>
               <p className='template-detail-note'>
                 {selected.workspace === 'markdown'
                   ? t('{n} 页示例已经排好，正文、主题和字体都可以改。', { n: selected.pageCount })
-                  : t('{n} 页作品已经排好，文字、颜色、尺寸和图层都可以改。', { n: selected.pageCount })}
+                  : selected.kind === 'poster'
+                    ? t('文字、图片、颜色和图层都可以改。')
+                    : t('{n} 页作品已经排好，文字、颜色、尺寸和图层都可以改。', { n: selected.pageCount })}
               </p>
               <button className='template-use' type='button' onClick={() => requestApply(selected)}>{t('使用这套模板')}</button>
             </div>

@@ -5,10 +5,12 @@
 // the in-app template center runs.
 
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
-import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots } from '../../../src/templates/slots'
+import { templateFormat } from '../../../src/templates/formats'
+import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, type SlideSlots } from '../../../src/templates/slots'
 import type {
-  FreeformTemplateSeriesId,
+  FreeformPosterSeriesId,
   MarkdownTemplateDocument,
+  TemplateKind,
   TemplateWorkspace,
 } from '../../../src/templates/types'
 import type { FreeformDocument } from '../../../src/freeform/types'
@@ -26,15 +28,32 @@ export interface TemplateCapacity {
   endingQuote: boolean
 }
 
+/** What a poster template has room for (create_poster_from_content). */
+export interface PosterCapacity {
+  subtitle: boolean
+  body: boolean
+  /** Information lines ("时间：…"). */
+  details: number
+  cta: boolean
+  tag: boolean
+  brand: boolean
+  image: boolean
+}
+
 export interface TemplateSummary {
   id: string
   series: string
   workspace: TemplateWorkspace
+  /** deck: a cover, section pages and an ending (create_document_from_content); poster: one page (create_poster_from_content). */
+  kind: TemplateKind
+  /** The page size it is drawn at. */
+  format: { id: string; name: string; ratio: string; width: number; height: number }
   title: string
   description: string
   pageCount: number
   tags: string[]
   capacity?: TemplateCapacity
+  posterCapacity?: PosterCapacity
 }
 
 function pointRoom(slots: SlideSlots): number {
@@ -60,17 +79,38 @@ export type TemplateInstantiation =
   | { workspace: 'freeform'; document: FreeformDocument }
   | { workspace: 'markdown'; document: MarkdownTemplateDocument }
 
+function posterCapacityOf(series: string): PosterCapacity | undefined {
+  const slots = FREEFORM_POSTER_SLOTS[series as FreeformPosterSeriesId]
+  if (!slots) return undefined
+  return {
+    subtitle: Boolean(slots.subtitle),
+    body: Boolean(slots.body),
+    details: slots.details?.length ?? 0,
+    cta: Boolean(slots.cta),
+    tag: Boolean(slots.tag),
+    brand: Boolean(slots.brand),
+    image: Boolean(slots.image),
+  }
+}
+
 export function listTemplates(): TemplateSummary[] {
-  return TEMPLATE_REGISTRY.map((template) => ({
-    id: template.id,
-    series: template.series,
-    workspace: template.workspace,
-    title: template.title,
-    description: template.description,
-    pageCount: template.pageCount,
-    tags: [...template.tags],
-    ...(template.workspace === 'freeform' ? { capacity: capacityOf(template.series) } : {}),
-  }))
+  return TEMPLATE_REGISTRY.map((template) => {
+    const capacity = template.workspace === 'freeform' && template.kind === 'deck' ? capacityOf(template.series) : undefined
+    const posterCapacity = template.kind === 'poster' ? posterCapacityOf(template.series) : undefined
+    return {
+      id: template.id,
+      series: template.series,
+      workspace: template.workspace,
+      kind: template.kind,
+      format: { ...templateFormat(template.format) },
+      title: template.title,
+      description: template.description,
+      pageCount: template.pageCount,
+      tags: [...template.tags],
+      ...(capacity ? { capacity } : {}),
+      ...(posterCapacity ? { posterCapacity } : {}),
+    }
+  })
 }
 
 export function instantiateTemplate(templateId: string): TemplateInstantiation {
@@ -87,17 +127,16 @@ export function instantiateTemplate(templateId: string): TemplateInstantiation {
   return { workspace: 'markdown', document: template.createMarkdown() }
 }
 
+/** The freeform deck templates (cover, sections, ending). */
 export function freeformTemplateIds(): string[] {
   return TEMPLATE_REGISTRY
-    .filter((template): template is {
-      id: string
-      series: FreeformTemplateSeriesId
-      workspace: 'freeform'
-      title: string
-      description: string
-      pageCount: number
-      tags: readonly string[]
-      createFreeform: () => FreeformDocument
-    } => template.workspace === 'freeform' && typeof template.createFreeform === 'function')
+    .filter((template) => template.workspace === 'freeform' && template.kind === 'deck' && typeof template.createFreeform === 'function')
+    .map((template) => template.id)
+}
+
+/** The one-page poster templates. */
+export function posterTemplateIds(): string[] {
+  return TEMPLATE_REGISTRY
+    .filter((template) => template.workspace === 'freeform' && template.kind === 'poster' && typeof template.createFreeform === 'function')
     .map((template) => template.id)
 }

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000">
+  <title>A dropper bottle of plant essence with leaves</title>
+  <defs>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7fcfb4"/>
+      <stop offset="0.45" stop-color="#b9ead9"/>
+      <stop offset="1" stop-color="#5fb398"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1e5a44"/>
+      <stop offset="0.5" stop-color="#2f7a5d"/>
+      <stop offset="1" stop-color="#17463a"/>
+    </linearGradient>
+  </defs>
+  <g fill="#3d9c74">
+    <path d="M250 640c-120-40-170-170-130-300 110 40 170 170 130 300z"/>
+    <path d="M560 660c90-80 210-90 300-30-90 80-210 90-300 30z" transform="translate(-60 -20)"/>
+  </g>
+  <g fill="none" stroke="#2c7a58" stroke-width="6" stroke-linecap="round">
+    <path d="M250 640c-40-90-80-180-130-300"/>
+    <path d="M500 640c100-10 200-20 300-30"/>
+  </g>
+  <ellipse cx="400" cy="902" rx="230" ry="36" fill="#0f5132" opacity="0.16"/>
+  <rect x="352" y="150" width="96" height="70" rx="14" fill="#0f3d2e"/>
+  <path d="M352 196h96v60c0 18-10 30-24 34h-48c-14-4-24-16-24-34z" fill="url(#cap)"/>
+  <rect x="236" y="280" width="328" height="612" rx="92" fill="url(#glass)"/>
+  <rect x="258" y="300" width="40" height="540" rx="20" fill="#ffffff" opacity="0.35"/>
+  <rect x="286" y="470" width="228" height="250" rx="22" fill="#fbfffd"/>
+  <rect x="320" y="520" width="160" height="14" rx="7" fill="#1e5a44"/>
+  <rect x="340" y="556" width="120" height="10" rx="5" fill="#7fbfa6"/>
+  <rect x="352" y="584" width="96" height="10" rx="5" fill="#7fbfa6"/>
+  <path d="M400 620c22 28 34 48 34 64a34 34 0 0 1-68 0c0-16 12-36 34-64z" fill="#5fb398"/>
+  <g fill="#bfe9f0" opacity="0.9">
+    <path d="M640 330c14 18 22 31 22 41a22 22 0 0 1-44 0c0-10 8-23 22-41z"/>
+    <path d="M150 220c10 13 16 22 16 30a16 16 0 0 1-32 0c0-8 6-17 16-30z"/>
+  </g>
+</svg>

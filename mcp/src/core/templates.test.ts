@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import {
   freeformTemplateIds,
+  posterTemplateIds,
   instantiateTemplate,
   listTemplates,
 } from './templates'
@@ -31,8 +32,21 @@ describe('listTemplates', () => {
     }
   })
 
-  test('freeform template ids cover the eight freeform series', () => {
+  test('freeform template ids cover the eight decks, poster ids the ten posters', () => {
     expect(freeformTemplateIds()).toHaveLength(8)
+    expect(posterTemplateIds()).toHaveLength(10)
+  })
+
+  test('says what each template makes and the size it is drawn at, and what a poster has room for', () => {
+    const templates = listTemplates()
+    const talk = templates.find((template) => template.id === 'talk-poster-freeform')!
+    expect(talk).toMatchObject({ kind: 'poster', format: { id: 'story', ratio: '9:16', width: 1080, height: 1920 } })
+    expect(talk.posterCapacity).toEqual({ subtitle: true, body: false, details: 3, cta: true, tag: true, brand: true, image: true })
+    expect(talk.capacity).toBeUndefined()
+    const editorial = templates.find((template) => template.id === 'editorial-freeform')!
+    expect(editorial).toMatchObject({ kind: 'deck', format: { id: 'xhs', width: 1080, height: 1440 } })
+    expect(editorial.capacity).toBeDefined()
+    expect(editorial.posterCapacity).toBeUndefined()
   })
 })
 

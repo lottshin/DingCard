@@ -17,8 +17,9 @@ list_templates → create_document_from_content / create_document_from_outline�
 
 | 工具 | 作用 |
 | --- | --- |
-| `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台）。自由画布模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么，按内容挑模板。 |
+| `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台），每个带 `kind`（`deck` 一整套卡片 / `poster` 单页海报）和 `format`（页面尺寸：小红书套图 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷，含宽高）。套图模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么；海报模板另有 `posterCapacity`：副标题、正文、按钮、角标、署名、主图位有没有，信息能放几行。按内容和尺寸挑模板。 |
 | `create_document_from_template` | 按模板 id 实例化完整文档：自由画布文档保存在服务端，返回 `documentId` 和各页 id、名称；Markdown 返回源文信封。 |
+| `create_poster_from_content` | 按内容生成一张海报（`kind: 'poster'` 的模板）：`{ title, subtitle?, body?, details?: ["时间：…"…], cta?, tag?, brand?, image? }`，尺寸跟模板走（规则见下文「生成海报」）。 |
 | `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
@@ -52,6 +53,15 @@ list_templates → create_document_from_content / create_document_from_outline�
 - 默认打开服务端自带的编辑器：`http://127.0.0.1:5390`（同一份构建产物，离线可用；端口用 `DINGCARD_APP_PORT` 改，被占用时换一个空闲端口）。项目存在这个地址的浏览器存储里。
 - 平时用的是别的叮卡（本地开发的 `http://127.0.0.1:5173`，或部署好的网站），设环境变量 `DINGCARD_APP_URL`，或调用时传 `appUrl`，就在那里打开；编辑器跨域读取本机地址上的文档。
 - `open: false` 只返回链接（`url`）不打开浏览器。编辑器只接受本机（`127.0.0.1`、`localhost`）或同源地址上的文档，别的网站的链接会被拒绝。
+
+## 生成海报
+
+`create_poster_from_content` 把内容填进单页模板（讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单；内容位置写在 `src/templates/slots.ts` 的 `FREEFORM_POSTER_SLOTS`）：
+
+- `title` 必填，其余可选：`subtitle` 副标题，`body` 一段正文，`details` 信息行（`"时间：10 月 18 日 14:00"`，冒号前放进这一行的标签，没写冒号就整句放进内容、标签去掉），`cta` 按钮文字，`tag` 角标（活动类型、价格、期数），`brand` 主办或落款，`image` 主图（本机路径、http(s) URL 或 data URL，本机路径读进来嵌成 data URL）。
+- 模板里每一块示例文字都会换成内容，没给的连同它的底板、按钮一起删掉；没给 `image` 时，照片位变成一块和版面相配的色块，插画位直接删掉。
+- 文字放不下时缩小字号（最小 72%），列在 `summary.shrunk`，还放不下的在 `summary.overflowing`；信息行比模板多出来的列在 `summary.unplaced`，模板没有位置的字段列在 `summary.unused`。两三行的标题断得一样长。
+- 套图模板传给它会提示改用 `create_document_from_content`，反过来也一样。
 
 ## 生成整套卡片
 

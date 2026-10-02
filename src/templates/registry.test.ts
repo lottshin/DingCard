@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { normalizeFreeformDocument } from '../freeform/sceneDocument'
 import type { FreeformSceneLeaf, FreeformSceneNode } from '../freeform/types'
 import { FONTS, PLATFORMS, THEMES } from '../theme'
+import { templateFormat } from './formats'
 import { TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
 
 function nodeIds(nodes: FreeformSceneNode[]): string[] {
@@ -33,15 +34,19 @@ function geometrySignature(nodes: FreeformSceneNode[]): string {
 }
 
 describe('template registry', () => {
-  it('exposes three markdown and eight freeform series with unique IDs', () => {
-    expect(TEMPLATE_REGISTRY).toHaveLength(11)
-    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(11)
+  it('exposes three markdown series, eight freeform decks and ten posters with unique IDs', () => {
+    expect(TEMPLATE_REGISTRY).toHaveLength(21)
+    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(21)
     expect(templatesForWorkspace('markdown').map((template) => template.series)).toEqual([
       'editorial-archive',
       'public-theatre',
       'issue-cover',
     ])
-    expect(templatesForWorkspace('freeform')).toHaveLength(8)
+    const freeform = templatesForWorkspace('freeform')
+    expect(freeform.filter((template) => template.kind === 'deck')).toHaveLength(8)
+    expect(freeform.filter((template) => template.kind === 'poster')).toHaveLength(10)
+    // Posters come in every size the template center filters by.
+    expect(new Set(freeform.map((template) => template.format))).toEqual(new Set(['xhs', 'story', 'square', 'landscape', 'wechat-cover', 'a4']))
   })
 
   it('creates editable markdown documents with independent profile data', () => {
@@ -66,7 +71,9 @@ describe('template registry', () => {
       const second = template.createFreeform?.()
       expect(first?.slides).toHaveLength(template.pageCount)
       expect(first && normalizeFreeformDocument(first)).not.toBeNull()
-      expect(first?.slides.every((slide) => slide.width === 1080 && slide.height === 1440)).toBe(true)
+      // Every page is drawn at the template's own size.
+      const size = templateFormat(template.format)
+      expect(first?.slides.every((slide) => slide.width === size.width && slide.height === size.height), template.id).toBe(true)
       const validFontIds = new Set(FONTS.map((font) => font.id))
       const templateFonts = first?.slides.flatMap((slide) => textFontFamilies(slide.nodes)) ?? []
       expect(templateFonts.every((font) => validFontIds.has(font))).toBe(true)
@@ -88,13 +95,14 @@ describe('template registry', () => {
 
       for (const slide of document!.slides) {
         const leaves = sceneLeaves(slide.nodes)
-        expect(leaves.length, `${template.id}/${slide.name}`).toBeGreaterThanOrEqual(8)
+        // A poster can be sparer than a deck page, never bare.
+        expect(leaves.length, `${template.id}/${slide.name}`).toBeGreaterThanOrEqual(template.kind === 'poster' ? 5 : 8)
         expect(leaves.filter((node) => node.type === 'text').length, `${template.id}/${slide.name}`).toBeGreaterThanOrEqual(3)
         expect(leaves.some((node) => node.type === 'shape' || node.type === 'path'), `${template.id}/${slide.name}`).toBe(true)
         expect(leaves.some((node) => node.type === 'line'), `${template.id}/${slide.name}`).toBe(true)
       }
     }
-    expect(new Set(seriesGeometry).size).toBe(8)
+    expect(new Set(seriesGeometry).size).toBe(18)
   })
 
   it('overscans full-bleed rectangles past artboard corners', () => {

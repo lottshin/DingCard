@@ -40,6 +40,7 @@ import { useImageLease } from '../workspaces/useImageLease'
 import { useProjectAutosave } from '../workspaces/useProjectAutosave'
 import { FreeformTemplatePreview, TemplateGallery } from '../templates/TemplateGallery'
 import { Measured } from '../app/DocumentPreview'
+import { TEMPLATE_FORMATS } from '../templates/formats'
 import { templatesForWorkspace } from '../templates/registry'
 import type { TemplateDefinition } from '../templates/types'
 import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE, PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
@@ -200,7 +201,7 @@ import {
   moveSceneNodesWithinSlide,
   type Rect,
 } from './selection'
-import { snapRotationDegrees, snapSceneDrag, type SnapLine } from './snapping'
+import { snapGuide, snapRotationDegrees, snapSceneDrag, type GuideSnap, type SnapLine } from './snapping'
 import {
   measureDragDistances,
   type DragMeasurement,
@@ -787,7 +788,7 @@ type RulerView = {
   width: number
   height: number
 }
-type GuideDragState = { axis: 'x' | 'y'; guideId: string | null; position: number }
+type GuideDragState = { axis: 'x' | 'y'; guideId: string | null; position: number; target: GuideSnap['target'] }
 
 function operationErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? t(error.message) : fallback
@@ -795,6 +796,8 @@ function operationErrorMessage(error: unknown, fallback: string): string {
 
 /** Screen pixels in each dash (and gap) of a ruler guide. */
 const GUIDE_DASH = 4
+/** Screen pixels within which a dragged guide catches the page centre, its edges or an object. */
+const GUIDE_SNAP_PX = 6
 
 type GuideStyle = CSSProperties & { '--freeform-guide-dash': string }
 
@@ -4650,14 +4653,19 @@ export function FreeformWorkspace({
     if (!start) return
     const pointerId = event.pointerId
     const startPosition = axis === 'x' ? start.x : start.y
-    let position = startPosition
-    setGuideDrag({ axis, guideId, position })
+    // An existing guide shows where it is from the first press; a new one catches the page centre, edges and objects.
+    const existing = guideId ? slide.guides?.find((guide) => guide.id === guideId) : undefined
+    let position = existing?.position ?? startPosition
+    const scale = renderScale
+    const settle = (raw: number) => snapGuide(slide, slide.nodes, axis, raw, viewPrefs.snappingEnabled ? GUIDE_SNAP_PX / scale : 0)
+    setGuideDrag({ axis, guideId, position, target: existing ? settle(position).target : null })
     const onMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return
       const point = rawArtboardPointFromClient(moveEvent.clientX, moveEvent.clientY)
       if (!point) return
-      position = axis === 'x' ? point.x : point.y
-      setGuideDrag({ axis, guideId, position })
+      const snapped = settle(axis === 'x' ? point.x : point.y)
+      position = snapped.position
+      setGuideDrag({ axis, guideId, position, target: snapped.target })
     }
     const stopListening = () => {
       window.removeEventListener('pointermove', onMove)
@@ -4671,7 +4679,7 @@ export function FreeformWorkspace({
       const settled = Math.round(position)
       // preventDefault on the guide's pointerdown suppresses dblclick, so a
       // second tap on the same barely-moved guide is detected manually.
-      if (guideId && Math.abs(settled - Math.round(startPosition)) <= 1) {
+      if (guideId && Math.abs(settled - Math.round(existing?.position ?? startPosition)) <= 1) {
         const lastTap = guideTapRef.current
         const now = performance.now()
         if (lastTap && lastTap.guideId === guideId && now - lastTap.time < 500) {
@@ -6099,27 +6107,40 @@ export function FreeformWorkspace({
               <TemplatesIcon />
               {t('浏览全部模板')}
             </button>
-            <div className="freeform-template-tiles">
-              {FREEFORM_TEMPLATES.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  className="freeform-template-tile"
-                  data-testid={`freeform-template-tile-${template.id}`}
-                  aria-label={t('预览{title}', { title: t(template.title) })}
-                  onClick={() => {
-                    setGalleryTemplateId(template.id)
-                    setShowTemplates(true)
-                  }}
-                >
-                  <Measured className="freeform-template-thumb">
-                    {(width) => <FreeformTemplatePreview template={template} frame={{ width, height: Math.round((width * 4) / 3) }} />}
-                  </Measured>
-                  <span className="freeform-template-tile-title">{t(template.title)}</span>
-                  <span className="freeform-template-tile-meta">{t('{n} 页', { n: template.pageCount })}</span>
-                </button>
-              ))}
-            </div>
+            {TEMPLATE_FORMATS.map((format) => {
+              const group = FREEFORM_TEMPLATES.filter((template) => template.format === format.id)
+              if (group.length === 0) return null
+              // Landscape sizes take the whole row.
+              const wide = format.width > format.height * 1.2
+              return (
+                <Fragment key={format.id}>
+                  <div className="freeform-drawer-section">{t(format.name)}</div>
+                  <div className="freeform-template-tiles">
+                    {group.map((template) => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className={`freeform-template-tile${wide ? ' is-wide' : ''}`}
+                        data-testid={`freeform-template-tile-${template.id}`}
+                        aria-label={t('预览{title}', { title: t(template.title) })}
+                        onClick={() => {
+                          setGalleryTemplateId(template.id)
+                          setShowTemplates(true)
+                        }}
+                      >
+                        <Measured className="freeform-template-thumb" style={{ aspectRatio: `${format.width} / ${format.height}` }}>
+                          {(width) => <FreeformTemplatePreview template={template} frame={{ width, height: Math.round((width * format.height) / format.width) }} />}
+                        </Measured>
+                        <span className="freeform-template-tile-title">{t(template.title)}</span>
+                        <span className="freeform-template-tile-meta">
+                          {template.kind === 'poster' ? format.ratio : t('{n} 页', { n: template.pageCount })}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </Fragment>
+              )
+            })}
           </aside>
         )}
 
@@ -6771,10 +6792,23 @@ export function FreeformWorkspace({
                       ))}
                     {guideDrag && (
                       <div
-                        className={`freeform-ui-only freeform-guide-ghost freeform-guide-${guideDrag.axis}${guideDragValid ? '' : ' freeform-guide-invalid'}`}
+                        className={`freeform-ui-only freeform-guide-ghost freeform-guide-${guideDrag.axis}${guideDragValid ? '' : ' freeform-guide-invalid'}${guideDrag.target ? ' is-snapped' : ''}`}
                         data-testid="freeform-guide-dragging"
                         style={guideStyle(guideDrag.axis, guideDrag.position, renderScale)}
                       />
+                    )}
+                    {guideDrag && guideDragValid && (
+                      <span
+                        className={`freeform-ui-only freeform-guide-readout${guideDrag.target ? ' is-snapped' : ''}`}
+                        data-testid="freeform-guide-readout"
+                        style={guideDrag.axis === 'x'
+                          ? { left: guideDrag.position + 6 / renderScale, top: 8 / renderScale, fontSize: 11 / renderScale }
+                          : { left: 8 / renderScale, top: guideDrag.position + 6 / renderScale, fontSize: 11 / renderScale }}
+                      >
+                        {guideDrag.target === 'page-center'
+                          ? t('居中 · {position}', { position: Math.round(guideDrag.position) })
+                          : Math.round(guideDrag.position)}
+                      </span>
                     )}
                   </div>
                   {imageCropSession

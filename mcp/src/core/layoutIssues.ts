@@ -5,8 +5,8 @@
 import { walkScene } from '../../../src/freeform/sceneTree'
 import type { FreeformDocument, FreeformSceneNode, ScenePath } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
-import { FREEFORM_TEMPLATE_SLOTS, slotSampleNames } from '../../../src/templates/slots'
-import type { FreeformTemplateSeriesId } from '../../../src/templates/types'
+import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, posterSampleNames, slotSampleNames } from '../../../src/templates/slots'
+import type { FreeformDeckSeriesId, FreeformPosterSeriesId } from '../../../src/templates/types'
 import type { InspectedSlide } from '../render/renderer'
 
 export type LayoutIssueKind =
@@ -67,11 +67,14 @@ export function templateMarks(): TemplateMarks {
   const result: TemplateMarks = { samples: new Set(), decoration: new Set(), colourPairs: new Set() }
   for (const template of TEMPLATE_REGISTRY) {
     if (template.workspace !== 'freeform' || !template.createFreeform) continue
-    const slots = FREEFORM_TEMPLATE_SLOTS[template.series as FreeformTemplateSeriesId]
     const document = template.createFreeform()
-    const roles = slots ? [slots.cover, slots.section, slots.ending] : []
+    const deck = template.kind === 'deck' ? FREEFORM_TEMPLATE_SLOTS[template.series as FreeformDeckSeriesId] : undefined
+    const poster = template.kind === 'poster' ? FREEFORM_POSTER_SLOTS[template.series as FreeformPosterSeriesId] : undefined
+    const pages: string[][] = deck
+      ? [deck.cover, deck.section, deck.ending].map(slotSampleNames)
+      : poster ? [posterSampleNames(poster, { labels: false })] : []
     document.slides.forEach((slide, index) => {
-      const names = new Set(roles[index] ? slotSampleNames(roles[index]) : [])
+      const names = new Set(pages[index] ?? [])
       slide.nodes.forEach((node, order) => {
         if (node.type !== 'text') return
         if (names.has(node.name) && node.text.trim()) result.samples.add(node.text.trim())
