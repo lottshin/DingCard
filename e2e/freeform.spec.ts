@@ -1408,10 +1408,10 @@ test('shared inspector controls use 32px height, 8px radius, and custom native r
   await expect(channelRange).toHaveCSS('background-image', /linear-gradient/)
   const css = await readFile('src/styles.css', 'utf8')
   expect(css).toMatch(
-    /\.freeform-inspector \.paint-channel-range::-webkit-slider-thumb\s*\{[^}]*background:\s*var\(--text\)/s,
+    /:is\(\.freeform-inspector, \.freeform-drawer\) \.paint-channel-range::-webkit-slider-thumb\s*\{[^}]*background:\s*var\(--text\)/s,
   )
   expect(css).toMatch(
-    /\.freeform-inspector \.paint-channel-range::-moz-range-thumb\s*\{[^}]*background:\s*var\(--text\)/s,
+    /:is\(\.freeform-inspector, \.freeform-drawer\) \.paint-channel-range::-moz-range-thumb\s*\{[^}]*background:\s*var\(--text\)/s,
   )
   await gradientStartColor.click()
 

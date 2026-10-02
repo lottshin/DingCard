@@ -158,6 +158,18 @@ export function TemplatesIcon(props: IconProps) {
   )
 }
 
+/** A painter's palette, for the 风格 (styles) panel. */
+export function StylesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 2.25a5.75 5.75 0 0 0 0 11.5c.83 0 1.35-.55 1.35-1.22 0-.33-.13-.6-.33-.86-.2-.25-.33-.53-.33-.86 0-.67.55-1.2 1.22-1.2h1.38a2.46 2.46 0 0 0 2.46-2.46C13.75 4.4 11.18 2.25 8 2.25Z" />
+      <circle cx="5.1" cy="7.4" r=".55" />
+      <circle cx="6.6" cy="5" r=".55" />
+      <circle cx="9.5" cy="4.9" r=".55" />
+    </Icon>
+  )
+}
+
 export function AssetsIcon(props: IconProps) {
   return (
     <Icon {...props}>

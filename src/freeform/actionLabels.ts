@@ -14,6 +14,10 @@ export function describeFreeformAction(action: FreeformAction): string {
       return '更新页面'
     case 'slide/resize': return '调整页面尺寸'
     case 'guides/set': return '调整参考线'
+    case 'document/restyle':
+      if (action.palette !== undefined) return '更换配色'
+      if (action.fontSet !== undefined) return '更换字体组合'
+      return action.fonts !== undefined && action.colors === undefined ? '替换字体' : '替换颜色'
     case 'node/set-locked': return action.locked ? '锁定对象' : '解锁对象'
     case 'node/set-hidden': return action.hidden ? '隐藏对象' : '显示对象'
     case 'node/rename': return '重命名对象'

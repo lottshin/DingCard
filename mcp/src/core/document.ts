@@ -10,6 +10,7 @@
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
 import { ICONS } from '../../../src/freeform/icons'
+import { deckStyle, type DeckStyle } from './styles'
 import type {
   FreeformAction,
   FreeformDocument,
@@ -66,7 +67,7 @@ export interface SlideSummary {
 }
 
 export type InspectResult =
-  | { ok: true; slideCount: number; activeSlideId: string; slides: SlideSummary[] }
+  | { ok: true; slideCount: number; activeSlideId: string; style: DeckStyle; slides: SlideSummary[] }
   | { ok: false; error: string }
 
 function describeBackground(background: SlideBackground): string {
@@ -138,6 +139,7 @@ export function inspectDocument(value: unknown): InspectResult {
     ok: true,
     slideCount: document.slides.length,
     activeSlideId: document.activeSlideId,
+    style: deckStyle(document),
     slides: document.slides.map((slide) => ({
       id: slide.id,
       name: slide.name,

@@ -65,6 +65,7 @@ import {
   shadowPaintEquals,
 } from './appearance'
 import { isValidPathData } from './pathData'
+import { restyleDocument } from './restyle'
 import type {
   ColorPaint,
   FreeformAction,
@@ -1397,6 +1398,8 @@ export function reduceFreeformDocument(
         slides.splice(targetIndex, 0, moved)
         return { ...document, slides }
       }
+      case 'document/restyle':
+        return restyleDocument(document, action)
       case 'slide/update': {
         if (!isRecord(action.patch) || !hasOnlyKeys(action.patch, new Set(['name', 'background']))) {
           return document

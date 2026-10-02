@@ -12,6 +12,7 @@ import { composeDeck } from './core/compose'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
 import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
+import { listStyles } from './core/styles'
 import { instantiateTemplate, listTemplates } from './core/templates'
 import { checkDocument } from './render/check'
 import { renderDocument, renderMarkdownDocument, type RenderResult } from './render/renderer'
@@ -92,6 +93,7 @@ const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI �
 - { type: 'slide/delete', slideId } / { type: 'slide/select', slideId } / { type: 'slide/reorder', slideId, targetIndex }（把该页移动到 targetIndex，超出范围会收敛到末位）
 - { type: 'slide/update', slideId, patch: { name?, background? } } / { type: 'slide/resize', slideId, width, height }
 - { type: 'guides/set', slideId, guides: [{ id, axis('x'|'y'), position }] } 整体替换该页参考线（传 [] 清空；越界或重复 id 的整体提交会被忽略）
+- { type: 'document/restyle', palette?, fontSet?, colors?, fonts? } 整套卡片一起换风格（所有页面，一步撤销）。palette / fontSet 用 list_styles 返回的 id：配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅；字体组合按字号分配，不小于正文字号 1.4 倍的文字用标题字体，其余用正文字体。colors: { "#原色": "#新色" } 精确替换颜色（文字、填充、描边、投影、渐变色标、高亮一起换），fonts: { "原字体": "新字体" } 精确替换字体，键是文档现有的颜色和字体（见 inspect_document 的 style）；同时给时先套 palette / fontSet，再按 colors / fonts 覆盖
 - { type: 'node/insert-children', slideId, parentPath: string[], nodes: FreeformSceneNode[], index? } 插入节点
 - { type: 'node/update-content', slideId, updates: [{ path, patch: { text?, src?, alt?, d?, viewBox? } }] }（改 text 时已有 spans 会按编辑位置自动保留/收缩；d / viewBox 只用于 path，仅 v15）
 - { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?, fontFamily?, textFill?, align?, fontWeight?, spans?(整体替换文本片段，传 [] 清空), lineHeight?(传 null 恢复默认行高), letterSpacing?(传 null 恢复默认字距), italic?(true 开启斜体，false 取消), cornerRadius?(矩形圆角，传 null 恢复默认), opacity?(0–1 不透明度), shadow?(整体替换投影 { color, blur, offsetX, offsetY }，传 null 清除), filter?(整体替换滤镜 { brightness, contrast, saturation, blur } 至少一键，传 null 清除), blendMode?(混合模式，传 null 恢复正常), fit?, framing?, shape?, fill?(path 只接受 ColorPaint 或 { type: 'transparent' }), stroke?, strokeWidth?(path 为 viewBox 单位), lineKind?, dash?(虚线长度，path 为 viewBox 单位，传 null 恢复实线), cap?('round'|'butt'|'square' 线帽), join?('round'|'miter'|'bevel' path 拐角，仅 v15), fillRule?('nonzero'|'evenodd' path 填充规则，仅 v15), startCap?/endCap?('none'|'arrow'|'dot' 线条端点装饰，仅 v13，传 null 恢复跟随 lineKind), points?(整体替换多段线顶点 [{ x, y }×2–64]，仅 v14，必须全部落在节点盒内), stroke?(文字描边色，仅 v8，传 null 清除), strokeWidth?(文字描边宽度，仅 v8，传 null 清除), vertical?(true 竖排文字，仅 v9，false 恢复横排) } }] }
@@ -178,6 +180,13 @@ export function createDingcardServer(): McpServer {
   )
 
   server.tool(
+    'list_styles',
+    '列出可一键套到整套卡片上的配色（palettes：id、name、底色 background、文字色 text、强调色 accents）和字体组合（fontSets：id、name、标题字体 heading、正文字体 body），用 apply_actions 的 { type: "document/restyle", palette, fontSet } 套用；headingScale 是用标题字体的字号门槛（正文字号的倍数）。要换成指定的颜色或字体，用 document/restyle 的 colors / fonts，键取自 inspect_document 的 style。',
+    {},
+    async () => jsonResult(listStyles()),
+  )
+
+  server.tool(
     'validate_document',
     `校验 JSON 是否为合法的自由画布 v16 文档（v1–v15 输入自动迁移）；合法时返回规范化后的文档，非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
     { document: z.unknown().describe('待校验的 v16（或 v1–v15 旧版）文档 JSON') },
@@ -186,7 +195,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'inspect_document',
-    `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要）。改文档前先 inspect，拿到节点 id / 路径再发动作。${DOCUMENT_SCHEMA_HINT}`,
+    `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要），以及整套卡片的 style：用到的颜色（按占的面积排序，附 share 和用在 background/fill/text/line/shadow 哪些地方）、字体（texts 用了几段文字、largest 最大字号）和正文字号 bodySize。改文档前先 inspect，拿到节点 id / 路径再发动作。${DOCUMENT_SCHEMA_HINT}`,
     { document: z.unknown().describe('v16（或 v1–v15 旧版）文档 JSON') },
     async ({ document }) => jsonResult(inspectDocument(document)),
   )

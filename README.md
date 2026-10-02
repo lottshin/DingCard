@@ -60,7 +60,7 @@
 
 需要自己安排版面时，可以切到自由画布，在同一个作品里完成封面和多页内容。
 
-- 画布里可以加入文字、图片、基础图形和图标（可搜索的线性图标库，矢量图形可改填充和描边），并直接拖动它们的位置和大小；文字可以选中一段局部加粗、标色、高亮或加下划线（富文本片段）；页面背景可以是纯色、渐变或图片。
+- 画布里可以加入文字、图片、基础图形和图标（可搜索的线性图标库，矢量图形可改填充和描边），并直接拖动它们的位置和大小；文字可以选中一段局部加粗、标色、高亮或加下划线（富文本片段）；页面背景可以是纯色、渐变或图片；「风格」一键给整套卡片换配色或字体组合，也能把整套里的某个颜色、某个字体一起换掉。
 - 独立图片进入“裁剪”后，可以在原画框里移动图片、拖动八个黑柄，并用“比例”菜单快速调整画框。
 - 矩形、圆形和三角形的图片填充仍使用“调整取景”，只改变图片在形状里的位置和缩放。
 - 图层面板可以修改名称和顺序；相关对象也可以编成一组。
@@ -87,7 +87,7 @@ npm --prefix mcp ci
 npm run mcp   # 以 stdio 启动 dingcard-mcp
 ```
 
-可用工具包括 `list_templates`（含每套模板能放多少内容）、`create_document_from_template`、`create_document_from_content` 与 `create_document_from_outline`（按结构化内容或 Markdown 大纲一次生成整套卡片，模板示例文字全部换成内容）、`check_document`（按导出的样子排版后列出文字被裁、叠住、对比度低、残留示例文字等问题，可自动缩字号）、`list_icons`（查内置图标，返回可直接插入的图形节点）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为 PNG，附每页缩略图给模型看）和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
+可用工具包括 `list_templates`（含每套模板能放多少内容）、`create_document_from_template`、`create_document_from_content` 与 `create_document_from_outline`（按结构化内容或 Markdown 大纲一次生成整套卡片，模板示例文字全部换成内容）、`check_document`（按导出的样子排版后列出文字被裁、叠住、对比度低、残留示例文字等问题，可自动缩字号）、`list_icons`（查内置图标，返回可直接插入的图形节点）、`list_styles`（可一键套用的配色和字体组合，配合 `apply_actions` 的 `document/restyle` 给整套卡片换风格）、`validate_document`、`inspect_document`、`apply_actions`、`render_document`（自由画布无头渲染为 PNG，附每页缩略图给模型看）和 `render_markdown`（Markdown 长文无头渲染为一整套卡片 PNG：DOM 实测分页、平台预设、主题与资料头部）。客户端接入配置、`DINGCARD_DIST_DIR` 等环境变量、浏览器要求与安全边界见 [MCP 自动化接口](docs/mcp.md)。
 
 AI 生成的文档也可以一键回到编辑器精修：在工作台「我的项目」点击「导入 JSON」或直接把 `.json` 文件拖进页面，文档会存为项目并在对应的编辑器里打开（自由画布旧版本自动迁移，Markdown 文档同样支持），形成「AI 生成 → 人工精修 → 导出」的完整闭环。
 

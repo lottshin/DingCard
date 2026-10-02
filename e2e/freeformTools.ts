@@ -19,7 +19,7 @@ export async function startWithSettingsPanelOpen(page: Page) {
   })
 }
 
-type ToolPanel = 'templates' | 'text' | 'images' | 'elements'
+type ToolPanel = 'templates' | 'styles' | 'text' | 'images' | 'elements'
 
 function toolTrigger(page: Page, tool: ToolPanel) {
   return page.getByTestId(tool === 'templates' ? 'freeform-template-button' : `freeform-${tool}-tool`)

@@ -27,6 +27,21 @@ export const data: Record<string, Translation> = {
   '系统宋体': 'System serif',
   '系统默认': 'System default',
 
+  // Palettes and font sets (restyle.ts); 夜航, 霓虹 and 蓝图 share their template names
+  '纸墨': 'Paper & Ink',
+  '海盐': 'Sea Salt',
+  '松林': 'Pine',
+  '莓果': 'Berry',
+  '奶咖': 'Latte',
+  '黑白': 'Mono',
+  '墨黑': 'Charcoal',
+  '现代黑体': 'Modern Sans',
+  '杂志宋体': 'Editorial Serif',
+  '书卷宋体': 'Book Serif',
+  '手写文楷': 'Handwritten Kai',
+  '海报小薇': 'Poster XiaoWei',
+  '系统苹方': 'System PingFang',
+
   // Template metadata
   '编辑档案': 'Editorial Archive',
   '标题沿八栏网格展开，正文保留充足的阅读空间。': 'Headlines run across an eight-column grid, with plenty of room left for reading.',
@@ -133,6 +148,10 @@ export const data: Record<string, Translation> = {
   '更新页面': 'Update page',
   '调整页面尺寸': 'Resize page',
   '调整参考线': 'Adjust guides',
+  '更换配色': 'Change palette',
+  '更换字体组合': 'Change font set',
+  '替换颜色': 'Replace color',
+  '替换字体': 'Replace font',
   '锁定对象': 'Lock object',
   '解锁对象': 'Unlock object',
   '隐藏对象': 'Hide object',

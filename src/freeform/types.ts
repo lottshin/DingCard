@@ -384,6 +384,21 @@ export type FreeformAction =
     }
   | { type: 'slide/resize'; slideId: string; width: number; height: number }
   | { type: 'guides/set'; slideId: string; guides: FreeformGuide[] }
+  /**
+   * Restyle every page at once (restyle.ts): a curated palette or font set,
+   * then exact colours and fonts replaced wherever they appear.
+   */
+  | {
+      type: 'document/restyle'
+      /** A curated palette id (PALETTES), mapped onto the colours the deck has. */
+      palette?: string
+      /** A curated font set id (FONT_SETS): its heading font for large text, its body font for the rest. */
+      fontSet?: string
+      /** #RRGGBB → #RRGGBB, keyed by the colours the deck has now; wins over the palette. */
+      colors?: Record<string, string>
+      /** Font family → font family, keyed by the families the deck has now; wins over the font set. */
+      fonts?: Record<string, string>
+    }
   | { type: 'node/set-locked'; slideId: string; path: ScenePath; locked: boolean }
   | { type: 'node/set-hidden'; slideId: string; path: ScenePath; hidden: boolean }
   | { type: 'node/rename'; slideId: string; path: ScenePath; name: string }

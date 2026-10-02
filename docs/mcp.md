@@ -20,13 +20,14 @@ list_templates → create_document_from_content / create_document_from_outline
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
 | `validate_document` | 严格校验 v16 文档（v1–v15 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时返回规范化结果。 |
-| `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，其他图形给出 `d` 开头），为编辑提供目标。 |
+| `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，其他图形给出 `d` 开头），以及整套卡片的 `style`：用到的颜色（按面积排序，附占比 `share` 和用在哪：`background`/`fill`/`text`/`line`/`shadow`）、字体（几段文字用、最大字号）和正文字号 `bodySize`，为编辑提供目标。 |
 | `list_icons` | 查内置图标（97 个线性图标）：不带参数列出全部图标的 id 和中英文名，`query` 用中文或英文关键词搜，`ids` 按 id 取；带上路径数据 `d`、统一画法 `style` 和一个可以直接插入的完整节点 `example`（见下文「图形与图标」）。 |
+| `list_styles` | 列出可一键套到整套卡片上的配色（底色、文字色、强调色）和字体组合（标题字体、正文字体），配合 `document/restyle` 使用（见下文「整套换风格」）。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效。 |
 | `render_document` | 无头渲染自由画布 v16 文档为 PNG 文件，输出 `<baseName>-01.png`、`-02.png`… 到指定目录，并默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 
-工具描述内嵌了 v16 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改 → `render_document` 出全套 PNG 并看缩略图。
+工具描述内嵌了 v16 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG 并看缩略图。
 
 ## 生成整套卡片
 
@@ -120,6 +121,18 @@ list_templates → create_document_from_content / create_document_from_outline
 ```
 
 - 页面背景 v16 起可以是图片：`{ type: 'image', src, fit: 'cover' | 'contain', framing: { focusX, focusY, zoom } }`，画在所有节点下面。图片地址要能被浏览器加载（URL 或 data URL），加载失败时 `check_document` 报 `image-failed`。文字直接压在背景图上时，`check_document` 取文字所在那块图片的平均颜色来算对比度，看不清就报 `low-contrast`（改法提示换一个和照片反差大的颜色，或在文字下面垫一块半透明色块）；跨站且没有 CORS 的图片读不出像素，这时不报，请看 `render_document` 的缩略图确认。
+
+## 整套换风格
+
+`apply_actions` 的 `{ type: 'document/restyle', palette?, fontSet?, colors?, fonts? }` 一次改所有页面，和编辑器「风格」面板是同一个动作：
+
+```json
+{ "type": "document/restyle", "palette": "night-flight", "fontSet": "editorial", "colors": { "#d94836": "#ff5a36" } }
+```
+
+- `palette` / `fontSet` 取 `list_styles` 的 id。配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅（按 `check_document` 的对比度门槛）；字体组合把不小于正文字号 1.4 倍（`headingScale`）的文字换成标题字体，其余换成正文字体。
+- `colors`（`{ "#原色": "#新色" }`）和 `fonts`（`{ "原字体": "新字体" }`）精确替换，键是文档里现有的颜色和字体，可以从 `inspect_document` 的 `style` 里取；颜色在文字、片段标色和高亮、填充、描边、投影、渐变色标里一起换。同时给时先套 `palette` / `fontSet`，再按 `colors` / `fonts` 覆盖（键仍指原来的颜色和字体）。精确替换不会自动调对比度，换完用 `check_document` 看一遍。
+- 和其他动作一样，不认识的 id、不合法的颜色或什么都没换时，这一步被忽略（`changes` 里是 `false`）。
 
 ## 线段与旋转几何
 

@@ -435,6 +435,152 @@
   font: 400 11.5px/1 var(--ui-font);
 }
 
+/* Styles panel: palettes as little pages in two columns, font sets in their own fonts,
+   then the deck's own colours and fonts to swap one by one. */
+.freeform-drawer .freeform-palettes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 10px;
+  margin: 4px 16px 0;
+}
+
+.freeform-drawer .freeform-palette {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.freeform-drawer .freeform-palette-chip {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  padding: 8px 10px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--line);
+  font: 700 18px/1 var(--ui-font);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.freeform-drawer .freeform-palette:hover .freeform-palette-chip {
+  box-shadow: 0 0 0 2px var(--canvas-select);
+}
+
+.freeform-drawer .freeform-palette:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+.freeform-drawer .freeform-palette-accents {
+  display: flex;
+  gap: 4px;
+}
+
+.freeform-drawer .freeform-palette-accents i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.freeform-drawer .freeform-palette-name {
+  max-width: 100%;
+  overflow: hidden;
+  font: 500 12.5px/1.3 var(--ui-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-drawer .freeform-font-sets,
+.freeform-drawer .freeform-deck-fonts {
+  display: grid;
+  gap: 6px;
+  margin: 0 16px;
+}
+
+.freeform-drawer .freeform-font-set {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--field-fill, var(--surface-3));
+  color: var(--text);
+  text-align: left;
+}
+
+.freeform-drawer .freeform-font-set:hover {
+  background: var(--field-fill-hover, var(--hover));
+}
+
+.freeform-drawer .freeform-font-set-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-drawer .freeform-font-set-body {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-drawer .freeform-deck-fonts .sel-trigger {
+  justify-content: space-between;
+  width: 100%;
+  border-color: transparent;
+  background: var(--field-fill);
+}
+
+.freeform-drawer .freeform-deck-fonts .sel-trigger:hover {
+  border-color: transparent;
+  background: var(--field-fill-hover);
+}
+
+.freeform-drawer .freeform-deck-fonts .sel-trigger.open {
+  border-color: var(--accent);
+  background: var(--field-bg);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+/* The swatches wrap; a swatch's picker opens under the whole row, as wide as the panel. */
+.freeform-drawer .freeform-deck-colors {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 16px;
+}
+
+.freeform-drawer .freeform-deck-colors .paint-color {
+  position: static;
+}
+
+.freeform-drawer .freeform-deck-colors .paint-popover {
+  left: 0;
+  width: 100%;
+  max-width: none;
+}
+
 /* Text panel: each default style set the way it lands on the page. */
 .freeform-drawer .freeform-text-presets {
   display: grid;
@@ -1665,10 +1811,10 @@
   background: var(--field-fill-hover);
 }
 
-.freeform-inspector .paint-hex,
-.freeform-inspector .paint-angle,
-.freeform-inspector .paint-popover-hex,
-.freeform-inspector .paint-channel-number {
+:is(.freeform-inspector, .freeform-drawer) .paint-hex,
+:is(.freeform-inspector, .freeform-drawer) .paint-angle,
+:is(.freeform-inspector, .freeform-drawer) .paint-popover-hex,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-number {
   border-color: transparent;
   border-radius: 8px;
   background: var(--field-fill);
@@ -1679,29 +1825,29 @@
     background-color var(--dur-fast) var(--ease-out);
 }
 
-.freeform-inspector .paint-hex {
+:is(.freeform-inspector, .freeform-drawer) .paint-hex {
   font-size: 12.5px;
 }
 
-.freeform-inspector .paint-hex:not(:placeholder-shown) {
+:is(.freeform-inspector, .freeform-drawer) .paint-hex:not(:placeholder-shown) {
   text-transform: uppercase;
 }
 
-.freeform-inspector .paint-angle,
-.freeform-inspector .paint-channel-number {
+:is(.freeform-inspector, .freeform-drawer) .paint-angle,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-number {
   font-size: 12.5px;
 }
 
-.freeform-inspector .paint-hex:hover:not(:focus),
-.freeform-inspector .paint-angle:hover:not(:focus),
-.freeform-inspector .paint-popover-hex:hover:not(:focus),
-.freeform-inspector .paint-channel-number:hover:not(:focus) {
+:is(.freeform-inspector, .freeform-drawer) .paint-hex:hover:not(:focus),
+:is(.freeform-inspector, .freeform-drawer) .paint-angle:hover:not(:focus),
+:is(.freeform-inspector, .freeform-drawer) .paint-popover-hex:hover:not(:focus),
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-number:hover:not(:focus) {
   border-color: transparent;
   background: var(--field-fill-hover);
 }
 
-.freeform-inspector .paint-hex:focus,
-.freeform-inspector .paint-angle:focus,
+:is(.freeform-inspector, .freeform-drawer) .paint-hex:focus,
+:is(.freeform-inspector, .freeform-drawer) .paint-angle:focus,
 .freeform-inspector .text-input:focus {
   background: var(--field-bg);
 }
@@ -1718,35 +1864,35 @@
 }
 
 /* Paint fields follow the panel's width: nothing inside may hold it open. */
-.freeform-inspector .paint-field,
-.freeform-inspector .paint-gradient,
-.freeform-inspector .paint-stops {
+:is(.freeform-inspector, .freeform-drawer) .paint-field,
+:is(.freeform-inspector, .freeform-drawer) .paint-gradient,
+:is(.freeform-inspector, .freeform-drawer) .paint-stops {
   min-width: 0;
 }
 
-.freeform-inspector .paint-stops {
+:is(.freeform-inspector, .freeform-drawer) .paint-stops {
   display: grid;
   gap: 6px;
 }
 
-.freeform-inspector .paint-row .paint-hex {
+:is(.freeform-inspector, .freeform-drawer) .paint-row .paint-hex {
   width: 0;
 }
 
 /* Gradient stops: swatch, hex, position and remove share one row at any panel width. */
-.freeform-inspector .paint-stop-row {
+:is(.freeform-inspector, .freeform-drawer) .paint-stop-row {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) 52px 28px;
   gap: 6px;
 }
 
-.freeform-inspector .paint-stop-row .paint-hex,
-.freeform-inspector .paint-stop-row .paint-angle {
+:is(.freeform-inspector, .freeform-drawer) .paint-stop-row .paint-hex,
+:is(.freeform-inspector, .freeform-drawer) .paint-stop-row .paint-angle {
   width: 100%;
   min-width: 0;
 }
 
-.freeform-inspector .paint-stop-remove {
+:is(.freeform-inspector, .freeform-drawer) .paint-stop-remove {
   display: grid;
   place-items: center;
   width: 28px;
@@ -1759,22 +1905,22 @@
   cursor: pointer;
 }
 
-.freeform-inspector .paint-stop-remove svg {
+:is(.freeform-inspector, .freeform-drawer) .paint-stop-remove svg {
   width: 14px;
   height: 14px;
 }
 
-.freeform-inspector .paint-stop-remove:hover:not(:disabled) {
+:is(.freeform-inspector, .freeform-drawer) .paint-stop-remove:hover:not(:disabled) {
   background: var(--hover);
   color: var(--text);
 }
 
-.freeform-inspector .paint-stop-remove:disabled {
+:is(.freeform-inspector, .freeform-drawer) .paint-stop-remove:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
 
-.freeform-inspector .paint-stop-remove:focus-visible {
+:is(.freeform-inspector, .freeform-drawer) .paint-stop-remove:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -2029,18 +2175,18 @@
   background: var(--danger-weak);
 }
 
-.freeform-inspector .paint-color-button {
+:is(.freeform-inspector, .freeform-drawer) .paint-color-button {
   border-color: transparent;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
 }
 
 /* A colour button is a flex item with its own z-index; while its popover is
    open it rises above the swatches of the sections below. */
-.freeform-inspector .paint-color:has(> .paint-popover) {
+:is(.freeform-inspector, .freeform-drawer) .paint-color:has(> .paint-popover) {
   z-index: 60;
 }
 
-.freeform-inspector .paint-popover {
+:is(.freeform-inspector, .freeform-drawer) .paint-popover {
   border: 0;
   border-radius: 12px;
   background: var(--surface-pop);
@@ -2048,35 +2194,35 @@
   animation: ui-pop var(--dur) var(--ease-out);
 }
 
-.freeform-inspector .paint-popover-sample {
+:is(.freeform-inspector, .freeform-drawer) .paint-popover-sample {
   border-color: var(--line-2);
   box-shadow: none;
 }
 
-.freeform-inspector .paint-eyedropper {
+:is(.freeform-inspector, .freeform-drawer) .paint-eyedropper {
   border-color: transparent;
   border-radius: 8px;
   background: var(--field-fill);
   color: var(--text-2);
 }
 
-.freeform-inspector .paint-eyedropper:hover {
+:is(.freeform-inspector, .freeform-drawer) .paint-eyedropper:hover {
   border-color: transparent;
   background: var(--field-fill-hover);
   color: var(--text);
 }
 
-.freeform-inspector .paint-swatch {
+:is(.freeform-inspector, .freeform-drawer) .paint-swatch {
   border: 0;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
   transition: box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.freeform-inspector .paint-swatch:hover {
+:is(.freeform-inspector, .freeform-drawer) .paint-swatch:hover {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1), 0 0 0 2px var(--surface-pop), 0 0 0 3px var(--line-strong);
 }
 
-.freeform-inspector .paint-preview {
+:is(.freeform-inspector, .freeform-drawer) .paint-preview {
   border-color: var(--line-2);
   box-shadow: none;
 }

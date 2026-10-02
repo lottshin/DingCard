@@ -402,6 +402,14 @@ export const editor: Record<string, Translation> = {
   '自由编辑面板': 'Freeform panel',
   '拖动顶点 {n}': 'Drag vertex {n}',
 
+  // Styles panel
+  '风格': 'Styles',
+  '配色': 'Palettes',
+  '字体组合': 'Font sets',
+  '本套用色': 'Colors in this design',
+  '本套字体': 'Fonts in this design',
+  '字体 {font}': 'Font {font}',
+
   // Paint field
   '{label} 色板': '{label} swatches',
   '{label} 自定义 HEX': '{label} custom hex',

@@ -2828,20 +2828,20 @@ html.theme-anim * {
   display: none;
 }
 
-.freeform-inspector .paint-field {
+:is(.freeform-inspector, .freeform-drawer) .paint-field {
   display: grid;
   gap: 10px;
 }
 
-.freeform-inspector .paint-field .field-label {
+:is(.freeform-inspector, .freeform-drawer) .paint-field .field-label {
   margin-bottom: 0;
 }
 
-.freeform-inspector .paint-mode {
+:is(.freeform-inspector, .freeform-drawer) .paint-mode {
   margin-top: 0;
 }
 
-.freeform-inspector .paint-row {
+:is(.freeform-inspector, .freeform-drawer) .paint-row {
   position: relative;
   display: flex;
   align-items: center;
@@ -2849,13 +2849,13 @@ html.theme-anim * {
   min-width: 0;
 }
 
-.freeform-inspector .paint-color {
+:is(.freeform-inspector, .freeform-drawer) .paint-color {
   position: relative;
   flex: 0 0 auto;
   z-index: 3;
 }
 
-.freeform-inspector .paint-color-button {
+:is(.freeform-inspector, .freeform-drawer) .paint-color-button {
   width: 32px;
   height: 32px;
   padding: 0;
@@ -2865,18 +2865,18 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.freeform-inspector .paint-color-button:focus-visible,
-.freeform-inspector .paint-hex:focus,
-.freeform-inspector .paint-angle:focus {
+:is(.freeform-inspector, .freeform-drawer) .paint-color-button:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-hex:focus,
+:is(.freeform-inspector, .freeform-drawer) .paint-angle:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-weak);
   outline: none;
 }
 
-.freeform-inspector .paint-hex,
-.freeform-inspector .paint-angle,
-.freeform-inspector .paint-popover-hex,
-.freeform-inspector .paint-channel-number {
+:is(.freeform-inspector, .freeform-drawer) .paint-hex,
+:is(.freeform-inspector, .freeform-drawer) .paint-angle,
+:is(.freeform-inspector, .freeform-drawer) .paint-popover-hex,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-number {
   min-width: 0;
   height: 32px;
   border: 1px solid var(--line-2);
@@ -2888,15 +2888,15 @@ html.theme-anim * {
   padding: 0 8px;
 }
 
-.freeform-inspector .paint-hex {
+:is(.freeform-inspector, .freeform-drawer) .paint-hex {
   flex: 1 1 auto;
 }
 
-.freeform-inspector .paint-angle {
+:is(.freeform-inspector, .freeform-drawer) .paint-angle {
   width: 64px;
 }
 
-.freeform-inspector .paint-popover {
+:is(.freeform-inspector, .freeform-drawer) .paint-popover {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
@@ -2909,11 +2909,11 @@ html.theme-anim * {
   box-shadow: var(--shadow-lg);
 }
 
-.freeform-inspector .paint-row .paint-color {
+:is(.freeform-inspector, .freeform-drawer) .paint-row .paint-color {
   position: static;
 }
 
-.freeform-inspector .paint-row .paint-popover {
+:is(.freeform-inspector, .freeform-drawer) .paint-row .paint-popover {
   left: 0;
   width: 100%;
   max-width: none;
@@ -2929,14 +2929,14 @@ html.theme-anim * {
   max-width: calc(100vw - 32px);
 }
 
-.freeform-inspector .paint-popover-head {
+:is(.freeform-inspector, .freeform-drawer) .paint-popover-head {
   display: grid;
   grid-template-columns: 34px 1fr auto;
   gap: 8px;
   align-items: center;
 }
 
-.freeform-inspector .paint-popover-sample {
+:is(.freeform-inspector, .freeform-drawer) .paint-popover-sample {
   width: 34px;
   height: 34px;
   border: 1px solid var(--line-2);
@@ -2944,12 +2944,12 @@ html.theme-anim * {
   box-shadow: var(--shadow-sm);
 }
 
-.freeform-inspector .paint-popover-hex {
+:is(.freeform-inspector, .freeform-drawer) .paint-popover-hex {
   width: 100%;
   text-transform: lowercase;
 }
 
-.freeform-inspector .paint-eyedropper {
+:is(.freeform-inspector, .freeform-drawer) .paint-eyedropper {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2962,34 +2962,34 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.freeform-inspector .paint-eyedropper:hover {
+:is(.freeform-inspector, .freeform-drawer) .paint-eyedropper:hover {
   color: var(--ink-1);
   border-color: var(--line-1);
 }
 
-.freeform-inspector .paint-eyedropper:focus-visible {
+:is(.freeform-inspector, .freeform-drawer) .paint-eyedropper:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-weak);
 }
 
-.freeform-inspector .paint-eyedropper svg {
+:is(.freeform-inspector, .freeform-drawer) .paint-eyedropper svg {
   width: 16px;
   height: 16px;
   fill: currentColor;
 }
 
-.freeform-inspector .paint-recent-grid {
+:is(.freeform-inspector, .freeform-drawer) .paint-recent-grid {
   margin-top: 7px;
 }
 
-.freeform-inspector .paint-swatch-grid {
+:is(.freeform-inspector, .freeform-drawer) .paint-swatch-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 7px;
   margin-top: 10px;
 }
 
-.freeform-inspector .paint-swatch {
+:is(.freeform-inspector, .freeform-drawer) .paint-swatch {
   width: 100%;
   aspect-ratio: 1;
   padding: 0;
@@ -3001,18 +3001,18 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.freeform-inspector .paint-swatch:focus-visible {
+:is(.freeform-inspector, .freeform-drawer) .paint-swatch:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-weak);
 }
 
-.freeform-inspector .paint-channel-list {
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-list {
   display: grid;
   gap: 8px;
   margin-top: 12px;
 }
 
-.freeform-inspector .paint-channel {
+:is(.freeform-inspector, .freeform-drawer) .paint-channel {
   display: grid;
   grid-template-columns: 18px 1fr 48px;
   gap: 8px;
@@ -3022,18 +3022,18 @@ html.theme-anim * {
   font-size: 11px;
 }
 
-.freeform-inspector .paint-channel-number {
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-number {
   width: 48px;
   height: 32px;
   padding: 0 6px;
 }
 
-.freeform-inspector .paint-gradient {
+:is(.freeform-inspector, .freeform-drawer) .paint-gradient {
   display: grid;
   gap: 8px;
 }
 
-.freeform-inspector .paint-range {
+:is(.freeform-inspector, .freeform-drawer) .paint-range {
   flex: 1 1 auto;
   min-width: 0;
   height: 8px;
@@ -3043,19 +3043,19 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.freeform-inspector .paint-range,
-.freeform-inspector .paint-channel-range {
+:is(.freeform-inspector, .freeform-drawer) .paint-range,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range {
   -webkit-appearance: none;
   appearance: none;
   outline: none;
 }
 
-.freeform-inspector .paint-range:focus-visible,
-.freeform-inspector .paint-channel-range:focus-visible {
+:is(.freeform-inspector, .freeform-drawer) .paint-range:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range:focus-visible {
   box-shadow: 0 0 0 3px var(--accent-weak);
 }
 
-.freeform-inspector .paint-channel-range {
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range {
   width: 100%;
   height: 8px;
   border-radius: 999px;
@@ -3063,15 +3063,15 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.freeform-inspector .paint-range::-webkit-slider-runnable-track,
-.freeform-inspector .paint-channel-range::-webkit-slider-runnable-track {
+:is(.freeform-inspector, .freeform-drawer) .paint-range::-webkit-slider-runnable-track,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range::-webkit-slider-runnable-track {
   height: 8px;
   border-radius: 999px;
   background: transparent;
 }
 
-.freeform-inspector .paint-range::-webkit-slider-thumb,
-.freeform-inspector .paint-channel-range::-webkit-slider-thumb {
+:is(.freeform-inspector, .freeform-drawer) .paint-range::-webkit-slider-thumb,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 18px;
@@ -3084,20 +3084,20 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.freeform-inspector .paint-channel-range::-webkit-slider-thumb {
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range::-webkit-slider-thumb {
   background: var(--text);
 }
 
-.freeform-inspector .paint-range::-moz-range-track,
-.freeform-inspector .paint-channel-range::-moz-range-track {
+:is(.freeform-inspector, .freeform-drawer) .paint-range::-moz-range-track,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range::-moz-range-track {
   height: 8px;
   border: 0;
   border-radius: 999px;
   background: transparent;
 }
 
-.freeform-inspector .paint-range::-moz-range-thumb,
-.freeform-inspector .paint-channel-range::-moz-range-thumb {
+:is(.freeform-inspector, .freeform-drawer) .paint-range::-moz-range-thumb,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range::-moz-range-thumb {
   width: 18px;
   height: 18px;
   border: 2px solid var(--surface);
@@ -3107,18 +3107,18 @@ html.theme-anim * {
   cursor: pointer;
 }
 
-.freeform-inspector .paint-channel-range::-moz-range-thumb {
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range::-moz-range-thumb {
   background: var(--text);
 }
 
-.freeform-inspector .paint-preview {
+:is(.freeform-inspector, .freeform-drawer) .paint-preview {
   height: 28px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xs);
   box-shadow: var(--shadow-sm) inset;
 }
 
-.freeform-inspector .paint-image {
+:is(.freeform-inspector, .freeform-drawer) .paint-image {
   display: grid;
   gap: 8px;
 }
@@ -3139,14 +3139,14 @@ html.theme-anim * {
 .freeform-inspector .sel-trigger:focus-visible,
 .freeform-inspector .inspector-actions .ghost:focus-visible,
 .freeform-inspector .inspector-delete:focus-visible,
-.freeform-inspector .paint-hex:focus-visible,
-.freeform-inspector .paint-angle:focus-visible,
-.freeform-inspector .paint-popover-hex:focus-visible,
-.freeform-inspector .paint-channel-number:focus-visible,
-.freeform-inspector .paint-color-button:focus-visible,
-.freeform-inspector .paint-range:focus-visible,
-.freeform-inspector .paint-channel-range:focus-visible,
-.freeform-inspector .paint-swatch:focus-visible {
+:is(.freeform-inspector, .freeform-drawer) .paint-hex:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-angle:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-popover-hex:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-number:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-color-button:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-range:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-channel-range:focus-visible,
+:is(.freeform-inspector, .freeform-drawer) .paint-swatch:focus-visible {
   border-color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -5669,7 +5669,7 @@ html.theme-anim * {
 
 .workspace-toolbar .page-size-popover,
 .freeform-toolbar .freeform-insert-menu,
-.freeform-inspector .paint-popover {
+:is(.freeform-inspector, .freeform-drawer) .paint-popover {
   border-radius: var(--panel-radius);
 }
 

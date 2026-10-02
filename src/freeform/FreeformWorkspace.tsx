@@ -25,6 +25,7 @@ import {
   RedoIcon,
   ShapePreviewIcon,
   ShapesIcon,
+  StylesIcon,
   TemplatesIcon,
   TextIcon,
   UndoIcon,
@@ -53,7 +54,9 @@ import {
 } from './document'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, type IconDefinition } from './icons'
 import { FreeformIconPicker } from './FreeformIconPicker'
+import { FreeformStylePanel } from './FreeformStylePanel'
 import { pathStrokeScale } from './pathData'
+import type { RestyleRequest } from './restyle'
 import { rangeHasRichTextStyle, restyleRichTextRange, type RichTextStyle } from './richText'
 import { BLEND_MODES, LINE_POINTS_MIN } from './appearance'
 import { FreeformExportMenu } from './FreeformExportMenu'
@@ -310,7 +313,7 @@ const LINES: Array<{ id: FreeformLineElement['lineKind']; label: string }> = [
   { id: 'arrow', label: '箭头' },
 ]
 
-type ToolDrawer = 'templates' | 'text' | 'images' | 'elements'
+type ToolDrawer = 'templates' | 'styles' | 'text' | 'images' | 'elements'
 
 const FREEFORM_TEMPLATES = templatesForWorkspace('freeform')
 /** Two columns in the 288px templates panel. */
@@ -1998,6 +2001,11 @@ export function FreeformWorkspace({
     setSavedAt(null)
     return true
   }, [blockDocumentMutationDuringInteraction, updateHistory])
+
+  /** Restyle every page from the 风格 drawer: one undo step per choice. */
+  const restyleDeck = useCallback((request: RestyleRequest) => {
+    applyAction({ type: 'document/restyle', ...request })
+  }, [applyAction])
 
   /** Apply a few actions as one undo step; nothing happens unless every one of them changes something. */
   const applyActionGroup = useCallback((actions: FreeformAction[], label: string) => {
@@ -5780,6 +5788,17 @@ export function FreeformWorkspace({
             <TemplatesIcon />
             <span>{t('模板')}</span>
           </button>
+          <button
+            className="freeform-tool"
+            type="button"
+            data-testid="freeform-styles-tool"
+            aria-expanded={toolDrawer === 'styles'}
+            aria-controls="freeform-styles-drawer"
+            onClick={() => toggleToolDrawer('styles')}
+          >
+            <StylesIcon />
+            <span>{t('风格')}</span>
+          </button>
           <span className="freeform-tools-sep" aria-hidden="true" />
           <button
             className="freeform-tool"
@@ -5894,6 +5913,29 @@ export function FreeformWorkspace({
                 </button>
               ))}
             </div>
+          </aside>
+        )}
+
+        {toolDrawer === 'styles' && (
+          <aside
+            className="freeform-drawer is-scroll"
+            id="freeform-styles-drawer"
+            aria-label={t('风格')}
+            data-testid="freeform-styles-drawer"
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape' || event.defaultPrevented) return
+              event.preventDefault()
+              setToolDrawer(null)
+              requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="freeform-styles-tool"]')?.focus())
+            }}
+          >
+            <div className="freeform-drawer-head">
+              <h2>{t('风格')}</h2>
+              <button className="icon-btn" type="button" aria-label={t('关闭面板')} onClick={() => setToolDrawer(null)}>
+                <CloseIcon />
+              </button>
+            </div>
+            <FreeformStylePanel document={doc} onRestyle={restyleDeck} />
           </aside>
         )}
 

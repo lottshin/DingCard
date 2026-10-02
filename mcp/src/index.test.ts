@@ -26,7 +26,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the eleven tools', async () => {
+  test('exposes the twelve tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -38,6 +38,7 @@ describe('dingcard-mcp tool layer', () => {
       'create_document_from_template',
       'inspect_document',
       'list_icons',
+      'list_styles',
       'list_templates',
       'render_document',
       'render_markdown',
@@ -277,6 +278,46 @@ describe('dingcard-mcp tool layer', () => {
       },
     ) as { slides: Array<{ nodes: Array<{ id: string; type: string; icon?: string }> }> }
     expect(inspected.slides[0].nodes.at(-1)).toMatchObject({ id: 'icon-star', type: 'path', icon: 'star' })
+    await client.close()
+  })
+
+  test('list_styles offers palettes and font sets that document/restyle takes, and inspect_document shows the deck\'s own', async () => {
+    const client = await connect()
+    const call = async (name: string, args: Record<string, unknown>) => parseContent(
+      (await client.callTool({ name, arguments: args })) as { content: Array<{ type: string; text?: string }> },
+    )
+    const styles = await call('list_styles', {}) as {
+      palettes: Array<{ id: string; background: string; text: string; accents: string[] }>
+      fontSets: Array<{ id: string; heading: string; body: string }>
+      headingScale: number
+    }
+    expect(styles.palettes.length).toBeGreaterThanOrEqual(8)
+    expect(styles.fontSets.length).toBeGreaterThanOrEqual(5)
+    expect(styles.headingScale).toBeGreaterThan(1)
+    const night = styles.palettes.find((palette) => palette.id === 'night-flight')!
+
+    const created = await call('create_document_from_template', { templateId: 'editorial-freeform' }) as { document: { slides: Array<{ background: { type: string; color?: string } }> } }
+    const before = await call('inspect_document', { document: created.document }) as {
+      style: { colors: Array<{ color: string; share: number; uses: string[] }>; fonts: Array<{ fontFamily: string; texts: number }>; bodySize: number }
+    }
+    expect(before.style.colors[0]).toMatchObject({ color: '#f6f3ea' })
+    expect(before.style.colors[0].uses).toContain('background')
+    expect(before.style.fonts.map((font) => font.fontFamily)).toContain('Songti SC, serif')
+    expect(before.style.bodySize).toBeGreaterThan(0)
+
+    const restyled = await call('apply_actions', {
+      document: created.document,
+      actions: [
+        { type: 'document/restyle', palette: 'night-flight', fontSet: 'editorial' },
+        { type: 'document/restyle', fonts: { "'Noto Sans SC', sans-serif": 'PingFang SC' } },
+        { type: 'document/restyle', palette: 'no-such-palette' },
+      ],
+    }) as { ok: boolean; changes: boolean[]; document: { slides: Array<{ background: { type: string; color?: string } }> } }
+    expect(restyled.ok).toBe(true)
+    expect(restyled.changes).toEqual([true, true, false])
+    expect(restyled.document.slides[0].background).toEqual({ type: 'solid', color: night.background })
+    const after = await call('inspect_document', { document: restyled.document }) as { style: { fonts: Array<{ fontFamily: string }> } }
+    expect(after.style.fonts.map((font) => font.fontFamily).sort()).toEqual(["'Noto Serif SC', serif", 'PingFang SC'])
     await client.close()
   })
 
