@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
-import { startWithSettingsPanelOpen } from './freeformTools'
+import { closeToolPanel, openToolPanel, startWithSettingsPanelOpen } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
-// Pictures on the freeform canvas: a page full of photos still saves on this device.
+// Pictures on the freeform canvas: one copied on the canvas goes into the
+// frame selected for it, and a page full of photos still saves on this device.
 
 test.beforeEach(async ({ context, page }) => {
   await installOfflineFontRoutes(context)
@@ -40,6 +41,52 @@ async function selectNothing(page: Page) {
   await page.keyboard.press('Escape')
   await expect(page.locator('.freeform-element[data-selected="true"]')).toHaveCount(0)
 }
+
+test('a picture copied on the canvas fills the selected shape and swaps the selected picture', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await pastePicture(page, 1)
+  await expect(pictures(page)).toHaveCount(1)
+  await openToolPanel(page, 'elements')
+  await page.getByTestId('freeform-elements-drawer').getByRole('group', { name: '形状' })
+    .getByRole('button', { name: '矩形', exact: true }).click()
+  await closeToolPanel(page, 'elements')
+  // Parked in the corner, clear of the picture.
+  const position = page.locator('.freeform-inspector .field-grid').first().locator('input')
+  await position.nth(0).fill('40')
+  await position.nth(0).press('Enter')
+  await position.nth(1).fill('40')
+  await position.nth(1).press('Enter')
+  const shape = page.getByTestId('freeform-element').filter({ hasNot: page.locator('.freeform-image') })
+
+  await pictures(page).first().click()
+  await page.keyboard.press('ControlOrMeta+c')
+  await shape.click()
+  await page.keyboard.press('ControlOrMeta+v')
+  const fill = page.getByTestId('freeform-shape-image-fill')
+  await expect(fill).toHaveCount(1)
+  await expect(pictures(page)).toHaveCount(1)
+  const copiedSrc = await pictures(page).first().locator('img').getAttribute('src')
+  await expect(fill.locator('img')).toHaveAttribute('src', copiedSrc!)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(fill).toHaveCount(0)
+
+  // Another picture selected takes the copied one in its place.
+  await selectNothing(page)
+  await pastePicture(page, 2)
+  await expect(pictures(page)).toHaveCount(2)
+  const second = pictures(page).nth(1)
+  await expect(second.locator('img')).not.toHaveAttribute('src', copiedSrc!)
+  await page.keyboard.press('ControlOrMeta+v')
+  await expect(second.locator('img')).toHaveAttribute('src', copiedSrc!)
+  await expect(pictures(page)).toHaveCount(2)
+
+  // With the copied picture itself selected, a paste makes a copy as always.
+  await selectNothing(page)
+  await pictures(page).first().click({ position: { x: 4, y: 4 } })
+  await expect(pictures(page).first()).toHaveAttribute('data-selected', 'true')
+  await page.keyboard.press('ControlOrMeta+v')
+  await expect(pictures(page)).toHaveCount(3)
+})
 
 test('a page of photos bigger than localStorage still saves, and comes back after a reload', async ({ page }) => {
   test.setTimeout(90_000)

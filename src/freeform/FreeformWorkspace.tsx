@@ -3616,9 +3616,53 @@ export function FreeformWorkspace({
     setSelection(clones.map((node) => node.id))
   }
 
+  /**
+   * A picture copied in the editor goes into one selected frame the way a
+   * clipboard picture does: a shape or path takes it as its fill, another
+   * picture swaps to it. False when that isn't the case — with the copied
+   * picture itself still selected, a paste makes a copy as always.
+   */
+  function pasteCopiedPictureIntoSelection(): boolean {
+    const copied = clipboard?.nodes.length === 1 ? clipboard.nodes[0] : undefined
+    if (copied?.type !== 'image') return false
+    const target = selectedPictureTarget()
+    if (!target) return false
+    const slide = currentDocumentRef.current.slides.find((candidate) => candidate.id === target.slideId)
+    const node = slide ? findNodeAtPath(slide.nodes, target.path) : undefined
+    if (target.kind === 'image' && (node?.type !== 'image' || node.src === copied.src)) return false
+    if (effectiveLockedSelection || lockedDescendantSelection) {
+      showLockedOperationNotice()
+      return true
+    }
+    // Starting an operation cancels a clipboard picture still being read for the same frame.
+    const operation = beginShapeFillOperation(target.slideId, target.path)
+    try {
+      if (target.kind === 'image') {
+        applyAction({
+          type: 'node/update-content',
+          slideId: target.slideId,
+          updates: [{ path: target.path, patch: { src: copied.src } }],
+        }, t('粘贴替换图片'))
+      } else {
+        applyAction({
+          type: 'node/update-style',
+          slideId: target.slideId,
+          updates: [{
+            path: target.path,
+            patch: { fill: { type: 'image', src: copied.src, fit: 'cover', framing: createDefaultImageFraming() } },
+          }],
+        }, t('粘贴填充图片'))
+      }
+    } finally {
+      finishShapeFillOperation(operation)
+    }
+    return true
+  }
+
   function pasteClipboard(inPlace = false) {
     if (!clipboard || clipboard.nodes.length === 0) return
     if (blockDocumentMutationDuringInteraction()) return
+    if (!inPlace && pasteCopiedPictureIntoSelection()) return
     const targetParentWorld = sceneParentWorldMatrix(activeSlide.nodes, activeGroupPath)
     const inverseTarget = targetParentWorld ? invert(targetParentWorld) : null
     if (!targetParentWorld || !inverseTarget) return
