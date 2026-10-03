@@ -35,6 +35,11 @@
 //       where each path's drawing lands in its box, and on a picture
 //       background the colour behind each text) and writes
 //       { ok: true; inspected: InspectedSlide[] }.
+//
+//   window.__DINGCARD_RENDER__ = { html: { source, width?, height? } }
+//     → lays the HTML out in a sandboxed frame and reads it back as an
+//       editable freeform document (htmlImportRun.ts), written as
+//       { ok: true; imported: { document, notes } }.
 
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -56,6 +61,8 @@ import { PLATFORMS, buildConfig, resolveTheme } from '../theme'
 import { store } from '../storage'
 import { createLongImage, longImageScale } from '../exportLongImage'
 import { sliceIntoGrid } from '../exportGrid'
+import type { HtmlImportNote } from '../freeform/htmlImport'
+import { runHtmlImport, type HtmlImportPayload } from './htmlImportRun'
 import '../styles.css'
 
 /** How a freeform document's pages are written out. */
@@ -74,6 +81,7 @@ interface RenderOutput {
 interface RenderPayload {
   document?: unknown
   markdown?: unknown
+  html?: HtmlImportPayload
   inspect?: boolean
   output?: Partial<RenderOutput>
 }
@@ -134,6 +142,7 @@ export interface InspectedSlide {
 export type RenderResult =
   | { ok: true; slides: RenderedSlide[]; long?: { dataUrl: string; width: number; height: number; scale: number } }
   | { ok: true; inspected: InspectedSlide[] }
+  | { ok: true; imported: { document: FreeformDocument; notes: HtmlImportNote[] } }
   | { ok: false; error: string }
 
 const EXPORT_IMAGE_WAIT_MS = 3_500
@@ -700,6 +709,11 @@ const payload = window.__DINGCARD_RENDER__
 
 if (!payload || typeof payload !== 'object') {
   writeResult({ ok: false, error: '缺少渲染数据（window.__DINGCARD_RENDER__）' })
+} else if (payload.html !== undefined) {
+  runHtmlImport(payload.html).then(
+    (outcome) => writeResult(outcome.ok ? { ok: true, imported: { document: outcome.document, notes: outcome.notes } } : outcome),
+    (error: unknown) => writeResult({ ok: false, error: error instanceof Error ? error.message : String(error) }),
+  )
 } else if (payload.markdown !== undefined) {
   const markdown = isMarkdownDocument(payload.markdown)
     ? payload.markdown

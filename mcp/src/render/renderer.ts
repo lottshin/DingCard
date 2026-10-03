@@ -22,6 +22,7 @@ import { chromium } from 'playwright-core'
 import { buildPdf, pdfPageFor } from '../../../src/exportPdf'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import type { FreeformDocument } from '../../../src/freeform/types'
+import type { HtmlImportNote } from '../../../src/freeform/htmlImport'
 import { isMarkdownDocument } from '../../../src/drafts'
 import { gridCells, isGridPage } from '../../../src/exportGrid'
 import { createStaticServer } from './staticServer'
@@ -236,6 +237,7 @@ interface RenderPageOutput {
 type RenderPayload =
   | { document: unknown; inspect?: boolean; output?: RenderPageOutput }
   | { markdown: unknown }
+  | { html: { source: string; width?: number; height?: number } }
 
 interface RenderPageLong {
   dataUrl: string
@@ -250,6 +252,7 @@ type PageResult = {
   slides?: RenderPageSlide[]
   long?: RenderPageLong
   inspected?: InspectedSlide[]
+  imported?: { document: unknown; notes: HtmlImportNote[] }
 }
 
 async function runInBrowser(payload: RenderPayload, port: number): Promise<PageResult> {
@@ -427,6 +430,35 @@ export async function inspectLayout(document: FreeformDocument): Promise<Inspect
     const result = await runInBrowser({ document, inspect: true }, port)
     if (!result.inspected) throw new Error('渲染页未返回测量结果')
     return result.inspected
+  })
+}
+
+export type HtmlImportResult =
+  | { ok: true; document: FreeformDocument; notes: HtmlImportNote[] }
+  | { ok: false; error: string }
+
+/** HTML laid out in the render page and read back as an editable freeform document (src/freeform/htmlImport.ts). */
+export async function importHtml(source: string, size: { width?: number; height?: number } = {}): Promise<HtmlImportResult> {
+  if (!source.trim()) return { ok: false, error: '缺少 HTML' }
+  try {
+    return await withRenderPage(async (port) => {
+      const result = await runInBrowser({ html: { source, ...size } }, port)
+      if (!result.imported) throw new Error('渲染页未返回转换结果')
+      const document = normalizeFreeformDocument(result.imported.document)
+      if (!document) throw new Error('转换结果没有通过自由画布文档校验')
+      return { ok: true as const, document, notes: result.imported.notes }
+    })
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/** Small JPEGs of a freeform document's pages, without writing any files. */
+export async function renderPreviews(document: FreeformDocument): Promise<RenderPreview[]> {
+  return withRenderPage(async (port) => {
+    const output: RenderPageOutput = { format: 'png', scale: 1, quality: 0.92, long: false, grid: false }
+    const { slides } = await renderInBrowser({ document, output }, port)
+    return slides.map((slide) => ({ slideId: slide.slideId, name: slide.name, dataUrl: slide.previewDataUrl }))
   })
 }
 

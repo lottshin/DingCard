@@ -5,6 +5,7 @@
 
 import path from 'node:path'
 import { realpathSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -12,8 +13,8 @@ import { z } from 'zod'
 import type { FreeformDocument } from '../../src/freeform/types'
 import { composeDeck } from './core/compose'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
-import { DocumentStore, resolveDocumentInput, writeDocumentFile, type DocumentInput, type StoredDocument } from './core/documents'
-import { embedLocalImages } from './core/localImages'
+import { DocumentStore, expandPath, resolveDocumentInput, writeDocumentFile, type DocumentInput, type StoredDocument } from './core/documents'
+import { embedLocalHtmlImages, embedLocalImages } from './core/localImages'
 import { listDecorations, placeDecorations } from './core/decorations'
 import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
@@ -23,7 +24,7 @@ import { listFilterPresets, listStyles, listTextStyles } from './core/styles'
 import { instantiateTemplate, listTemplates } from './core/templates'
 import { checkDocument } from './render/check'
 import { handOff, openInBrowser } from './render/handoff'
-import { renderDocument, renderMarkdownDocument, type RenderResult } from './render/renderer'
+import { importHtml, renderDocument, renderMarkdownDocument, renderPreviews, type RenderPreview, type RenderResult } from './render/renderer'
 
 function jsonResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] }
@@ -37,13 +38,18 @@ function renderResult(result: RenderResult, previews: boolean) {
   if (!result.ok) return jsonResult(result)
   const { previews: pages, ...rest } = result
   if (!previews) return jsonResult(rest)
+  return withPreviews(rest, pages)
+}
+
+/** An answer as text with the pages after it as small JPEGs. */
+function withPreviews(value: Record<string, unknown>, pages: readonly RenderPreview[]) {
   const shown = pages.slice(0, MAX_PREVIEWS)
   return {
     content: [
       {
         type: 'text' as const,
         text: JSON.stringify({
-          ...rest,
+          ...value,
           previews: `下面附了 ${shown.length} 张缩略图（按页序）${pages.length > shown.length ? `，其余 ${pages.length - shown.length} 页没附` : ''}。`,
         }, null, 2),
       },
@@ -185,6 +191,57 @@ export function createDingcardServer(): McpServer {
     points: z.array(z.string()).optional().describe('要点，一条一项；"要点：说明" 冒号后面是第二行'),
     quote: z.string().optional().describe('引文；"引文 —— 出处" 会把出处放在下面'),
   })
+
+  server.tool(
+    'create_document_from_html',
+    `把你写的 HTML/CSS 网页转成在叮卡里能逐个修改的自由画布文档（v19）。适合模板排不出来的版式：直接用网页写法排版，叮卡在浏览器里排好后，把每个色块、文字、图片和 SVG 图形读成形状、文字框、图片和图形节点，位置、字号、行高、字距、颜色、圆角、边框、阴影、渐变、透明度、混合模式、滤镜和旋转都照网页来，层叠顺序按 CSS（含 z-index）。
+写法：
+- 每页一个 <section>，放在 <body> 下面，用 CSS 写死宽高（px），如 1080×1440（小红书 3:4）、1080×1920（9:16）、1080×1080；没有 section 时整个 body 是一页，尺寸用 width / height。100vw、100vh 就是 width × height。
+- 字体用内置的：苹方 "PingFang SC"、思源黑体 "Noto Sans SC"、思源宋体 "Noto Serif SC"、霞鹜文楷 "LXGW WenKai TC"、站酷小薇 "ZCOOL XiaoWei"、系统宋体 "Songti SC"；别的字体换成同类的内置字体（notes 里会写）。字重只有常规和粗体，600 及以上算粗体。
+- 图片用 <img> 或 CSS background-image，object-fit、object-position、圆角和圆形裁切都照着来；src 写本机路径（相对路径按 htmlPath 所在目录或当前目录找）、http(s) URL 或 data URL，本机图片和本机样式表会嵌进来。
+- 图标和图形写成内联 <svg>（path、rect、circle、ellipse、line、polyline、polygon），每个变成一个图形节点，一个 svg 里有几个就成一个组合；长短不一的虚线（环形进度条）照画出来的样子描成线段，SVG 里的 <text> 变成单行文字框，<use> 引用不转。
+- 一段文字里的加粗、换色、行内底色（行内元素的 background）和下划线会变成文字片段；同一行里的不同字号、和行内块（inline-block 标签）同一行的文字会拆成几个文字框，保证位置不变。列表的圆点和编号会单独成字；::before / ::after 照常生效。
+- data-name="主标题" 给图层起名，data-group 让一个元素连同里面的东西成为一个组合。
+- 不支持的会写进 notes 并尽量近似：脚本和动画、clip-path、mask、backdrop-filter、内阴影、多层阴影（只留第一层）、两端对齐（按左对齐）、删除线。透明度不一的渐变（比如照片上的渐隐遮罩）、平铺和锥形渐变会画成一张图。
+返回 documentId、每页的 id 和尺寸，以及 notes（page 为 0 的是整份文档的）；默认附上转换结果的缩略图，对照你的设计看一眼。之后用 check_document 检查、apply_actions 修改、render_document 出图、open_in_editor 在编辑器里接着改。`,
+    {
+      html: z.string().optional().describe('网页源码（可以只写 <style> 和若干 <section>）'),
+      htmlPath: z.string().optional().describe('网页文件路径，可替代 html；里面的相对路径按这个文件所在的目录找'),
+      width: z.number().int().min(128).max(4096).optional().describe('没写尺寸的页面的宽度，也是 100vw，默认 1080'),
+      height: z.number().int().min(128).max(4096).optional().describe('没写尺寸的页面的高度，也是 100vh，默认 1440'),
+      previews: z.boolean().optional().describe('是否附上缩略图，默认 true'),
+      includeDocument,
+    },
+    async ({ html, htmlPath, width, height, previews, includeDocument: withDocument }) => {
+      try {
+        if (!html && !htmlPath) return jsonResult({ ok: false, error: '给 html 或 htmlPath 其中一个' })
+        let source = html ?? ''
+        let baseDir = process.cwd()
+        if (htmlPath) {
+          const file = expandPath(htmlPath, process.cwd())
+          source = await readFile(file, 'utf8')
+          baseDir = path.dirname(file)
+        }
+        const embedded = await embedLocalHtmlImages(source, baseDir)
+        const imported = await importHtml(embedded.html, { width, height })
+        if (!imported.ok) return jsonResult(imported)
+        const stored = documents.add(imported.document)
+        const answer = {
+          ok: true,
+          ...handleOf(stored, withDocument),
+          slides: stored.document.slides.map((slide) => ({ id: slide.id, name: slide.name, width: slide.width, height: slide.height })),
+          notes: [
+            ...embedded.missing.map((missing) => ({ page: 0, target: missing, message: '这张本机图片读不了，没有放进来' })),
+            ...imported.notes,
+          ],
+        }
+        if (previews === false) return jsonResult(answer)
+        return withPreviews(answer, await renderPreviews(stored.document).catch(() => []))
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
 
   server.tool(
     'create_document_from_content',

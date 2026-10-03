@@ -14,7 +14,9 @@ import { listIcons } from '../core/icons'
 import { createDocumentFromOutline } from '../core/outline'
 import { instantiateTemplate } from '../core/templates'
 import { checkDocument } from './check'
-import { renderDocument, renderMarkdownDocument } from './renderer'
+import { importHtml, renderDocument, renderMarkdownDocument } from './renderer'
+import { chromium } from 'playwright-core'
+import type { FreeformSceneNode } from '../../../src/freeform/types'
 
 function pngIhdr(png: Buffer): { width: number; height: number } {
   expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
@@ -22,9 +24,11 @@ function pngIhdr(png: Buffer): { width: number; height: number } {
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
 }
 
-/** Decode an 8-bit RGBA PNG into raw pixels (test helper for pixel truth). */
+/** Decode an 8-bit RGBA or RGB PNG into raw RGBA pixels (test helper for pixel truth). */
 function decodePngRgba(png: Buffer): Buffer {
   const { width, height } = pngIhdr(png)
+  // Colour type 6 is RGBA, 2 is RGB (what a browser screenshot of an opaque page gives).
+  const channels = png[25] === 2 ? 3 : 4
   const idat: Buffer[] = []
   let offset = 8
   while (offset < png.length) {
@@ -35,7 +39,7 @@ function decodePngRgba(png: Buffer): Buffer {
     offset += 12 + length
   }
   const raw = zlib_inflateSync(Buffer.concat(idat))
-  const stride = width * 4
+  const stride = width * channels
   const out = Buffer.alloc(height * stride)
   let input = 0
   for (let y = 0; y < height; y += 1) {
@@ -45,9 +49,9 @@ function decodePngRgba(png: Buffer): Buffer {
     input += stride
     for (let x = 0; x < stride; x += 1) {
       const index = y * stride + x
-      const left = x >= 4 ? out[index - 4] : 0
+      const left = x >= channels ? out[index - channels] : 0
       const up = y > 0 ? out[index - stride] : 0
-      const upLeft = y > 0 && x >= 4 ? out[index - stride - 4] : 0
+      const upLeft = y > 0 && x >= channels ? out[index - stride - channels] : 0
       if (filter === 1) out[index] = (out[index] + left) & 0xff
       else if (filter === 2) out[index] = (out[index] + up) & 0xff
       else if (filter === 3) out[index] = (out[index] + ((left + up) >> 1)) & 0xff
@@ -61,7 +65,10 @@ function decodePngRgba(png: Buffer): Buffer {
       }
     }
   }
-  return out
+  if (channels === 4) return out
+  const rgba = Buffer.alloc(width * height * 4, 255)
+  for (let pixel = 0; pixel < width * height; pixel += 1) out.copy(rgba, pixel * 4, pixel * 3, pixel * 3 + 3)
+  return rgba
 }
 
 describe('renderDocument', () => {
@@ -661,5 +668,138 @@ describe('checkDocument', () => {
   test('refuses invalid documents without a browser', async () => {
     const result = await checkDocument({ documentVersion: 4 })
     expect(result.ok).toBe(false)
+  })
+})
+
+// Pictures for the HTML import tests, as data URLs so nothing loads from the network.
+const PHOTO = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="#2b5876"/><circle cx="860" cy="300" r="120" fill="#ffd166"/><path d="M0 620 L260 420 L470 600 L700 380 L1200 660 L1200 800 L0 800 Z" fill="#264653"/></svg>').toString('base64')}`
+const FACE = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#e9c46a"/><circle cx="200" cy="160" r="80" fill="#6d4c41"/></svg>').toString('base64')}`
+
+const POSTER_HTML = `<!doctype html><html><head><style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
+  section { position: relative; overflow: hidden; }
+  .one { width: 1080px; height: 1440px; background: linear-gradient(160deg, #fff5e6 0%, #ffe0c2 100%); color: #1f2937; }
+  .one h1 { position: absolute; left: 88px; top: 120px; margin: 0; font: 700 120px/1.08 "Noto Serif SC", serif; }
+  .one h1 em { font-style: normal; color: #e8590c; }
+  .one .lead { position: absolute; left: 88px; top: 420px; width: 800px; margin: 0; font-size: 38px; line-height: 1.6; color: #4b5563; }
+  .one .card { position: absolute; left: 88px; right: 88px; top: 640px; height: 360px; padding: 48px; border-radius: 36px; background: #fff; box-shadow: 0 24px 60px rgba(31, 41, 55, 0.12); }
+  .one .card img { width: 100%; height: 100%; object-fit: cover; object-position: 80% 30%; }
+  .one .face { position: absolute; left: 88px; bottom: 120px; width: 120px; height: 120px; border-radius: 50%; object-fit: cover; }
+  .one .badge { position: absolute; right: 88px; bottom: 100px; width: 180px; height: 180px; border-radius: 50%; border: 6px solid #1f2937; display: flex; align-items: center; justify-content: center; transform: rotate(-12deg); font-weight: 700; font-size: 36px; }
+  .one .glass { position: absolute; left: 260px; bottom: 140px; padding: 16px 28px; border-radius: 999px; background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(8px); font-size: 30px; }
+  .two { width: 1080px; height: 1080px; background: #0f172a; color: #fff; padding: 96px; }
+  .two svg { width: 240px; height: 240px; }
+  .two p { margin: 40px 0 0; font-size: 56px; line-height: 1.3; }
+</style></head><body>
+<section class="one" data-name="封面">
+  <h1>春日<em>咖啡</em><br>市集</h1>
+  <p class="lead">二十家独立咖啡馆、手作甜点和现场烘焙，<b>免费入场</b>，带上朋友来逛。</p>
+  <div class="card" data-name="照片卡"><img src="${PHOTO}" alt="海边"></div>
+  <img class="face" src="${FACE}" alt="头像">
+  <div class="badge">免费</div>
+  <div class="glass">城市漫游计划</div>
+</section>
+<section class="two">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#ffd166" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+  <p>四月最后一个周末</p>
+</section>
+</body></html>`
+
+function leaves(nodes: FreeformSceneNode[]): FreeformSceneNode[] {
+  return nodes.flatMap((node) => (node.type === 'group' ? [node, ...leaves(node.children)] : [node]))
+}
+
+describe('importHtml', () => {
+  test(
+    'reads pages, boxes, words, pictures, drawings and turns back as freeform nodes',
+    async () => {
+      const result = await importHtml(POSTER_HTML)
+      if (!result.ok) throw new Error(result.error)
+      const [one, two] = result.document.slides
+      expect(result.document.slides).toHaveLength(2)
+      expect([one.width, one.height, one.name]).toEqual([1080, 1440, '封面'])
+      expect([two.width, two.height]).toEqual([1080, 1080])
+      expect(one.background).toEqual({ type: 'linear-gradient', from: '#fff5e6', to: '#ffe0c2', angle: 160 })
+      const nodes = leaves(one.nodes)
+
+      const title = nodes.find((node) => node.type === 'text' && node.text === '春日咖啡\n市集')
+      expect(title).toMatchObject({ fontSize: 120, fontWeight: 'bold', lineHeight: 1.08, fontFamily: `'Noto Serif SC', serif` })
+      expect(title && title.type === 'text' && title.spans).toEqual([{ start: 2, end: 4, color: '#e8590c' }])
+      const lead = nodes.find((node) => node.type === 'text' && node.text.startsWith('二十家'))
+      expect(lead && lead.type === 'text' && lead.spans?.[0]).toMatchObject({ bold: true })
+
+      // The card: a rounded white box with its shadow; the photo inside it, framed by object-position.
+      const card = nodes.find((node) => node.type === 'shape' && node.name === '照片卡')
+      expect(card).toMatchObject({ shape: 'rect', cornerRadius: 36, fill: { type: 'solid', color: '#ffffff' } })
+      expect(card && 'shadow' in card && card.shadow?.blur).toBe(60)
+      const photo = nodes.find((node) => node.type === 'image')
+      expect(photo).toMatchObject({ x: 136, y: 688, width: 808, height: 264, fit: 'cover' })
+      expect(photo && photo.type === 'image' && photo.framing.focusY).toBeLessThan(0.5)
+      // A round picture is an ellipse filled with it.
+      const face = nodes.find((node) => node.type === 'shape' && node.name === '头像')
+      expect(face).toMatchObject({ shape: 'ellipse', fill: { type: 'image', src: FACE } })
+
+      // Turned by -12°: the badge's ring and word turn together about its centre.
+      const badge = one.nodes.find((node) => node.type === 'group')
+      expect(badge).toMatchObject({ type: 'group', rotation: 348 })
+
+      // What a freeform document can't hold is said.
+      expect(result.notes.some((note) => note.page === 1 && note.message.includes('backdrop-filter'))).toBe(true)
+
+      // An SVG icon: one path per drawing, grouped, stroke kept even.
+      const icon = two.nodes.find((node) => node.type === 'group')
+      if (!icon || icon.type !== 'group') throw new Error('expected the icon as a group')
+      expect(icon.children.map((child) => child.type)).toEqual(['path', 'path'])
+      expect(icon.children[0]).toMatchObject({ stroke: '#ffd166', strokeWidth: 20, cap: 'round', fill: { type: 'transparent' } })
+    },
+    420_000,
+  )
+
+  test(
+    'renders the converted document like the browser renders the HTML',
+    async () => {
+      const result = await importHtml(POSTER_HTML)
+      if (!result.ok) throw new Error(result.error)
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-html-'))
+      const rendered = await renderDocument(result.document, { outputDir, baseName: 'converted' })
+      if (!rendered.ok) throw new Error(rendered.error)
+
+      // The HTML as a browser shows it, with the same web fonts the render page links.
+      const renderPage = readFileSync(path.join(rendered.distDir, 'render.html'), 'utf8')
+      const fonts = /<link[^>]+fonts\.googleapis\.com[^>]+>/.exec(renderPage)?.[0] ?? ''
+      const browser = await chromium.launch({ channel: 'chrome', headless: true })
+      try {
+        const page = await browser.newPage({ viewport: { width: 1080, height: 1440 } })
+        await page.setContent(POSTER_HTML.replace('<head>', `<head>${fonts}`), { waitUntil: 'networkidle' })
+        await page.evaluate(() => (globalThis as unknown as { document: { fonts: { ready: Promise<unknown> } } }).document.fonts.ready)
+        const sections = await page.locator('body > section').all()
+        for (const [index, section] of sections.entries()) {
+          const original = decodePngRgba(await section.screenshot())
+          const converted = decodePngRgba(readFileSync(rendered.files[index].path))
+          expect(converted.length).toBe(original.length)
+          let total = 0
+          let far = 0
+          for (let offset = 0; offset < original.length; offset += 4) {
+            const difference = (Math.abs(original[offset] - converted[offset])
+              + Math.abs(original[offset + 1] - converted[offset + 1])
+              + Math.abs(original[offset + 2] - converted[offset + 2])) / 3
+            total += difference
+            if (difference > 40) far += 1
+          }
+          const pixels = original.length / 4
+          // Antialiasing and the approximated shadow differ by a hair; a misplaced word or box would not.
+          expect(total / pixels).toBeLessThan(4)
+          expect(far / pixels).toBeLessThan(0.03)
+        }
+      } finally {
+        await browser.close()
+      }
+    },
+    420_000,
+  )
+
+  test('refuses an empty page without a browser', async () => {
+    expect(await importHtml('   ')).toMatchObject({ ok: false })
   })
 })

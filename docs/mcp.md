@@ -21,6 +21,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `create_document_from_template` | 按模板 id 实例化完整文档：自由画布文档保存在服务端，返回 `documentId` 和各页 id、名称；Markdown 返回源文信封。 |
 | `create_poster_from_content` | 按内容生成一张海报（`kind: 'poster'` 的模板）：`{ title, subtitle?, body?, recipient?, details?: ["时间：…"…], table?: [["节次", "周一"…]…], cta?, tag?, brand?, image? }`，尺寸跟模板走（规则见下文「生成海报」）。 |
 | `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
+| `create_document_from_html` | 把你写的 HTML/CSS 网页转成能逐个修改的自由画布文档：每页一个 `<section>`，色块、文字、图片、SVG 图形读成形状、文字框、图片和图形节点，返回 `documentId`、每页尺寸和 `notes`（转不了、只能近似的地方），默认附缩略图（规则见下文「用网页写法出图」）。 |
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
 | `validate_document` | 严格校验 v19 文档（v1–v18 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时保存在服务端并返回 `documentId`（`includeDocument: true` 时附上规范化后的文档）。 |
@@ -37,6 +38,8 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `open_in_editor` | 在浏览器里的叮卡编辑器打开这份文档，存成一个新项目，人接着手改（见下文「在叮卡里打开」）。 |
 | `render_document` | 无头渲染自由画布 v19 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`grid: true`（png / jpeg，只用于正方形页面）把每页切成九宫格 `<baseName>-01-1.png` … `-01-9.png`（`files[i].tile` 是 1–9，从左到右、从上到下，按这个顺序发朋友圈拼回一整张），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
+
+模板放不下的版式，可以写成网页交给 `create_document_from_html`，转出来同样接 `check_document` → `render_document`。
 
 工具描述内嵌了 v19 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景、文字效果、滤镜的色调/灰度/复古黄、图形的图片填充）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
 
@@ -57,6 +60,19 @@ list_templates → create_document_from_content / create_document_from_outline�
 - 默认打开服务端自带的编辑器：`http://127.0.0.1:5390`（同一份构建产物，离线可用；端口用 `DINGCARD_APP_PORT` 改，被占用时换一个空闲端口）。项目存在这个地址的浏览器存储里。
 - 平时用的是别的叮卡（本地开发的 `http://127.0.0.1:5173`，或部署好的网站），设环境变量 `DINGCARD_APP_URL`，或调用时传 `appUrl`，就在那里打开；编辑器跨域读取本机地址上的文档。
 - `open: false` 只返回链接（`url`）不打开浏览器。编辑器只接受本机（`127.0.0.1`、`localhost`）或同源地址上的文档，别的网站的链接会被拒绝。
+
+## 用网页写法出图
+
+模板排不出来的版式，可以直接写网页：`create_document_from_html` 在无头浏览器里按叮卡的字体把网页排好，再把排出来的样子读回来，每个元素变成能在编辑器里单独修改的节点，位置、字号、行高、字距、颜色、圆角、边框、阴影、渐变、透明度、混合模式、滤镜和旋转都照网页来，层叠顺序按 CSS 的绘制顺序（含 `z-index`）。网页给 `html`（源码）或 `htmlPath`（文件），里面的相对路径按 `htmlPath` 所在目录找，没有 `htmlPath` 时按服务器的工作目录。
+
+- **页面**：每页一个 `<section>`，放在 `<body>` 下面，用 CSS 写死宽高（px），如 1080×1440（小红书 3:4）、1080×1920、1080×1080；没有 `<section>` 时整个 `<body>` 是一页，尺寸是 `width` × `height`（默认 1080×1440），`100vw` / `100vh` 也按这个算。`data-name` 给页面起名。页面的底色、渐变或铺满的背景图成为页面背景，其他背景层成为最底下的节点。
+- **字体**：用内置的苹方 `"PingFang SC"`、思源黑体 `"Noto Sans SC"`、思源宋体 `"Noto Serif SC"`、霞鹜文楷 `"LXGW WenKai TC"`、站酷小薇 `"ZCOOL XiaoWei"`、系统宋体 `"Songti SC"`。别的字体按字体栈里的类别换成内置字体：衬线换思源宋体，手写换霞鹜文楷，其余换苹方。换好之后才排版，所以转出来的换行和位置跟排好的网页一致；`notes` 里列出换掉的字体。字重只有常规和粗体，600 及以上算粗体。
+- **文字**：一个块里的文字是一个文字框，按原来的宽度换行；行内的加粗、换色、底色（行内元素的 `background-color`）和下划线变成文字片段。同一行里有不同字号、或者和 `inline-block` 小标签在同一行的文字，会拆成几个文字框，多栏排版（`columns`）的文字每行一个文字框，每行都留在原来的位置。行内元素带圆角、内边距、边框或渐变背景（荧光笔效果）时，底色画成文字下面的色块。列表的圆点和编号单独成字，`::before` / `::after` 照常生效，`text-transform` 已经换好。
+- **图片**：`<img>` 和 CSS `background-image` 都行，`object-fit`、`object-position`、`background-size`、`background-position` 换成取景；带圆角或圆形裁切（自己的 `border-radius`，或 `overflow: hidden` 的圆角容器）时成为带图片填充的形状。`src` 写本机路径、http(s) URL 或 data URL；本机图片和本机样式表（`<link rel="stylesheet">`）会嵌进来，读不到的图片列在 `notes` 里。
+- **SVG**：内联 `<svg>` 的 `path`、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon` 每个变成一个图形节点，一个 `<svg>` 里有几个就成一个组合；`transform`、`viewBox`、描边宽度、线帽和拐角都换算好。长短不一的虚线（比如环形进度条的 `stroke-dasharray`）按画出来的样子描成线段，SVG 里的 `<text>` 变成单行文字框；`<use>` 引用和 `<foreignObject>` 不转。
+- **旋转和组合**：`rotate` 和 `scale`（`transform` 里的，或单独的 `rotate`、`scale` 属性）换成节点或组合的旋转缩放，只有一个节点的就转节点本身；`data-group` 让一个元素连同里面的东西成为一个组合，`data-name` 给图层起名。
+- **近似处理**（写进 `notes`）：透明度不一的渐变（照片上的渐隐遮罩）、平铺背景和锥形渐变画成一张图；半透明的阴影按背后的颜色换成不透明的；只有一边的边框画成细长色块；内阴影、第二层以后的阴影、阴影的扩展、`backdrop-filter`、`clip-path`、`mask` 和删除线去掉，两端对齐按左对齐，斜切按等比缩放。脚本和动画不运行。
+- 转出来的文档和别的一样：`check_document` 检查，`apply_actions` 修改，`render_document` 出图，`open_in_editor` 在编辑器里接着改。
 
 ## 生成海报
 
@@ -278,6 +294,7 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 - 静态文件服务器只监听 `127.0.0.1` 的随机端口，带路径穿越防护，渲染结束即关闭。`open_in_editor` 的服务器也只监听 `127.0.0.1`，交出去的文档地址带随机 id，只保留最近 16 份。
 - MCP 服务器只读写本地文件（输出目录、`documentPath`、图片路径由调用方指定）；不连接远程账号、草稿或图片存储。
+- `create_document_from_html` 把网页放在没有脚本权限的沙箱框架里排版：网页里的脚本、事件处理器和 `<noscript>` 都去掉，只读它排出来的样子；网页引用的网络图片和字体照常加载。本机文件只读网页里写到的图片和样式表。
 - stdout 只承载 JSON-RPC 协议，构建日志与诊断一律走 stderr。
 
 ## 当前限制
@@ -289,4 +306,5 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 - 文档句柄只存在服务器进程里，重启后清空；`open_in_editor` 目前只交自由画布文档。
 - 一次调用串行渲染全部所选页面，没有并发渲染池；`check_document` 同样要启动一次浏览器（一套 4–6 页的卡片约几秒）。
 - 生成整套卡片只按模板画好的位置排版，不会改版式：内容明显超过模板容量时，换一个 `capacity` 更大的模板，或把内容拆成更多页。
+- `create_document_from_html` 读的是浏览器排好的样子，不是网页的布局规则：转出来的文字框按原来的宽度换行，之后改字只在框里重新换行，不会像网页那样推动下面的元素；需要整体重排的改动，改网页再转一次更省事。
 - Markdown 平台头部中的时间戳（微博/推特）按渲染时刻生成，与编辑器导出行为一致。

@@ -5,6 +5,7 @@
 // exports, and on another machine.
 
 import { readFile, stat } from 'node:fs/promises'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { FreeformDocument, FreeformSceneNode, FreeformSlide } from '../../../src/freeform/types'
 import { expandPath } from './documents'
@@ -43,8 +44,8 @@ export type EmbedResult =
   | { ok: true; document: FreeformDocument; embedded: string[] }
   | { ok: false; error: string }
 
-/** The document with every picture path read from disk and embedded as a data URL. */
-export async function embedLocalImages(document: FreeformDocument, baseDir: string): Promise<EmbedResult> {
+/** Reads picture paths into data URLs, once each; what it couldn't read is listed in `failures`. */
+function localImageReader(baseDir: string) {
   const found = new Map<string, string>()
   const failures: string[] = []
   const embedded: string[] = []
@@ -73,6 +74,12 @@ export async function embedLocalImages(document: FreeformDocument, baseDir: stri
     found.set(src, result)
     return result
   }
+  return { dataUrlFor, failures, embedded }
+}
+
+/** The document with every picture path read from disk and embedded as a data URL. */
+export async function embedLocalImages(document: FreeformDocument, baseDir: string): Promise<EmbedResult> {
+  const { dataUrlFor, failures, embedded } = localImageReader(baseDir)
 
   const node = async (current: FreeformSceneNode): Promise<FreeformSceneNode> => {
     if (current.type === 'group') {
@@ -83,7 +90,7 @@ export async function embedLocalImages(document: FreeformDocument, baseDir: stri
       const src = await dataUrlFor(current.src)
       return src === current.src ? current : { ...current, src }
     }
-    if (current.type === 'shape' && current.fill.type === 'image') {
+    if ((current.type === 'shape' || current.type === 'path') && current.fill.type === 'image') {
       const src = await dataUrlFor(current.fill.src)
       return src === current.fill.src ? current : { ...current, fill: { ...current.fill, src } }
     }
@@ -107,4 +114,80 @@ export async function embedLocalImages(document: FreeformDocument, baseDir: stri
     document: slides.every((entry, index) => entry === document.slides[index]) ? document : { ...document, slides },
     embedded,
   }
+}
+
+const ATTRIBUTE_PICTURE = /(\s(?:src|href|xlink:href|poster)\s*=\s*)(["'])([^"']*)\2/gi
+const CSS_PICTURE = /url\(\s*(["']?)([^"')]+)\1\s*\)/gi
+const STYLESHEET_LINK = /<link\b[^>]*\brel\s*=\s*(["'])stylesheet\1[^>]*>/gi
+
+async function replaceAsync(text: string, pattern: RegExp, replace: (match: RegExpExecArray) => Promise<string>): Promise<string> {
+  const parts: string[] = []
+  let last = 0
+  pattern.lastIndex = 0
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    parts.push(text.slice(last, match.index), await replace(match))
+    last = match.index + match[0].length
+  }
+  parts.push(text.slice(last))
+  return parts.join('')
+}
+
+/** A web page's own way of naming a nearby file ("images/a.png", "a%20b.png") as a path the reader knows. */
+function htmlPath(src: string): string | null {
+  if (!src || src.startsWith('#') || src.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(src) && !/^[a-z]:[\\/]/i.test(src)) {
+    return src.startsWith('file://') ? src : null
+  }
+  let decoded = src
+  try {
+    decoded = decodeURI(src)
+  } catch {
+    // Not percent-encoded after all.
+  }
+  return /^(?:[/~]|\.\.?[\\/]|[a-z]:[\\/])/i.test(decoded) ? decoded : `./${decoded}`
+}
+
+async function embedCssPictures(css: string, dataUrlFor: (src: string) => Promise<string>): Promise<string> {
+  // The quote stays as written: the CSS may sit in a style="…" attribute. Data URLs need none.
+  return replaceAsync(css, CSS_PICTURE, async (match) => `url(${match[1]}${await dataUrlFor(match[2].trim())}${match[1]})`)
+}
+
+/**
+ * HTML with the pictures it names on disk embedded as data URLs — in src,
+ * href and poster attributes and CSS url() — and local stylesheets inlined.
+ * A path that isn't a picture (a link to a page) stays as written; pictures
+ * it couldn't read are listed in `missing`, for the client to hear about.
+ */
+export async function embedLocalHtmlImages(html: string, baseDir: string): Promise<{ html: string; missing: string[]; embedded: string[] }> {
+  const reader = localImageReader(baseDir)
+  // Stylesheets next to the page: inlined, their pictures found next to them.
+  let text = await replaceAsync(html, STYLESHEET_LINK, async (match) => {
+    const href = /\bhref\s*=\s*(["'])([^"']+)\1/i.exec(match[0])?.[2]
+    const local = href ? htmlPath(href) : null
+    const target = local ? filePathOf(local, baseDir) : null
+    if (!target) return match[0]
+    try {
+      const css = await readFile(target.path, 'utf8')
+      const nearby = localImageReader(path.dirname(target.path))
+      const embedded = await embedCssPictures(css, async (src) => {
+        const local = htmlPath(src)
+        return local ? nearby.dataUrlFor(local).then((value) => (value === local ? src : value)) : src
+      })
+      reader.failures.push(...nearby.failures)
+      reader.embedded.push(target.path, ...nearby.embedded)
+      return `<style>${embedded}</style>`
+    } catch {
+      reader.failures.push(`${href}（读不了这个样式表）`)
+      return match[0]
+    }
+  })
+  const pictureOnly = async (src: string) => {
+    if (/\.(html?|css|js|json|md|txt)(?:[?#].*)?$/i.test(src)) return src
+    const local = htmlPath(src)
+    if (!local) return src
+    const value = await reader.dataUrlFor(local)
+    return value === local ? src : value
+  }
+  text = await replaceAsync(text, ATTRIBUTE_PICTURE, async (match) => `${match[1]}${match[2]}${await pictureOnly(match[3])}${match[2]}`)
+  text = await embedCssPictures(text, pictureOnly)
+  return { html: text, missing: reader.failures, embedded: reader.embedded }
 }

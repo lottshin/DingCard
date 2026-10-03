@@ -36,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the twenty tools', async () => {
+  test('exposes the twenty-one tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -45,6 +45,7 @@ describe('dingcard-mcp tool layer', () => {
       'apply_actions',
       'check_document',
       'create_document_from_content',
+      'create_document_from_html',
       'create_document_from_outline',
       'create_document_from_template',
       'create_poster_from_content',
