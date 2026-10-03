@@ -2060,6 +2060,9 @@ export function FreeformWorkspace({
       draftId,
       userId: ownerId,
     }
+    // Most edits leave the selection valid; skipping the no-op update saves a render per
+    // edit. Selection changes alone can't make it stale, so it isn't a dependency.
+    if (reconcileSceneUiState(activeSlide.nodes, sceneUiState, identity) === sceneUiState) return
     setSceneUiState((current) => reconcileSceneUiState(activeSlide.nodes, current, identity))
   }, [activeSlide.id, activeSlide.nodes, draftId, ownerId])
 
@@ -2108,7 +2111,8 @@ export function FreeformWorkspace({
   const [fontSwap, setFontSwap] = useState<{ from: string; to: string } | null>(null)
   const deckFamilies = useMemo(() => new Set(deckFonts(doc).map((font) => font.fontFamily)), [doc])
   const fontSwapOwner = selectionPaths.map((path) => path.join('/')).join('|')
-  useEffect(() => { setFontSwap(null) }, [fontSwapOwner])
+  // Only when set: clearing a cleared one would still cost a render per selection change.
+  useEffect(() => { if (fontSwap) setFontSwap(null) }, [fontSwapOwner])
 
   /** Apply a few actions as one undo step; nothing happens unless every one of them changes something. */
   const applyActionGroup = useCallback((actions: FreeformAction[], label: string) => {

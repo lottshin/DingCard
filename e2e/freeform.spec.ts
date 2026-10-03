@@ -7437,6 +7437,27 @@ test('keyboard nudges all selected elements by 10 px with shift arrow', async ({
   ])
 })
 
+test('long runs of keyboard edits log no React update-depth warning', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+  await insertTwoSelectedRectangles(page)
+
+  // Each edit used to trigger effects that set state to what it already was;
+  // after about 50 edits in a row React logs this warning.
+  for (let index = 0; index < 60; index += 1) await page.keyboard.press('Shift+ArrowDown')
+  for (let index = 0; index < 60; index += 1) await page.keyboard.press('Shift+ArrowUp')
+  await expect.poll(() => freeformElementPositions(page)).toEqual([
+    { x: 100, y: 100 },
+    { x: 320, y: 120 },
+  ])
+  for (let index = 0; index < 60; index += 1) await page.keyboard.press('ControlOrMeta+D')
+  await expect(page.getByTestId('freeform-element')).toHaveCount(122)
+
+  expect(errors.filter((text) => text.includes('Maximum update depth'))).toEqual([])
+})
+
 test('keyboard shortcuts work after shift-selecting from an inspector input', async ({ page }) => {
   const elements = await insertTwoRectanglesLeavingInspectorFocused(page)
 

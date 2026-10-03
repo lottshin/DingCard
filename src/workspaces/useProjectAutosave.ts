@@ -33,6 +33,13 @@ export function useProjectAutosave<Tag>(
   onSavedRef.current = onSaved
   const [status, setStatus] = useState<AutosaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
+  const statusRef = useRef<AutosaveStatus>('idle')
+  /** Every edit asks for 'saving': only a change is worth a render. */
+  const showStatus = useCallback((next: AutosaveStatus) => {
+    if (statusRef.current === next) return
+    statusRef.current = next
+    setStatus(next)
+  }, [])
 
   const schedule = useCallback((ownerId: string, draftId: string | null, content: AutosaveContent, tag: Tag) => {
     let current = saverRef.current
@@ -46,12 +53,12 @@ export function useProjectAutosave<Tag>(
             if (saverRef.current?.saver !== saver) return
             onSavedRef.current(draft, saved, savedTag)
             setError(null)
-            setStatus(saver.pending ? 'saving' : 'saved')
+            showStatus(saver.pending ? 'saving' : 'saved')
           },
           onError: (reason) => {
             if (saverRef.current?.saver !== saver) return
             setError(errorText(reason))
-            setStatus('error')
+            showStatus('error')
           },
         },
         undefined,
@@ -61,29 +68,29 @@ export function useProjectAutosave<Tag>(
       saverRef.current = current
     }
     current.saver.schedule(content, tag)
-    setStatus('saving')
-  }, [])
+    showStatus('saving')
+  }, [showStatus])
 
   const flush = useCallback(() => {
     const current = saverRef.current
     if (!current?.saver.busy) return Promise.resolve()
-    setStatus('saving')
+    showStatus('saving')
     return current.saver.flush()
-  }, [])
+  }, [showStatus])
 
   const release = useCallback(() => {
     void saverRef.current?.saver.detach()
     saverRef.current = null
-    setStatus('idle')
+    showStatus('idle')
     setError(null)
-  }, [])
+  }, [showStatus])
 
   const discard = useCallback(() => {
     saverRef.current?.saver.cancel()
     saverRef.current = null
-    setStatus('idle')
+    showStatus('idle')
     setError(null)
-  }, [])
+  }, [showStatus])
 
   useEffect(() => () => {
     void saverRef.current?.saver.detach()

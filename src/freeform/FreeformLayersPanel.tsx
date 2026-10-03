@@ -241,13 +241,15 @@ export function FreeformLayersPanel({
     const validGroups = new Set(collectGroupKeys(nodes))
     const knownGroups = knownGroupKeysRef.current
     knownGroupKeysRef.current = validGroups
-    setExpandedKeys((current) => {
+    const reconcile = (current: Set<string>) => {
       const next = new Set([...current].filter((key) => validGroups.has(key)))
       validGroups.forEach((key) => {
         if (!knownGroups.has(key)) next.add(key)
       })
       return next.size === current.size && [...next].every((key) => current.has(key)) ? current : next
-    })
+    }
+    // Most edits keep the same groups; a no-op update would still cost a render per edit.
+    if (reconcile(expandedKeys) !== expandedKeys) setExpandedKeys(reconcile)
   }, [nodes])
 
   useEffect(() => {
