@@ -355,7 +355,6 @@ export const editor: Record<string, Translation> = {
   '当前裁剪范围无法应用该比例': 'That ratio does not fit the current crop',
   '图片裁剪未能应用，请重试': 'The crop did not apply. Please try again.',
   '图片插入失败，请稍后重试': 'Could not insert the picture. Please try again later.',
-  '形状图片填充失败，请稍后重试': 'Could not fill the shape with the picture. Please try again later.',
   '背景图片设置失败，请稍后重试': 'Could not set the background picture. Please try again later.',
   '设为背景': 'Set as background',
   '图片加载超时，导出已取消': 'Pictures took too long to load, so the export was canceled',

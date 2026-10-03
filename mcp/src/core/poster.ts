@@ -273,7 +273,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
 
   const placed = settle(nodes, slide.nodes, slots, lines.length)
   const document = normalizeFreeformDocument({ documentVersion: 19, activeSlideId: slide.id, slides: [{ ...slide, nodes: placed }] })
-  if (!document) return { ok: false, error: '生成的海报没有通过 v17 校验。' }
+  if (!document) return { ok: false, error: '生成的海报没有通过 v19 校验。' }
   return {
     ok: true,
     document,

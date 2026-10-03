@@ -23,7 +23,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
-| `validate_document` | 严格校验 v17 文档（v1–v16 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时保存在服务端并返回 `documentId`（`includeDocument: true` 时附上规范化后的文档）。 |
+| `validate_document` | 严格校验 v19 文档（v1–v18 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时保存在服务端并返回 `documentId`（`includeDocument: true` 时附上规范化后的文档）。 |
 | `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，装饰素材标出 `decoration` id（几部分组成的装饰标在组上），其他图形给出 `d` 开头），以及整套卡片的 `style`：用到的颜色（按面积排序，附占比 `share` 和用在哪：`background`/`fill`/`text`/`line`/`shadow`）、字体（几段文字用、最大字号）和正文字号 `bodySize`，为编辑提供目标。 |
 | `list_icons` | 查内置图标（97 个线性图标）：不带参数列出全部图标的 id 和中英文名，`query` 用中文或英文关键词搜，`ids` 按 id 取；带上路径数据 `d`、统一画法 `style` 和一个可以直接插入的完整节点 `example`（见下文「图形与图标」）。 |
 | `list_decorations` | 查内置装饰素材（48 个，和编辑器「元素」面板同一套）：手绘线条、贴纸、标签。不带参数列出全部，`query` 用中英文关键词搜，`category` 只看一类，`ids` 按 id 取；每个带宽高比 `aspect`、本来的 `color`、标签的示例 `text`、能否单独拉伸 `stretches` 和默认宽度（见下文「装饰素材」）。 |
@@ -35,10 +35,10 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效；按 `documentId` 就地更新（`version` 加一）。 |
 | `get_document` | 取回完整文档 JSON，或用 `path` 写成 `.json` 文件（之后可拖进「我的项目」，或用 `documentPath` 传回来）。 |
 | `open_in_editor` | 在浏览器里的叮卡编辑器打开这份文档，存成一个新项目，人接着手改（见下文「在叮卡里打开」）。 |
-| `render_document` | 无头渲染自由画布 v17 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`grid: true`（png / jpeg，只用于正方形页面）把每页切成九宫格 `<baseName>-01-1.png` … `-01-9.png`（`files[i].tile` 是 1–9，从左到右、从上到下，按这个顺序发朋友圈拼回一整张），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
+| `render_document` | 无头渲染自由画布 v19 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`grid: true`（png / jpeg，只用于正方形页面）把每页切成九宫格 `<baseName>-01-1.png` … `-01-9.png`（`files[i].tile` 是 1–9，从左到右、从上到下，按这个顺序发朋友圈拼回一整张），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 
-工具描述内嵌了 v17 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景、文字效果）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
+工具描述内嵌了 v19 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景、文字效果、滤镜的色调/灰度/复古黄、图形的图片填充）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
 
 ## 文档句柄
 
@@ -123,10 +123,10 @@ list_templates → create_document_from_content / create_document_from_outline�
 
 | URI | 内容 |
 | --- | --- |
-| `dingcard://schema/freeform` | 自由画布 v17 文档模型与校验规则说明。 |
+| `dingcard://schema/freeform` | 自由画布 v19 文档模型与校验规则说明。 |
 | `dingcard://schema/actions` | `FreeformAction` 动作联合类型说明（`apply_actions` 的入参结构）。 |
 | `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
-| `dingcard://examples/freeform` | 完整自由画布 v17 文档示例（编辑部模板实例）。 |
+| `dingcard://examples/freeform` | 完整自由画布 v19 文档示例（编辑部模板实例）。 |
 | `dingcard://icons` | 内置图标全集：每个图标的 id、中英文名、关键词与 24×24 路径数据 `d`。 |
 | `dingcard://decorations` | 内置装饰素材全集（与 `list_decorations` 不带参数时相同）。 |
 | `dingcard://examples/markdown` | 完整 Markdown 文档信封示例（编辑档案模板实例）。 |
@@ -219,7 +219,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 
 ## 回到编辑器精修
 
-最省事的是 `open_in_editor`（见上文）。也可以把 `get_document` 写出的 `.json` 文件导入：在工作台「我的项目」点击「导入 JSON」，或把文件拖进页面。自由画布文档（v1–v17，旧版自动迁移为 v17）和 Markdown 文档都会存为项目，并在对应的编辑器里打开；非法文件会给出可读的错误提示。由此形成完整闭环：
+最省事的是 `open_in_editor`（见上文）。也可以把 `get_document` 写出的 `.json` 文件导入：在工作台「我的项目」点击「导入 JSON」，或把文件拖进页面。自由画布文档（v1–v19，旧版自动迁移为 v19）和 Markdown 文档都会存为项目，并在对应的编辑器里打开；非法文件会给出可读的错误提示。由此形成完整闭环：
 
 ```text
 AI 生成文档 → 导入叮卡精修 → 编辑器导出 PNG
@@ -282,7 +282,7 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 ## 当前限制
 
-- `render_document` 仅支持自由画布文档（v17；v1–v16 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
+- `render_document` 仅支持自由画布文档（v19；v1–v18 输入自动迁移）；`render_markdown` 仅支持 Markdown 文档信封。
 - 自由画布文本节点的可选 `spans` 富文本片段（局部加粗/标色）在渲染与校验中与编辑器一致支持；编辑器内改动文字时片段会按编辑位置自动保留或收缩。
 - 模板只有仓库里内置的这几套（社区通过 PR 共建，见 docs/templates.md）。需要渲染自己的文档时，把文档直接传给 `render_document` / `render_markdown`。
 - 文档中的图片 `src`（自由画布）可以是浏览器可加载的 URL、data URL 或本机文件路径（自动嵌入）；Markdown 文档的图片通过信封的 `images` 映射（`img:<id>` → data URL）提供，本地文件请先转为 data URL。

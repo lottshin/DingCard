@@ -591,7 +591,7 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
   const filled = plan.map((entry) => ({ ...entry, result: fillSlide(entry.slide, entry.slots, entry.fill) }))
   const slides = filled.map((entry) => entry.result.slide)
   const document = normalizeFreeformDocument({ documentVersion: 19, activeSlideId: slides[0].id, slides })
-  if (!document) return { ok: false, error: '生成的文档未通过 v17 校验。' }
+  if (!document) return { ok: false, error: '生成的文档未通过 v19 校验。' }
 
   return {
     ok: true,

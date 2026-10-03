@@ -335,7 +335,7 @@ export function importDraftFromJson(text: string): ImportDraftOutcome {
   if (typeof parsed.documentVersion === 'number') {
     const document = normalizeFreeformDocument(parsed)
     if (!document) {
-      return { ok: false, error: '自由画布文档未通过校验：需要 v1–v16 之一的完整文档结构' }
+      return { ok: false, error: '自由画布文档未通过校验：需要 v1–v19 之一的完整文档结构' }
     }
     return { ok: true, data: { mode: 'freeform-slide', document } }
   }
