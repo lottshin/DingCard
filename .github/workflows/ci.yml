@@ -59,6 +59,7 @@ jobs:
       - run: npm --prefix server ci
       - run: npm --prefix mcp ci
       - run: npx playwright install --with-deps chrome
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - run: npm run test:e2e
       - run: npm run build
       - run: npm --prefix mcp run test:render
