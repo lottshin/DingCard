@@ -180,6 +180,12 @@ describe('layout issues', () => {
     const issues = layoutIssues(document, measured([], [], '图片加载失败'))
     expect(kinds(issues)).toEqual(['sample-text:导语', 'empty-text:空的', 'image-failed:'])
   })
+
+  test('the same words in a node of another name are not a left-over sample', () => {
+    // An HTML import names a text by its words: a button saying what a template's button says is the author's own.
+    const document = deck([text('第一屏负责给出判断，…', { text: '第一屏负责给出判断，\n后面的页面再交代过程。' })])
+    expect(kinds(layoutIssues(document, measured([], [])))).toEqual([])
+  })
 })
 
 describe('path issues', () => {

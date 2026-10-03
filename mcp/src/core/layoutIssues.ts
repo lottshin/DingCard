@@ -45,8 +45,12 @@ interface Rect {
 const OPAQUE = 0.7
 
 interface TemplateMarks {
-  /** Sample text in a slot: copy that must not reach a finished deck. */
-  samples: Set<string>
+  /**
+   * Sample text in a slot (copy that must not reach a finished deck), with
+   * the names of the template nodes that carry it: the same words written by
+   * someone else (a button that says 扫码报名) aren't left-over samples.
+   */
+  samples: Map<string, Set<string>>
   /** Decoration drawn as the template drew it (page numbers masked): its look is the template's choice. */
   decoration: Set<string>
   /** Text colour on background colour pairs the templates use on purpose. */
@@ -64,7 +68,7 @@ const colourKey = (text: string, background: string) => `${text.toLowerCase()}|$
 /** What the built-in templates draw on purpose, so check_document only reports what changed. */
 export function templateMarks(): TemplateMarks {
   if (marks) return marks
-  const result: TemplateMarks = { samples: new Set(), decoration: new Set(), colourPairs: new Set() }
+  const result: TemplateMarks = { samples: new Map(), decoration: new Set(), colourPairs: new Set() }
   for (const template of TEMPLATE_REGISTRY) {
     if (template.workspace !== 'freeform' || !template.createFreeform) continue
     const document = template.createFreeform()
@@ -77,7 +81,11 @@ export function templateMarks(): TemplateMarks {
       const names = new Set(pages[index] ?? [])
       slide.nodes.forEach((node, order) => {
         if (node.type !== 'text') return
-        if (names.has(node.name) && node.text.trim()) result.samples.add(node.text.trim())
+        if (names.has(node.name) && node.text.trim()) {
+          const carriers = result.samples.get(node.text.trim()) ?? new Set<string>()
+          carriers.add(node.name)
+          result.samples.set(node.text.trim(), carriers)
+        }
         else result.decoration.add(decorationKey(node))
         // Words that read off their own label or outline don't make their colours a pair to keep.
         if (node.effect?.type === 'background' || node.effect?.type === 'outline') return
@@ -222,7 +230,7 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         }
       }
       if (!node.text.trim()) issue('empty-text', node.id, '文字是空的：填上内容或删掉这个文本框。')
-      else if (knownSamples.has(node.text.trim())) {
+      else if (knownSamples.get(node.text.trim())?.has(node.name)) {
         issue('sample-text', node.id, `还是模板里的示例文字「${short(node.text)}」：换成自己的内容或删掉。`)
       }
     }
