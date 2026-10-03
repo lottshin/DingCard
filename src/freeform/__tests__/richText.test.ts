@@ -5,9 +5,12 @@ import {
   rangeHasRichTextStyle,
   remapRichTextSpans,
   restyleRichTextRange,
+  scaleSpanFontSizes,
+  splitParagraphRuns,
   splitTextRuns,
   textRunStyle,
   usesV16SpanStyles,
+  usesV20SpanStyles,
 } from '../richText'
 import type { RichTextSpan } from '../types'
 
@@ -118,6 +121,40 @@ describe('v16 highlight and underline spans', () => {
     expect(runs[1]).toEqual({ text: '标题', highlight: '#fef08a', underline: true })
     expect(isStyledRun(runs[0])).toBe(false)
     expect(isStyledRun(runs[1])).toBe(true)
+  })
+})
+
+describe('v20 strikethrough and sized spans', () => {
+  it('validates the new styles', () => {
+    expect(normalizeRichTextSpans([{ start: 0, end: 2, strike: true, fontSize: 72 }], TEXT.length))
+      .toEqual([{ start: 0, end: 2, strike: true, fontSize: 72 }])
+    expect(normalizeRichTextSpans([{ start: 0, end: 2, strike: false }], TEXT.length)).toBeNull()
+    expect(normalizeRichTextSpans([{ start: 0, end: 2, fontSize: 0 }], TEXT.length)).toBeNull()
+    expect(normalizeRichTextSpans([{ start: 0, end: 2, fontSize: 5000 }], TEXT.length)).toBeNull()
+    expect(usesV20SpanStyles([{ start: 0, end: 2, underline: true }])).toBe(false)
+    expect(usesV20SpanStyles([{ start: 0, end: 2, fontSize: 30 }])).toBe(true)
+  })
+
+  it('draws a strikethrough with an underline, and a size as a share of the text', () => {
+    expect(textRunStyle({ text: '¥99', strike: true, underline: true })).toMatchObject({ textDecorationLine: 'underline line-through' })
+    expect(textRunStyle({ text: '99', fontSize: 72 }, undefined, 48)).toMatchObject({ fontSize: '1.5em' })
+    expect(textRunStyle({ text: '99', fontSize: 72 })).toMatchObject({ fontSize: '72px' })
+  })
+
+  it('restyles, remaps and scales sized spans', () => {
+    const sized = restyleRichTextRange(undefined, { start: 2, end: 4 }, (style) => ({ ...style, fontSize: 64 }), TEXT.length)
+    expect(sized).toEqual([{ start: 2, end: 4, fontSize: 64 }])
+    expect(rangeHasRichTextStyle(sized ?? [], { start: 2, end: 4 }, (style) => style.fontSize === 64)).toBe(true)
+    expect(remapRichTextSpans(sized ?? [], TEXT, `前${TEXT}`)).toEqual([{ start: 3, end: 5, fontSize: 64 }])
+    expect(scaleSpanFontSizes([{ start: 0, end: 2, bold: true }, { start: 2, end: 4, fontSize: 64 }], 0.5))
+      .toEqual([{ start: 0, end: 2, bold: true }, { start: 2, end: 4, fontSize: 32 }])
+  })
+
+  it('cuts runs into paragraphs at line breaks', () => {
+    expect(splitParagraphRuns('甲\n乙丙', [{ start: 0, end: 3, bold: true }]))
+      .toEqual([[{ text: '甲', bold: true }], [{ text: '乙', bold: true }, { text: '丙' }]])
+    expect(splitParagraphRuns('甲\n', undefined)).toEqual([[{ text: '甲' }], []])
+    expect(splitParagraphRuns('', undefined)).toEqual([[]])
   })
 })
 

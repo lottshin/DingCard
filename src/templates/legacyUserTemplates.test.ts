@@ -8,7 +8,7 @@ const KEY = 'slicer.user-templates.user-1'
 
 function freeformDocument(): FreeformDocument {
   return {
-    documentVersion: 19,
+    documentVersion: 20,
     activeSlideId: 'slide-1',
     slides: [
       {

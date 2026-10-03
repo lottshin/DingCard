@@ -3,11 +3,12 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent }
 import { store } from '../storage'
 import { FramedImage } from './FramedImage'
 import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
-import { isStyledRun, splitTextRuns, textRunStyle } from './richText'
+import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './richText'
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
 import { effectHollowsWords, textEffectLayer, textEffectWordsStyle } from './textEffects'
+import { keepsEmptyLine, textLayoutAttributes, textLayoutStyle } from './textLayout'
 import { scenePathKey } from './sceneTree'
 import type { ImageDecodeIdentity, ImageDecodeReport } from './imageReadiness'
 import type {
@@ -114,16 +115,8 @@ function SceneLeafContent({
 
   if (leaf.type === 'text') {
     // What lays the words out; the effect layer copies it so its words land exactly under the text's.
-    const layout = {
-      fontFamily: leaf.fontFamily,
-      fontSize: leaf.fontSize,
-      textAlign: leaf.align,
-      fontWeight: leaf.fontWeight,
-      ...(leaf.lineHeight !== undefined ? { lineHeight: leaf.lineHeight } : {}),
-      ...(leaf.letterSpacing !== undefined ? { letterSpacing: `${leaf.letterSpacing}px` } : {}),
-      ...(leaf.italic ? { fontStyle: 'italic' as const } : {}),
-      ...(leaf.vertical ? { writingMode: 'vertical-rl' as const } : {}),
-    }
+    const layout = textLayoutStyle(leaf)
+    const layoutAttributes = textLayoutAttributes(leaf)
     const effect = leaf.effect
     const effectLayer = effect ? textEffectLayer(effect, leaf.fontSize) : null
     const textColor = leaf.textFill.type === 'solid' ? leaf.textFill.color : paintFallbackColor(leaf.textFill)
@@ -141,28 +134,45 @@ function SceneLeafContent({
       // Above the effect layer, which sits under it in the same box.
       ...(effectLayer ? { position: 'relative' as const } : {}),
     }
-    const runs = splitTextRuns(leaf.text, leaf.spans)
+    const paragraphs = splitParagraphRuns(leaf.text, leaf.spans)
     // Gradient text shows its gradient through see-through glyphs; styled runs
     // that paint over it fall back to the gradient's first colour. Hollow words keep only their outline.
     const runFallbackColor = leaf.textFill.type === 'solid' || effectHollowsWords(effect)
       ? undefined
       : paintFallbackColor(leaf.textFill)
-    const layerWords = runs.map((run, index) => (run.bold ? <span key={index} style={{ fontWeight: 700 }}>{run.text}</span> : run.text))
+    // The effect's copy of the words needs only what moves them: weight and size.
+    const layerRun = (run: TextRun, index: number) => {
+      if (!run.bold && run.fontSize === undefined) return run.text
+      const { fontWeight, fontSize } = textRunStyle({ text: '', bold: run.bold, fontSize: run.fontSize }, undefined, leaf.fontSize)
+      return <span key={index} style={{ fontWeight, fontSize }}>{run.text}</span>
+    }
     const layer = effectLayer && (
-      <div className="freeform-text-effect" aria-hidden="true" style={{ ...layout, ...effectLayer.style }}>
-        {effectLayer.band ? <span className="freeform-text-effect-band" style={effectLayer.band}>{layerWords}</span> : layerWords}
+      <div className="freeform-text-effect" aria-hidden="true" {...layoutAttributes} style={{ ...layout, ...effectLayer.style }}>
+        {paragraphs.map((paragraph, index) => (
+          <div key={index}>
+            {effectLayer.band
+              ? <span className="freeform-text-effect-band" style={effectLayer.band}>{paragraph.map(layerRun)}</span>
+              : paragraph.map(layerRun)}
+            {keepsEmptyLine(paragraph, index, paragraphs.length) && <br />}
+          </div>
+        ))}
       </div>
     )
     if (presentationOnly) {
       return (
         <>
           {layer}
-          <div className="freeform-preview-textbox" style={style}>
-            {runs.map((run, index) =>
-              isStyledRun(run)
-                ? <span key={index} style={textRunStyle(run, runFallbackColor)}>{run.text}</span>
-                : run.text,
-            )}
+          <div className="freeform-preview-textbox" {...layoutAttributes} style={style}>
+            {paragraphs.map((paragraph, index) => (
+              <div key={index}>
+                {paragraph.map((run, runIndex) =>
+                  isStyledRun(run)
+                    ? <span key={runIndex} style={textRunStyle(run, runFallbackColor, leaf.fontSize)}>{run.text}</span>
+                    : run.text,
+                )}
+                {keepsEmptyLine(paragraph, index, paragraphs.length) && <br />}
+              </div>
+            ))}
           </div>
         </>
       )
@@ -176,6 +186,8 @@ function SceneLeafContent({
         ariaLabel={t('文本内容')}
         value={leaf.text}
         spans={leaf.spans}
+        baseFontSize={leaf.fontSize}
+        attributes={layoutAttributes}
         runFallbackColor={runFallbackColor}
         readOnly={readOnly}
         onFocus={onTextFocus}

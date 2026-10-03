@@ -11,6 +11,7 @@ export type InspectorGlyphName =
   | 'letter-spacing'
   | 'blur'
   | 'dash'
+  | 'paragraph-spacing'
 
 const GLYPHS: Record<InspectorGlyphName, ReactNode> = {
   rotate: (
@@ -38,6 +39,7 @@ const GLYPHS: Record<InspectorGlyphName, ReactNode> = {
   'letter-spacing': <path d="M2 2.5v11M14 2.5v11M5.25 11.5 8 4.5l2.75 7M6.1 9.25h3.8" />,
   blur: <path d="M8 2.25c2.6 3.1 4 5.1 4 7.1a4 4 0 0 1-8 0c0-2 1.4-4 4-7.1z" />,
   dash: <path d="M1.75 8h2.5M6.75 8h2.5M11.75 8h2.5" />,
+  'paragraph-spacing': <path d="M2.5 2.75h7M2.5 5h5M2.5 11h7M2.5 13.25h5M12.5 5.25v5.5M11 6.75l1.5-1.5 1.5 1.5M11 9.25l1.5 1.5 1.5-1.5" />,
 }
 
 export function InspectorGlyph({ name }: { name: InspectorGlyphName }) {

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 19
+  documentVersion: 20
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -156,7 +156,7 @@ export type TextEffect =
 /**
  * Additive styling for a character range [start, end) inside a text
  * element's plain `text`. Canonical spans are sorted, non-overlapping, and
- * carry at least one of bold/color/highlight/underline.
+ * carry at least one of bold/color/highlight/underline/strike/fontSize.
  */
 export interface RichTextSpan {
   start: number
@@ -167,7 +167,20 @@ export interface RichTextSpan {
   highlight?: string
   /** Underlined characters (v16). */
   underline?: true
+  /** Struck-through characters (v20): a crossed-out price. */
+  strike?: true
+  /** The characters' own size in px (v20): the ¥ small, the 99 big. */
+  fontSize?: number
 }
+
+/** How a text's lines sit across its box; `justify` (v20) spreads full lines edge to edge. */
+export type TextAlign = 'left' | 'center' | 'right' | 'justify'
+
+/** Where a text's lines sit in a box taller than they are (v20); absent means at the top. */
+export type TextVerticalAlign = 'middle' | 'bottom'
+
+/** A text whose paragraphs are list items (v20): a bullet or its number before each, hanging indent. */
+export type TextList = 'bullet' | 'number'
 
 export interface FreeformTextElement extends FreeformElementBase {
   type: 'text'
@@ -177,8 +190,14 @@ export interface FreeformTextElement extends FreeformElementBase {
   fontSize: number
   fontFamily: string
   textFill: ColorPaint
-  align: 'left' | 'center' | 'right'
+  align: TextAlign
   fontWeight: 'normal' | 'bold'
+  /** Where the lines sit in a taller box (v20); absent means at the top. */
+  verticalAlign?: TextVerticalAlign
+  /** Extra space between paragraphs in px (v20); absent means none. */
+  paragraphSpacing?: number
+  /** Each paragraph a list item (v20); absent means plain paragraphs. */
+  list?: TextList
   /** Unitless line-height multiplier; absent uses the browser default. */
   lineHeight?: number
   /** Letter spacing in px; may be negative for tighter tracking. */
@@ -324,8 +343,14 @@ export interface FreeformNodeStylePatch {
   fontSize?: number
   fontFamily?: string
   textFill?: ColorPaint
-  align?: 'left' | 'center' | 'right'
+  align?: TextAlign
   fontWeight?: 'normal' | 'bold'
+  /** Where the lines sit in the box (v20); `'top'` or `null` restores the top. */
+  verticalAlign?: TextVerticalAlign | 'top' | null
+  /** Space between paragraphs in px (v20); `null` or `0` clears it. */
+  paragraphSpacing?: number | null
+  /** Make the paragraphs a list (v20); `null` makes them plain again. */
+  list?: TextList | null
   /** Replace the text element's spans wholesale; `[]` clears them. */
   spans?: RichTextSpan[]
   /** Unitless line-height multiplier; `null` clears it back to the browser default. */

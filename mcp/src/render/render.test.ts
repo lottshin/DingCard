@@ -8,8 +8,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
+import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { FILTER_PRESETS } from '../../../src/freeform/filterPresets'
-import type { FreeformPathElement, FreeformTextElement } from '../../../src/freeform/types'
+import type { FreeformDocument, FreeformPathElement, FreeformTextElement } from '../../../src/freeform/types'
 import { listIcons } from '../core/icons'
 import { createDocumentFromOutline } from '../core/outline'
 import { instantiateTemplate } from '../core/templates'
@@ -69,6 +70,127 @@ function decodePngRgba(png: Buffer): Buffer {
   const rgba = Buffer.alloc(width * height * 4, 255)
   for (let pixel = 0; pixel < width * height; pixel += 1) out.copy(rgba, pixel * 4, pixel * 3, pixel * 3 + 3)
   return rgba
+}
+
+type PixelRect = { x: number; y: number; width: number; height: number }
+
+function isInk(pixels: Buffer, pageWidth: number, x: number, y: number): boolean {
+  const at = (y * pageWidth + x) * 4
+  return pixels[at] + pixels[at + 1] + pixels[at + 2] < 384
+}
+
+/** The box around the dark pixels inside a rect of a decoded page; null when there are none. */
+function inkBox(pixels: Buffer, pageWidth: number, rect: PixelRect): { left: number; top: number; right: number; bottom: number } | null {
+  let left = Infinity
+  let top = Infinity
+  let right = -Infinity
+  let bottom = -Infinity
+  for (let y = rect.y; y < rect.y + rect.height; y += 1) {
+    for (let x = rect.x; x < rect.x + rect.width; x += 1) {
+      if (!isInk(pixels, pageWidth, x, y)) continue
+      left = Math.min(left, x)
+      right = Math.max(right, x)
+      top = Math.min(top, y)
+      bottom = Math.max(bottom, y)
+    }
+  }
+  return left === Infinity ? null : { left, top, right, bottom }
+}
+
+/** The stretches of rows (or columns) of a rect that hold dark pixels, in order. */
+function inkRuns(pixels: Buffer, pageWidth: number, rect: PixelRect, along: 'rows' | 'columns'): Array<{ from: number; to: number }> {
+  const runs: Array<{ from: number; to: number }> = []
+  const [start, end] = along === 'rows' ? [rect.y, rect.y + rect.height] : [rect.x, rect.x + rect.width]
+  for (let line = start; line < end; line += 1) {
+    let inked = false
+    if (along === 'rows') {
+      for (let x = rect.x; x < rect.x + rect.width && !inked; x += 1) inked = isInk(pixels, pageWidth, x, line)
+    } else {
+      for (let y = rect.y; y < rect.y + rect.height && !inked; y += 1) inked = isInk(pixels, pageWidth, line, y)
+    }
+    if (!inked) continue
+    const last = runs[runs.length - 1]
+    if (last && last.to === line - 1) last.to = line
+    else runs.push({ from: line, to: line })
+  }
+  return runs
+}
+
+/** The longest unbroken stretch of dark pixels on one row of a rect. */
+function longestInkRun(pixels: Buffer, pageWidth: number, y: number, from: number, to: number): number {
+  let longest = 0
+  let current = 0
+  for (let x = from; x <= to; x += 1) {
+    current = isInk(pixels, pageWidth, x, y) ? current + 1 : 0
+    longest = Math.max(longest, current)
+  }
+  return longest
+}
+
+/** How far each converted page is from the page as the browser shows the HTML: mean channel difference and the share of far-off pixels. */
+async function browserDifference(html: string, files: readonly string[], distDir: string, viewport: { width: number; height: number }): Promise<Array<{ mean: number; far: number }>> {
+  // The HTML as a browser shows it, with the same web fonts the render page links.
+  const renderPage = readFileSync(path.join(distDir, 'render.html'), 'utf8')
+  const fonts = /<link\b(?=[^>]*\brel="stylesheet")[^>]*fonts\.googleapis\.com[^>]*>/.exec(renderPage)?.[0] ?? ''
+  const browser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const page = await browser.newPage({ viewport })
+    await page.setContent(html.replace('<head>', `<head>${fonts}`), { waitUntil: 'networkidle' })
+    await page.evaluate(() => (globalThis as unknown as { document: { fonts: { ready: Promise<unknown> } } }).document.fonts.ready)
+    const sections = await page.locator('body > section').all()
+    const out: Array<{ mean: number; far: number }> = []
+    for (const [index, section] of sections.entries()) {
+      const original = decodePngRgba(await section.screenshot())
+      const converted = decodePngRgba(readFileSync(files[index]))
+      expect(converted.length).toBe(original.length)
+      let total = 0
+      let far = 0
+      for (let offset = 0; offset < original.length; offset += 4) {
+        const difference = (Math.abs(original[offset] - converted[offset])
+          + Math.abs(original[offset + 1] - converted[offset + 1])
+          + Math.abs(original[offset + 2] - converted[offset + 2])) / 3
+        total += difference
+        if (difference > 40) far += 1
+      }
+      const pixels = original.length / 4
+      out.push({ mean: total / pixels, far: far / pixels })
+    }
+    return out
+  } finally {
+    await browser.close()
+  }
+}
+
+function v20Text(id: string, rect: PixelRect, extra: Partial<FreeformTextElement>): FreeformTextElement {
+  return {
+    id,
+    name: id,
+    locked: false,
+    hidden: false,
+    ...rect,
+    rotation: 0,
+    scale: 1,
+    type: 'text',
+    text: '',
+    fontSize: 60,
+    fontFamily: `'PingFang SC', 'Noto Sans SC', sans-serif`,
+    textFill: { type: 'solid', color: '#000000' },
+    align: 'left',
+    fontWeight: 'normal',
+    lineHeight: 1.2,
+    ...extra,
+  }
+}
+
+/** A one-page v20 document of these nodes on white. */
+function v20Page(nodes: FreeformTextElement[]): FreeformDocument {
+  const document = normalizeFreeformDocument({
+    documentVersion: 20,
+    activeSlideId: 'v20',
+    slides: [{ id: 'v20', name: 'v20', width: 1080, height: 1080, background: { type: 'solid', color: '#ffffff' }, nodes }],
+  })
+  if (!document) throw new Error('expected a valid v20 document')
+  return document
 }
 
 describe('renderDocument', () => {
@@ -195,7 +317,7 @@ describe('renderDocument', () => {
       // show red — the rest of its box stays the page's white.
       const redPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC'
       const document = {
-        documentVersion: 19,
+        documentVersion: 20,
         activeSlideId: 's',
         slides: [{
           id: 's',
@@ -363,6 +485,65 @@ describe('renderDocument', () => {
       if (deck.workspace !== 'freeform') throw new Error('expected a freeform document')
       expect(await renderDocument(deck.document, { outputDir, grid: true })).toMatchObject({ ok: false, error: expect.stringContaining('正方形') })
       expect(await renderDocument(grid.document, { outputDir, grid: true, long: true })).toMatchObject({ ok: false })
+    },
+    420_000,
+  )
+
+  test(
+    'lays out v20 lists, line positions, strikethroughs and sized words in exports',
+    async () => {
+      const list = { x: 80, y: 60, width: 600, height: 300 }
+      const bottom = { x: 80, y: 420, width: 300, height: 300 }
+      const middle = { x: 420, y: 420, width: 300, height: 300 }
+      const struck = { x: 80, y: 780, width: 240, height: 200 }
+      const plain = { x: 360, y: 780, width: 240, height: 200 }
+      const sized = { x: 640, y: 780, width: 400, height: 240 }
+      const document = v20Page([
+        v20Text('list', list, { text: '一\n二\n三', list: 'bullet', lineHeight: 1.5 }),
+        v20Text('bottom', bottom, { text: '底', verticalAlign: 'bottom' }),
+        v20Text('middle', middle, { text: '中', verticalAlign: 'middle' }),
+        v20Text('struck', struck, { text: '口', fontSize: 120, spans: [{ start: 0, end: 1, strike: true }] }),
+        v20Text('plain', plain, { text: '口', fontSize: 120 }),
+        v20Text('sized', sized, { text: '口口', fontSize: 40, spans: [{ start: 1, end: 2, fontSize: 120 }] }),
+      ])
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-v20-'))
+      const result = await renderDocument(document, { outputDir, baseName: 'v20' })
+      if (!result.ok) throw new Error(result.error)
+      const pixels = decodePngRgba(readFileSync(result.files[0].path))
+      const width = 1080
+
+      // A bullet before each paragraph, in the gutter the words are indented past.
+      const gutter = { x: list.x, y: list.y, width: 80, height: list.height }
+      expect(inkRuns(pixels, width, gutter, 'rows')).toHaveLength(3)
+      expect(inkBox(pixels, width, { ...list, x: list.x + 90, width: list.width - 90 })).not.toBeNull()
+
+      // Lines low in their box, or in its middle — not at its top.
+      const low = inkBox(pixels, width, bottom)
+      expect(low?.top).toBeGreaterThan(bottom.y + bottom.height - 100)
+      const centred = inkBox(pixels, width, middle)
+      if (!centred) throw new Error('expected the middle word')
+      expect(Math.abs((centred.top + centred.bottom) / 2 - (middle.y + middle.height / 2))).toBeLessThan(14)
+
+      // A line through the middle of the struck word: one row inked right across it, which the plain word lacks.
+      const crossed = (rect: PixelRect) => {
+        const ink = inkBox(pixels, width, rect)
+        if (!ink) throw new Error('expected a word')
+        const height = ink.bottom - ink.top
+        let across = false
+        for (let y = Math.round(ink.top + height * 0.2); y <= ink.bottom - height * 0.2; y += 1) {
+          across ||= longestInkRun(pixels, width, y, ink.left, ink.right) >= (ink.right - ink.left) * 0.9
+        }
+        return across
+      }
+      expect(crossed(struck)).toBe(true)
+      expect(crossed(plain)).toBe(false)
+
+      // The sized word stands three times taller than its neighbour.
+      const glyphs = inkRuns(pixels, width, sized, 'columns')
+      expect(glyphs).toHaveLength(2)
+      const [small, large] = glyphs.map((glyph) => inkBox(pixels, width, { x: glyph.from, y: sized.y, width: glyph.to - glyph.from + 1, height: sized.height }))
+      if (!small || !large) throw new Error('expected both words')
+      expect((large.bottom - large.top) / (small.bottom - small.top)).toBeGreaterThan(2.4)
     },
     420_000,
   )
@@ -655,6 +836,23 @@ describe('checkDocument', () => {
     420_000,
   )
 
+  test(
+    'measures a list text by its words and markers, not the paragraph blocks across its box',
+    async () => {
+      const checked = await checkDocument(v20Page([
+        v20Text('清单', { x: 100, y: 100, width: 600, height: 200 }, { text: '一\n二', fontSize: 40, lineHeight: 1.4, list: 'bullet' }),
+        // In the indent the first bullet sits in.
+        v20Text('旁注', { x: 90, y: 100, width: 60, height: 60 }, { text: '甲', fontSize: 40, lineHeight: 1.4 }),
+        // Beside the short items, inside the box but clear of its words.
+        v20Text('右侧', { x: 400, y: 100, width: 200, height: 60 }, { text: '丙', fontSize: 40, lineHeight: 1.4 }),
+      ]))
+      if (!checked.ok) throw new Error(checked.error)
+      expect(checked.issues.filter((issue) => issue.kind === 'text-overlap').map((issue) => [issue.node, issue.message]))
+        .toEqual([['清单', expect.stringContaining('「旁注」')]])
+    },
+    420_000,
+  )
+
   test('flags an untouched template as sample copy', async () => {
     const instantiation = instantiateTemplate('signal-freeform')
     if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
@@ -703,6 +901,25 @@ const POSTER_HTML = `<!doctype html><html><head><style>
 <section class="two">
   <svg viewBox="0 0 24 24" fill="none" stroke="#ffd166" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
   <p>四月最后一个周末</p>
+</section>
+</body></html>`
+
+const V20_HTML = `<!doctype html><html><head><style>
+  body { margin: 0; }
+  section { position: relative; width: 1080px; height: 1440px; background: #fff; font-family: "Noto Sans SC", sans-serif; color: #222; }
+  ul { position: absolute; left: 100px; top: 100px; width: 700px; margin: 0; padding-left: 40px; font-size: 40px; line-height: 1.5; }
+  li + li { margin-top: 16px; }
+  ol { position: absolute; left: 100px; top: 420px; width: 700px; margin: 0; padding-left: 60px; font-size: 36px; line-height: 1.4; }
+  .body { position: absolute; left: 100px; top: 700px; width: 600px; margin: 0; font-size: 32px; line-height: 1.6; text-align: justify; }
+  .price { position: absolute; left: 100px; top: 1100px; margin: 0; font-size: 40px; line-height: 1.2; }
+  .price b { font-size: 96px; }
+  .price s { color: #999999; }
+</style></head><body>
+<section>
+  <ul><li>现磨咖啡</li><li>手作甜点</li><li>黑胶唱片</li></ul>
+  <ol><li>先闷蒸三十秒</li><li>分三次注水</li></ol>
+  <p class="body">二十家独立咖啡馆和烘焙铺带来当季豆子与手作甜点，现场还有黑胶唱片、植物和旧书摊，周末两天从早上十点开到晚上八点。</p>
+  <p class="price"><s>¥129</s> 现价 ¥<b>59</b></p>
 </section>
 </body></html>`
 
@@ -765,36 +982,48 @@ describe('importHtml', () => {
       const rendered = await renderDocument(result.document, { outputDir, baseName: 'converted' })
       if (!rendered.ok) throw new Error(rendered.error)
 
-      // The HTML as a browser shows it, with the same web fonts the render page links.
-      const renderPage = readFileSync(path.join(rendered.distDir, 'render.html'), 'utf8')
-      const fonts = /<link[^>]+fonts\.googleapis\.com[^>]+>/.exec(renderPage)?.[0] ?? ''
-      const browser = await chromium.launch({ channel: 'chrome', headless: true })
-      try {
-        const page = await browser.newPage({ viewport: { width: 1080, height: 1440 } })
-        await page.setContent(POSTER_HTML.replace('<head>', `<head>${fonts}`), { waitUntil: 'networkidle' })
-        await page.evaluate(() => (globalThis as unknown as { document: { fonts: { ready: Promise<unknown> } } }).document.fonts.ready)
-        const sections = await page.locator('body > section').all()
-        for (const [index, section] of sections.entries()) {
-          const original = decodePngRgba(await section.screenshot())
-          const converted = decodePngRgba(readFileSync(rendered.files[index].path))
-          expect(converted.length).toBe(original.length)
-          let total = 0
-          let far = 0
-          for (let offset = 0; offset < original.length; offset += 4) {
-            const difference = (Math.abs(original[offset] - converted[offset])
-              + Math.abs(original[offset + 1] - converted[offset + 1])
-              + Math.abs(original[offset + 2] - converted[offset + 2])) / 3
-            total += difference
-            if (difference > 40) far += 1
-          }
-          const pixels = original.length / 4
-          // Antialiasing and the approximated shadow differ by a hair; a misplaced word or box would not.
-          expect(total / pixels).toBeLessThan(4)
-          expect(far / pixels).toBeLessThan(0.03)
-        }
-      } finally {
-        await browser.close()
+      const differences = await browserDifference(POSTER_HTML, rendered.files.map((file) => file.path), rendered.distDir, { width: 1080, height: 1440 })
+      expect(differences).toHaveLength(2)
+      for (const difference of differences) {
+        // Antialiasing and the approximated shadow differ by a hair; a misplaced word or box would not.
+        expect(difference.mean).toBeLessThan(4)
+        expect(difference.far).toBeLessThan(0.03)
       }
+    },
+    420_000,
+  )
+
+  test(
+    'reads lists, justified paragraphs, struck words and sized words as v20 text',
+    async () => {
+      const result = await importHtml(V20_HTML)
+      if (!result.ok) throw new Error(result.error)
+      const texts = result.document.slides[0].nodes.filter((node): node is FreeformTextElement => node.type === 'text')
+      expect(texts.map((node) => node.text)).toEqual([
+        '现磨咖啡\n手作甜点\n黑胶唱片',
+        '先闷蒸三十秒\n分三次注水',
+        expect.stringMatching(/^二十家/),
+        '¥129 现价 ¥59',
+      ])
+      const [bullets, steps, body, price] = texts
+      // One list text each, the markers drawn by the editor and the items' gap kept as paragraph spacing.
+      expect(bullets).toMatchObject({ list: 'bullet', paragraphSpacing: 16, fontSize: 40 })
+      expect(steps).toMatchObject({ list: 'number', paragraphSpacing: 16, fontSize: 36 })
+      expect(body).toMatchObject({ align: 'justify' })
+      // The price in the text's colour; the old one struck in grey, the new one in its own size.
+      expect(price).toMatchObject({ fontSize: 40, textFill: { type: 'solid', color: '#222222' } })
+      expect(price.spans).toEqual([
+        { start: 0, end: 4, color: '#999999', strike: true },
+        { start: 9, end: 11, bold: true, fontSize: 96 },
+      ])
+      expect(result.notes).toEqual([])
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-html-v20-'))
+      const rendered = await renderDocument(result.document, { outputDir, baseName: 'converted' })
+      if (!rendered.ok) throw new Error(rendered.error)
+      const [difference] = await browserDifference(V20_HTML, rendered.files.map((file) => file.path), rendered.distDir, { width: 1080, height: 1440 })
+      expect(difference.mean).toBeLessThan(4)
+      expect(difference.far).toBeLessThan(0.03)
     },
     420_000,
   )

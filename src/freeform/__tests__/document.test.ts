@@ -72,7 +72,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(19)
+    expect(doc.documentVersion).toBe(20)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -1433,5 +1433,70 @@ describe('v16 page backgrounds and span styles', () => {
       updates: [{ path: ['text-1'], patch: { spans: [{ start: 0, end: 2, highlight: '#fef08a', underline: true }] } }],
     })).toBe(marked)
     expect(patch([{ start: 0, end: 2, highlight: 'yellow' } as never])).toBe(document)
+  })
+})
+
+describe('v20 text layout patches', () => {
+  const slideIdOf = (document: FreeformDocument) => document.slides[0].id
+  const stylePatch = (
+    document: FreeformDocument,
+    path: string[],
+    patch: Record<string, unknown>,
+  ) => reduceFreeformDocument(document, {
+    type: 'node/update-style',
+    slideId: slideIdOf(document),
+    updates: [{ path, patch }],
+  })
+  const textOf = (document: FreeformDocument) => document.slides[0].nodes[0] as FreeformTextElement
+
+  it('justifies, aligns lines in the box, spaces paragraphs and makes lists', () => {
+    const document = documentWith([{ ...createTextElement(createSlide()), id: 'text-1', text: '一\n二' }])
+    const styled = stylePatch(document, ['text-1'], { align: 'justify', verticalAlign: 'bottom', paragraphSpacing: 16, list: 'number' })
+    expect(textOf(styled)).toMatchObject({ align: 'justify', verticalAlign: 'bottom', paragraphSpacing: 16, list: 'number' })
+    expect(stylePatch(styled, ['text-1'], { verticalAlign: 'bottom', paragraphSpacing: 16, list: 'number' })).toBe(styled)
+
+    // 'top' (or null) is the default and drops the key, as do no spacing and no list.
+    for (const patch of [{ verticalAlign: 'top' }, { verticalAlign: null }]) {
+      expect('verticalAlign' in textOf(stylePatch(styled, ['text-1'], patch))).toBe(false)
+    }
+    for (const patch of [{ paragraphSpacing: 0 }, { paragraphSpacing: null }]) {
+      expect('paragraphSpacing' in textOf(stylePatch(styled, ['text-1'], patch))).toBe(false)
+    }
+    expect('list' in textOf(stylePatch(styled, ['text-1'], { list: null }))).toBe(false)
+    expect(stylePatch(document, ['text-1'], { verticalAlign: 'top', list: null })).toBe(document)
+  })
+
+  it.each([
+    ['unknown vertical alignment', { verticalAlign: 'center' }],
+    ['negative paragraph spacing', { paragraphSpacing: -4 }],
+    ['paragraph spacing past 1000', { paragraphSpacing: 1200 }],
+    ['unknown list', { list: 'roman' }],
+    ['unknown alignment', { align: 'start' }],
+  ])('rejects a patch with %s', (_label, patch) => {
+    const document = documentWith([{ ...createTextElement(createSlide()), id: 'text-1' }])
+    expect(stylePatch(document, ['text-1'], patch)).toBe(document)
+  })
+
+  it('keeps the layout keys off shapes and pictures', () => {
+    const document = documentWith([{ ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' }])
+    expect(stylePatch(document, ['shape-1'], { list: 'bullet' })).toBe(document)
+  })
+
+  it('patches struck and sized spans, and scales sized words with the text', () => {
+    const text = { ...createTextElement(createSlide()), id: 'text-1', text: '原价 99 现价 59', fontSize: 40 }
+    const document = documentWith([text])
+    const spans: RichTextSpan[] = [{ start: 3, end: 5, strike: true }, { start: 9, end: 11, fontSize: 80, bold: true }]
+    const marked = stylePatch(document, ['text-1'], { spans })
+    expect(textOf(marked).spans).toEqual(spans)
+    expect(stylePatch(marked, ['text-1'], { spans: spans.map((span) => ({ ...span })) })).toBe(marked)
+    expect(stylePatch(document, ['text-1'], { spans: [{ start: 0, end: 2, fontSize: 0 }] })).toBe(document)
+
+    // Halving the text halves the price that stood out of it.
+    const smaller = stylePatch(marked, ['text-1'], { fontSize: 20 })
+    expect(textOf(smaller).fontSize).toBe(20)
+    expect(textOf(smaller).spans).toEqual([{ start: 3, end: 5, strike: true }, { start: 9, end: 11, fontSize: 40, bold: true }])
+    // A size and spans in one patch: the spans are taken as given.
+    const both = stylePatch(marked, ['text-1'], { fontSize: 20, spans: [{ start: 9, end: 11, fontSize: 72 }] })
+    expect(textOf(both).spans).toEqual([{ start: 9, end: 11, fontSize: 72 }])
   })
 })

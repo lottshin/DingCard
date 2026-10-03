@@ -324,7 +324,7 @@ function visitColors(
           add(paintColors(node.textFill), 'text', glyphs)
           if (node.stroke !== undefined && (node.strokeWidth ?? 1) > 0) add([node.stroke], 'line', glyphs * 0.2)
           for (const span of node.spans ?? []) {
-            const share = (span.end - span.start) * (node.fontSize * factor) ** 2
+            const share = (span.end - span.start) * ((span.fontSize ?? node.fontSize) * factor) ** 2
             if (span.color) add([span.color], 'text', share)
             if (span.highlight) add([span.highlight], 'fill', share * 1.3)
           }

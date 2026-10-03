@@ -27,6 +27,9 @@ import {
   isValidPathStrokeWidth,
   isValidShape,
   isValidTextStrokeWidth,
+  isTextList,
+  isTextVerticalAlign,
+  isValidParagraphSpacing,
 } from './appearance'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
@@ -935,6 +938,9 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   stroke: (record) => isHexColor(record.stroke),
   strokeWidth: (record) => isValidTextStrokeWidth(record.strokeWidth),
   effect: (record) => isValidTextEffect(record.effect),
+  verticalAlign: (record) => isTextVerticalAlign(record.verticalAlign),
+  paragraphSpacing: (record) => isValidParagraphSpacing(record.paragraphSpacing),
+  list: (record) => isTextList(record.list),
 }
 
 const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
@@ -1042,7 +1048,7 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
       Number.isFinite(node.fontSize) &&
       typeof node.fontFamily === 'string' &&
       isValidSceneColorPaint(node.textFill) &&
-      (node.align === 'left' || node.align === 'center' || node.align === 'right') &&
+      (node.align === 'left' || node.align === 'center' || node.align === 'right' || node.align === 'justify') &&
       (node.fontWeight === 'normal' || node.fontWeight === 'bold')
     )
   }

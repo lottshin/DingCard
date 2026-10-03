@@ -29,8 +29,9 @@ test('a 花字 gives the selected text its look in one step; with nothing select
   await selectTitle(page)
 
   await page.getByTestId('text-style-label').click()
+  // A band in each paragraph, behind each of its lines.
   const band = titleNode(page).locator('.freeform-text-effect .freeform-text-effect-band')
-  await expect(band).toHaveCSS('background-color', 'rgb(24, 24, 27)')
+  await expect(band.first()).toHaveCSS('background-color', 'rgb(24, 24, 27)')
   await expect(titleNode(page).locator('.freeform-textbox')).toHaveCSS('color', 'rgb(255, 255, 255)')
   await page.keyboard.press('ControlOrMeta+z')
   await expect(titleNode(page).locator('.freeform-text-effect')).toHaveCount(0)

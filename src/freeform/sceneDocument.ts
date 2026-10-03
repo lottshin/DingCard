@@ -46,8 +46,10 @@ import type {
   ShapeFill,
   SlideBackground,
   TextEffect,
+  TextList,
+  TextVerticalAlign,
 } from './types'
-import { normalizeRichTextSpans, usesV16SpanStyles } from './richText'
+import { normalizeRichTextSpans, usesV16SpanStyles, usesV20SpanStyles } from './richText'
 import { isValidTextEffect } from './textEffects'
 import {
   cloneGradientStops,
@@ -70,6 +72,9 @@ import {
   isValidPathStrokeWidth,
   isValidShape,
   isValidTextStrokeWidth,
+  isTextList,
+  isTextVerticalAlign,
+  isValidParagraphSpacing,
 } from './appearance'
 import { isValidPathData } from './pathData'
 
@@ -86,7 +91,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -319,6 +324,7 @@ const TEXT_OPTIONAL_V9_KEYS = new Set([
   'blendMode', 'stroke', 'strokeWidth',
 ])
 const TEXT_OPTIONAL_V17_KEYS = new Set([...TEXT_OPTIONAL_V9_KEYS, 'effect'])
+const TEXT_OPTIONAL_V20_KEYS = new Set([...TEXT_OPTIONAL_V17_KEYS, 'verticalAlign', 'paragraphSpacing', 'list'])
 const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
@@ -367,7 +373,10 @@ function optionalKeysFor(
     if (type === 'image') return BASE_OPTIONAL_V8_KEYS
     return null
   }
-  if (type === 'text') return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
+  if (type === 'text') {
+    if (inputVersion >= 20) return TEXT_OPTIONAL_V20_KEYS
+    return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
+  }
   if (type === 'shape') return SHAPE_OPTIONAL_V9_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
@@ -527,7 +536,8 @@ function normalizeStrictSceneNode(
       !isFiniteNumber(value.fontSize) ||
       typeof value.fontFamily !== 'string' ||
       !textFill ||
-      (value.align !== 'left' && value.align !== 'center' && value.align !== 'right') ||
+      (value.align !== 'left' && value.align !== 'center' && value.align !== 'right'
+        && !(value.align === 'justify' && inputVersion >= 20)) ||
       (value.fontWeight !== 'normal' && value.fontWeight !== 'bold')
     ) {
       return null
@@ -538,8 +548,9 @@ function normalizeStrictSceneNode(
     if ('spans' in value) {
       const normalized = normalizeRichTextSpans(value.spans, value.text.length)
       if (!normalized || normalized.length === 0) return null
-      // Highlighted and underlined spans are v16-only.
+      // Highlighted and underlined spans are v16-only; struck and sized ones v20-only.
       if (inputVersion < 16 && usesV16SpanStyles(normalized)) return null
+      if (inputVersion < 20 && usesV20SpanStyles(normalized)) return null
       spans = normalized
     }
     if (inputVersion >= 6) {
@@ -555,6 +566,10 @@ function normalizeStrictSceneNode(
       if ('vertical' in value && value.vertical !== true) return null
     }
     if ('effect' in value && !isValidTextEffect(value.effect)) return null
+    // (The key check keeps these to v20 input.)
+    if ('verticalAlign' in value && !isTextVerticalAlign(value.verticalAlign)) return null
+    if ('paragraphSpacing' in value && !isValidParagraphSpacing(value.paragraphSpacing)) return null
+    if ('list' in value && !isTextList(value.list)) return null
     const appearance = cloneStrictAppearance(value, inputVersion)
     if (!appearance) return null
     return {
@@ -574,6 +589,9 @@ function normalizeStrictSceneNode(
       ...('stroke' in value ? { stroke: value.stroke as string } : {}),
       ...('strokeWidth' in value ? { strokeWidth: value.strokeWidth as number } : {}),
       ...('effect' in value ? { effect: { ...(value.effect as TextEffect) } } : {}),
+      ...('verticalAlign' in value ? { verticalAlign: value.verticalAlign as TextVerticalAlign } : {}),
+      ...('paragraphSpacing' in value ? { paragraphSpacing: value.paragraphSpacing as number } : {}),
+      ...('list' in value ? { list: value.list as TextList } : {}),
       ...appearance,
     }
   }
@@ -783,7 +801,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 19,
+    documentVersion: 20,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -872,6 +890,11 @@ export function normalizeFreeformDocumentV18(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v19 document. */
 export function normalizeFreeformDocumentV19(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 19)
+}
+
+/** Strictly validates and clones an already-v20 document. */
+export function normalizeFreeformDocumentV20(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 20)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1138,9 +1161,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v19 object. */
+/** Normalize any supported freeform document version to a fresh v20 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 20) return normalizeFreeformDocumentV20(value)
   if (value.documentVersion === 19) return normalizeFreeformDocumentV19(value)
   if (value.documentVersion === 18) return normalizeFreeformDocumentV18(value)
   if (value.documentVersion === 17) return normalizeFreeformDocumentV17(value)
@@ -1199,7 +1223,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 19,
+    documentVersion: 20,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1232,7 +1256,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 19,
+    documentVersion: 20,
     activeSlideId: document.activeSlideId,
     slides,
   }

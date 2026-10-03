@@ -77,13 +77,13 @@ const BLEND_HINT = "blendMode?('normal'|'multiply'|'screen'|'overlay'|'darken'|'
 const TEXT_STROKE_HINT = "stroke?(#RRGGBB 文字描边色，仅 v8；配 strokeWidth 使用), strokeWidth?(0.5–100 px 文字描边宽度，仅 v8), vertical?(true 竖排文字，仅 v9)"
 const TEXT_EFFECT_HINT = `文字效果，仅 v17，一段文字一种：{ type: 'neon', color, amount } 发光 | { type: 'outline', color, amount } 字外描边（贴纸字） | { type: 'hollow', amount } 镂空（只留文字颜色的轮廓） | { type: 'splice', color, amount, angle } 镂空字叠在错开的实心字上 | { type: 'offset', color, amount, angle } 硬投影 | { type: 'echo', color, amount, angle } 两层渐淡的重影 | { type: 'glitch', color, color2, amount } 左右错开的双色故障 | { type: 'extrude', color, amount, angle } 立体 | { type: 'background', color, amount, radius } 每行文字后面一块底色（标签） | { type: 'marker', color, amount } 每行下半截的荧光笔；color/color2 为 #RRGGBB，amount 0–100（按字号比例的强度或大小，50 为默认），angle 0–360（0 向右、90 向下），radius 0–100（底色圆角）；node/update-style 的 effect 传 null 去掉。现成的花字见 list_text_styles`
 
-const DOCUMENT_SCHEMA_HINT = `document：自由画布 v19 文档（JSON；v1–v18 输入会自动迁移为 v19）。
-顶层 { documentVersion: 19, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes, guides? }。
+const DOCUMENT_SCHEMA_HINT = `document：自由画布 v20 文档（JSON；v1–v19 输入会自动迁移为 v20）。
+顶层 { documentVersion: 20, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes, guides? }。
 guides? 为该页编辑器参考线（仅 v10）：[{ id(非空且页内唯一), axis('x' 竖线 | 'y' 横线), position(页面内坐标，x ∈ [0, 页宽]，y ∈ [0, 页高]) }]，每页至多 64 条；仅用于编辑器显示与吸附，不参与渲染导出。
 background 为 { type: 'solid', color } | { type: 'linear-gradient', from, to, angle } | { type: 'linear-gradient', stops: [{ offset(0–1 递增), color }×2–8], angle } (仅 v8) | { type: 'radial-gradient', stops: [{ offset(0–1 递增), color }×2–8] } (仅 v12，居中圆 radial-gradient，半径为最远角) | { type: 'transparent' } | { type: 'image', src(URL 或 data URL), fit('cover' 铺满裁切 | 'contain' 完整显示，留空处透明), framing({ focusX(0–1), focusY(0–1), zoom(1–4) } 取景，默认 { focusX: 0.5, focusY: 0.5, zoom: 1 }) } (仅 v16，整页背景图，画在所有节点下面；混合模式会和它混合)。
 ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle }（stops 仅 v8）与径向 { type: 'radial-gradient', stops }（仅 v12）；可用于页面背景、文字填充、形状填充与图形填充。
 节点六选一，键必须精确匹配（不允许多余/缺失键；v6–v9 外观键均可选、缺省即默认样式），公共键：id, name, locked, hidden, type, x, y, rotation(度，绕节点盒中心顺时针旋转), scale(>0)：
-- text：+ width, height, text, spans?(可选富文本片段数组 [{ start, end, bold?(true), color?(#RRGGBB 文字色), highlight?(#RRGGBB 高亮底色，仅 v16), underline?(true 下划线，仅 v16) }]：text 内字符区间 [start, end)，0≤start<end≤text 长度，按 start 排序且不重叠，至少含一种样式；用来强调关键词：加粗、换色、荧光笔式高亮、下划线), fontSize, fontFamily, textFill(ColorPaint), align('left'|'center'|'right'), fontWeight('normal'|'bold'), lineHeight?(0.5–4 无单位行高倍数), letterSpacing?(-50–200 px 字距), italic?(true 斜体), ${TEXT_STROKE_HINT}, effect?(${TEXT_EFFECT_HINT}), opacity?(0–1 不透明度), ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
+- text：+ width, height, text, spans?(可选富文本片段数组 [{ start, end, bold?(true), color?(#RRGGBB 文字色), highlight?(#RRGGBB 高亮底色，仅 v16), underline?(true 下划线，仅 v16), strike?(true 删除线，仅 v20), fontSize?(1–4096 这几个字自己的字号 px，仅 v20；整段的 fontSize 改变时按比例跟着变) }]：text 内字符区间 [start, end)，0≤start<end≤text 长度，按 start 排序且不重叠，至少含一种样式；用来强调关键词：加粗、换色、荧光笔式高亮、下划线、删除线（划掉的原价）、放大（价格里的数字）), fontSize, fontFamily, textFill(ColorPaint), align('left'|'center'|'right'|'justify'；justify 两端对齐仅 v20，中文正文常用，每段最后一行靠左), fontWeight('normal'|'bold'), verticalAlign?('middle'|'bottom' 框比文字高时文字垂直居中或靠下，仅 v20，缺省靠上), paragraphSpacing?(>0–1000 px 段间距：text 里每个换行分出一段，段与段之间多出这么多，仅 v20), list?('bullet'|'number' 每段一个列表项，前面自动加圆点或编号、换行悬挂缩进，空段不算，仅 v20；圆点和编号不要写进 text), lineHeight?(0.5–4 无单位行高倍数), letterSpacing?(-50–200 px 字距), italic?(true 斜体), ${TEXT_STROKE_HINT}, effect?(${TEXT_EFFECT_HINT}), opacity?(0–1 不透明度), ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - image：+ width, height, src(URL 或 data URL), alt, fit('cover'|'contain'), framing({ focusX, focusY, zoom(1–4) }), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - shape：+ width, height, shape('rect'|'ellipse'|'triangle'|'star'|'hexagon'；star/hexagon 仅 v7), fill(ColorPaint 或 { type: 'image', src, fit, framing } 或 { type: 'transparent' } 无填充纯描边形状，仅 v11), stroke, strokeWidth, cornerRadius?(0–2000 px 圆角，作用于矩形), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - line：+ width, height, lineKind('line'|'arrow'), stroke, strokeWidth, dash?(1–500 px 虚线长度，缺省实线), cap?('round'|'butt'|'square' 线帽，缺省圆头), startCap?/endCap?('none'|'arrow'|'dot' 端点装饰，仅 v13；缺省时终点装饰跟随 lineKind：'arrow' 即箭头、'line' 即无), points?([{ x, y }×2–64] 多段线顶点，仅 v14；坐标为节点盒内局部坐标，0≤x≤width、0≤y≤height，首末点即线段两端并承载端点装饰；盒子即顶点包围盒（建议留出描边宽度余量），node/update-geometry 改 width/height 时顶点按比例缩放), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
@@ -112,7 +112,7 @@ const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI �
 - { type: 'document/restyle', palette?, fontSet?, colors?, fonts? } 整套卡片一起换风格（所有页面，一步撤销）。palette / fontSet 用 list_styles 返回的 id：配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅；字体组合按字号分配，不小于正文字号 1.4 倍的文字用标题字体，其余用正文字体。colors: { "#原色": "#新色" } 精确替换颜色（文字、填充、描边、投影、渐变色标、高亮一起换），fonts: { "原字体": "新字体" } 精确替换字体，键是文档现有的颜色和字体（见 inspect_document 的 style）；同时给时先套 palette / fontSet，再按 colors / fonts 覆盖
 - { type: 'node/insert-children', slideId, parentPath: string[], nodes: FreeformSceneNode[], index? } 插入节点
 - { type: 'node/update-content', slideId, updates: [{ path, patch: { text?, src?, alt?, d?, viewBox? } }] }（改 text 时已有 spans 会按编辑位置自动保留/收缩；d / viewBox 只用于 path，仅 v15）
-- { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?, fontFamily?, textFill?, align?, fontWeight?, spans?(整体替换文本片段，传 [] 清空), lineHeight?(传 null 恢复默认行高), letterSpacing?(传 null 恢复默认字距), italic?(true 开启斜体，false 取消), cornerRadius?(矩形圆角，传 null 恢复默认), opacity?(0–1 不透明度), shadow?(整体替换投影 { color, blur, offsetX, offsetY }，传 null 清除), filter?(整体替换滤镜 { brightness, contrast, saturation, blur, hue, grayscale, sepia } 至少一键，后三个仅 v18，传 null 清除), blendMode?(混合模式，传 null 恢复正常), fit?, framing?, shape?, fill?(path 接受 ColorPaint、{ type: 'transparent' } 或 { type: 'image', src, fit, framing }，仅 v19), stroke?, strokeWidth?(path 为 viewBox 单位), lineKind?, dash?(虚线长度，path 为 viewBox 单位，传 null 恢复实线), cap?('round'|'butt'|'square' 线帽), join?('round'|'miter'|'bevel' path 拐角，仅 v15), fillRule?('nonzero'|'evenodd' path 填充规则，仅 v15), startCap?/endCap?('none'|'arrow'|'dot' 线条端点装饰，仅 v13，传 null 恢复跟随 lineKind), points?(整体替换多段线顶点 [{ x, y }×2–64]，仅 v14，必须全部落在节点盒内), stroke?(文字描边色，仅 v8，传 null 清除), strokeWidth?(文字描边宽度，仅 v8，传 null 清除), vertical?(true 竖排文字，仅 v9，false 恢复横排) } }] }
+- { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?(片段自己的字号按比例跟着变), fontFamily?, textFill?, align?, fontWeight?, verticalAlign?('top'|'middle'|'bottom'，仅 v20), paragraphSpacing?(px，传 null 或 0 清除，仅 v20), list?('bullet'|'number'，传 null 变回普通段落，仅 v20), spans?(整体替换文本片段，传 [] 清空), lineHeight?(传 null 恢复默认行高), letterSpacing?(传 null 恢复默认字距), italic?(true 开启斜体，false 取消), cornerRadius?(矩形圆角，传 null 恢复默认), opacity?(0–1 不透明度), shadow?(整体替换投影 { color, blur, offsetX, offsetY }，传 null 清除), filter?(整体替换滤镜 { brightness, contrast, saturation, blur, hue, grayscale, sepia } 至少一键，后三个仅 v18，传 null 清除), blendMode?(混合模式，传 null 恢复正常), fit?, framing?, shape?, fill?(path 接受 ColorPaint、{ type: 'transparent' } 或 { type: 'image', src, fit, framing }，仅 v19), stroke?, strokeWidth?(path 为 viewBox 单位), lineKind?, dash?(虚线长度，path 为 viewBox 单位，传 null 恢复实线), cap?('round'|'butt'|'square' 线帽), join?('round'|'miter'|'bevel' path 拐角，仅 v15), fillRule?('nonzero'|'evenodd' path 填充规则，仅 v15), startCap?/endCap?('none'|'arrow'|'dot' 线条端点装饰，仅 v13，传 null 恢复跟随 lineKind), points?(整体替换多段线顶点 [{ x, y }×2–64]，仅 v14，必须全部落在节点盒内), stroke?(文字描边色，仅 v8，传 null 清除), strokeWidth?(文字描边宽度，仅 v8，传 null 清除), vertical?(true 竖排文字，仅 v9，false 恢复横排) } }] }
 - { type: 'node/update-geometry', slideId, updates: [{ path, patch: { x?, y?, width?, height?, rotation?, scale? } }] }
 - { type: 'node/rename' | 'node/set-locked' | 'node/set-hidden', slideId, path, ... }
 - { type: 'node/delete', slideId, parentPath, nodeIds } / { type: 'node/clone', slideId, parentPath, nodeIds }
@@ -130,7 +130,7 @@ export function createDingcardServer(): McpServer {
 
   const documentInput = {
     documentId: z.string().optional().describe('创建或修改文档的工具返回的 documentId（推荐：不必来回传整份文档）'),
-    document: z.unknown().optional().describe('完整的 v19（或 v1–v18 旧版）文档 JSON，可替代 documentId'),
+    document: z.unknown().optional().describe('完整的 v20（或 v1–v19 旧版）文档 JSON，可替代 documentId'),
     documentPath: z.string().optional().describe('文档 JSON 文件的路径，可替代 documentId'),
   }
   const includeDocument = z.boolean().optional().describe('同时返回完整文档 JSON（默认只返回 documentId 和 version）')
@@ -194,15 +194,15 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_html',
-    `把你写的 HTML/CSS 网页转成在叮卡里能逐个修改的自由画布文档（v19）。适合模板排不出来的版式：直接用网页写法排版，叮卡在浏览器里排好后，把每个色块、文字、图片和 SVG 图形读成形状、文字框、图片和图形节点，位置、字号、行高、字距、颜色、圆角、边框、阴影、渐变、透明度、混合模式、滤镜和旋转都照网页来，层叠顺序按 CSS（含 z-index）。
+    `把你写的 HTML/CSS 网页转成在叮卡里能逐个修改的自由画布文档（v20）。适合模板排不出来的版式：直接用网页写法排版，叮卡在浏览器里排好后，把每个色块、文字、图片和 SVG 图形读成形状、文字框、图片和图形节点，位置、字号、行高、字距、颜色、圆角、边框、阴影、渐变、透明度、混合模式、滤镜和旋转都照网页来，层叠顺序按 CSS（含 z-index）。
 写法：
 - 每页一个 <section>，放在 <body> 下面，用 CSS 写死宽高（px），如 1080×1440（小红书 3:4）、1080×1920（9:16）、1080×1080；没有 section 时整个 body 是一页，尺寸用 width / height。100vw、100vh 就是 width × height。
 - 字体用内置的：苹方 "PingFang SC"、思源黑体 "Noto Sans SC"、思源宋体 "Noto Serif SC"、霞鹜文楷 "LXGW WenKai TC"、站酷小薇 "ZCOOL XiaoWei"、系统宋体 "Songti SC"；别的字体换成同类的内置字体（notes 里会写）。字重只有常规和粗体，600 及以上算粗体。
 - 图片用 <img> 或 CSS background-image，object-fit、object-position、圆角和圆形裁切都照着来；src 写本机路径（相对路径按 htmlPath 所在目录或当前目录找）、http(s) URL 或 data URL，本机图片和本机样式表会嵌进来。
 - 图标和图形写成内联 <svg>（path、rect、circle、ellipse、line、polyline、polygon），每个变成一个图形节点，一个 svg 里有几个就成一个组合；长短不一的虚线（环形进度条）照画出来的样子描成线段，SVG 里的 <text> 变成单行文字框，<use> 引用不转。
-- 一段文字里的加粗、换色、行内底色（行内元素的 background）和下划线会变成文字片段；同一行里的不同字号、和行内块（inline-block 标签）同一行的文字会拆成几个文字框，保证位置不变。列表的圆点和编号会单独成字；::before / ::after 照常生效。
+- 一段文字里的加粗、换色、行内底色（行内元素的 background）、下划线和删除线会变成文字片段，text-align: justify 照样两端对齐。一个块里只有这段文字、几种字号的行高倍数又一样时（价格里放大的数字），不同字号成为带字号的片段；否则同一行里的不同字号、和行内块（inline-block 标签）同一行的文字会拆成几个文字框，保证位置不变。整齐的 <ul> / <ol>（每项只有文字、样式一样、圆点或编号在外侧、间距一样）转成一个列表文字，其他列表的圆点和编号单独成字；::before / ::after 照常生效。
 - data-name="主标题" 给图层起名，data-group 让一个元素连同里面的东西成为一个组合。
-- 不支持的会写进 notes 并尽量近似：脚本和动画、clip-path、mask、backdrop-filter、内阴影、多层阴影（只留第一层）、两端对齐（按左对齐）、删除线。透明度不一的渐变（比如照片上的渐隐遮罩）、平铺和锥形渐变会画成一张图。
+- 不支持的会写进 notes 并尽量近似：脚本和动画、clip-path、mask、backdrop-filter、内阴影、多层阴影（只留第一层）。透明度不一的渐变（比如照片上的渐隐遮罩）、平铺和锥形渐变会画成一张图。
 返回 documentId、每页的 id 和尺寸，以及 notes（page 为 0 的是整份文档的）；默认附上转换结果的缩略图，对照你的设计看一眼。之后用 check_document 检查、apply_actions 修改、render_document 出图、open_in_editor 在编辑器里接着改。`,
     {
       html: z.string().optional().describe('网页源码（可以只写 <style> 和若干 <section>）'),
@@ -245,7 +245,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_content',
-    `按结构化内容生成一整套自由画布卡片（v19）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容。${CONTENT_SCHEMA_HINT}`,
+    `按结构化内容生成一整套自由画布卡片（v20）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容。${CONTENT_SCHEMA_HINT}`,
     {
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
       content: z.object({
@@ -298,7 +298,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_outline',
-    `按 Markdown 大纲生成一整套自由画布卡片（v19）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板。${OUTLINE_SCHEMA_HINT}`,
+    `按 Markdown 大纲生成一整套自由画布卡片（v20）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板。${OUTLINE_SCHEMA_HINT}`,
     {
       outline: z.string().describe('Markdown 大纲：# 总标题 + 若干 ## 小节（小节下正文行填入该页正文）'),
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
@@ -399,7 +399,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'validate_document',
-    `校验文档是否为合法的自由画布 v19 文档（v1–v18 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
+    `校验文档是否为合法的自由画布 v20 文档（v1–v19 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
     { ...documentInput, includeDocument },
     async ({ includeDocument: withDocument, ...input }) => {
       const resolved = await documentFor(input)
@@ -462,7 +462,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v19 文档（v1–v18 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
+    `把自由画布 v20 文档（v1–v19 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
       ...documentInput,
       outputDir: z.string().describe('输出目录（不存在会创建）'),
@@ -544,7 +544,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-schema',
     'dingcard://schema/freeform',
-    { description: '自由画布 v19 文档模型与校验规则说明' },
+    { description: '自由画布 v20 文档模型与校验规则说明' },
     textResource(DOCUMENT_SCHEMA_HINT),
   )
   server.registerResource(
@@ -592,7 +592,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-example',
     'dingcard://examples/freeform',
-    { description: '完整自由画布 v19 文档示例（编辑部模板实例）', mimeType: 'application/json' },
+    { description: '完整自由画布 v20 文档示例（编辑部模板实例）', mimeType: 'application/json' },
     async (uri: URL) => ({
       contents: [{
         uri: uri.href,

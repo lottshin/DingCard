@@ -2628,6 +2628,30 @@
   text-decoration: underline;
 }
 
+.rich-span-chip.is-strike {
+  text-decoration: line-through;
+}
+
+/* The selection's size: A− / A+ around the number, one control. */
+.freeform-inspector .rich-span-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.freeform-inspector .rich-span-size .ghost {
+  min-width: 32px;
+  padding: 0 8px;
+}
+
+.freeform-inspector .rich-span-size-value {
+  min-width: 28px;
+  color: var(--text-2);
+  font: 500 12px/1 var(--ui-font);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 /* ---------- Layout breakpoints ----------
    The legacy layer has its own column and stacking rules; this layer's grid
    wins over them, so every breakpoint is restated here. */

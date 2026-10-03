@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 19,
+    documentVersion: 20,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(19)
+    expect(result.document.documentVersion).toBe(20)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -264,6 +264,20 @@ describe('validateDocument', () => {
     expect(validateDocument(legacy).ok).toBe(false)
   })
 
+  test('accepts v20 paragraph layout and struck, sized spans, and rejects them on v19 inputs', () => {
+    const laidOut = seedDocument() as unknown as Record<string, unknown>
+    const slide = (laidOut.slides as Array<Record<string, unknown>>)[0]
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    const text = nodes.find((node) => node.type === 'text')!
+    Object.assign(text, { align: 'justify', verticalAlign: 'middle', paragraphSpacing: 12, list: 'number' })
+    text.spans = [{ start: 0, end: 1, strike: true, fontSize: 96 }]
+    expect(validateDocument(laidOut).ok).toBe(true)
+
+    const legacy = structuredClone(laidOut)
+    legacy.documentVersion = 19
+    expect(validateDocument(legacy).ok).toBe(false)
+  })
+
   test('accepts v19 picture fills on paths and rejects them on v18 inputs', () => {
     const framed = seedDocument() as unknown as Record<string, unknown>
     const slide = (framed.slides as Array<Record<string, unknown>>)[0]
@@ -403,6 +417,30 @@ describe('applyActions', () => {
     if (title.type !== 'text') throw new Error('expected text node')
     expect(title.text).toBe('新标题')
     expect(title.y).toBe(200)
+  })
+
+  test('lays out paragraphs and sizes words through style patches', () => {
+    const result = applyActions(seedDocument(), [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['title-1'], patch: { align: 'justify', verticalAlign: 'bottom', paragraphSpacing: 20, list: 'bullet', spans: [{ start: 0, end: 1, fontSize: 120 }] } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['title-1'], patch: { verticalAlign: 'top', list: null } }],
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.changes).toEqual([true, true])
+    expect(validateDocument(result.document).ok).toBe(true)
+    const title = result.document.slides[0].nodes[0]
+    if (title.type !== 'text') throw new Error('expected text node')
+    expect(title).toMatchObject({ align: 'justify', paragraphSpacing: 20, spans: [{ start: 0, end: 1, fontSize: 120 }] })
+    expect('verticalAlign' in title).toBe(false)
+    expect('list' in title).toBe(false)
   })
 
   test('applies rich text spans and keeps them through text edits', () => {

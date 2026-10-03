@@ -39,7 +39,7 @@ import {
 } from './sceneTree'
 import { effectiveSceneState } from './sceneSelection'
 import { guidesEqual, normalizeSlideGuides } from './guides'
-import { normalizeRichTextSpans, remapRichTextSpans } from './richText'
+import { normalizeRichTextSpans, remapRichTextSpans, scaleSpanFontSizes } from './richText'
 import {
   clonePathViewBox,
   cloneSceneFilter,
@@ -60,6 +60,9 @@ import {
   isValidPathStrokeWidth,
   isValidShape,
   isValidTextStrokeWidth,
+  isTextList,
+  isTextVerticalAlign,
+  isValidParagraphSpacing,
   pathViewBoxEquals,
   sceneFilterEquals,
   shadowPaintEquals,
@@ -88,6 +91,7 @@ import type {
   LinePoint,
   PathFill,
   PathViewBox,
+  TextAlign,
   RichTextSpan,
   SceneFilter,
   ScenePath,
@@ -139,7 +143,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 19,
+    documentVersion: 20,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -460,6 +464,9 @@ const STYLE_KEYS = new Set([
   'textFill',
   'align',
   'fontWeight',
+  'verticalAlign',
+  'paragraphSpacing',
+  'list',
   'spans',
   'lineHeight',
   'letterSpacing',
@@ -699,7 +706,39 @@ function richTextSpansEqual(
       && span.color === other.color
       && span.highlight === other.highlight
       && span.underline === other.underline
+      && span.strike === other.strike
+      && span.fontSize === other.fontSize
   })
+}
+
+const TEXT_ALIGNS: ReadonlySet<string> = new Set(['left', 'center', 'right', 'justify'])
+
+/**
+ * The v20 layout keys of a text style patch, applied: `'top'` / `null`
+ * puts the lines back at the top, `null` / `0` clears paragraph spacing,
+ * `null` makes a list plain paragraphs again. Null when a value is invalid.
+ */
+function withTextLayoutPatch(node: FreeformTextElement, patch: FreeformNodeStylePatch): FreeformTextElement | null {
+  let next: FreeformTextElement = node
+  if ('verticalAlign' in patch) {
+    const value = patch.verticalAlign
+    if (value !== null && value !== 'top' && !isTextVerticalAlign(value)) return null
+    const { verticalAlign: _drop, ...without } = next
+    next = value === null || value === 'top' ? without : { ...without, verticalAlign: value }
+  }
+  if ('paragraphSpacing' in patch) {
+    const value = patch.paragraphSpacing
+    if (value !== null && value !== 0 && !isValidParagraphSpacing(value)) return null
+    const { paragraphSpacing: _drop, ...without } = next
+    next = value === null || value === 0 ? without : { ...without, paragraphSpacing: value as number }
+  }
+  if ('list' in patch) {
+    const value = patch.list
+    if (value !== null && !isTextList(value)) return null
+    const { list: _drop, ...without } = next
+    next = value === null ? without : { ...without, list: value }
+  }
+  return next
 }
 
 function applyStylePatch(
@@ -729,11 +768,15 @@ function applyStylePatch(
       'stroke',
       'strokeWidth',
       'effect',
+      'verticalAlign',
+      'paragraphSpacing',
+      'list',
     ])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
     if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {
       return { ok: false, node }
     }
+    if ('align' in patch && !TEXT_ALIGNS.has(patch.align as string)) return { ok: false, node }
     let spansPatch: RichTextSpan[] | undefined
     if ('spans' in patch) {
       const normalized = normalizeRichTextSpans(patch.spans, node.text.length)
@@ -741,8 +784,15 @@ function applyStylePatch(
       spansPatch = normalized
     }
     if (!validAppearancePatch(patch, TEXT_APPEARANCE_KEYS)) return { ok: false, node }
+    const laidOut = withTextLayoutPatch(node, patch)
+    if (!laidOut) return { ok: false, node }
+    // A new size for the whole text takes the words sized on their own along, in proportion.
+    const scaledSpans = 'fontSize' in patch && !('spans' in patch) && typeof patch.fontSize === 'number' && node.fontSize > 0
+      ? scaleSpanFontSizes(node.spans, patch.fontSize / node.fontSize)
+      : node.spans
     const base = {
-      ...node,
+      ...laidOut,
+      ...(scaledSpans !== node.spans && scaledSpans ? { spans: scaledSpans } : {}),
       ...('fontSize' in patch ? { fontSize: patch.fontSize as number } : {}),
       ...('fontFamily' in patch ? { fontFamily: patch.fontFamily as string } : {}),
       ...('textFill' in patch
@@ -1200,7 +1250,7 @@ function adaptLegacyElement(element: unknown): FreeformSceneLeaf | null {
       fontSize: element.fontSize as number,
       fontFamily: element.fontFamily as string,
       textFill: cloneColorPaint(element.textFill as ColorPaint),
-      align: element.align as 'left' | 'center' | 'right',
+      align: element.align as TextAlign,
       fontWeight: element.fontWeight as 'normal' | 'bold',
     }
   }

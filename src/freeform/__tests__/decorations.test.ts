@@ -24,7 +24,7 @@ function ids() {
 
 function onPage(node: FreeformSceneNode) {
   return normalizeFreeformDocument({
-    documentVersion: 19,
+    documentVersion: 20,
     activeSlideId: 'page',
     slides: [{ id: 'page', name: '页面', width: 1080, height: 1440, background: { type: 'solid', color: '#ffffff' }, nodes: [node] }],
   })

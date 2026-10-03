@@ -197,7 +197,7 @@ describe('dingcard-mcp tool layer', () => {
     }
     expect(created.ok).toBe(true)
     const kept = await call<{ document: { documentVersion: number; slides: unknown[] } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(19)
+    expect(kept.document.documentVersion).toBe(20)
     // Cover and two sections: the outline asked for no closing page.
     expect(kept.document.slides).toHaveLength(3)
     expect(created.summary.slideCount).toBe(3)
@@ -282,6 +282,8 @@ describe('dingcard-mcp tool layer', () => {
     expect(await readText('dingcard://schema/freeform')).toContain('documentVersion')
     expect(await readText('dingcard://schema/freeform')).toContain('- path：')
     expect(await readText('dingcard://schema/freeform')).toContain('highlight?')
+    expect(await readText('dingcard://schema/freeform')).toContain('paragraphSpacing?')
+    expect(await readText('dingcard://schema/freeform')).toContain('strike?')
     expect(await readText('dingcard://schema/freeform')).toContain("{ type: 'image', src")
 
     const icons = JSON.parse(await readText('dingcard://icons')) as {
@@ -298,7 +300,7 @@ describe('dingcard-mcp tool layer', () => {
     const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
       documentVersion: number
     }
-    expect(document.documentVersion).toBe(19)
+    expect(document.documentVersion).toBe(20)
 
     const envelope = JSON.parse(await readText('dingcard://examples/markdown')) as {
       source: string
@@ -464,7 +466,7 @@ describe('dingcard-mcp tool layer', () => {
     })
     expect(applied).toMatchObject({ ok: true, changes: [true] })
     const kept = await call<{ document: { documentVersion: number; slides: Array<{ nodes: Array<{ id: string; effect?: unknown }> }> } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(19)
+    expect(kept.document.documentVersion).toBe(20)
     expect(kept.document.slides[0].nodes.find((node) => node.id === title.id)?.effect).toEqual(label.patch.effect)
     await client.close()
   })
@@ -485,7 +487,7 @@ describe('dingcard-mcp tool layer', () => {
     })
     expect(applied).toMatchObject({ ok: true, changes: [true] })
     const kept = await call<{ document: { documentVersion: number; slides: Array<{ nodes: Array<{ id: string; filter?: unknown }> }> } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(19)
+    expect(kept.document.documentVersion).toBe(20)
     expect(kept.document.slides[0].nodes.find((node) => node.id === title.id)?.filter).toEqual(mono.patch.filter)
 
     // The v18-only keys are rejected on older input versions.

@@ -46,6 +46,7 @@ import { templatesForWorkspace } from '../templates/registry'
 import type { TemplateDefinition } from '../templates/types'
 import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE, PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
 import { collectTextAutoSize } from './textAutoSize'
+import { nextFontSize } from './fontSizeSteps'
 import {
   createFreeformDocument,
   createSlide,
@@ -1132,6 +1133,21 @@ const TEXT_ALIGN_OPTIONS = [
   { id: 'left', label: '文字左对齐', icon: 'M2.5 4h11M2.5 8h7M2.5 12h9' },
   { id: 'center', label: '文字居中', icon: 'M2.5 4h11M4.5 8h7M3.5 12h9' },
   { id: 'right', label: '文字右对齐', icon: 'M2.5 4h11M6.5 8h7M4.5 12h9' },
+  { id: 'justify', label: '文字两端对齐', icon: 'M2.5 4h11M2.5 8h11M2.5 12h7' },
+] as const
+
+/** Where a text's lines sit in its box (v20); top is the default. */
+const TEXT_VERTICAL_ALIGN_OPTIONS = [
+  { id: 'top', label: '文字靠上', icon: 'M2.5 2.5h11M5 6h6M5 8.75h6' },
+  { id: 'middle', label: '文字垂直居中', icon: 'M2.5 2.5h11M2.5 13.5h11M5 6.75h6M5 9.5h6' },
+  { id: 'bottom', label: '文字靠下', icon: 'M2.5 13.5h11M5 7.25h6M5 10h6' },
+] as const
+
+/** Plain paragraphs or list items (v20). */
+const TEXT_LIST_OPTIONS = [
+  { id: 'none', label: '无列表', icon: 'M2.5 4h11M2.5 8h11M2.5 12h11' },
+  { id: 'bullet', label: '项目符号列表', icon: 'M6 4h7.5M6 8h7.5M6 12h7.5M2.75 4h.01M2.75 8h.01M2.75 12h.01' },
+  { id: 'number', label: '编号列表', icon: 'M6 4h7.5M6 8h7.5M6 12h7.5M2.25 3l.9-.6v3.1M2 8.4c.25-.55 1.75-.6 1.75.3 0 .65-1.75 1.15-1.75 1.8h1.85' },
 ] as const
 
 const LAYER_ORDER_ACTIONS = [
@@ -2253,6 +2269,23 @@ export function FreeformWorkspace({
     activeTextRange && isTextElement(selectedElement)
     && rangeHasRichTextStyle(selectedElement.spans, activeTextRange, (style) => style.underline === true),
   )
+  const selectedTextIsStruck = Boolean(
+    activeTextRange && isTextElement(selectedElement)
+    && rangeHasRichTextStyle(selectedElement.spans, activeTextRange, (style) => style.strike === true),
+  )
+  /** The size the selected characters start with: their own, else the text's. */
+  const selectedTextFontSize = activeTextRange && isTextElement(selectedElement)
+    ? selectedElement.spans?.find((span) => span.start <= activeTextRange.start && span.end > activeTextRange.start)?.fontSize
+      ?? selectedElement.fontSize
+    : null
+
+  /** Step the selected characters' size; back at the text's own size they need no size of their own. */
+  function stepSelectedTextSize(direction: 1 | -1) {
+    if (!isTextElement(selectedElement) || selectedTextFontSize === null) return
+    const size = nextFontSize(selectedTextFontSize, direction)
+    const textSize = selectedElement.fontSize
+    restyleSelectedText(({ fontSize: _fontSize, ...rest }) => (size === textSize ? rest : { ...rest, fontSize: size }))
+  }
 
   function removeSelectedTextSpan(index: number) {
     if (!isTextElement(selectedElement) || !selectedElement.spans) return
@@ -7712,6 +7745,58 @@ export function FreeformWorkspace({
                         </button>
                       </div>
                       </div>
+                      <div className="field-label with-gap">{t('段落')}</div>
+                      <div className="text-style-row">
+                        <div className="seg stretch" data-testid="text-vertical-align">
+                          {TEXT_VERTICAL_ALIGN_OPTIONS.map((option) => {
+                            const on = (selectedElement.verticalAlign ?? 'top') === option.id
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                className={on ? 'seg-btn on' : 'seg-btn'}
+                                aria-label={t(option.label)}
+                                title={t(option.label)}
+                                aria-pressed={on}
+                                onClick={() => updateSelectedStyle({ verticalAlign: option.id })}
+                              >
+                                <svg className="seg-icon" viewBox="0 0 16 16" aria-hidden="true"><path d={option.icon} /></svg>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <div className="seg stretch" data-testid="text-list">
+                          {TEXT_LIST_OPTIONS.map((option) => {
+                            const on = (selectedElement.list ?? 'none') === option.id
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                className={on ? 'seg-btn on' : 'seg-btn'}
+                                aria-label={t(option.label)}
+                                title={t(option.label)}
+                                aria-pressed={on}
+                                onClick={() => updateSelectedStyle({ list: option.id === 'none' ? null : option.id })}
+                              >
+                                <svg className="seg-icon" viewBox="0 0 16 16" aria-hidden="true"><path d={option.icon} /></svg>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div className="field-grid three with-gap">
+                        <label title={t('段间距')}>
+                          <InspectorGlyph name="paragraph-spacing" />
+                          <InspectorNumberInput
+                            ariaLabel={t('段间距')}
+                            min={0}
+                            max={1000}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedElement.paragraphSpacing ?? 0}
+                            onCommit={(value) => updateSelectedStyle({ paragraphSpacing: value })}
+                          />
+                        </label>
+                      </div>
                       <div className="field-label with-gap">{t('描边')}</div>
                       <div className="paint-row" data-testid="text-stroke-field">
                         <ColorPickerButton
@@ -7807,6 +7892,43 @@ export function FreeformWorkspace({
                           <button
                             className="ghost"
                             type="button"
+                            data-testid="rich-span-strike"
+                            aria-pressed={selectedTextIsStruck}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => restyleSelectedText(({ strike: _strike, ...rest }) => (
+                              selectedTextIsStruck ? rest : { ...rest, strike: true }
+                            ))}
+                          >
+                            {t('删除线')}
+                          </button>
+                          <div className="rich-span-size" data-testid="rich-span-size">
+                            <button
+                              className="ghost"
+                              type="button"
+                              aria-label={t('缩小所选文字')}
+                              title={t('缩小所选文字')}
+                              data-testid="rich-span-size-down"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => stepSelectedTextSize(-1)}
+                            >
+                              A−
+                            </button>
+                            <span className="rich-span-size-value" aria-label={t('所选文字字号')}>{selectedTextFontSize}</span>
+                            <button
+                              className="ghost"
+                              type="button"
+                              aria-label={t('放大所选文字')}
+                              title={t('放大所选文字')}
+                              data-testid="rich-span-size-up"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => stepSelectedTextSize(1)}
+                            >
+                              A+
+                            </button>
+                          </div>
+                          <button
+                            className="ghost"
+                            type="button"
                             data-testid="rich-span-clear"
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => restyleSelectedText(() => ({}))}
@@ -7864,6 +7986,10 @@ export function FreeformWorkspace({
                                 </span>
                               )}
                               {span.underline && <span className="rich-span-chip is-underline">{t('下划线')}</span>}
+                              {span.strike && <span className="rich-span-chip is-strike">{t('删除线')}</span>}
+                              {span.fontSize !== undefined && (
+                                <span className="rich-span-chip">{t('字号 {n}', { n: span.fontSize })}</span>
+                              )}
                               <button
                                 className="draft-del"
                                 type="button"

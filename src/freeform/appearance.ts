@@ -11,7 +11,7 @@
 // respective default (opaque, no shadow, browser line-height, no tracking,
 // upright text, the stylesheet's 16px rect radius, unfiltered, normal
 // blending, solid round-cap strokes, round joins, nonzero fills, no text
-// outline).
+// outline). v20 text adds `verticalAlign`, `paragraphSpacing` and `list`.
 
 import { isHexColor } from './paint'
 import type {
@@ -21,6 +21,8 @@ import type {
   PathViewBox,
   SceneFilter,
   ShadowPaint,
+  TextList,
+  TextVerticalAlign,
 } from './types'
 
 const SHADOW_KEYS = new Set(['color', 'blur', 'offsetX', 'offsetY'])
@@ -71,6 +73,19 @@ export function isValidLetterSpacing(value: unknown): value is number {
 
 export function isValidCornerRadius(value: unknown): value is number {
   return isFiniteIn(value, 0, 2000)
+}
+
+/** Space between paragraphs (v20), in px: stored only when there is some. */
+export function isValidParagraphSpacing(value: unknown): value is number {
+  return isFiniteIn(value, 0, 1000) && value > 0
+}
+
+export function isTextVerticalAlign(value: unknown): value is TextVerticalAlign {
+  return value === 'middle' || value === 'bottom'
+}
+
+export function isTextList(value: unknown): value is TextList {
+  return value === 'bullet' || value === 'number'
 }
 
 export function cloneShadowPaint(value: unknown): ShadowPaint | null {

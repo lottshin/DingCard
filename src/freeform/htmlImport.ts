@@ -38,6 +38,7 @@ import {
 } from './htmlImportCss'
 import { type CornerRadii, ellipsePath, parsePoints, polylinePath, roundedRectPath, svgRectPath, transformPathData } from './htmlImportPaths'
 import { pathDataBounds } from './pathData'
+import { listIndentEm } from './textLayout'
 import type {
   BlendMode,
   ColorPaint,
@@ -308,6 +309,8 @@ type PaintOp =
   | { kind: 'text'; group: InlineGroup }
   | { kind: 'replaced'; element: Element }
   | { kind: 'marker'; element: Element }
+  /** A <ul> / <ol> held as one list text (v20). */
+  | { kind: 'list'; element: Element }
   /** A turned element, or one asked to stay together (data-group): its nodes become a group. */
   | { kind: 'context'; element: Element; ops: PaintOp[] }
 
@@ -620,7 +623,7 @@ class PageReader {
     const negative: Array<{ z: number; order: number; element: Element }> = []
     const layers: Array<{ z: number; order: number; element: Element }> = []
     const blocks: Element[] = []
-    const inline: Array<{ kind: 'text'; group: InlineGroup } | { kind: 'atomic'; element: Element } | { kind: 'marker'; element: Element }> = []
+    const inline: Array<{ kind: 'text'; group: InlineGroup } | { kind: 'atomic'; element: Element } | { kind: 'marker' | 'list'; element: Element }> = []
     let order = 0
     const layer = (element: Element) => {
       const style = this.style(element)
@@ -676,6 +679,10 @@ class PageReader {
         if (kind === 'atomic') {
           inline.push({ kind: 'atomic', element })
           afterBox = sharesLine
+        } else if (this.simpleList(element)) {
+          // Its box paints with the blocks, its words as one list text with the inline content.
+          blocks.push(element)
+          inline.push({ kind: 'list', element })
         } else {
           blocks.push(element)
           visit(element)
@@ -683,7 +690,9 @@ class PageReader {
       }
       flush()
     }
-    visit(root)
+    // A list painted on its own (positioned, say) is still one list text.
+    if (this.simpleList(root)) inline.push({ kind: 'list', element: root })
+    else visit(root)
     const byZ = (a: { z: number; order: number }, b: { z: number; order: number }) => a.z - b.z || a.order - b.order
     negative.sort(byZ)
     layers.sort(byZ)
@@ -694,7 +703,7 @@ class PageReader {
       ...blocks.map((element): PaintOp => ({ kind: 'box', element })),
       ...inline.flatMap((item): PaintOp[] => {
         if (item.kind === 'text') return [{ kind: 'text', group: item.group }]
-        if (item.kind === 'marker') return [{ kind: 'marker', element: item.element }]
+        if (item.kind === 'marker' || item.kind === 'list') return [{ kind: item.kind, element: item.element }]
         return this.paintAsContext(item.element)
       }),
       ...layers.flatMap((entry) => this.paintAsContext(entry.element)),
@@ -718,6 +727,7 @@ class PageReader {
       else if (op.kind === 'text') nodes.push(...await this.inlineBoxes(op.group), ...this.textNodes(op.group))
       else if (op.kind === 'replaced') nodes.push(...this.replacedNodes(op.element))
       else if (op.kind === 'marker') nodes.push(...this.markerNodes(op.element))
+      else if (op.kind === 'list') nodes.push(...this.listNodes(op.element))
       else nodes.push(...this.wrap(op.element, await this.nodesOf(op.ops)))
     }
     return nodes
@@ -1381,12 +1391,22 @@ class PageReader {
     for (const node of group.nodes) walk(node)
     const collapsible = (run: Run) => (run.node ? collapses(this.style(run.element).whiteSpace) : false)
     const filled = segments.map((runs) => collapseSpaces(runs, collapsible)).filter((runs) => runs.some((run) => run.text.trim()))
+    const whole = filled.length === 1 && !group.afterBox && !group.beforeBox && this.fillsBlock(group)
     return filled.flatMap((runs, index) => this.textFromRuns(
       group.container,
       runs,
       index > 0 || group.afterBox === true,
       index < filled.length - 1 || group.beforeBox === true,
+      whole,
     ))
+  }
+
+  /** Words that are everything their block holds, in its own lines (not an anonymous flex item). */
+  private fillsBlock(group: InlineGroup): boolean {
+    const display = this.style(group.container).display
+    if (display.includes('flex') || display.includes('grid')) return false
+    const content = this.flowChildren(group.container).filter((node) => node.nodeType !== Node.TEXT_NODE || (node.textContent ?? '').trim())
+    return content.every((node) => group.nodes.includes(node))
   }
 
   /**
@@ -1395,9 +1415,9 @@ class PageReader {
    * the box, or (centred or right-aligned) ends before it, becomes a text of
    * its own, so every line stays where the browser put it.
    */
-  private textFromRuns(container: Element, runs: Run[], afterBox: boolean, beforeBox: boolean): FreeformSceneNode[] {
+  private textFromRuns(container: Element, runs: Run[], afterBox: boolean, beforeBox: boolean, whole = false): FreeformSceneNode[] {
     if (this.inColumns(container)) return this.textBySize(container, runs, runs.map((run) => parsePx(this.style(run.element).fontSize) ?? 16))
-    if (!afterBox && !beforeBox) return this.textFromRunsWhole(container, runs)
+    if (!afterBox && !beforeBox) return this.textFromRunsWhole(container, runs, whole)
     const sample = runs.find((run) => run.node) ?? runs[0]
     const style = this.style(sample.element)
     const vertical = style.writingMode.startsWith('vertical') || style.writingMode.startsWith('tb')
@@ -1507,7 +1527,7 @@ class PageReader {
     return null
   }
 
-  private textFromRunsWhole(container: Element, runs: Run[]): FreeformSceneNode[] {
+  private textFromRunsWhole(container: Element, runs: Run[], wholeBlock = false): FreeformSceneNode[] {
     if (runs.length === 0) return []
     const pieces: Array<{ start: number; end: number; run: Run; look: ReturnType<PageReader['lookOf']> }> = []
     let text = ''
@@ -1525,19 +1545,40 @@ class PageReader {
     const containerStyle = this.style(container)
     const visible = pieces.filter((piece) => piece.run.text.trim().length > 0)
     const allBold = visible.every((piece) => piece.look.bold)
-    if (visible.some((piece) => Math.abs(piece.look.size - dominant.size) > 0.5)) return this.textBySize(container, runs, pieces.map((piece) => piece.look.size))
+    const vertical = style.writingMode.startsWith('vertical') || style.writingMode.startsWith('tb')
+    // Words in more than one size stay one text (sized spans, v20) when they fill their block and
+    // every size keeps the same line-height multiplier — then the lines fall as they did. Else: a text per size.
+    let sized = false
+    if (visible.some((piece) => Math.abs(piece.look.size - dominant.size) > 0.5)) {
+      const multiplier = (element: Element) => {
+        const runStyle = this.style(element)
+        return (parsePx(runStyle.lineHeight) ?? this.normalLineHeight(runStyle)) / (parsePx(runStyle.fontSize) ?? 16)
+      }
+      const base = multiplier(dominantPiece.run.element)
+      const proportional = visible.every((piece) => Math.abs(multiplier(piece.run.element) - base) < 0.02)
+      if (!wholeBlock || vertical || !proportional) return this.textBySize(container, runs, pieces.map((piece) => piece.look.size))
+      sized = true
+    }
     if (visible.some((piece) => piece.look.family !== dominant.family)) this.note(container, '一段文字里有不同字体，统一成一种')
     if (visible.some((piece) => piece.look.italic !== dominant.italic)) this.note(container, '一段文字里只有部分斜体，统一处理')
-    if (visible.some((piece) => piece.look.strike)) this.note(container, '删除线没有对应的设置，去掉了')
 
     const backdrop = this.backdropOf(dominantPiece.run.element)
     const gradientText = this.gradientTextOf(dominantPiece.run.element, container)
-    const sharedAlpha = visible.every((piece) => Math.abs(piece.look.color.a - dominant.color.a) < 0.01)
-    const alpha = gradientText ? gradientText.alpha : sharedAlpha ? dominant.color.a : 1
+    // The text's colour is the one most of its words are in: a struck-out price keeps its grey as a span.
+    const colorWeights = new Map<string, { color: Rgba; weight: number }>()
+    for (const piece of visible) {
+      const key = `${hexOf(piece.look.color)}/${piece.look.color.a}`
+      const entry = colorWeights.get(key) ?? { color: piece.look.color, weight: 0 }
+      entry.weight += weight(piece)
+      colorWeights.set(key, entry)
+    }
+    const textColor = [...colorWeights.values()].reduce((best, entry) => (entry.weight > best.weight ? entry : best), { color: dominant.color, weight: 0 }).color
+    const sharedAlpha = visible.every((piece) => Math.abs(piece.look.color.a - textColor.a) < 0.01)
+    const alpha = gradientText ? gradientText.alpha : sharedAlpha ? textColor.a : 1
     const solid = (color: Rgba) => hexOf(sharedAlpha || color.a > 0.996 ? color : blendOver(color, backdrop))
-    const baseColor = solid(dominant.color)
+    const baseColor = solid(textColor)
 
-    // Spans for what differs from the base: bold, colour, highlight, underline.
+    // Spans for what differs from the base: bold, colour, highlight, underline, strike, size.
     const spans: RichTextSpan[] = []
     for (const piece of pieces) {
       const start = piece.start
@@ -1549,13 +1590,16 @@ class PageReader {
       if (!gradientText && color !== baseColor) span.color = color
       if (piece.look.highlight) span.highlight = hexOf(blendOver(piece.look.highlight, backdrop))
       if (piece.look.underline) span.underline = true
-      if (span.bold || span.color || span.highlight || span.underline) spans.push(span)
+      if (piece.look.strike) span.strike = true
+      if (sized && Math.abs(piece.look.size - dominant.size) > 0.5) span.fontSize = rounded(piece.look.size)
+      if (span.bold || span.color || span.highlight || span.underline || span.strike || span.fontSize !== undefined) spans.push(span)
     }
     const merged: RichTextSpan[] = []
     for (const span of spans) {
       const last = merged[merged.length - 1]
       if (last && last.end === span.start && last.bold === span.bold && last.color === span.color
-        && last.highlight === span.highlight && last.underline === span.underline) last.end = span.end
+        && last.highlight === span.highlight && last.underline === span.underline
+        && last.strike === span.strike && last.fontSize === span.fontSize) last.end = span.end
       else merged.push({ ...span })
     }
 
@@ -1564,7 +1608,6 @@ class PageReader {
     if (rects.length === 0) return []
     const fontSize = dominant.size
     const lineHeight = parsePx(style.lineHeight) ?? this.normalLineHeight(style)
-    const vertical = style.writingMode.startsWith('vertical') || style.writingMode.startsWith('tb')
     if (style.writingMode === 'vertical-lr') this.note(container, '竖排文字按从右往左排')
     const leading = (/^\n*/.exec(text)?.[0].length ?? 0)
     const trailing = (/\n*$/.exec(text)?.[0].length ?? 0)
@@ -1573,13 +1616,24 @@ class PageReader {
       ? 'center'
       : textAlign === 'right' || textAlign === 'end' || textAlign === '-webkit-right'
         ? 'right'
-        : 'left'
+        : textAlign === 'justify' ? 'justify' : 'left'
     let box: Rect
     let lines: number
     // How far the words' own boxes reach past a tight line (line-height 1 on big type).
     const reach = Math.max(0, (Math.max(...rects.map((rect) => (vertical ? rect.width : rect.height))) - lineHeight) / 2)
     let lineHeightUsed = lineHeight
-    if (!vertical) {
+    if (sized) {
+      // Lines of mixed heights: the block's own content box holds them exactly.
+      const content = this.contentBox(container)
+      const shift = align === 'center' ? 0.5 : align === 'right' ? 1 : 0
+      lines = 1 + (text.match(/\n/g) ?? []).length
+      box = {
+        x: content.x - TEXT_PADDING - shift,
+        y: content.y - TEXT_PADDING,
+        width: content.width + 1 + TEXT_PADDING * 2,
+        height: content.height + TEXT_PADDING * 2 + 1,
+      }
+    } else if (!vertical) {
       const centers = rects.map((rect) => rect.top + rect.height / 2).sort((a, b) => a - b)
       lines = Math.round((centers[centers.length - 1] - centers[0]) / lineHeight) + 1 + leading + trailing
       // One line can take the taller line its words need, centred where it was: nothing moves, nothing is cut.
@@ -1611,7 +1665,6 @@ class PageReader {
         height: bottom - top + 1 + TEXT_PADDING * 2,
       })
     }
-    if (textAlign === 'justify' && lines > 1) this.note(container, '两端对齐按左对齐处理')
 
     const letterSpacing = parsePx(style.letterSpacing)
     const strokeWidth = parsePx(style.getPropertyValue('-webkit-text-stroke-width')) ?? 0
@@ -1638,6 +1691,88 @@ class PageReader {
         : {}),
     }
     return [this.finishLeaf(node, dominantPiece.run.element, alpha, { shadow: this.shadowOf(textShadow, backdrop) })]
+  }
+
+  /**
+   * A list the editor can hold as one text (v20 lists): a <ul> or <ol> of
+   * items that are only words, all in one size, font and colour, with one
+   * marker style outside and even gaps. Null for anything else, which is read
+   * item by item.
+   */
+  private simpleList(list: Element): { items: Element[]; list: 'bullet' | 'number'; spacing: number } | null {
+    if (list.tagName !== 'UL' && list.tagName !== 'OL') return null
+    if (list.hasAttribute('reversed') || (list.getAttribute('start') ?? '1') !== '1') return null
+    const children = this.flowChildren(list).filter((node) => node.nodeType === Node.ELEMENT_NODE || (node.textContent ?? '').trim())
+    if (children.length < 2 || children.some((node) => node.nodeType !== Node.ELEMENT_NODE)) return null
+    const items = children as Element[]
+    const first = this.style(items[0])
+    const markers: Record<string, 'bullet' | 'number'> = { disc: 'bullet', circle: 'bullet', square: 'bullet', decimal: 'number' }
+    const kind = markers[first.listStyleType]
+    if (!kind) return null
+    const look = (style: CSSStyleDeclaration) => [style.fontSize, style.fontFamily, style.fontWeight, style.fontStyle, style.lineHeight, style.color, style.letterSpacing, style.textAlign].join('|')
+    for (const item of items) {
+      const style = this.style(item)
+      if (style.display !== 'list-item' || item.hasAttribute('value') || this.classify(item) !== 'block') return null
+      if (style.listStyleType !== first.listStyleType || style.listStylePosition !== 'outside' || style.listStyleImage !== 'none') return null
+      if (look(style) !== look(first)) return null
+      // An item with its own box would lose it in a text.
+      const background = this.color(style.backgroundColor)
+      if ((background && background.a > 0.004) || style.backgroundImage !== 'none' || style.boxShadow !== 'none') return null
+      if (['top', 'right', 'bottom', 'left'].some((side) => (parsePx(style.getPropertyValue(`border-${side}-width`)) ?? 0) > 0)) return null
+      // Only words inside, in the item's own size.
+      for (const descendant of Array.from(item.querySelectorAll('*'))) {
+        const kindOf = this.classify(descendant)
+        if (kindOf !== 'inline' && kindOf !== 'br' && kindOf !== 'skip') return null
+        if (this.style(descendant).fontSize !== first.fontSize) return null
+      }
+    }
+    const boxes = items.map((item) => this.contentBox(item))
+    const gaps = boxes.slice(1).map((box, index) => box.y - (boxes[index].y + boxes[index].height))
+    if (gaps.some((gap) => gap < -0.5 || Math.abs(gap - gaps[0]) > 1)) return null
+    if (boxes.some((box) => Math.abs(box.x - boxes[0].x) > 0.5 || Math.abs(box.width - boxes[0].width) > 0.5)) return null
+    return { items, list: kind, spacing: Math.max(0, gaps[0] ?? 0) }
+  }
+
+  /** A simple list (simpleList) as one list text: its items' words a paragraph each, where they were. */
+  private listNodes(listElement: Element): FreeformSceneNode[] {
+    const found = this.simpleList(listElement)
+    if (!found) return []
+    const runs: Run[] = []
+    for (const [index, item] of found.items.entries()) {
+      if (index > 0) runs.push({ text: '\n', node: null, element: listElement, map: [] })
+      const itemRuns: Run[] = []
+      const walk = (node: Node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const { text, map } = this.renderedText(node as Text)
+          if (text) itemRuns.push({ text, node: node as Text, element: (node as Text).parentElement as Element, map })
+          return
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return
+        const kind = this.classify(node as Element)
+        if (kind === 'br') itemRuns.push({ text: '\n', node: null, element: item, map: [] })
+        else if (kind === 'inline') for (const child of this.flowChildren(node as Element)) walk(child)
+      }
+      for (const child of this.flowChildren(item)) walk(child)
+      runs.push(...collapseSpaces(itemRuns, (run) => (run.node ? collapses(this.style(run.element).whiteSpace) : false)))
+    }
+    const built = this.textFromRunsWhole(found.items[0], runs)
+    if (built.length !== 1 || built[0].type !== 'text') return built
+    const node = built[0]
+    const boxes = found.items.map((item) => this.contentBox(item))
+    const top = boxes[0].y
+    const bottom = boxes[boxes.length - 1].y + boxes[boxes.length - 1].height
+    const indent = listIndentEm(found.list, found.items.length) * node.fontSize
+    const shift = node.align === 'center' ? 0.5 : node.align === 'right' ? 1 : 0
+    return [{
+      ...node,
+      name: listElement.getAttribute('data-name') ?? node.name,
+      x: rounded(boxes[0].x - indent - TEXT_PADDING - shift),
+      y: rounded(top - TEXT_PADDING),
+      width: rounded(boxes[0].width + indent + 1 + TEXT_PADDING * 2),
+      height: rounded(bottom - top + TEXT_PADDING * 2 + 1),
+      list: found.list,
+      ...(found.spacing > 0.5 ? { paragraphSpacing: Math.min(1000, rounded(found.spacing)) } : {}),
+    }]
   }
 
   private markerNodes(item: Element): FreeformSceneNode[] {
@@ -1786,6 +1921,21 @@ class PageReader {
       width: Math.max(0, border.width - borders.left.width - borders.right.width),
       height: Math.max(0, border.height - borders.top.width - borders.bottom.width),
       radii: insetRadii(this.radiiOf(style, border), borders.top.width, borders.right.width, borders.bottom.width, borders.left.width),
+    }
+  }
+
+  /** An element's content box (inside its borders and padding), in page coordinates. */
+  private contentBox(element: Element): Rect {
+    const style = this.style(element)
+    const border = this.rel(element.getBoundingClientRect())
+    const side = (name: string) => parsePx(style.getPropertyValue(name)) ?? 0
+    const left = side('border-left-width') + side('padding-left')
+    const top = side('border-top-width') + side('padding-top')
+    return {
+      x: border.x + left,
+      y: border.y + top,
+      width: Math.max(0, border.width - left - side('border-right-width') - side('padding-right')),
+      height: Math.max(0, border.height - top - side('border-bottom-width') - side('padding-bottom')),
     }
   }
 
@@ -2325,7 +2475,7 @@ export async function importHtmlDocument(doc: Document, prepared: PreparedHtml, 
   for (const { element, message } of prepared.notes) addNote(pageOf(element), describe(element), message, element)
   for (const family of prepared.replacedFonts) addNote(0, family, `没有 ${family} 这款字体，换成了相近的内置字体`)
   return {
-    document: { documentVersion: 19, slides, activeSlideId: slides[0].id },
+    document: { documentVersion: 20, slides, activeSlideId: slides[0].id },
     notes: Array.from(notes.values(), ({ targets, ...note }) => (targets.size > 1 ? { ...note, message: `${note.message}（${targets.size} 处）` } : note)),
   }
 }

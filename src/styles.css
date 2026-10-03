@@ -1767,6 +1767,53 @@ html.theme-anim * {
   word-break: break-word;
 }
 
+/* v20 paragraphs (textLayout.ts): one block each, with space between them when the text asks for it. */
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-paragraph-spacing] > div + div {
+  margin-block-start: var(--freeform-paragraph-spacing);
+}
+
+/* List items: each paragraph's marker hangs in the indent before its first line, outside the words you edit.
+   It is part of that line (taking no room in it), so it sits on the line's baseline when bigger words make the
+   line taller, and stays next to centred or right-aligned words. */
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-list] {
+  counter-reset: freeform-list-item;
+}
+
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-list] > div {
+  padding-inline-start: var(--freeform-list-indent);
+}
+
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-list] > div::before {
+  display: inline-block;
+  box-sizing: border-box;
+  inline-size: var(--freeform-list-indent);
+  margin-inline-start: calc(-1 * var(--freeform-list-indent));
+  padding-inline-end: 0.4em;
+  /* Next to the words, as browsers and word processors set markers. */
+  text-align: end;
+}
+
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-list='bullet'] > div::before {
+  content: '•';
+}
+
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-list='number'] > div {
+  counter-increment: freeform-list-item;
+}
+
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-list='number'] > div::before {
+  content: counter(freeform-list-item) '.';
+}
+
+/* An empty paragraph is no item: no marker, no number. */
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-list] > div:is(:empty, :has(> br:only-child))::before {
+  content: none;
+}
+
+:is(.freeform-textbox, .freeform-preview-textbox, .freeform-text-effect)[data-list='number'] > div:is(:empty, :has(> br:only-child)) {
+  counter-increment: none;
+}
+
 /* A text effect's copy of the words, under the text in the same box (textEffects.ts):
    laid out like the text, invisible itself, carrying the glow, outline, shadows or line backgrounds. */
 .freeform-text-effect {

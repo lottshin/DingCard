@@ -14,6 +14,7 @@ import {
   TrashIcon,
 } from '../ui/icons'
 import { fontOptions, fontPickerValue } from './fontChoices'
+import { nextFontSize } from './fontSizeSteps'
 import { useImportedFonts } from './fontLibrary'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorGlyph, type InspectorGlyphName } from './InspectorGlyph'
@@ -106,7 +107,15 @@ const TEXT_ALIGNS: Array<{ id: FreeformTextElement['align']; label: string; icon
   { id: 'left', label: '文字左对齐', icon: 'M2.5 4h11M2.5 8h7M2.5 12h9' },
   { id: 'center', label: '文字居中', icon: 'M2.5 4h11M4.5 8h7M3.5 12h9' },
   { id: 'right', label: '文字右对齐', icon: 'M2.5 4h11M6.5 8h7M4.5 12h9' },
+  { id: 'justify', label: '文字两端对齐', icon: 'M2.5 4h11M2.5 8h11M2.5 12h7' },
 ]
+
+/** The list button cycles as Canva's does: plain → bullets → numbers → plain. */
+const NEXT_LIST: Record<'none' | 'bullet' | 'number', 'bullet' | 'number' | null> = { none: 'bullet', bullet: 'number', number: null }
+const LIST_ICONS = {
+  bullet: 'M6 4h7.5M6 8h7.5M6 12h7.5M2.75 4h.01M2.75 8h.01M2.75 12h.01',
+  number: 'M6 4h7.5M6 8h7.5M6 12h7.5M2.25 3l.9-.6v3.1M2 8.4c.25-.55 1.75-.6 1.75.3 0 .65-1.75 1.15-1.75 1.8h1.85',
+}
 
 function PathIcon({ d, viewBox = '0 0 20 20' }: { d: string; viewBox?: string }) {
   return (
@@ -216,14 +225,6 @@ function SubjectChip({ icon, label }: { icon: ReactNode; label: string }) {
       <span>{label}</span>
     </span>
   )
-}
-
-/** Font size steps a designer reaches for; the − / + buttons walk them. */
-const FONT_SIZE_STEPS = [12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96, 112, 128, 144, 160, 200, 240]
-
-function nextFontSize(current: number, direction: 1 | -1): number {
-  if (direction > 0) return FONT_SIZE_STEPS.find((step) => step > current) ?? Math.round(current * 1.25)
-  return [...FONT_SIZE_STEPS].reverse().find((step) => step < current) ?? Math.max(1, Math.round(current * 0.8))
 }
 
 /**
@@ -362,6 +363,15 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
                 <PathIcon viewBox="0 0 16 16" d={option.icon} />
               </ToolbarButton>
             ))}
+            <ToolbarButton
+              label={t(subject.node.list === 'number' ? '编号列表' : subject.node.list === 'bullet' ? '项目符号列表' : '列表')}
+              className="ctx-text-align"
+              testId="ctx-text-list"
+              pressed={subject.node.list !== undefined}
+              onClick={() => props.onStyle({ list: NEXT_LIST[subject.node.list ?? 'none'] })}
+            >
+              <PathIcon viewBox="0 0 16 16" d={LIST_ICONS[subject.node.list === 'number' ? 'number' : 'bullet']} />
+            </ToolbarButton>
           </>
         )}
 

@@ -5,7 +5,7 @@ import {
   collageById,
   createCollageGroup,
 } from '../collageLayouts'
-import { normalizeFreeformDocumentV19 } from '../sceneDocument'
+import { normalizeFreeformDocumentV20 } from '../sceneDocument'
 import type { FreeformDocument, FreeformSlide } from '../types'
 
 const PAGE: FreeformSlide = {
@@ -18,8 +18,8 @@ const PAGE: FreeformSlide = {
 }
 
 function documentWith(node: unknown): FreeformDocument {
-  return normalizeFreeformDocumentV19({
-    documentVersion: 19,
+  return normalizeFreeformDocumentV20({
+    documentVersion: 20,
     activeSlideId: PAGE.id,
     slides: [{ ...PAGE, nodes: [node] }],
   })!

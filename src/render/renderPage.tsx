@@ -304,6 +304,32 @@ function paintMask(drawing: SVGPathElement, width: number, height: number): stri
   return mask
 }
 
+/**
+ * The line boxes a text's words fill: the rects of the words themselves (the
+ * paragraph blocks around them span the whole box), and before each list
+ * item's first line the indent its marker sits in.
+ */
+function wordRects(box: HTMLElement): DOMRect[] {
+  const rects: DOMRect[] = []
+  const range = document.createRange()
+  for (const paragraph of Array.from(box.children)) {
+    let first: DOMRect | null = null
+    const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      range.selectNodeContents(node)
+      for (const rect of Array.from(range.getClientRects())) {
+        first ??= rect
+        rects.push(rect)
+      }
+    }
+    if (first && box.hasAttribute('data-list')) {
+      const left = paragraph.getBoundingClientRect().left
+      rects.push(new DOMRect(left, first.top, Math.max(0, first.left - left), first.height))
+    }
+  }
+  return rects
+}
+
 /** Measure the mounted slide: node boxes, text overflow, and the size each overflowing text would fit at. */
 function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: string | null): InspectedSlide {
   const origin = artboard.getBoundingClientRect()
@@ -349,9 +375,7 @@ function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: str
       box.style.fontSize = original
     }
     const clip = box.getBoundingClientRect()
-    const range = document.createRange()
-    range.selectNodeContents(box)
-    const lines = Array.from(range.getClientRects())
+    const lines = wordRects(box)
       .map((rect) => ({
         left: Math.max(rect.left, clip.left),
         top: Math.max(rect.top, clip.top),
