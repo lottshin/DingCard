@@ -83,8 +83,11 @@ export function collectImages(source: string): Record<string, string> {
  * slow (html-to-image has to serialize and decode the whole image per page).
  *
  * We redraw the image onto a canvas capped at `maxEdge` and re-encode it.
- * PNG is kept for images with transparency; everything else becomes JPEG at
- * high quality, which is dramatically smaller for photos/screenshots.
+ * Only images that actually paint with transparency stay PNG; opaque ones —
+ * screenshots, photos — become JPEG at high quality, which is dramatically
+ * smaller. Sniffing the format instead of the pixels kept opaque PNG
+ * screenshots at 5-10x their needed size, and drafts embed their images, so
+ * a handful of them filled local storage.
  */
 export function downscaleDataUrl(dataUrl: string, maxEdge = 1200): Promise<string> {
   return new Promise((resolve) => {
@@ -92,8 +95,9 @@ export function downscaleDataUrl(dataUrl: string, maxEdge = 1200): Promise<strin
     img.onload = () => {
       const { width, height } = img
       const scale = Math.min(1, maxEdge / Math.max(width, height))
-      // Already small enough — keep as-is, no re-encode.
-      if (scale === 1) {
+      // A JPEG source has no alpha channel to lose; when no rescale is needed
+      // there is nothing to win from a re-encode — keep it as-is.
+      if (scale === 1 && !dataUrl.startsWith('data:image/png')) {
         resolve(dataUrl)
         return
       }
@@ -108,19 +112,36 @@ export function downscaleDataUrl(dataUrl: string, maxEdge = 1200): Promise<strin
         return
       }
       ctx.drawImage(img, 0, 0, w, h)
-      // PNG data URLs may carry transparency; keep PNG for those, else JPEG.
-      const isPng = dataUrl.startsWith('data:image/png')
-      const out = isPng
+      // A full alpha scan tells PNGs with real transparency apart from opaque
+      // screenshots; JPEG q0.9 is near-lossless for the latter and a fraction
+      // of the bytes, which is what the embedded-in-draft storage cares about.
+      const transparent = isPngWithPaintedTransparency(ctx, w, h)
+      const out = transparent
         ? canvas.toDataURL('image/png')
         : canvas.toDataURL('image/jpeg', 0.9)
-      // If PNG re-encode somehow got bigger, fall back to JPEG.
-      if (isPng && out.length > dataUrl.length) {
-        resolve(canvas.toDataURL('image/jpeg', 0.9))
-        return
-      }
-      resolve(out)
+      // Never come out bigger than what came in.
+      resolve(out.length > dataUrl.length ? dataUrl : out)
     }
     img.onerror = () => resolve(dataUrl) // on any failure, keep the original
     img.src = dataUrl
   })
+}
+
+/** Whether a redrawn image actually paints transparency anywhere (full scan). */
+function isPngWithPaintedTransparency(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): boolean {
+  let data: Uint8ClampedArray
+  try {
+    data = ctx.getImageData(0, 0, width, height).data
+  } catch {
+    // A tainted canvas cannot be read — assume the safe, lossless path.
+    return true
+  }
+  for (let index = 3; index < data.length; index += 4) {
+    if (data[index] < 250) return true
+  }
+  return false
 }
