@@ -11877,8 +11877,9 @@ test.describe('freeform text auto size', () => {
     const initialHeight = await element.evaluate((el) => el.offsetHeight)
     expect(initialHeight).toBe(150)
 
-    // 四行 48px 文字远超默认 150px 的盒子。
-    await page.getByLabel('文本内容').fill('一\n二\n三\n四')
+    // 六行 48px 文字远超默认 150px 的盒子；行高随系统字体在 1.0–1.4 倍字号之间变化，
+    // 六行在任何 CJK 字体下都放不进 150px。
+    await page.getByLabel('文本内容').fill('一\n二\n三\n四\n五\n六')
     await expect.poll(() => element.evaluate((el) => el.offsetHeight)).toBeGreaterThan(220)
 
     // 内容不再被裁：盒子不小于文字实际需要的高度。
@@ -11894,7 +11895,7 @@ test.describe('freeform text auto size', () => {
     await insertText(page)
     const element = page.getByTestId('freeform-element').last()
 
-    await page.getByLabel('文本内容').fill('一\n二\n三\n四')
+    await page.getByLabel('文本内容').fill('一\n二\n三\n四\n五\n六')
     const grownHeight = await element.evaluate((el) => el.offsetHeight)
     expect(grownHeight).toBeGreaterThan(220)
 
@@ -11911,8 +11912,10 @@ test.describe('freeform text auto size', () => {
 
     await page.getByTestId('text-vertical-toggle').click()
     await expect(page.getByTestId('text-vertical-toggle')).toHaveAttribute('aria-pressed', 'true')
-    // 二十个字在 150px 高的竖排盒里要排十列，远超默认 520px 宽。
-    await page.getByLabel('文本内容').fill('一二三四五六七八九十一二三四五六七八九十')
+    // 竖排每列占一个行高，行高随系统字体在 1.0–1.4 倍字号之间变化：二十个字在行高小的字体
+    // （如 Linux 的 Noto CJK，每列排三个字）里放得进 520px，并不需要变宽；四十个字在任何
+    // 字体下都至少要十四列，远超默认 520px 宽。
+    await page.getByLabel('文本内容').fill('一二三四五六七八九十'.repeat(4))
     await expect.poll(() => element.evaluate((el) => el.offsetWidth)).toBeGreaterThan(560)
 
     const overflow = await element.evaluate((el) => {
