@@ -13,7 +13,7 @@ import type {
   TemplateKind,
   TemplateWorkspace,
 } from '../../../src/templates/types'
-import type { FreeformDocument } from '../../../src/freeform/types'
+import type { FreeformDocument, FreeformSlide } from '../../../src/freeform/types'
 
 /** How much content a freeform template's pages hold before it spills over. */
 export interface TemplateCapacity {
@@ -131,6 +131,27 @@ export function instantiateTemplate(templateId: string): TemplateInstantiation {
   }
   if (!template.createMarkdown) throw new Error(`模板 ${templateId} 缺少 Markdown 工厂`)
   return { workspace: 'markdown', document: template.createMarkdown() }
+}
+
+export type TemplatePagesResult =
+  | { ok: true; slides: FreeformSlide[] }
+  | { ok: false; error: string }
+
+/**
+ * A freeform template's pages for slide/insert, by page number from 1 (all
+ * of them when none are named). Every page is a fresh copy with its own ids,
+ * so a page asked for twice comes in twice.
+ */
+export function templatePages(templateId: string, pages?: readonly number[]): TemplatePagesResult {
+  const template = TEMPLATE_REGISTRY.find((candidate) => candidate.id === templateId)
+  if (!template) return { ok: false, error: `未知模板 id：${templateId}（先用 list_templates 查询）。` }
+  const create = template.workspace === 'freeform' ? template.createFreeform : undefined
+  if (!create) return { ok: false, error: `${templateId} 是 Markdown 模板，不能加进自由画布文档。` }
+  const all = create().slides
+  if (!pages || pages.length === 0) return { ok: true, slides: all }
+  const outside = pages.filter((page) => !Number.isInteger(page) || page < 1 || page > all.length)
+  if (outside.length > 0) return { ok: false, error: `${templateId} 只有 ${all.length} 页，没有第 ${outside.join('、')} 页。` }
+  return { ok: true, slides: pages.map((page) => create().slides[page - 1]) }
 }
 
 /** The freeform deck templates (cover, sections, ending). */

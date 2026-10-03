@@ -139,7 +139,7 @@ test('the narrow layout has no empty panel row while the panel is closed', async
   expect(overflow).toBeLessThanOrEqual(0)
 })
 
-test('the templates panel shows first pages and opens the picked one in the gallery', async ({ page }) => {
+test('the templates panel shows first pages; a deck opens to its pages, the gallery opens from the top', async ({ page }) => {
   await page.goto('/#/edit/canvas')
   const templatesTool = page.getByTestId('freeform-template-button')
   await templatesTool.click()
@@ -152,9 +152,13 @@ test('the templates panel shows first pages and opens the picked one in the gall
   const second = tiles.nth(1)
   const title = await second.locator('.freeform-template-tile-title').innerText()
   await second.click()
+  await expect(panel.getByTestId('freeform-template-pages').getByRole('heading')).toHaveText(title)
+  await panel.getByTestId('freeform-template-back').click()
+  await expect(tiles).toHaveCount(25)
+
+  await panel.getByTestId('freeform-templates-browse').click()
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
   await expect(gallery).toBeVisible()
-  await expect(gallery.locator('.template-detail-series')).toHaveText(title)
   await page.keyboard.press('Escape')
   await expect(gallery).toHaveCount(0)
   await expect(panel).toBeVisible()

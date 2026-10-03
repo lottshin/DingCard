@@ -385,7 +385,39 @@
   flex-shrink: 0;
 }
 
-/* Templates panel: first pages in two columns; a tile opens it large. */
+/* Templates panel: first pages in two columns; a poster's tile adds it, a deck's opens its pages.
+   The list and a deck's pages lay out in the panel itself. */
+.freeform-drawer .freeform-template-list,
+.freeform-drawer .freeform-template-pages {
+  display: contents;
+}
+
+.freeform-drawer.is-scroll > :is(.freeform-template-list, .freeform-template-pages) > * {
+  flex-shrink: 0;
+}
+
+.freeform-template-pages-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 4px 16px 0 8px;
+}
+
+.freeform-template-pages-head h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: 600 13.5px/1.3 var(--ui-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freeform-drawer .freeform-template-tile:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .freeform-drawer .freeform-template-tiles {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -428,7 +460,7 @@
   transition: box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.freeform-drawer .freeform-template-tile:hover .template-freeform-preview {
+.freeform-drawer .freeform-template-tile:enabled:hover .template-freeform-preview {
   box-shadow: 0 0 0 2px var(--canvas-select);
 }
 

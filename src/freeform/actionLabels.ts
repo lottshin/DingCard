@@ -5,6 +5,7 @@ export function describeFreeformAction(action: FreeformAction): string {
   switch (action.type) {
     case 'slide/add-after-active': return '新增页面'
     case 'slide/duplicate': return '复制页面'
+    case 'slide/insert': return action.replaceSlideId !== undefined ? '替换页面' : '插入页面'
     case 'slide/delete': return '删除页面'
     case 'slide/select': return '切换页面'
     case 'slide/reorder': return '调整页面顺序'

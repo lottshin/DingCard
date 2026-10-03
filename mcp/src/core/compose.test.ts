@@ -194,6 +194,38 @@ describe('composeDeck', () => {
     expect(heading('signal-freeform', 0, '标题下')).toBe('早起习惯')
   })
 
+  test('takes a page from another deck template when the page names one', () => {
+    const mixed = compose('editorial-freeform', {
+      title: '一周早餐不重样',
+      pages: [
+        { title: '周一：燕麦杯', body: '前一晚泡好。' },
+        { title: '周二：鸡蛋三明治', body: '五分钟搞定。', templateId: 'neon-freeform' },
+      ],
+      ending: { title: '明天吃什么？', body: '把这一周存下来。', templateId: 'checklist-freeform' },
+    })
+    expect(mixed.summary.pages.map((page) => [page.role, page.templateId])).toEqual([
+      ['cover', 'editorial-freeform'],
+      ['section', 'editorial-freeform'],
+      ['section', 'neon-freeform'],
+      ['ending', 'checklist-freeform'],
+    ])
+    // Each page looks like the template it came from, filled with its own words.
+    const neon = instantiateTemplate('neon-freeform')
+    const checklist = instantiateTemplate('checklist-freeform')
+    if (neon.workspace !== 'freeform' || checklist.workspace !== 'freeform') throw new Error('expected freeform templates')
+    expect(mixed.document.slides[2].background).toEqual(neon.document.slides[1].background)
+    expect(mixed.document.slides[3].background).toEqual(checklist.document.slides[2].background)
+    const words = (index: number) => mixed.document.slides[index].nodes.flatMap((node) => (node.type === 'text' ? [node.text.replace(/\n/g, '')] : []))
+    expect(words(2)).toContain('周二：鸡蛋三明治')
+    expect(words(3)).toContain('明天吃什么？')
+
+    // Only deck templates lend pages.
+    expect(composeDeck('editorial-freeform', { title: 'a', pages: [{ title: 'b', templateId: 'talk-poster-freeform' }] }))
+      .toMatchObject({ ok: false, error: expect.stringContaining('第 1 个小节') })
+    expect(composeDeck('editorial-freeform', { title: 'a', pages: [{ title: 'b' }], ending: { title: 'c', templateId: 'nope' } }))
+      .toMatchObject({ ok: false, error: expect.stringContaining('结尾页') })
+  })
+
   test('rejects content it cannot place', () => {
     expect(normalizeDeckContent(null)).toBe('content 需要是对象')
     expect(normalizeDeckContent({ title: ' ', pages: [{ title: 'a' }] })).toContain('封面标题')

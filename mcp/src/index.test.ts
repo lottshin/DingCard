@@ -36,12 +36,13 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the twenty-one tools', async () => {
+  test('exposes the twenty-two tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
     expect(names).toEqual([
       'add_decorations',
+      'add_template_pages',
       'apply_actions',
       'check_document',
       'create_document_from_content',
@@ -244,6 +245,54 @@ describe('dingcard-mcp tool layer', () => {
     ) as { ok: boolean; error: string }
     expect(rejected.ok).toBe(false)
     expect(rejected.error).toContain('list_templates')
+    await client.close()
+  })
+
+  test('mixes templates in one document: template pages, a page in another layout, a poster as a page', async () => {
+    const client = await connect()
+    const deck = await call<{ ok: boolean; documentId: string; summary: { pages: Array<{ slideId: string; templateId: string }> } }>(client, 'create_document_from_content', {
+      templateId: 'editorial-freeform',
+      content: { title: '开工清单', pages: [{ title: '准备', body: '先列目标。' }, { title: '动手', body: '一次做一件。', templateId: 'brutalist-freeform' }] },
+    })
+    expect(deck.summary.pages.map((page) => page.templateId)).toEqual(['editorial-freeform', 'editorial-freeform', 'brutalist-freeform'])
+    const [cover] = deck.summary.pages
+
+    // Another template's closing page, right after the cover.
+    const added = await call<{ ok: boolean; documentId: string; version: number; slideCount: number; added: Array<{ slideId: string; name: string; page: number }> }>(client, 'add_template_pages', {
+      documentId: deck.documentId,
+      templateId: 'night-flight-freeform',
+      pages: [3],
+      afterSlideId: cover.slideId,
+      previews: false,
+    })
+    expect(added).toMatchObject({ ok: true, documentId: deck.documentId, slideCount: 4 })
+    expect(added.added).toEqual([expect.objectContaining({ page: 2 })])
+
+    // A poster becomes the last page, keeping its own size.
+    const poster = await call<{ ok: boolean; documentId: string; added: Array<{ slideId: string; page: number; width: number; height: number }> }>(client, 'create_poster_from_content', {
+      templateId: 'quote-card-freeform',
+      content: { title: '先判断，再展开' },
+      documentId: deck.documentId,
+    })
+    expect(poster).toMatchObject({ ok: true, documentId: deck.documentId })
+    expect(poster.added).toEqual([expect.objectContaining({ page: 5, width: 1080, height: 1080 })])
+
+    const inspected = await call<{ ok: boolean; slideCount: number; slides: Array<{ id: string; width: number; height: number }> }>(client, 'inspect_document', { documentId: deck.documentId })
+    expect(inspected.slideCount).toBe(5)
+    expect(inspected.slides[1].id).toBe(added.added[0].slideId)
+    expect(inspected.slides[4]).toMatchObject({ id: poster.added[0].slideId, width: 1080, height: 1080 })
+
+    // Replacing a page, and what it can't do.
+    const replaced = await call<{ ok: boolean; slideCount: number }>(client, 'add_template_pages', {
+      documentId: deck.documentId, templateId: 'editorial-freeform', pages: [2], replaceSlideId: poster.added[0].slideId, previews: false,
+    })
+    expect(replaced).toMatchObject({ ok: true, slideCount: 5 })
+    expect(await call(client, 'add_template_pages', { documentId: deck.documentId, templateId: 'editorial-freeform', pages: [9], previews: false }))
+      .toMatchObject({ ok: false, error: expect.stringContaining('只有 3 页') })
+    expect(await call(client, 'add_template_pages', { documentId: deck.documentId, templateId: 'editorial-freeform', afterSlideId: 'nope', previews: false }))
+      .toMatchObject({ ok: false, error: expect.stringContaining('nope') })
+    expect(await call(client, 'add_template_pages', { documentId: deck.documentId, templateId: 'editorial-freeform', afterSlideId: cover.slideId, replaceSlideId: cover.slideId, previews: false }))
+      .toMatchObject({ ok: false })
     await client.close()
   })
 

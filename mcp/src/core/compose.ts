@@ -26,6 +26,8 @@ export interface DeckPage {
   points?: string[]
   /** A pull quote; "引文 —— 出处" puts the source under it. */
   quote?: string
+  /** Another deck template whose page this one takes (its section page, or for the ending its closing page). */
+  templateId?: string
 }
 
 export interface DeckContent {
@@ -52,7 +54,8 @@ export interface ComposeSuccess {
     templateId: string
     slideCount: number
     coverTitle: string
-    pages: Array<{ slideId: string; page: number; role: 'cover' | 'section' | 'ending'; title: string }>
+    /** templateId: the template the page's layout came from. */
+    pages: Array<{ slideId: string; page: number; role: 'cover' | 'section' | 'ending'; title: string; templateId: string }>
     /** Copy that was set smaller to fit its box. */
     shrunk: FontAdjustment[]
     /** Copy that still doesn't fit at the smallest size: shorten it (check_document measures the real layout). */
@@ -83,11 +86,13 @@ function cleanPage(value: unknown, label: string): DeckPage | string {
     : []
   const body = clean(record.body)
   const quote = clean(record.quote)
+  const templateId = clean(record.templateId)
   return {
     title,
     ...(body ? { body } : {}),
     ...(points.length > 0 ? { points } : {}),
     ...(quote ? { quote } : {}),
+    ...(templateId ? { templateId } : {}),
   }
 }
 
@@ -545,16 +550,35 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
   }
   const content = normalizeDeckContent(value)
   if (typeof content === 'string') return { ok: false, error: content }
-  const slots = FREEFORM_TEMPLATE_SLOTS[template.series]
   const total = 1 + content.pages.length + (content.ending ? 1 : 0)
+  // A page may take its layout from another deck template; the cover is always the main one's.
   // A fresh instance per page keeps every slide and node id unique.
-  const fresh = (index: number) => template.create().slides[index]
+  type Layout = { templateId: string; slide: FreeformSlide; slots: SlideSlots }
+  const layoutOf = (page: DeckPage | null, role: 'cover' | 'section' | 'ending'): Layout | null => {
+    const id = page?.templateId ?? templateId
+    const source = id === templateId ? template : seriesOf(id)
+    if (!source) return null
+    const index = role === 'cover' ? 0 : role === 'section' ? 1 : 2
+    return { templateId: id, slide: source.create().slides[index], slots: FREEFORM_TEMPLATE_SLOTS[source.series][role] }
+  }
+  const notDeck = (page: DeckPage, label: string): ComposeError => ({
+    ok: false,
+    error: `${label}的 templateId「${page.templateId}」不是套图模板（list_templates 里 kind 为 deck 的才行）。`,
+  })
+  const cover = layoutOf(null, 'cover')!
+  const sections: Layout[] = []
+  for (const [index, page] of content.pages.entries()) {
+    const layout = layoutOf(page, 'section')
+    if (!layout) return notDeck(page, `第 ${index + 1} 个小节`)
+    sections.push(layout)
+  }
+  const closing = content.ending ? layoutOf(content.ending, 'ending') : null
+  if (content.ending && !closing) return notDeck(content.ending, '结尾页')
 
-  const plan: Array<{ role: 'cover' | 'section' | 'ending'; slide: FreeformSlide; slots: SlideSlots; fill: SlideFill }> = [
+  const plan: Array<{ role: 'cover' | 'section' | 'ending'; layout: Layout; fill: SlideFill }> = [
     {
       role: 'cover',
-      slide: fresh(0),
-      slots: slots.cover,
+      layout: cover,
       fill: {
         title: content.title,
         lead: content.subtitle,
@@ -566,15 +590,13 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
     },
     ...content.pages.map((page, index) => ({
       role: 'section' as const,
-      slide: fresh(1),
-      slots: slots.section,
+      layout: sections[index],
       fill: { title: page.title, lead: page.body, points: page.points ?? [], quote: page.quote, toc: [], page: index + 2, total },
     })),
-    ...(content.ending
+    ...(content.ending && closing
       ? [{
           role: 'ending' as const,
-          slide: fresh(2),
-          slots: slots.ending,
+          layout: closing,
           fill: {
             title: content.ending.title,
             lead: content.ending.body,
@@ -588,7 +610,7 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
       : []),
   ]
 
-  const filled = plan.map((entry) => ({ ...entry, result: fillSlide(entry.slide, entry.slots, entry.fill) }))
+  const filled = plan.map((entry) => ({ ...entry, result: fillSlide(entry.layout.slide, entry.layout.slots, entry.fill) }))
   const slides = filled.map((entry) => entry.result.slide)
   const document = normalizeFreeformDocument({ documentVersion: 20, activeSlideId: slides[0].id, slides })
   if (!document) return { ok: false, error: '生成的文档未通过 v20 校验。' }
@@ -606,6 +628,7 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
         page: index + 1,
         role: entry.role,
         title: entry.fill.title,
+        templateId: entry.layout.templateId,
       })),
       shrunk: filled.flatMap((entry, index) => entry.result.shrunk.map((item) => ({
         slideId: entry.result.slide.id,

@@ -10,6 +10,8 @@ describe('freeform action labels', () => {
   it('labels slide actions distinctly', () => {
     expect(describeFreeformAction(action({ type: 'slide/add-after-active' }))).toBe('新增页面')
     expect(describeFreeformAction(action({ type: 'slide/duplicate', slideId: 'a' }))).toBe('复制页面')
+    expect(describeFreeformAction(action({ type: 'slide/insert', slides: [] }))).toBe('插入页面')
+    expect(describeFreeformAction(action({ type: 'slide/insert', slides: [], replaceSlideId: 'a' }))).toBe('替换页面')
     expect(describeFreeformAction(action({ type: 'slide/delete', slideId: 'a' }))).toBe('删除页面')
     expect(describeFreeformAction(action({ type: 'slide/select', slideId: 'a' }))).toBe('切换页面')
     expect(describeFreeformAction(action({

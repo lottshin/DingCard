@@ -634,7 +634,8 @@ function copySceneNodeValue(node: FreeformSceneNode, depth: number): FreeformSce
   return ownLeafAppearance({ ...node })
 }
 
-function copySceneNodeValues(nodes: readonly FreeformSceneNode[]): FreeformSceneNode[] {
+/** Copies of these nodes the caller owns: no object in them is shared with the input. */
+export function copySceneNodeValues(nodes: readonly FreeformSceneNode[]): FreeformSceneNode[] {
   return nodes.map((node) => copySceneNodeValue(node, 1))
 }
 

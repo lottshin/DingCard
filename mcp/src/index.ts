@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import type { FreeformDocument } from '../../src/freeform/types'
+import { MAX_FREEFORM_SLIDES } from '../../src/freeform/constants'
+import type { FreeformDocument, FreeformSlide } from '../../src/freeform/types'
 import { composeDeck } from './core/compose'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
 import { DocumentStore, expandPath, resolveDocumentInput, writeDocumentFile, type DocumentInput, type StoredDocument } from './core/documents'
@@ -21,7 +22,7 @@ import { createDocumentFromOutline } from './core/outline'
 import { composePoster } from './core/poster'
 import { listCollages } from './core/collages'
 import { listFilterPresets, listStyles, listTextStyles } from './core/styles'
-import { instantiateTemplate, listTemplates } from './core/templates'
+import { instantiateTemplate, listTemplates, templatePages } from './core/templates'
 import { checkDocument } from './render/check'
 import { handOff, openInBrowser } from './render/handoff'
 import { importHtml, renderDocument, renderMarkdownDocument, renderPreviews, type RenderPreview, type RenderResult } from './render/renderer'
@@ -101,11 +102,12 @@ const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "## 结尾：标题"：可选的结尾页，内容写法同小节。
 templateId：list_templates 返回的自由画布模板 id（如 "editorial-freeform"），整套卡片沿用该模板的版式与风格。${COMPOSE_HINT}`
 
-const CONTENT_SCHEMA_HINT = `content：{ title: 封面标题, subtitle?: 封面副标题, pages: [{ title, body?: 正文段落, points?: [要点…]（"要点：说明" 冒号后面是这一条的第二行）, quote?: 引文（"引文 —— 出处"）}…], ending?: 结尾页（同 pages 的一项）}。templateId：list_templates 返回的自由画布模板 id。${COMPOSE_HINT}`
+const CONTENT_SCHEMA_HINT = `content：{ title: 封面标题, subtitle?: 封面副标题, pages: [{ title, body?: 正文段落, points?: [要点…]（"要点：说明" 冒号后面是这一条的第二行）, quote?: 引文（"引文 —— 出处"）, templateId?: 这一页换用另一个套图模板的内页版式 }…], ending?: 结尾页（同 pages 的一项，templateId 换用那个模板的结尾页）}。templateId：list_templates 返回的自由画布模板 id，封面和没写 templateId 的页都用它；不同页可以用不同的套图模板（kind 为 deck），最后用 document/restyle 把配色、字体统一起来。${COMPOSE_HINT}`
 
 const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI 完全同一归约器）。常用动作：
 - { type: 'slide/add-after-active', slideId? } 在当前页后新增空白页
 - { type: 'slide/duplicate', slideId, duplicateSlideId? } 复制页
+- { type: 'slide/insert', slides: FreeformSlide[], afterSlideId?, replaceSlideId? } 把整页（含 id、name、width、height、background、nodes）插在 afterSlideId 后面（都不给就是当前页后面），或换掉 replaceSlideId 那一页；页 id 不能和文档里的重复，第一页成为当前页。加模板的页用 add_template_pages 更省事
 - { type: 'slide/delete', slideId } / { type: 'slide/select', slideId } / { type: 'slide/reorder', slideId, targetIndex }（把该页移动到 targetIndex，超出范围会收敛到末位）
 - { type: 'slide/update', slideId, patch: { name?, background? } } / { type: 'slide/resize', slideId, width, height }
 - { type: 'guides/set', slideId, guides: [{ id, axis('x'|'y'), position }] } 整体替换该页参考线（传 [] 清空；越界或重复 id 的整体提交会被忽略）
@@ -119,6 +121,38 @@ const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI �
 - { type: 'node/reorder', slideId, parentPath, nodeIds, direction: 'forward'|'backward'|'front'|'back' }
 - { type: 'group/create', slideId, parentPath, nodeIds, name? } / { type: 'group/ungroup', slideId, parentPath, groupIds, mode: 'one-level'|'all-level' }
 path 是从页面根到目标节点的节点 id 数组（[] 表示页面根）。无效动作会被静默忽略（changes 里对应 false），不会报错。`
+
+/**
+ * Pages into a document with slide/insert: after a page (the last one when
+ * none is named) or in place of one. Says where they went, or why not.
+ */
+function insertPages(
+  document: FreeformDocument,
+  slides: FreeformSlide[],
+  where: { afterSlideId?: string; replaceSlideId?: string },
+): { ok: true; document: FreeformDocument; added: Array<{ slideId: string; name: string; page: number; width: number; height: number }> } | { ok: false; error: string } {
+  const anchor = where.replaceSlideId ?? where.afterSlideId
+  if (anchor !== undefined && !document.slides.some((slide) => slide.id === anchor)) {
+    return { ok: false, error: `文档里没有 id 为 ${anchor} 的页（inspect_document 列出每页的 id）` }
+  }
+  const applied = applyActions(document, [{
+    type: 'slide/insert',
+    slides,
+    ...(where.replaceSlideId !== undefined
+      ? { replaceSlideId: where.replaceSlideId }
+      : { afterSlideId: where.afterSlideId ?? document.slides[document.slides.length - 1].id }),
+  }])
+  if (!applied.ok) return applied
+  if (!applied.changes[0]) return { ok: false, error: `加不进去：一份文档最多 ${MAX_FREEFORM_SLIDES} 页` }
+  const ids = new Set(slides.map((slide) => slide.id))
+  return {
+    ok: true,
+    document: applied.document,
+    added: applied.document.slides.flatMap((slide, index) => (
+      ids.has(slide.id) ? [{ slideId: slide.id, name: slide.name, page: index + 1, width: slide.width, height: slide.height }] : []
+    )),
+  }
+}
 
 /** Build a dingcard MCP server with all tools registered. */
 export function createDingcardServer(): McpServer {
@@ -157,7 +191,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）。按内容和尺寸挑模板。先用它拿到 templateId。',
+    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）。按内容和尺寸挑模板。先用它拿到 templateId。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
     {},
     async () => jsonResult({ templates: listTemplates() }),
   )
@@ -185,11 +219,44 @@ export function createDingcardServer(): McpServer {
     },
   )
 
+  server.tool(
+    'add_template_pages',
+    '把模板的页面加进一份自由画布文档，和编辑器模板面板里点一页一样：套图模板可以只加某几页（再来一张内页、换个结尾页），单页海报加进来就是新的一页。页面保留模板自己的尺寸和示例文字，之后用 inspect_document 找到图层、apply_actions 改字，check_document 会把没改的示例文字报出来。要直接按内容填好：套图的页用 create_document_from_content 每页的 templateId，海报用 create_poster_from_content 的 documentId。返回加进来的页（slideId、名称、在文档里是第几页），默认附上这些页的缩略图。',
+    {
+      ...documentInput,
+      templateId: z.string().describe('list_templates 返回的自由画布模板 id'),
+      pages: z.array(z.number().int().min(1)).optional().describe('加模板的第几页，从 1 起（套图是 1 封面、2 内页、3 结尾），可以重复；不给就加全部'),
+      afterSlideId: z.string().optional().describe('加在这一页后面；不给就加在最后'),
+      replaceSlideId: z.string().optional().describe('换掉这一页（比如一张空白页），不能和 afterSlideId 同时给'),
+      previews: z.boolean().optional().describe('是否附上加进来的页的缩略图，默认 true'),
+      includeDocument,
+    },
+    async ({ templateId, pages, afterSlideId, replaceSlideId, previews, includeDocument: withDocument, ...input }) => {
+      try {
+        if (afterSlideId && replaceSlideId) return jsonResult({ ok: false, error: 'afterSlideId 和 replaceSlideId 只能给一个' })
+        const resolved = await documentFor(input)
+        if (!resolved.ok) return jsonResult(resolved)
+        const picked = templatePages(templateId, pages)
+        if (!picked.ok) return jsonResult(picked)
+        const placed = insertPages(resolved.document, picked.slides, { afterSlideId, replaceSlideId })
+        if (!placed.ok) return jsonResult(placed)
+        const stored = keep(placed.document, resolved.documentId)
+        const answer = { ok: true, ...handleOf(stored, withDocument), added: placed.added, slideCount: stored.document.slides.length }
+        if (previews === false) return jsonResult(answer)
+        const shown = stored.document.slides.filter((slide) => placed.added.some((entry) => entry.slideId === slide.id))
+        return withPreviews(answer, await renderPreviews({ ...stored.document, activeSlideId: shown[0].id, slides: shown }).catch(() => []))
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
+
   const pageSchema = z.object({
     title: z.string().describe('这一页的标题'),
     body: z.string().optional().describe('正文段落'),
     points: z.array(z.string()).optional().describe('要点，一条一项；"要点：说明" 冒号后面是第二行'),
     quote: z.string().optional().describe('引文；"引文 —— 出处" 会把出处放在下面'),
+    templateId: z.string().optional().describe('这一页换用另一个套图模板（kind 为 deck）的版式；不给就用整套的 templateId'),
   })
 
   server.tool(
@@ -266,7 +333,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_poster_from_content',
-    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色。超出模板行数的信息、画不下的表格格子列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。',
+    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色。超出模板行数的信息、画不下的表格格子列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。',
     {
       templateId: z.string().describe('list_templates 里 kind 为 poster 的模板 id，如 "talk-poster-freeform"'),
       content: z.object({
@@ -281,15 +348,25 @@ export function createDingcardServer(): McpServer {
         brand: z.string().optional().describe('主办方、品牌或落款'),
         image: z.string().optional().describe('主图：本机文件路径（/、~/、./、file://）、http(s) URL 或 data URL'),
       }),
+      ...documentInput,
+      documentId: z.string().optional().describe('给了就把海报加成这份文档的一页（就地更新，海报保留自己的尺寸）；documentId、document、documentPath 都不给就新建一份文档'),
+      afterSlideId: z.string().optional().describe('加进已有文档时放在这一页后面；不给就加在最后'),
       includeDocument,
     },
-    async ({ templateId, content, includeDocument: withDocument }) => {
+    async ({ templateId, content, afterSlideId, includeDocument: withDocument, ...input }) => {
       try {
         const composed = composePoster(templateId, content)
         if (!composed.ok) return jsonResult(composed)
         const embedded = await embedLocalImages(composed.document, process.cwd())
         if (!embedded.ok) return jsonResult(embedded)
-        return jsonResult({ ok: true, summary: composed.summary, ...handleOf(documents.add(embedded.document), withDocument) })
+        if (input.documentId === undefined && input.document === undefined && input.documentPath === undefined) {
+          return jsonResult({ ok: true, summary: composed.summary, ...handleOf(documents.add(embedded.document), withDocument) })
+        }
+        const resolved = await documentFor(input)
+        if (!resolved.ok) return jsonResult(resolved)
+        const placed = insertPages(resolved.document, embedded.document.slides, { afterSlideId })
+        if (!placed.ok) return jsonResult(placed)
+        return jsonResult({ ok: true, summary: composed.summary, ...handleOf(keep(placed.document, resolved.documentId), withDocument), added: placed.added })
       } catch (error) {
         return errorResult(error)
       }

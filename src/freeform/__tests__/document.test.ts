@@ -1500,3 +1500,70 @@ describe('v20 text layout patches', () => {
     expect(textOf(both).spans).toEqual([{ start: 9, end: 11, fontSize: 72 }])
   })
 })
+
+describe('slide/insert', () => {
+  const page = (id: string, nodes: FreeformSceneNode[] = []) => ({ ...createSlide({ width: 1080, height: 1920 }), id, name: id, nodes })
+  const deck = () => {
+    const first = createFreeformDocument()
+    const second = { ...createSlide(), id: 'second', name: 'second' }
+    return { ...first, slides: [first.slides[0], second] }
+  }
+  const insert = (document: FreeformDocument, action: Omit<Extract<FreeformAction, { type: 'slide/insert' }>, 'type'>) => (
+    reduceFreeformDocument(document, { type: 'slide/insert', ...action })
+  )
+
+  it('puts pages after the active page, or after the one named, and makes the first one active', () => {
+    const document = deck()
+    const [first, second] = document.slides
+    const text = { ...createTextElement(createSlide()), id: 'title' }
+    const after = insert(document, { slides: [page('a', [text]), page('b')] })
+    expect(after.slides.map((slide) => slide.id)).toEqual([first.id, 'a', 'b', 'second'])
+    expect(after.activeSlideId).toBe('a')
+    // Each page keeps its own size and nodes.
+    expect(after.slides[1]).toMatchObject({ width: 1080, height: 1920, nodes: [{ id: 'title' }] })
+
+    const atEnd = insert(document, { slides: [page('c')], afterSlideId: second.id })
+    expect(atEnd.slides.map((slide) => slide.id)).toEqual([first.id, 'second', 'c'])
+  })
+
+  it('takes the place of the page it replaces', () => {
+    const document = deck()
+    const replaced = insert(document, { slides: [page('a'), page('b')], replaceSlideId: document.slides[0].id })
+    expect(replaced.slides.map((slide) => slide.id)).toEqual(['a', 'b', 'second'])
+    expect(replaced.activeSlideId).toBe('a')
+    // The new page may reuse the id of the page it replaces.
+    const same = insert(document, { slides: [page('second')], replaceSlideId: 'second' })
+    expect(same.slides.map((slide) => slide.name)).toEqual([document.slides[0].name, 'second'])
+  })
+
+  it('owns copies of what it was given', () => {
+    const document = deck()
+    const given = page('a', [{ ...createTextElement(createSlide()), id: 'title' }])
+    const after = insert(document, { slides: [given] })
+    ;(given.nodes[0] as FreeformTextElement).text = 'changed later'
+    expect((after.slides[1].nodes[0] as FreeformTextElement).text).not.toBe('changed later')
+  })
+
+  it.each([
+    ['no pages', { slides: [] }],
+    ['an unknown anchor', { slides: [page('a')], afterSlideId: 'nowhere' }],
+    ['both anchors', { slides: [page('a')], afterSlideId: 'second', replaceSlideId: 'second' }],
+    ['an id already in the deck', { slides: [page('second')] }],
+    ['the same id twice', { slides: [page('a'), page('a')] }],
+    ['a page too small', { slides: [{ ...page('a'), width: 10 }] }],
+    ['an extra key', { slides: [{ ...page('a'), extra: true }] }],
+    ['an invalid node', { slides: [page('a', [{ ...createTextElement(createSlide()), id: 'title', textFill: { type: 'solid', color: 'red' } }])] }],
+    ['two nodes with one id', { slides: [page('a', [{ ...createTextElement(createSlide()), id: 'x' }, { ...createTextElement(createSlide()), id: 'x' }])] }],
+  ])('ignores %s', (_label, action) => {
+    const document = deck()
+    expect(insert(document, action as never)).toBe(document)
+  })
+
+  it('stops at the page limit', () => {
+    const document = deck()
+    const full = { ...document, slides: Array.from({ length: 500 }, (_, index) => ({ ...document.slides[0], id: `p${index}` })), activeSlideId: 'p0' }
+    expect(insert(full, { slides: [page('a')] })).toBe(full)
+    // Replacing a page keeps the count.
+    expect(insert(full, { slides: [page('a')], replaceSlideId: 'p0' }).slides).toHaveLength(500)
+  })
+})

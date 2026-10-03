@@ -18,8 +18,8 @@ interface TemplateGalleryProps {
   currentIsSaved: boolean
   onClose: () => void
   onApply: (template: TemplateDefinition) => void
-  /** The template shown first when the gallery opens (a tile picked elsewhere). */
-  initialTemplateId?: string
+  /** Add the template's pages to the open work instead (the freeform editor). */
+  onInsert?: (template: TemplateDefinition) => void
 }
 
 function MarkdownTemplatePreview({ template, detail = false }: { template: TemplateDefinition; detail?: boolean }) {
@@ -85,7 +85,7 @@ function focusableElements(dialog: HTMLElement): HTMLElement[] {
   ))
 }
 
-export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsSaved, onClose, onApply, initialTemplateId }: TemplateGalleryProps) {
+export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsSaved, onClose, onApply, onInsert }: TemplateGalleryProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const pendingReturnFocusRef = useRef<HTMLElement | null>(null)
@@ -100,14 +100,6 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0]
   pendingRef.current = pending
   onCloseRef.current = onClose
-
-  useEffect(() => {
-    if (!open || !initialTemplateId) return
-    const picked = allTemplates.find((template) => template.id === initialTemplateId)
-    if (!picked) return
-    setSelectedId(initialTemplateId)
-    if (format && picked.format !== format) setFormat(null)
-  }, [open, initialTemplateId])
 
   useEffect(() => {
     if (!open) return
@@ -273,6 +265,9 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
                     : t('{n} 页作品已经排好，文字、颜色、尺寸和图层都可以改。', { n: selected.pageCount })}
               </p>
               <button className='template-use' type='button' onClick={() => requestApply(selected)}>{t('使用这套模板')}</button>
+              {onInsert && selected.workspace === 'freeform' && (
+                <button className='template-add' type='button' data-testid='template-add-to-work' onClick={() => onInsert(selected)}>{t('加到当前作品')}</button>
+              )}
             </div>
           </aside>
         </div>

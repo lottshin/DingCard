@@ -20,6 +20,7 @@ import {
   buildScenePathIndex,
   canApplySceneAction,
   cloneSceneNodes,
+  copySceneNodeValues,
   cloneSceneNodesAtPath,
   createSceneGroup,
   deleteSceneNodes,
@@ -1344,6 +1345,29 @@ function validIdList(value: unknown): value is string[] {
   )
 }
 
+const INSERTED_SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes', 'guides'])
+
+/** A page handed to slide/insert, checked like a loaded one and copied so the deck owns it; null when it isn't valid. */
+function ownedSlide(value: unknown): FreeformSlide | null {
+  if (!isRecord(value) || !hasOnlyKeys(value, INSERTED_SLIDE_KEYS)) return null
+  const { id, name, width, height, background, nodes } = value
+  if (typeof id !== 'string' || id.trim().length === 0 || typeof name !== 'string') return null
+  if (typeof width !== 'number' || typeof height !== 'number' || !validatePageSize(width, height).ok) return null
+  if (!validSlideBackground(background) || !Array.isArray(nodes)) return null
+  if (validateSceneNodesForMutation(nodes as FreeformSceneNode[])) return null
+  const guides = 'guides' in value ? normalizeSlideGuides(value.guides, width, height) : []
+  if (!guides) return null
+  return {
+    id,
+    name,
+    width,
+    height,
+    background: cloneSlideBackground(background),
+    nodes: copySceneNodeValues(nodes as FreeformSceneNode[]),
+    ...(guides.length > 0 ? { guides } : {}),
+  }
+}
+
 function applyMutationToSlide(
   document: FreeformDocument,
   slideId: string,
@@ -1435,6 +1459,30 @@ export function reduceFreeformDocument(
             duplicate,
             ...document.slides.slice(index + 1),
           ],
+        }
+      }
+      case 'slide/insert': {
+        if (!Array.isArray(action.slides) || action.slides.length === 0) return document
+        if (action.afterSlideId !== undefined && action.replaceSlideId !== undefined) return document
+        const replacing = action.replaceSlideId !== undefined
+        const anchorId = action.replaceSlideId ?? action.afterSlideId ?? document.activeSlideId
+        const anchor = document.slides.findIndex((slide) => slide.id === anchorId)
+        if (anchor < 0) return document
+        const kept = replacing ? document.slides.filter((_, index) => index !== anchor) : document.slides
+        if (kept.length + action.slides.length > MAX_FREEFORM_SLIDES) return document
+        const ids = new Set(kept.map((slide) => slide.id))
+        const inserted: FreeformSlide[] = []
+        for (const value of action.slides) {
+          const slide = ownedSlide(value)
+          if (!slide || ids.has(slide.id)) return document
+          ids.add(slide.id)
+          inserted.push(slide)
+        }
+        const at = replacing ? anchor : anchor + 1
+        return {
+          ...document,
+          activeSlideId: inserted[0].id,
+          slides: [...kept.slice(0, at), ...inserted, ...kept.slice(at)],
         }
       }
       case 'slide/delete': {

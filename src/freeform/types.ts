@@ -446,6 +446,12 @@ export type FreeformAction =
       patch: Partial<Pick<FreeformSlide, 'name' | 'background'>>
     }
   | { type: 'slide/resize'; slideId: string; width: number; height: number }
+  /**
+   * Put whole pages into the deck (a template's, or ones a client drew), each
+   * checked like a loaded page: after a page (the active one when neither id
+   * is given) or in place of one. The first of them becomes the active page.
+   */
+  | { type: 'slide/insert'; slides: FreeformSlide[]; afterSlideId?: string; replaceSlideId?: string }
   | { type: 'guides/set'; slideId: string; guides: FreeformGuide[] }
   /**
    * Restyle every page at once (restyle.ts): a curated palette or font set,

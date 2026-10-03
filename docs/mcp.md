@@ -19,8 +19,9 @@ list_templates → create_document_from_content / create_document_from_outline�
 | --- | --- |
 | `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台），每个带 `kind`（`deck` 一整套卡片 / `poster` 单页海报）和 `format`（页面尺寸：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240，含宽高）。套图模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么；海报模板另有 `posterCapacity`：副标题、正文、获得者（`recipient`）、按钮、角标、署名、主图位有没有，信息能放几行，有没有表格（`table`，最多几行几列）。按内容和尺寸挑模板。 |
 | `create_document_from_template` | 按模板 id 实例化完整文档：自由画布文档保存在服务端，返回 `documentId` 和各页 id、名称；Markdown 返回源文信封。 |
-| `create_poster_from_content` | 按内容生成一张海报（`kind: 'poster'` 的模板）：`{ title, subtitle?, body?, recipient?, details?: ["时间：…"…], table?: [["节次", "周一"…]…], cta?, tag?, brand?, image? }`，尺寸跟模板走（规则见下文「生成海报」）。 |
-| `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板（规则见下文「生成整套卡片」）。 |
+| `add_template_pages` | 把任意自由画布模板的某几页（`pages`，从 1 起，可重复；不给就全部）加进已有文档：放在 `afterSlideId` 后面（默认最后），或换掉 `replaceSlideId` 那一页；页面保留模板的尺寸和示例文字，返回加进来的页并默认附缩略图（见下文「不同页用不同模板」）。 |
+| `create_poster_from_content` | 按内容生成一张海报（`kind: 'poster'` 的模板）：`{ title, subtitle?, body?, recipient?, details?: ["时间：…"…], table?: [["节次", "周一"…]…], cta?, tag?, brand?, image? }`，尺寸跟模板走（规则见下文「生成海报」）；给 `documentId` 时海报加成那份文档的一页。 |
+| `create_document_from_content` | 按结构化内容生成整套卡片：`{ title, subtitle?, pages: [{ title, body?, points?, quote?, templateId? }], ending? }`，封面 + 每个 page 一页 + 可选结尾页，风格沿用所选自由画布模板，某一页写了 `templateId` 就用那个套图模板的版式（规则见下文「生成整套卡片」）。 |
 | `create_document_from_html` | 把你写的 HTML/CSS 网页转成能逐个修改的自由画布文档：每页一个 `<section>`，色块、文字、图片、SVG 图形读成形状、文字框、图片和图形节点，返回 `documentId`、每页尺寸和 `notes`（转不了、只能近似的地方），默认附缩略图（规则见下文「用网页写法出图」）。 |
 | `create_document_from_outline` | 同上，内容写成 Markdown 大纲（写法见下文）。 |
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
@@ -98,6 +99,7 @@ list_templates → create_document_from_content / create_document_from_outline�
 - 文字放不下时先占用下方或上方的空位（不越过它所在的卡片、不压到别的元素），再缩小字号，最小到原字号的 72%；仍放不下的列在 `summary.overflowing`，请删短或换一个容量大的模板。被缩小的文字列在 `summary.shrunk`。
 - 排成两三行的标题、要点和引文在词的边界上断得一样长（「先把睡眠时间 / 固定下来」，而不是一整行下面挂一个「下来」），不让标点打头，有逗号顿号时优先在它后面断；自己写了换行的照原样。信号模板封面的标题分成上下两段大字，也按两段排出来一样宽来分。
 - 没有给结尾页（`ending`，或大纲里的 `## 结尾：标题`）就不出结尾页。
+- 不同页可以用不同的套图模板：`pages` 里某一项写了 `templateId`，这一页就用那个模板的内页版式；`ending.templateId` 换用那个模板的结尾页。封面和没写的页用整套的 `templateId`，`summary.pages[].templateId` 标出每页的版式来自哪个模板。混用后可以用 `document/restyle` 统一配色和字体。
 
 大纲写法：
 
@@ -114,6 +116,14 @@ list_templates → create_document_from_content / create_document_from_outline�
 ## 结尾：结尾页标题
 - 结尾页的要点
 ```
+
+## 不同页用不同模板
+
+模板可以一页一页加进已有文档，和编辑器模板面板里点一页一样，所以一份文档里每页可以来自不同的模板：
+
+- `add_template_pages`：任意自由画布模板的某几页，`pages` 从 1 起（套图是 1 封面、2 内页、3 结尾，可以重复，比如 `[2, 2]` 加两张内页），不给就整套。默认加在最后，`afterSlideId` 加在某页后面，`replaceSlideId` 换掉某一页（比如一张空白页）。页面保留模板自己的尺寸和示例文字：用 `inspect_document` 找到图层、`apply_actions` 改字，`check_document` 会把没改的示例文字报出来。返回 `added`（每页的 `slideId`、`name`、在文档里是第几页、宽高），默认附上这几页的缩略图。
+- 要按内容直接填好：套图的页用 `create_document_from_content` 每页的 `templateId`（见上文），海报用 `create_poster_from_content` 加上 `documentId`（和 `afterSlideId`），海报保留自己的尺寸，成为那份文档的一页。
+- 底层动作是 `{ type: 'slide/insert', slides, afterSlideId?, replaceSlideId? }`，`apply_actions` 也能直接用来插入自己画好的整页：每页按读取文档的规则校验，页 id 不能和文档里已有的重复，第一页成为当前页。
 
 ## 检查
 

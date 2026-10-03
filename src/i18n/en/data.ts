@@ -219,6 +219,10 @@ export const data: Record<string, Translation> = {
   // History timeline
   '新增页面': 'Add page',
   '复制页面': 'Duplicate page',
+  '插入页面': 'Insert pages',
+  '替换页面': 'Replace page',
+  '套用模板': 'Apply template',
+  '插入模板页': 'Insert template pages',
   '删除页面': 'Delete page',
   '切换页面': 'Switch page',
   '调整页面顺序': 'Reorder pages',

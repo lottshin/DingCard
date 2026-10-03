@@ -39,13 +39,12 @@ import { ToolbarDivider, ToolbarGroup, WorkspaceToolbar } from '../workspaces/Wo
 import type { WorkspaceShellProps } from '../workspaces/types'
 import { useImageLease } from '../workspaces/useImageLease'
 import { useProjectAutosave } from '../workspaces/useProjectAutosave'
-import { FreeformTemplatePreview, TemplateGallery } from '../templates/TemplateGallery'
-import { Measured } from '../app/DocumentPreview'
-import { TEMPLATE_FORMATS } from '../templates/formats'
+import { TemplateGallery } from '../templates/TemplateGallery'
 import { templatesForWorkspace } from '../templates/registry'
 import type { TemplateDefinition } from '../templates/types'
 import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE, PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
 import { collectTextAutoSize } from './textAutoSize'
+import { FreeformTemplatePanel } from './FreeformTemplatePanel'
 import { nextFontSize } from './fontSizeSteps'
 import {
   createFreeformDocument,
@@ -1234,7 +1233,6 @@ export function FreeformWorkspace({
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [galleryTemplateId, setGalleryTemplateId] = useState<string | undefined>(undefined)
   /** The insert panel docked beside the tool rail; one at a time. */
   const [toolDrawer, setToolDrawer] = useState<ToolDrawer | null>(null)
   // The Elements panel gets one stable handler, so editor renders skip its grids.
@@ -5958,6 +5956,23 @@ export function FreeformWorkspace({
     setTitleDirty(true)
   }
 
+  /** A template's pages into the work: in place of the active page while it is empty, else after it. */
+  function insertTemplatePages(template: TemplateDefinition, pages?: readonly number[]) {
+    if (template.workspace !== 'freeform') return
+    const created = template.createFreeform?.()
+    if (!created) return
+    const slides = pages ? pages.flatMap((index) => created.slides[index] ?? []) : created.slides
+    if (slides.length === 0) return
+    const replace = activeSlide.nodes.length === 0
+    const applied = applyAction(
+      replace
+        ? { type: 'slide/insert', slides, replaceSlideId: activeSlide.id }
+        : { type: 'slide/insert', slides, afterSlideId: activeSlide.id },
+      replace ? '套用模板' : '插入模板页',
+    )
+    if (applied) setSelection([])
+  }
+
   function applyFreeformTemplate(template: TemplateDefinition) {
     if (template.workspace !== 'freeform') return
     const document = template.createFreeform?.()
@@ -6445,48 +6460,17 @@ export function FreeformWorkspace({
               className="accent freeform-drawer-upload"
               type="button"
               data-testid="freeform-templates-browse"
-              onClick={() => {
-                setGalleryTemplateId(undefined)
-                setShowTemplates(true)
-              }}
+              onClick={() => setShowTemplates(true)}
             >
               <TemplatesIcon />
               {t('浏览全部模板')}
             </button>
-            {TEMPLATE_FORMATS.map((format) => {
-              const group = FREEFORM_TEMPLATES.filter((template) => template.format === format.id)
-              if (group.length === 0) return null
-              // Landscape sizes take the whole row.
-              const wide = format.width > format.height * 1.2
-              return (
-                <Fragment key={format.id}>
-                  <div className="freeform-drawer-section">{t(format.name)}</div>
-                  <div className="freeform-template-tiles">
-                    {group.map((template) => (
-                      <button
-                        key={template.id}
-                        type="button"
-                        className={`freeform-template-tile${wide ? ' is-wide' : ''}`}
-                        data-testid={`freeform-template-tile-${template.id}`}
-                        aria-label={t('预览{title}', { title: t(template.title) })}
-                        onClick={() => {
-                          setGalleryTemplateId(template.id)
-                          setShowTemplates(true)
-                        }}
-                      >
-                        <Measured className="freeform-template-thumb" style={{ aspectRatio: `${format.width} / ${format.height}` }}>
-                          {(width) => <FreeformTemplatePreview template={template} frame={{ width, height: Math.round((width * format.height) / format.width) }} />}
-                        </Measured>
-                        <span className="freeform-template-tile-title">{t(template.title)}</span>
-                        <span className="freeform-template-tile-meta">
-                          {template.kind === 'poster' ? t(format.ratio) : t('{n} 页', { n: template.pageCount })}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </Fragment>
-              )
-            })}
+            <FreeformTemplatePanel
+              templates={FREEFORM_TEMPLATES}
+              pageSize={activeSlide}
+              room={MAX_FREEFORM_SLIDES - doc.slides.length + (activeSlide.nodes.length === 0 ? 1 : 0)}
+              onInsert={insertTemplatePages}
+            />
           </aside>
         )}
 
@@ -8451,8 +8435,11 @@ export function FreeformWorkspace({
         hasCurrentContent={draftId !== null || history.past.length > 0 || doc.slides.length > 1 || doc.slides.some((slide) => slide.nodes.length > 0)}
         currentIsSaved={ownerId !== null && !unsaved}
         onClose={() => setShowTemplates(false)}
-        initialTemplateId={galleryTemplateId}
         onApply={applyFreeformTemplate}
+        onInsert={(template) => {
+          insertTemplatePages(template)
+          setShowTemplates(false)
+        }}
       />
 
       {showMixedSizeWarning && (

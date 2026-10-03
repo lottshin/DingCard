@@ -5,6 +5,7 @@ import {
   posterTemplateIds,
   instantiateTemplate,
   listTemplates,
+  templatePages,
 } from './templates'
 
 describe('listTemplates', () => {
@@ -90,5 +91,29 @@ describe('instantiateTemplate', () => {
 
   test('unknown template ids fail with the available list', () => {
     expect(() => instantiateTemplate('nope-freeform')).toThrow(/可用模板/)
+  })
+})
+
+describe('templatePages', () => {
+  test('gives a template\'s pages by number, each a fresh copy', () => {
+    const all = templatePages('editorial-freeform')
+    if (!all.ok) throw new Error(all.error)
+    expect(all.slides.map((slide) => slide.name)).toEqual(['封面', '内页', '结尾'])
+
+    const picked = templatePages('editorial-freeform', [2, 2, 3])
+    if (!picked.ok) throw new Error(picked.error)
+    expect(picked.slides.map((slide) => slide.name)).toEqual(['内页', '内页', '结尾'])
+    // The same page twice: two pages, no id shared between them.
+    expect(new Set(picked.slides.map((slide) => slide.id)).size).toBe(3)
+    expect(picked.slides[0].nodes[0].id).not.toBe(picked.slides[1].nodes[0].id)
+
+    const poster = templatePages('talk-poster-freeform')
+    expect(poster.ok && poster.slides.map((slide) => [slide.width, slide.height])).toEqual([[1080, 1920]])
+  })
+
+  test('says what it cannot give', () => {
+    expect(templatePages('editorial-freeform', [4])).toMatchObject({ ok: false, error: expect.stringContaining('只有 3 页') })
+    expect(templatePages('nope')).toMatchObject({ ok: false, error: expect.stringContaining('未知模板') })
+    expect(templatePages('editorial-archive-markdown')).toMatchObject({ ok: false, error: expect.stringContaining('Markdown') })
   })
 })
