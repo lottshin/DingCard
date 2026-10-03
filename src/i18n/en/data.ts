@@ -264,6 +264,7 @@ export const data: Record<string, Translation> = {
   '图片上传未返回有效地址': 'The upload did not return a usable address',
   '本地草稿内容无效': 'The local draft content is invalid',
   '本地草稿保存结果无效': 'Saving the local draft returned an invalid result',
+  '浏览器存储空间不足，删掉一些图片或项目后再试': 'The browser is out of storage. Delete some pictures or projects and try again.',
   '网络请求失败，请检查网络后重试': 'The network request failed. Check your connection and try again.',
   '服务器返回了无效响应': 'The server sent an invalid response',
   '认证请求已失效': 'The sign-in request is no longer valid',

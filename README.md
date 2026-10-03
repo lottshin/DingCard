@@ -160,7 +160,7 @@ npm run preview
 
 ### 本地模式
 
-本地模式是默认配置。账号和草稿保存在 `localStorage`，图片由 `sessionStorage` 和草稿副本管理。
+本地模式是默认配置。账号和草稿保存在 `localStorage`，草稿里的大图存在 IndexedDB（`dingcard.pictures`），草稿只记引用；编辑中刚插入的图片也暂存在 `sessionStorage`。
 
 - 不需要服务器，克隆后即可运行。
 - 数据只存在当前浏览器，清理浏览器数据会删除本地内容。

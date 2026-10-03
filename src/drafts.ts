@@ -2,6 +2,8 @@
 //
 // Drafts are namespaced by user id so two accounts in the same browser don't
 // see each other's work. This is client-only and does not sync across devices.
+// What is written can be packed first: the local store swaps big pictures for
+// refs to IndexedDB (storage/localPictures.ts), which these functions never read.
 
 import { normalizeFreeformDocument } from './freeform/sceneDocument'
 import type { FreeformDocument } from './freeform/types'
@@ -216,9 +218,22 @@ export function listDrafts(userId: string): Draft[] {
   }
 }
 
-function writeAll(userId: string, drafts: Draft[]) {
+/** How a draft is written down; unpacked drafts are stored as they are. */
+export type DraftPacker = (draft: Draft) => Draft
+
+function writeAll(userId: string, drafts: Draft[], pack?: DraftPacker) {
   if (drafts.length === 0) localStorage.removeItem(keyFor(userId))
-  else localStorage.setItem(keyFor(userId), JSON.stringify(drafts))
+  else localStorage.setItem(keyFor(userId), JSON.stringify(pack ? drafts.map(pack) : drafts))
+}
+
+/** Every account's drafts on this device exactly as stored, for finding what they still name. */
+export function storedDraftLists(): string[] {
+  const lists: string[] = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (key?.startsWith(KEY_PREFIX)) lists.push(localStorage.getItem(key) ?? '')
+  }
+  return lists
 }
 
 /** Derive a human title from the first non-empty line of the source. */
@@ -246,7 +261,7 @@ function deriveTitle(data: SaveDraftInput): string {
  * overwritten in place; otherwise a new draft is created. Returns the saved
  * draft (with a fresh id/timestamp/title filled in).
  */
-export function saveDraft(userId: string, data: SaveDraftInput): Draft {
+export function saveDraft(userId: string, data: SaveDraftInput, pack?: DraftPacker): Draft {
   const normalized = normalizeDraftForWrite(data)
   if (!normalized) throw new Error('草稿内容无效')
   data = normalized
@@ -278,14 +293,15 @@ export function saveDraft(userId: string, data: SaveDraftInput): Draft {
   if (idx >= 0) drafts[idx] = draft
   else drafts.push(draft)
 
-  writeAll(userId, drafts)
+  writeAll(userId, drafts, pack)
   return draft
 }
 
-export function deleteDraft(userId: string, id: string) {
+export function deleteDraft(userId: string, id: string, pack?: DraftPacker) {
   writeAll(
     userId,
     listDrafts(userId).filter((d) => d.id !== id),
+    pack,
   )
 }
 

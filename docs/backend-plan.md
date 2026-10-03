@@ -23,7 +23,7 @@
 |---|---|---|
 | 账号/密码/登录态 | `localStorage`,SHA-256(非加盐) | `src/storage/local.ts` 包装 `src/auth.ts` |
 | 草稿 | `localStorage`,按 userId 分区 | `src/storage/local.ts` 包装 `src/drafts.ts` |
-| 草稿内图片 | 编辑时可用会话级 `img:` 引用；保存副本物化为 Data URL | `src/storage/local.ts` 包装 `src/drafts.ts` + `src/imageStore.ts` |
+| 草稿内图片 | 编辑时可用会话级 `img:` 引用；保存时大于 4 KB 的图片存进 IndexedDB（`dingcard.pictures`，按内容哈希去重），草稿里只记 `picture:<key>`，读取时还原成 Data URL；IndexedDB 不可用时照旧内嵌 | `src/storage/local.ts` + `src/storage/localPictures.ts` |
 | 会话图片缓存 | `sessionStorage` | `src/storage/local.ts` 包装 `src/imageStore.ts` |
 
 `src/storage/types.ts` 定义统一异步契约，UI 只依赖 `store`。LocalStore 包装 `auth.ts` / `drafts.ts` / `imageStore.ts`，RemoteStore 通过 HTTP 调后端；切换模式不会自动把已有 localStorage 草稿或图片上传到服务器，需要用户显式导入。
@@ -206,6 +206,7 @@ DELETE /api/assets/:id    → { ok: true }
 | `src/storage/local.ts` | 包装现有 `auth.ts` / `drafts.ts` / `imageStore.ts`，保留浏览器本地数据与兼容逻辑。 |
 | `src/storage/remote.ts` | 封装 fetch、JWT、条件认证失效、草稿归一化、图片上传与 `/api/images/retain`、素材库 `/api/assets`；远程图片返回真实 URL。 |
 | `src/storage/localAssets.ts` | 本地素材库：IndexedDB 存储，按用户隔离，格式与尺寸校验和服务端一致。 |
+| `src/storage/localPictures.ts` | 本地草稿的图片：IndexedDB 存储，草稿写入时把已存好的大图换成 `picture:` 引用、读出时换回；每次写入重新盖戳并补回缺失的图片，清理只删没有草稿引用、一小时内没被写入盖过戳的图片。 |
 | `src/storage/index.ts` | 模块加载时读取 `VITE_API_BASE`，只在这里选择 LocalStore 或 RemoteStore。 |
 
 设计上刻意让**接口形状一致**，两套实现对 UI 基本无感。`AuthStore.onInvalidated` 在 LocalStore 中是空订阅，在 RemoteStore 中只对符合条件的受保护请求 401 发出通知；显式退出和较新的注册/登录请求还会使较早的成功响应失效，避免迟到响应恢复或覆盖会话。`ImageStore.retain` 在 LocalStore 中立即成功；RemoteStore 过滤空值、Data URL、`img:` 和外部 origin，把同源根路径候选交给服务端，由服务端按实际 `UPLOADS_PUBLIC_PATH` 判定托管图片，因此自定义 `/media/...` 前缀也不会被客户端静默漏掉。模式切换只改变之后的读写目标，**不会自动迁移**已有 localStorage 账号、草稿或图片；需要迁移时必须提供显式导入流程。

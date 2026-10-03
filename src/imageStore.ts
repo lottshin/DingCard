@@ -9,8 +9,8 @@
 // back to the real data URL at display/export time.
 //
 // Persisted to sessionStorage so a page reload within the session keeps the
-// images. Drafts saved to localStorage embed their own referenced images (see
-// drafts.ts) so they survive across sessions.
+// images. Saved drafts carry their own copy of every referenced image (kept in
+// IndexedDB by storage/localPictures.ts) so they survive across sessions.
 
 const KEY = 'slicer.images.v1'
 const PREFIX = 'img:'
@@ -86,8 +86,8 @@ export function collectImages(source: string): Record<string, string> {
  * Only images that actually paint with transparency stay PNG; opaque ones —
  * screenshots, photos — become JPEG at high quality, which is dramatically
  * smaller. Sniffing the format instead of the pixels kept opaque PNG
- * screenshots at 5-10x their needed size, and drafts embed their images, so
- * a handful of them filled local storage.
+ * screenshots at 5-10x their needed size, and every saved draft keeps a copy
+ * of its images in the browser.
  */
 export function downscaleDataUrl(dataUrl: string, maxEdge = 1200): Promise<string> {
   return new Promise((resolve) => {
@@ -114,7 +114,7 @@ export function downscaleDataUrl(dataUrl: string, maxEdge = 1200): Promise<strin
       ctx.drawImage(img, 0, 0, w, h)
       // A full alpha scan tells PNGs with real transparency apart from opaque
       // screenshots; JPEG q0.9 is near-lossless for the latter and a fraction
-      // of the bytes, which is what the embedded-in-draft storage cares about.
+      // of the bytes, which is what the stored copies care about.
       const transparent = isPngWithPaintedTransparency(ctx, w, h)
       const out = transparent
         ? canvas.toDataURL('image/png')

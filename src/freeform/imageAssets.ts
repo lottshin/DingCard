@@ -62,12 +62,24 @@ export function collectFreeformImageSources(document: FreeformDocument): string[
   return [...sources]
 }
 
+/** A recursively owned clone with every picture source, page backgrounds included, passed through `sourceFor`. */
+export function mapFreeformImageSources(
+  document: FreeformDocument,
+  sourceFor: (src: string) => string,
+): FreeformDocument {
+  const mapped = mapFreeformDocumentLeaves(document, (leaf) => {
+    const source = imageSource(leaf)
+    return source === undefined ? leaf : cloneLeafWithSource(leaf, sourceFor(source))
+  })
+  return withBackgroundSources(mapped, sourceFor)
+}
+
 /** Materialize local refs in a recursively owned document clone. */
 export function materializeLocalFreeformImages(
   document: FreeformDocument,
   images: Pick<ImageStore, 'isRef' | 'resolve'>,
 ): FreeformDocument {
-  const materialize = (source: string) => {
+  return mapFreeformImageSources(document, (source) => {
     if (!images.isRef(source)) return source
     let resolved = ''
     try {
@@ -77,13 +89,7 @@ export function materializeLocalFreeformImages(
     }
     if (!resolved) throw new Error(`本地图片引用无法解析：${source}`)
     return resolved
-  }
-  const mapped = mapFreeformDocumentLeaves(document, (leaf) => {
-    const source = imageSource(leaf)
-    if (source === undefined || !images.isRef(source)) return leaf
-    return cloneLeafWithSource(leaf, materialize(source))
   })
-  return withBackgroundSources(mapped, materialize)
 }
 
 /** Upload inline images recursively; no partially mapped document is exposed. */
