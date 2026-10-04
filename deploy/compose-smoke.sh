@@ -231,6 +231,25 @@ if [ -n "$imgurl" ]; then
   [ "$image_code" = 200 ] && pass "Fastify served the upload directly" || fail "uploaded image" "HTTP $image_code"
 fi
 
+echo "=== deck render (server-side, the image's Chromium) ==="
+# deploy/smoke-deck.json is a one-page freeform document. If the document
+# schema ever rejects it, regenerate with the mcp outline creator:
+# createDocumentFromOutline('# 冒烟\n\n## 第一页\n\n- 你好容器', 'editorial-freeform').
+SMOKE_DIR="$(cd "$(dirname "$0")" && pwd)"
+deck_body=$(node -e "const fs=require('fs');const document=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));process.stdout.write(JSON.stringify({document,title:'容器渲染',expiresInHours:6}))" "$SMOKE_DIR/smoke-deck.json")
+deck=$(curl -sS --connect-timeout 5 --max-time 180 -X POST "$base/api/decks" -H 'content-type: application/json' \
+  -H "authorization: Bearer $token" -d "$deck_body")
+deck_url=$(printf '%s' "$deck" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{process.stdout.write(JSON.parse(s).share.url||'')}catch{}})")
+if [ -n "$deck_url" ]; then
+  pass "deck rendered and shared at $deck_url"
+else
+  fail "deck render" "$deck"
+fi
+if [ -n "$deck_url" ]; then
+  deck_page_code=$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "$base$deck_url")
+  [ "$deck_page_code" = 200 ] && pass "deck share page is public" || fail "deck share page" "HTTP $deck_page_code"
+fi
+
 echo "=== app maxUploadBytes ==="
 docker exec "$APP_ID" node -e "import('./src/config.js').then(m=>console.log(m.config.maxUploadBytes))" 2>&1 | tail -1
 

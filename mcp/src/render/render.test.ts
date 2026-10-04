@@ -2,10 +2,12 @@
 // files with dimensions matching the slide. Slow (may build the frontend once
 // and launches a real browser); run via `npm run test:render`.
 
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { inflateSync as zlib_inflateSync } from 'node:zlib'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
@@ -1031,4 +1033,102 @@ describe('importHtml', () => {
   test('refuses an empty page without a browser', async () => {
     expect(await importHtml('   ')).toMatchObject({ ok: false })
   })
+})
+
+// The server route turns the pipeline into an agent-facing API: document JSON
+// in, stored pages plus a public share link out. This drives a real server
+// process, so it needs the mcp render library built (npm --prefix mcp run
+// build) and a system Chrome, exactly like the tests above.
+describe('server deck route', () => {
+  test(
+    'POST /api/decks renders a document and shares it in one request',
+    async () => {
+      const instantiation = instantiateTemplate('editorial-freeform')
+      if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
+      const document = instantiation.document
+
+      const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../server')
+      const dataDir = mkdtempSync(path.join(tmpdir(), 'dingcard-decks-e2e-'))
+      const port = 3998
+      const base = `http://127.0.0.1:${port}`
+      const server = spawn(process.execPath, ['src/index.js'], {
+        cwd: serverDir,
+        env: {
+          ...process.env,
+          NODE_ENV: 'production',
+          JWT_SECRET: 'decks-e2e-secret-not-for-prod',
+          DATA_DIR: dataDir,
+          PORT: String(port),
+          HOST: '127.0.0.1',
+          USER_QUOTA_BYTES: '100000000',
+          MAX_UPLOAD_BYTES: '10485760',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      let serverOutput = ''
+      server.stdout?.on('data', (chunk) => { serverOutput += String(chunk) })
+      server.stderr?.on('data', (chunk) => { serverOutput += String(chunk) })
+      try {
+        let healthy = false
+        for (let i = 0; i < 150 && !healthy; i++) {
+          healthy = await fetch(`${base}/api/health`).then((r) => r.ok).catch(() => false)
+          if (!healthy) await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+        expect(healthy, serverOutput).toBe(true)
+
+        const register = await fetch(`${base}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ username: 'deck-e2e', password: 'deck-e2e-1234' }),
+        })
+        const registerBody = await register.text()
+        expect(register.status, registerBody).toBe(200)
+        const { token } = JSON.parse(registerBody)
+        expect(typeof token).toBe('string')
+
+        const started = Date.now()
+        const response = await fetch(`${base}/api/decks`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ document, title: '服务端渲染', expiresInHours: 6 }),
+        })
+        const decksBody = await response.text()
+        expect(response.status, `${serverOutput}\n${decksBody}`).toBe(200)
+        const body = JSON.parse(decksBody)
+        expect(body.images).toHaveLength(3)
+        expect(body.share.title).toBe('服务端渲染')
+        expect(body.share.imageCount).toBe(3)
+        expect(body.share.url).toMatch(/^\/share\/[A-Za-z0-9_-]+$/)
+        expect(body.share.expiresAt).toBeGreaterThan(started + 5 * 60 * 60 * 1000)
+        expect(body.share.expiresAt).toBeLessThan(Date.now() + 7 * 60 * 60 * 1000)
+
+        for (const image of body.images as string[]) {
+          expect(image).toMatch(/^\/uploads\/[0-9a-f]+\.png$/)
+          const page = await fetch(`${base}${image}`)
+          expect(page.status).toBe(200)
+          expect(page.headers.get('content-type')).toBe('image/png')
+          const png = Buffer.from(await page.arrayBuffer())
+          expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+          expect(pngIhdr(png)).toEqual({ width: 1080, height: 1440 })
+        }
+
+        const shared = await fetch(`${base}${body.share.url}`)
+        expect(shared.status).toBe(200)
+        const html = await shared.text()
+        expect(html).toContain('长按图片保存到相册')
+        expect(html).toContain(body.images[0])
+      } finally {
+        server.kill('SIGTERM')
+        await new Promise((resolve) => {
+          const timer = setTimeout(() => server.kill('SIGKILL'), 5000)
+          server.once('exit', () => {
+            clearTimeout(timer)
+            resolve(undefined)
+          })
+        })
+        rmSync(dataDir, { recursive: true, force: true })
+      }
+    },
+    420_000,
+  )
 })

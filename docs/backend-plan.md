@@ -210,6 +210,15 @@ GET    /share/:token      → 公开 HTML 页(无需登录)
 - GC 把 `share_images.image_path` 和草稿、素材的引用同样对待：分享行存在，页面图片就不回收。
 - 本地模式没有这组接口，编辑器里也不显示「分享链接」入口。
 
+### 服务端渲染整卡（agent 入口）
+```
+POST   /api/decks   { document, title?, expiresInHours? }  →  { images: string[], share: Share }
+```
+- 一步到位的 agent 接口：把自由画布文档 JSON（MCP `create_document_*` 生成的那种，v1–v20）直接 POST 进来，服务端用与编辑器导出、MCP 渲染同一条无头管线逐页渲染成 PNG，按 `POST /api/images` 的同一套规则落盘（配额、租约、GC 保护），再建好分享，返回图片路径和 `Share`。调用方不需要浏览器。
+- `document` 必须是带非空 `slides` 的文档 JSON，最多 50 页；`title` 缺省「叮卡分享」，`expiresInHours` 同分享（1–720，缺省 24）。请求体上限 8 MB。
+- 渲染需要服务端所在机器有 Chrome/Chromium（Docker 镜像内置 Chromium 与 CJK 字体）；没有可用浏览器或渲染失败返回 503 + `DECK_RENDER_FAILED`（信息里带原因）。渲染逐个排队（每进程同时一个浏览器），图片配额不足返回 413 + `IMAGE_QUOTA_EXCEEDED`。
+- 渲染库是 `mcp` 包构建出的 `mcp/dist/render.mjs`（`DINGCARD_DIST_DIR` 指向前端 dist；`DINGCARD_CHROME_PATH` 可指定浏览器路径），服务端路由第一次用到时才懒加载。
+
 ### 状态码约定
 
 | 状态码 | 稳定语义 |

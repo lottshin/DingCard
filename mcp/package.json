@@ -23,12 +23,13 @@
   },
   "files": [
     "dist/index.mjs",
+    "dist/render.mjs",
     "dist/app",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --external:@modelcontextprotocol/sdk --external:playwright-core --external:zod --banner:js='#!/usr/bin/env node'",
+    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --external:@modelcontextprotocol/sdk --external:playwright-core --external:zod --banner:js='#!/usr/bin/env node' && esbuild src/render/renderer.ts --bundle --platform=node --format=esm --outfile=dist/render.mjs --external:playwright-core",
     "start": "node dist/index.mjs",
     "test": "vitest run --config vitest.config.ts",
     "test:render": "vitest run --config vitest.render.config.ts",
