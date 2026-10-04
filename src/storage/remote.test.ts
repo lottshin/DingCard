@@ -1204,7 +1204,7 @@ describe('RemoteStore share links', () => {
     expect(created).toEqual({
       title: '一周早餐',
       urls: ['/uploads/page-1.png', `${API_BASE}/uploads/page-2.jpg`],
-      expiresInDays: 7,
+      expiresInHours: 7,
     })
     expect(share).toEqual({
       id: 'share-1',

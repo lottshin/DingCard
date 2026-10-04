@@ -109,7 +109,7 @@ test('POST creates a share from owned same-origin uploads', async (t) => {
     payload: {
       title: '  一周  早餐 ',
       urls: ['/uploads/page-1.png', 'http://host.example/uploads/page-2.jpg'],
-      expiresInDays: 7,
+      expiresInHours: 7,
     },
     headers: { host: 'host.example' },
   })
@@ -122,19 +122,19 @@ test('POST creates a share from owned same-origin uploads', async (t) => {
   assert.equal(created.length, 1)
   assert.equal(created[0].row.token, 'a-token')
   assert.equal(created[0].row.title, '一周 早餐')
-  assert.equal(created[0].row.expires_at, 1_000 + 7 * 24 * 60 * 60 * 1000)
+  assert.equal(created[0].row.expires_at, 1_000 + 7 * 60 * 60 * 1000)
   assert.deepEqual(created[0].imagePaths, ['/uploads/page-1.png', '/uploads/page-2.jpg'])
   assert.deepEqual(response.json(), {
     id: created[0].row.id,
     title: '一周 早餐',
     url: '/share/a-token',
     createdAt: 1_000,
-    expiresAt: 1_000 + 7 * 24 * 60 * 60 * 1000,
+    expiresAt: 1_000 + 7 * 60 * 60 * 1000,
     imageCount: 2,
   })
 })
 
-test('POST defaults the expiry to 30 days and rejects bad input', async (t) => {
+test('POST defaults the expiry to 24 hours and rejects bad input', async (t) => {
   const created = []
   const app = await buildApp(t, {
     stmts: shareStatements({
@@ -153,7 +153,7 @@ test('POST defaults the expiry to 30 days and rejects bad input', async (t) => {
     payload: { title: '早餐', urls: ['/uploads/page-1.png'] },
   })
   assert.equal(ok.statusCode, 200)
-  assert.equal(created[0].row.expires_at, 1_000 + 30 * 24 * 60 * 60 * 1000)
+  assert.equal(created[0].row.expires_at, 1_000 + 24 * 60 * 60 * 1000)
 
   const badTitle = await app.inject({
     method: 'POST', url: '/api/shares', payload: { title: '  ', urls: ['/uploads/a.png'] },
@@ -162,7 +162,7 @@ test('POST defaults the expiry to 30 days and rejects bad input', async (t) => {
 
   const badDays = await app.inject({
     method: 'POST', url: '/api/shares',
-    payload: { title: '早餐', urls: ['/uploads/a.png'], expiresInDays: 0 },
+    payload: { title: '早餐', urls: ['/uploads/a.png'], expiresInHours: 0 },
   })
   assert.equal(badDays.statusCode, 400)
 

@@ -523,15 +523,15 @@ test.describe('remote backend integration', () => {
     await expect(dialog).toBeVisible()
     await expect(page.getByTestId('share-qr')).toHaveCount(0)
 
-    // Custom days are checked client-side: an out-of-range value keeps the button off.
+    // Custom hours are checked client-side: an out-of-range value keeps the button off.
     await dialog.getByTestId('share-expiry-custom').click()
-    await dialog.getByTestId('share-expiry-days').fill('400')
+    await dialog.getByTestId('share-expiry-hours').fill('800')
     await expect(dialog.getByTestId('share-create')).toBeDisabled()
-    await dialog.getByTestId('share-expiry-days').fill('100')
+    await dialog.getByTestId('share-expiry-hours').fill('48')
     await expect(dialog.getByTestId('share-create')).toBeEnabled()
 
-    // A preset wins over the custom value; 90 days is what gets created below.
-    await dialog.getByTestId('share-expiry-90').click()
+    // A preset wins over the custom value; 7 days is what gets created below.
+    await dialog.getByTestId('share-expiry-168h').click()
     await dialog.getByTestId('share-create').click()
 
     // The dialog carries the QR code and the absolute page link.
@@ -554,8 +554,8 @@ test.describe('remote backend integration', () => {
     const shares = await list.json() as Array<{ createdAt: number; expiresAt: number }>
     expect(shares).toHaveLength(1)
     const lifetimeMs = shares[0].expiresAt - shares[0].createdAt
-    expect(lifetimeMs).toBeGreaterThanOrEqual(89 * 24 * 60 * 60 * 1000)
-    expect(lifetimeMs).toBeLessThanOrEqual(91 * 24 * 60 * 60 * 1000)
+    expect(lifetimeMs).toBeGreaterThanOrEqual(167 * 60 * 60 * 1000)
+    expect(lifetimeMs).toBeLessThanOrEqual(169 * 60 * 60 * 1000)
 
     await page.getByTestId('share-revoke').click()
     await expect(dialog).toHaveCount(0)

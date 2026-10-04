@@ -15,8 +15,9 @@ import { requestManagedImagePath } from './images.js'
 
 const NAME_MAX = 60
 const MAX_IMAGES = 50
-const DEFAULT_EXPIRES_IN_DAYS = 30
-const EXPIRES_MAX_DAYS = 365
+const DEFAULT_EXPIRES_IN_HOURS = 24
+// A month of hours: the longest a link may stay open.
+const EXPIRES_MAX_HOURS = 24 * 30
 
 // DB row (snake_case) -> API envelope. `url` is the public share page path.
 function toShare(row) {
@@ -36,9 +37,9 @@ function shareTitle(value) {
   return title === '' ? null : title
 }
 
-function expiresInDays(value) {
-  if (value === undefined || value === null) return DEFAULT_EXPIRES_IN_DAYS
-  if (!Number.isInteger(value) || value < 1 || value > EXPIRES_MAX_DAYS) return null
+function expiresInHours(value) {
+  if (value === undefined || value === null) return DEFAULT_EXPIRES_IN_HOURS
+  if (!Number.isInteger(value) || value < 1 || value > EXPIRES_MAX_HOURS) return null
   return value
 }
 
@@ -68,14 +69,14 @@ export default async function shareRoutes(fastify, options = {}) {
     return routeStmts.listShares.all(request.user.sub).map(toShare)
   })
 
-  // POST /api/shares  { urls, title, expiresInDays? } -> Share
+  // POST /api/shares  { urls, title, expiresInHours? } -> Share
   fastify.post('/', async (request, reply) => {
     const body = request.body ?? {}
     const title = shareTitle(body.title)
     if (!title) return reply.code(400).send({ error: '分享名称不能为空' })
-    const days = expiresInDays(body.expiresInDays)
-    if (!days) {
-      return reply.code(400).send({ error: '有效期必须是 1–365 之间的整数天' })
+    const hours = expiresInHours(body.expiresInHours)
+    if (!hours) {
+      return reply.code(400).send({ error: '有效期必须是 1–720 之间的整数小时' })
     }
     if (!Array.isArray(body.urls) || body.urls.length === 0) {
       return reply.code(400).send({ error: 'urls 必须是至少一张图片的数组' })
@@ -112,7 +113,7 @@ export default async function shareRoutes(fastify, options = {}) {
         token: '',
         title,
         created_at: createdAt,
-        expires_at: createdAt + days * 24 * 60 * 60 * 1000,
+        expires_at: createdAt + hours * 60 * 60 * 1000,
       }
       // A token collision fails the UNIQUE constraint; retry with a fresh one.
       for (let attempt = 0; ; attempt++) {

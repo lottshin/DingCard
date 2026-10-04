@@ -2,9 +2,15 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { locale, t } from '../i18n'
 import type { Share } from '../storage'
 
-/** Offered lifetimes, in days; the largest is the most the server accepts. */
-const EXPIRY_PRESETS = [7, 30, 90, 365] as const
-const EXPIRY_MAX_DAYS = 365
+/** Offered lifetimes in hours; a month is the most the server accepts. */
+const EXPIRY_PRESETS = [
+  { hours: 1, label: '1 小时' },
+  { hours: 6, label: '6 小时' },
+  { hours: 24, label: '1 天' },
+  { hours: 168, label: '7 天' },
+  { hours: 720, label: '30 天' },
+] as const
+const EXPIRES_MAX_HOURS = 24 * 30
 
 interface FreeformShareDialogProps {
   /** The created share, or null while the dialog only offers the lifetime. */
@@ -19,7 +25,7 @@ interface FreeformShareDialogProps {
   revoking: boolean
   /** Why the last creation failed, if it did; shown inside the dialog. */
   error: string | null
-  onCreate: (expiresInDays: number) => void
+  onCreate: (expiresInHours: number) => void
   onRevoke: () => void
   onClose: () => void
 }
@@ -44,8 +50,8 @@ export function FreeformShareDialog({
   onClose,
 }: FreeformShareDialogProps) {
   const titleId = useId()
-  const [preset, setPreset] = useState<number | 'custom'>(30)
-  const [customDays, setCustomDays] = useState('30')
+  const [preset, setPreset] = useState<number | 'custom'>(24)
+  const [customHours, setCustomHours] = useState('24')
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const copyRef = useRef<HTMLButtonElement>(null)
@@ -92,8 +98,8 @@ export function FreeformShareDialog({
     }
   }
 
-  const parsedDays = preset === 'custom' ? Number(customDays) : preset
-  const daysValid = Number.isInteger(parsedDays) && parsedDays >= 1 && parsedDays <= EXPIRY_MAX_DAYS
+  const parsedHours = preset === 'custom' ? Number(customHours) : preset
+  const hoursValid = Number.isInteger(parsedHours) && parsedHours >= 1 && parsedHours <= EXPIRES_MAX_HOURS
   const expiry = share ? formatExpiry(share.expiresAt) : ''
 
   return (
@@ -160,17 +166,17 @@ export function FreeformShareDialog({
             <div className="share-expiry-row">
               <span className="field-label">{t('有效期')}</span>
               <div className="seg stretch">
-                {EXPIRY_PRESETS.map((days) => (
+                {EXPIRY_PRESETS.map(({ hours, label }) => (
                   <button
-                    key={days}
+                    key={hours}
                     type="button"
-                    className={preset === days ? 'seg-btn on' : 'seg-btn'}
-                    aria-pressed={preset === days}
-                    data-testid={`share-expiry-${days}`}
+                    className={preset === hours ? 'seg-btn on' : 'seg-btn'}
+                    aria-pressed={preset === hours}
+                    data-testid={`share-expiry-${hours}h`}
                     disabled={creating}
-                    onClick={() => setPreset(days)}
+                    onClick={() => setPreset(hours)}
                   >
-                    {t('{n} 天', { n: days })}
+                    {t(label)}
                   </button>
                 ))}
                 <button
@@ -189,18 +195,18 @@ export function FreeformShareDialog({
               <div className="share-days-row">
                 <input
                   className="share-days-input"
-                  data-testid="share-expiry-days"
+                  data-testid="share-expiry-hours"
                   type="number"
                   min={1}
-                  max={EXPIRY_MAX_DAYS}
+                  max={EXPIRES_MAX_HOURS}
                   step={1}
-                  value={customDays}
+                  value={customHours}
                   disabled={creating}
-                  aria-label={t('自定义天数')}
-                  onChange={(event) => setCustomDays(event.currentTarget.value)}
+                  aria-label={t('自定义小时数')}
+                  onChange={(event) => setCustomHours(event.currentTarget.value)}
                 />
-                <span className="share-days-suffix">{t('天')}</span>
-                {!daysValid && <span className="share-days-hint">{t('最长 {n} 天', { n: EXPIRY_MAX_DAYS })}</span>}
+                <span className="share-days-suffix">{t('小时')}</span>
+                {!hoursValid && <span className="share-days-hint">{t('最长 {h} 小时（{d} 天）', { h: EXPIRES_MAX_HOURS, d: EXPIRES_MAX_HOURS / 24 })}</span>}
               </div>
             )}
             {error && <p className="share-error" role="alert">{error}</p>}
@@ -216,8 +222,8 @@ export function FreeformShareDialog({
                 className="accent"
                 type="button"
                 data-testid="share-create"
-                disabled={creating || slideCount === 0 || !daysValid}
-                onClick={() => onCreate(parsedDays)}
+                disabled={creating || slideCount === 0 || !hoursValid}
+                onClick={() => onCreate(parsedHours)}
               >
                 {creating ? t('正在生成…') : t('生成链接')}
               </button>

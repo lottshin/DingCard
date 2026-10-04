@@ -358,13 +358,13 @@ export function createRemoteStore(apiBase: string): Storage {
       if (!Array.isArray(data)) throw new ApiError('服务器返回了无效分享列表', status)
       return data.map(toShare).filter((share): share is Share => share !== null)
     },
-    async create(_userId, title, imageUrls, expiresInDays) {
+    async create(_userId, title, imageUrls, expiresInHours) {
       const { data, status } = await api<unknown>('/api/shares', {
         method: 'POST',
         body: JSON.stringify({
           title,
           urls: imageUrls,
-          ...(expiresInDays ? { expiresInDays } : {}),
+          ...(expiresInHours ? { expiresInHours } : {}),
         }),
       })
       const share = toShare(data)

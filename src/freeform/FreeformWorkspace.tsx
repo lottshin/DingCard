@@ -5837,7 +5837,7 @@ export function FreeformWorkspace({
   }
 
   /** Render every page, upload it, and put the whole deck behind one share link. */
-  async function shareDeck(expiresInDays: number) {
+  async function shareDeck(expiresInHours: number) {
     if (doc.slides.length === 0 || renderScale === null) return
     if (blockDocumentMutationDuringInteraction()) return
     const owner = ownerId ?? GUEST_OWNER_ID
@@ -5871,7 +5871,7 @@ export function FreeformWorkspace({
         urls.push(await storage.images.put(sized))
       }
       if (urls.length === 0) throw new Error(t('分享创建失败，请稍后重试'))
-      setShareResult(await storage.shares.create(owner, projectTitleRef.current, urls, expiresInDays))
+      setShareResult(await storage.shares.create(owner, projectTitleRef.current, urls, expiresInHours))
     } catch {
       // The share dialog is up; the failure has to show inside it, not behind the modal.
       setShareError(t('分享创建失败，请稍后重试'))
@@ -6414,7 +6414,7 @@ export function FreeformWorkspace({
           slideCount={doc.slides.length}
           revoking={shareRevoking}
           error={shareError}
-          onCreate={(expiresInDays) => void shareDeck(expiresInDays)}
+          onCreate={(expiresInHours) => void shareDeck(expiresInHours)}
           onRevoke={() => shareResult && void revokeShare(shareResult)}
           onClose={() => {
             if (exporting) return

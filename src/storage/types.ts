@@ -83,8 +83,8 @@ export interface Share {
 export interface ShareStore {
   /** Newest first. */
   list(userId: string): Promise<Share[]>
-  /** `imageUrls` are managed upload URLs the caller owns. */
-  create(userId: string, title: string, imageUrls: readonly string[], expiresInDays?: number): Promise<Share>
+  /** `imageUrls` are managed upload URLs the caller owns; `expiresInHours` defaults to 24. */
+  create(userId: string, title: string, imageUrls: readonly string[], expiresInHours?: number): Promise<Share>
   /** Idempotent: revoking a missing share resolves. */
   revoke(userId: string, id: string): Promise<void>
 }
