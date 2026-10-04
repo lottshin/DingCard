@@ -280,8 +280,11 @@ async function registerUser(page: import('@playwright/test').Page, username: str
   // The register request is still in flight when the click returns. Wait for
   // the session before acting as the new user: an import that races the login
   // saves into the guest's local store while the follow-up open reads the
-  // account's and reports the project as missing.
-  await expect(page.getByTestId('account-menu')).toBeVisible()
+  // account's and reports the project as missing. With guest work on the
+  // canvas the login is held behind the guest-move offer instead.
+  await expect(
+    page.getByTestId('account-menu').or(page.getByTestId('guest-move-confirm')),
+  ).toBeVisible()
 }
 
 test('templates come from the repository only; the editors offer no way to save one', async ({ page }) => {
