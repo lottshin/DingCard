@@ -36,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the twenty-two tools', async () => {
+  test('exposes the twenty-five tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -56,18 +56,43 @@ describe('dingcard-mcp tool layer', () => {
       'list_decorations',
       'list_filter_presets',
       'list_icons',
+      'list_shares',
       'list_styles',
       'list_templates',
       'list_text_styles',
       'open_in_editor',
       'render_document',
       'render_markdown',
+      'revoke_share',
+      'share_document',
       'validate_document',
     ])
     for (const tool of listing.tools) {
       expect(tool.description?.length ?? 0).toBeGreaterThan(40)
     }
     await client.close()
+  })
+
+  test('share tools explain the missing server configuration', async () => {
+    const saved = process.env.DINGCARD_SERVER_URL
+    delete process.env.DINGCARD_SERVER_URL
+    const client = await connect()
+    try {
+      const share = await call(client, 'share_document', {})
+      expect(share).toMatchObject({ ok: false })
+      expect(share.error).toContain('DINGCARD_SERVER_URL')
+
+      const list = await call(client, 'list_shares', {})
+      expect(list).toMatchObject({ ok: false })
+      expect(list.error).toContain('DINGCARD_SERVER_URL')
+
+      const revoked = await call(client, 'revoke_share', { id: 'missing' })
+      expect(revoked).toMatchObject({ ok: false })
+      expect(revoked.error).toContain('DINGCARD_SERVER_URL')
+    } finally {
+      if (saved !== undefined) process.env.DINGCARD_SERVER_URL = saved
+      await client.close()
+    }
   })
 
   test('list_templates returns the registry', async () => {

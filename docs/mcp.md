@@ -7,6 +7,7 @@ list_templates → create_document_from_content / create_document_from_outline�
       → check_document（排版后列出问题，可自动缩字号）→ apply_actions 修改
       → render_document → PNG / JPG / PDF / 长图 + 每页缩略图（直接给模型看）
       → open_in_editor → 在叮卡编辑器里打开，人接着改
+      → share_document → 分享链接 + 二维码（手机扫码看图，见下文「分享给人」）
 ```
 
 服务端保存它创建和修改的文档：工具之间传 `documentId` 即可，不必每次把整份文档 JSON 传来传去（见下文「文档句柄」）。
@@ -39,6 +40,9 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `open_in_editor` | 在浏览器里的叮卡编辑器打开这份文档，存成一个新项目，人接着手改（见下文「在叮卡里打开」）。 |
 | `render_document` | 无头渲染自由画布 v20 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`grid: true`（png / jpeg，只用于正方形页面）把每页切成九宫格 `<baseName>-01-1.png` … `-01-9.png`（`files[i].tile` 是 1–9，从左到右、从上到下，按这个顺序发朋友圈拼回一整张），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
+| `share_document` | 把文档渲染上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接，并附上二维码图片给用户扫（见下文「分享给人」）。需要环境变量 `DINGCARD_SERVER_URL` / `DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`。 |
+| `list_shares` | 列出账号在服务端已有的分享（id、标题、链接、创建与过期时间、卡片数），按创建时间倒序。 |
+| `revoke_share` | 撤销一个分享（`id` 从 `list_shares` 查）：链接立刻打不开，页面图片等图片回收清理。 |
 
 模板放不下的版式，可以写成网页交给 `create_document_from_html`，转出来同样接 `check_document` → `render_document`。
 
@@ -61,6 +65,15 @@ list_templates → create_document_from_content / create_document_from_outline�
 - 默认打开服务端自带的编辑器：`http://127.0.0.1:5390`（同一份构建产物，离线可用；端口用 `DINGCARD_APP_PORT` 改，被占用时换一个空闲端口）。项目存在这个地址的浏览器存储里。
 - 平时用的是别的叮卡（本地开发的 `http://127.0.0.1:5173`，或部署好的网站），设环境变量 `DINGCARD_APP_URL`，或调用时传 `appUrl`，就在那里打开；编辑器跨域读取本机地址上的文档。
 - `open: false` 只返回链接（`url`）不打开浏览器。编辑器只接受本机（`127.0.0.1`、`localhost`）或同源地址上的文档，别的网站的链接会被拒绝。
+
+## 分享给人
+
+`share_document` 把文档变成一个不用登录就能打开的网页链接：每一页无头渲染成图片、上传到部署的叮卡服务端，挂在一个不可猜的链接后面——手机扫码或在任何浏览器点开都能看整套卡片，长按图片保存到相册。这是「电脑上让 AI 做图、手机上发小红书」的最后一公里：不再导出文件、传文件。
+
+- **配置一次**（环境变量，重启 MCP 生效）：`DINGCARD_SERVER_URL`（部署的叮卡地址，如 `https://cards.example.com`）、`DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`（一个叮卡账号）。没配置时工具会返回怎么配的提示。
+- `expiresInHours` 是有效期（小时）：1–720（最长一个月），默认 24。过期后链接打不开（410），页面图片仍留在账号里，和编辑器里「分享链接」的规则一致。
+- 返回 `{ ok, share: { id, url, expiresAt, imageCount } }`，并附上二维码 PNG 图片（`qr: false` 关掉）——直接给用户扫即可。
+- `list_shares` 列出已有分享，`revoke_share` 撤销一个（链接立刻 404）。分享出去的图片与素材库同样受图片回收保护，不会被误清。
 
 ## 用网页写法出图
 

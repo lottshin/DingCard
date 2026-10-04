@@ -20,4 +20,4 @@
 }
 ```
 
-需要 Node.js 22 以上和本机安装的 Chrome（渲染、检查用）。完整说明见 [docs/mcp.md](https://github.com/lottshin/DingCard/blob/master/docs/mcp.md)。
+需要 Node.js 22 以上和本机安装的 Chrome（渲染、检查用）。要 `share_document` 把作品变成分享链接，再设 `DINGCARD_SERVER_URL`（部署的叮卡地址）、`DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`（一个叮卡账号）。完整说明见 [docs/mcp.md](https://github.com/lottshin/DingCard/blob/master/docs/mcp.md)。
