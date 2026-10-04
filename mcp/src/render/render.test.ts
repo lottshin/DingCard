@@ -1032,3 +1032,125 @@ describe('importHtml', () => {
     expect(await importHtml('   ')).toMatchObject({ ok: false })
   })
 })
+
+describe('share_document against a real server', () => {
+  test(
+    'renders, uploads, and puts the deck behind a public link',
+    async () => {
+      const { spawn } = await import('node:child_process')
+      const { rmSync } = await import('node:fs')
+      const { fileURLToPath } = await import('node:url')
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+      const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js')
+      const { createDingcardServer } = await import('../index')
+
+      const dataDir = mkdtempSync(path.join(tmpdir(), 'dingcard-share-e2e-'))
+      const port = 3997
+      const base = `http://127.0.0.1:${port}`
+      const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../server')
+      const server = spawn(process.execPath, ['src/index.js'], {
+        cwd: serverDir,
+        env: {
+          ...process.env,
+          NODE_ENV: 'production',
+          JWT_SECRET: 'mcp-render-test-secret-not-for-prod',
+          DATA_DIR: dataDir,
+          PORT: String(port),
+          HOST: '127.0.0.1',
+          AUTH_RATE_LIMIT_MAX: '10000',
+          RATE_LIMIT_MAX: '10000',
+        },
+        stdio: ['ignore', 'ignore', 'pipe'],
+      })
+      const serverStderr: string[] = []
+      server.stderr.on('data', (chunk: Buffer) => serverStderr.push(String(chunk)))
+
+      // Wait for the server to accept requests.
+      let healthy = false
+      for (let attempt = 0; attempt < 100 && !healthy; attempt += 1) {
+        healthy = await fetch(`${base}/api/health`).then((response) => response.ok).catch(() => false)
+        if (!healthy) await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      expect(healthy, serverStderr.join('')).toBe(true)
+
+      const saved = {
+        url: process.env.DINGCARD_SERVER_URL,
+        username: process.env.DINGCARD_SERVER_USERNAME,
+        password: process.env.DINGCARD_SERVER_PASSWORD,
+      }
+      process.env.DINGCARD_SERVER_URL = base
+      process.env.DINGCARD_SERVER_USERNAME = 'mcp-share'
+      process.env.DINGCARD_SERVER_PASSWORD = 'mcp-share-1234'
+
+      const mcp = createDingcardServer()
+      const client = new Client({ name: 'dingcard-mcp-render-test', version: '0.0.0' })
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+      await Promise.all([mcp.connect(serverTransport), client.connect(clientTransport)])
+
+      const callTool = async (name: string, arguments_: Record<string, unknown>) => {
+        const response = await client.callTool({ name, arguments: arguments_ })
+        const content = (response as { content: Array<{ type: string; text?: string }> }).content
+        return JSON.parse(content[0].text ?? '') as Record<string, unknown>
+      }
+
+      try {
+        // The share client logs in itself; the account just has to exist.
+        const register = await fetch(`${base}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ username: 'mcp-share', password: 'mcp-share-1234' }),
+        })
+        expect(register.ok).toBe(true)
+
+        const document = v20Page([
+          v20Text('share-title', { x: 80, y: 160, width: 900, height: 200 }, { text: 'MCP 分享端到端' }),
+        ])
+
+        // The default answer carries the JSON plus a QR code image to scan.
+        const shareResponse = await client.callTool({ name: 'share_document', arguments: { document, expiresInHours: 6 } })
+        const blocks = (shareResponse as { content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> }).content
+        expect(blocks).toHaveLength(2)
+        expect(blocks[0].type).toBe('text')
+        expect(blocks[1].type).toBe('image')
+        expect(blocks[1].mimeType).toBe('image/png')
+        expect((blocks[1].data ?? '').length).toBeGreaterThan(100)
+        const shared = JSON.parse(blocks[0].text ?? '') as {
+          ok: boolean
+          share: { id: string; url: string; expiresAt: number; imageCount: number }
+        }
+        expect(shared.ok).toBe(true)
+        const share = shared.share
+        expect(share.url).toMatch(new RegExp(`^${base}/share/[A-Za-z0-9_-]+$`))
+        expect(share.imageCount).toBe(1)
+        expect(share.expiresAt - Date.now()).toBeGreaterThan(5 * 60 * 60 * 1000)
+        expect(share.expiresAt - Date.now()).toBeLessThan(7 * 60 * 60 * 1000)
+
+        // The public page opens without an account and carries the rendered page.
+        const page = await fetch(share.url)
+        expect(page.status).toBe(200)
+        const html = await page.text()
+        expect(html).toContain('长按图片保存到相册')
+        expect(html).toMatch(/<img src="[^"]*\/uploads\//)
+
+        const list = await callTool('list_shares', {})
+        expect(list.ok).toBe(true)
+        expect(list.shares).toHaveLength(1)
+        expect((list.shares as Array<{ id: string }>)[0].id).toBe(share.id)
+
+        const revoked = await callTool('revoke_share', { id: share.id })
+        expect(revoked).toMatchObject({ ok: true, id: share.id })
+        expect((await fetch(share.url)).status).toBe(404)
+      } finally {
+        await client.close()
+        for (const [key, value] of Object.entries(saved)) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+        server.kill()
+        await new Promise((resolve) => server.once('exit', resolve))
+        rmSync(dataDir, { recursive: true, force: true })
+      }
+    },
+    240_000,
+  )
+})

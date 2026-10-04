@@ -5,7 +5,8 @@
 
 import path from 'node:path'
 import { realpathSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -21,6 +22,7 @@ import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
 import { composePoster } from './core/poster'
 import { listCollages } from './core/collages'
+import { serverClientFromEnv } from './core/serverClient'
 import { listFilterPresets, listStyles, listTextStyles } from './core/styles'
 import { instantiateTemplate, listTemplates, templatePages } from './core/templates'
 import { checkDocument } from './render/check'
@@ -591,6 +593,98 @@ export function createDingcardServer(): McpServer {
         const handed = await handOff(resolved.document, { title, appUrl })
         const opened = open === false ? false : openInBrowser(handed.url)
         return jsonResult({ ok: true, ...handed, opened, ...(resolved.documentId ? { documentId: resolved.documentId } : {}) })
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
+
+  // ---- Delivery to a human anywhere: put the deck behind a share link on
+  // the deployed server. Configure once with environment variables; the
+  // link (or its QR code) then opens on any device, no account needed. ----
+
+  const SHARE_SERVER_UNCONFIGURED = {
+    ok: false as const,
+    error: '未配置服务端：设置环境变量 DINGCARD_SERVER_URL（部署的叮卡地址，如 https://cards.example.com）、DINGCARD_SERVER_USERNAME 和 DINGCARD_SERVER_PASSWORD（一个叮卡账号），重启 MCP 后再分享。',
+  }
+
+  server.tool(
+    'share_document',
+    '把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。需要先设环境变量 DINGCARD_SERVER_URL（部署的服务端地址）、DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里；list_shares 查已有分享，revoke_share 随时撤销（撤销后立刻打不开）。',
+    {
+      ...documentInput,
+      title: z.string().optional().describe('分享页标题，默认「叮卡分享」'),
+      expiresInHours: z.number().int().min(1).max(720).optional().describe('链接有效期（小时），1–720，默认 24，最长一个月'),
+      qr: z.boolean().optional().describe('是否附上二维码图片，默认 true'),
+    },
+    async ({ title, expiresInHours, qr, ...input }) => {
+      const client = serverClientFromEnv()
+      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      // The pages only need to exist until they are uploaded.
+      let tempDir: string | null = null
+      try {
+        tempDir = await mkdtemp(path.join(tmpdir(), 'dingcard-share-'))
+        const rendered = await renderDocument(resolved.document, { outputDir: tempDir, format: 'png' })
+        if (!rendered.ok) return jsonResult(rendered)
+        const urls: string[] = []
+        for (const [index, file] of rendered.files.entries()) {
+          const bytes = await readFile(file.path)
+          urls.push(await client.uploadImage(bytes, `page-${String(index + 1).padStart(2, '0')}.png`))
+        }
+        if (urls.length === 0) throw new Error('渲染没有产出任何页面，无法分享')
+        const share = await client.createShare(title ?? '叮卡分享', urls, expiresInHours)
+        const value = {
+          ok: true as const,
+          share: { id: share.id, url: share.url, expiresAt: share.expiresAt, imageCount: share.imageCount },
+          note: '链接不用登录就能打开；给用户扫下面的二维码，或在任何浏览器点开。随时可用 revoke_share 撤销。',
+          ...(resolved.documentId ? { documentId: resolved.documentId } : {}),
+        }
+        if (qr === false) return jsonResult(value)
+        const QRCode = await import('qrcode')
+        const dataUrl = await QRCode.toDataURL(share.url, { margin: 1, width: 480 })
+        return {
+          content: [
+            { type: 'text' as const, text: JSON.stringify(value, null, 2) },
+            { type: 'image' as const, data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: 'image/png' },
+          ],
+        }
+      } catch (error) {
+        return errorResult(error)
+      } finally {
+        if (tempDir !== null) await rm(tempDir, { recursive: true, force: true })
+      }
+    },
+  )
+
+  server.tool(
+    'list_shares',
+    '列出账号在服务端已有的分享（id、标题、链接、创建与过期时间、卡片数），按创建时间倒序。需要环境变量 DINGCARD_SERVER_URL / DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD。',
+    {},
+    async () => {
+      const client = serverClientFromEnv()
+      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+      try {
+        return jsonResult({ ok: true, shares: await client.listShares() })
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
+
+  server.tool(
+    'revoke_share',
+    '撤销一个分享：链接立刻打不开（404），它的页面图片不再被引用、等图片回收清理。需要环境变量 DINGCARD_SERVER_URL / DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD。',
+    {
+      id: z.string().describe('要撤销的分享 id（list_shares 里查）'),
+    },
+    async ({ id }) => {
+      const client = serverClientFromEnv()
+      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+      try {
+        await client.revokeShare(id)
+        return jsonResult({ ok: true, id })
       } catch (error) {
         return errorResult(error)
       }
