@@ -31,13 +31,13 @@ function toShare(row) {
   }
 }
 
-function shareTitle(value) {
+export function shareTitle(value) {
   if (typeof value !== 'string') return null
   const title = Array.from(value.replace(/\s+/g, ' ').trim()).slice(0, NAME_MAX).join('')
   return title === '' ? null : title
 }
 
-function expiresInHours(value) {
+export function expiresInHours(value) {
   if (value === undefined || value === null) return DEFAULT_EXPIRES_IN_HOURS
   if (!Number.isInteger(value) || value < 1 || value > EXPIRES_MAX_HOURS) return null
   return value
@@ -46,6 +46,33 @@ function expiresInHours(value) {
 function shareToken() {
   // 128 bits of randomness, URL-safe: guessing is not a practical attack.
   return randomBytes(16).toString('base64url')
+}
+
+/** Insert the share row (retrying a token collision) and return its envelope. */
+export async function insertShare(
+  { stmts: routeStmts, now, createToken },
+  { userId, title, hours, imagePaths },
+) {
+  const createdAt = now()
+  const row = {
+    id: randomUUID(),
+    user_id: userId,
+    token: '',
+    title,
+    created_at: createdAt,
+    expires_at: createdAt + hours * 60 * 60 * 1000,
+  }
+  // A token collision fails the UNIQUE constraint; retry with a fresh one.
+  for (let attempt = 0; ; attempt++) {
+    row.token = createToken()
+    try {
+      await routeStmts.createShare(row, imagePaths)
+      break
+    } catch (err) {
+      if (attempt >= 2 || !String(err?.code || '').includes('CONSTRAINT')) throw err
+    }
+  }
+  return toShare({ ...row, image_count: imagePaths.length })
 }
 
 export default async function shareRoutes(fastify, options = {}) {
@@ -106,26 +133,10 @@ export default async function shareRoutes(fastify, options = {}) {
         }
       }
 
-      const createdAt = now()
-      const row = {
-        id: randomUUID(),
-        user_id: userId,
-        token: '',
-        title,
-        created_at: createdAt,
-        expires_at: createdAt + hours * 60 * 60 * 1000,
-      }
-      // A token collision fails the UNIQUE constraint; retry with a fresh one.
-      for (let attempt = 0; ; attempt++) {
-        row.token = createToken()
-        try {
-          await routeStmts.createShare(row, imagePaths)
-          break
-        } catch (err) {
-          if (attempt >= 2 || !String(err?.code || '').includes('CONSTRAINT')) throw err
-        }
-      }
-      return toShare({ ...row, image_count: imagePaths.length })
+      return insertShare(
+        { stmts: routeStmts, now, createToken },
+        { userId, title, hours, imagePaths },
+      )
     })
   })
 

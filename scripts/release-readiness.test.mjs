@@ -122,6 +122,13 @@ test('MCP automation package stays documented, versioned, and tested', () => {
   }
   assert.match(mcp.scripts.build, /tsc -p tsconfig\.json/)
   assert.match(mcp.scripts.build, /esbuild/)
+  assert.match(
+    mcp.scripts.build,
+    /outfile=dist\/render\.mjs --external:playwright-core/,
+    'mcp build bundles the server render library (dist/render.mjs)',
+  )
+  assert.equal(
+    mcp.files.includes('dist/render.mjs'), true, 'dist/render.mjs ships in the package')
   assert.match(mcp.scripts.start, /node dist\/index\.mjs/)
   assert.match(mcp.scripts.test, /vitest/)
   assert.equal(
@@ -539,7 +546,7 @@ test('root Dockerfile builds the frontend and server into a non-root Node image'
 
   assert.deepEqual(
     [...dockerfile.matchAll(/^FROM\s+\S+(?:\s+AS\s+(\S+))?/gim)].map((match) => match[1]),
-    ['frontend-build', 'server-deps', 'final'],
+    ['frontend-build', 'server-deps', 'render-lib', 'final'],
   )
   assert.match(dockerfile, /^FROM node:22-slim AS final$/m)
   assert.match(dockerfile, /^ARG VITE_API_BASE=\/$/m)
@@ -556,6 +563,29 @@ test('root Dockerfile builds the frontend and server into a non-root Node image'
   assert.match(dockerfile, /COPY server\/src \.\/server\/src/)
   assert.match(dockerfile, /COPY --from=server-deps \/app\/server\/node_modules \.\/server\/node_modules/)
   assert.match(dockerfile, /COPY --from=frontend-build \/app\/dist \.\/dist/)
+
+  // The server-side render library: bundled in render-lib, carried into the
+  // final image next to the server, with Chromium pinned to the server's
+  // playwright-core so the browser and the driver cannot drift apart.
+  const renderLibStage = dockerfile.split(/^FROM node:22-slim AS render-lib$/m)[1]?.split(/^FROM node:22-slim AS final$/m)[0] ?? ''
+  assert.match(renderLibStage, /COPY mcp\/package\.json mcp\/package-lock\.json mcp\/tsconfig\.json \.\/mcp\//)
+  assert.match(renderLibStage, /COPY mcp\/src \.\/mcp\/src/)
+  assert.match(renderLibStage, /RUN npm ci && npm run build/)
+  assert.match(dockerfile, /COPY --from=render-lib \/app\/mcp\/dist\/render\.mjs \.\/mcp\/dist\/render\.mjs/)
+  assert.match(dockerfile, /RUN ln -s \/app\/server\/node_modules \/app\/mcp\/node_modules/)
+  assert.match(
+    dockerfile,
+    /PLAYWRIGHT_DRIVER=.*playwright-core\/package\.json'\)\.version/,
+    'the Chromium driver version is read from the installed playwright-core package',
+  )
+  assert.match(
+    dockerfile,
+    /playwright@\$\{PLAYWRIGHT_DRIVER\}"? install --with-deps chromium/,
+    'the image installs the Chromium build matching the server playwright-core version',
+  )
+  assert.doesNotMatch(dockerfile, /playwright@1\.\d+\.\d+ install/, 'no hardcoded Chromium driver pin to drift out of sync')
+  assert.match(dockerfile, /fonts-noto-cjk/, 'the image carries CJK fonts so Chinese cards render correctly')
+
   for (const setting of [
     'NODE_ENV=production',
     'DINGCARD_IMAGE=1',
@@ -563,6 +593,8 @@ test('root Dockerfile builds the frontend and server into a non-root Node image'
     'PORT=3000',
     'DATA_DIR=/data',
     'WEB_ROOT=/app/dist',
+    'DINGCARD_DIST_DIR=/app/dist',
+    'PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright',
   ]) {
     assert.match(dockerfile, new RegExp(escapeRegExp(setting)), `Dockerfile must set ${setting}`)
   }
@@ -644,6 +676,8 @@ test('compose smoke validates the app container without generated-name assumptio
   assert.match(smoke, /\/api\/health/)
   assert.match(smoke, /\/api\/auth\/register/)
   assert.match(smoke, /\/api\/images/)
+  assert.match(smoke, /\/api\/decks/)
+  assert.equal(exists('deploy/smoke-deck.json'), true, 'compose smoke renders a checked-in deck document')
   assert.match(smoke, /\/assets\//)
   assert.match(smoke, /down -v --remove-orphans/)
   assert.doesNotMatch(smoke, /nginx/i)

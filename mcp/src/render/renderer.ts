@@ -162,18 +162,37 @@ async function resolveFrontend(): Promise<string> {
 }
 
 /** Prefer the system Chrome (like the e2e suites); playwright-core ships no
- * browsers, so without a system Chrome the fallback explains the options. */
+ * browsers, so without a system Chrome the fallback explains the options.
+ * DINGCARD_CHROME_PATH overrides the search (a distro Chromium, say).
+ * Inside the Docker image (DINGCARD_IMAGE=1) the system Chromium cannot use
+ * its sandbox as a non-root user, and /dev/shm is small. */
+function containerLaunchArgs() {
+  return process.env.DINGCARD_IMAGE === '1'
+    ? ['--no-sandbox', '--disable-dev-shm-usage']
+    : []
+}
+
 async function launchBrowser() {
+  const chromePath = process.env.DINGCARD_CHROME_PATH?.trim()
+  if (chromePath) {
+    try {
+      return await chromium.launch({ executablePath: chromePath, headless: true, args: containerLaunchArgs() })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      console.error(`[dingcard-mcp] DINGCARD_CHROME_PATH=${chromePath} 启动失败（${reason}），回退系统 Chrome`)
+    }
+  }
   try {
-    return await chromium.launch({ channel: 'chrome', headless: true })
+    return await chromium.launch({ channel: 'chrome', headless: true, args: containerLaunchArgs() })
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     console.error(`[dingcard-mcp] 系统 Chrome 不可用（${reason}），尝试默认 Chromium`)
     try {
-      return await chromium.launch({ headless: true })
+      return await chromium.launch({ headless: true, args: containerLaunchArgs() })
     } catch {
       throw new Error(
         '无可用浏览器：渲染需要系统安装的 Google Chrome（推荐），'
+        + '或设 DINGCARD_CHROME_PATH 指向浏览器（如 /usr/bin/chromium），'
         + '或另行执行 npx playwright install chromium 后重试。'
         + `（Chrome 启动失败原因：${reason}）`,
       )

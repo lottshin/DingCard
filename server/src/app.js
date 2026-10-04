@@ -14,6 +14,7 @@ import { reclaimExpiredImages } from './imageGc.js'
 import authPlugin from './plugins/auth.js'
 import assetRoutes from './routes/assets.js'
 import authRoutes from './routes/auth.js'
+import deckRoutes from './routes/decks.js'
 import draftRoutes from './routes/drafts.js'
 import imageRoutes from './routes/images.js'
 import shareRoutes from './routes/shares.js'
@@ -119,6 +120,14 @@ export async function buildApp({
 
     await app.register(shareRoutes, {
       prefix: '/api/shares',
+      assetLock,
+      config: appConfig,
+      stmts: appStmts,
+      reclaimImages,
+    })
+
+    await app.register(deckRoutes, {
+      prefix: '/api/decks',
       assetLock,
       config: appConfig,
       stmts: appStmts,
