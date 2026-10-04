@@ -267,7 +267,15 @@ export function Workbench({
       return
     }
     try {
-      const saved = await storeFor(ownerId).drafts.save(ownerId, outcome.data)
+      const owner = ownerId
+      let saved = await storeFor(owner).drafts.save(owner, outcome.data)
+      // A registration or account switch can land mid-import (the file read
+      // and the save both await): the editor then opens the draft under the
+      // CURRENT owner, which would report the project missing. File it there
+      // too, so the open finds it wherever the session ended up.
+      if (ownerId && ownerId !== owner) {
+        saved = await storeFor(ownerId).drafts.save(ownerId, outcome.data)
+      }
       projects.reload()
       enterEditor(saved.mode, routes.openProject(saved.mode, saved.id), saved.id)
     } catch (error) {
