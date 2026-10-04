@@ -186,7 +186,9 @@ test('CI invokes repository contracts and existing verification commands', () =>
   assert.match(workflow, /yaml\.safe_load/)
   assert.match(workflow, /pathlib\.Path\('\.github\/workflows'\)\.glob\('\*\.yml'\)/)
   assert.match(workflow, /publish-image\.yml/)
-  assert.match(workflow, /timeout-minutes:\s*15/)
+  assert.match(workflow, /^  static:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10$/m)
+  assert.match(workflow, /^  browser:\n    needs: static\n    runs-on: ubuntu-latest\n    timeout-minutes: 20$/m)
+  assert.match(workflow, /^  container:\n    needs: static\n    runs-on: ubuntu-latest\n    timeout-minutes: 15$/m)
 })
 
 test('tag releases publish and anonymously verify the multi-architecture GHCR image', () => {
