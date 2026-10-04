@@ -68,12 +68,34 @@ export interface AssetStore {
   remove(userId: string, id: string): Promise<void>
 }
 
+/** A deck's exported pages behind one unguessable link. */
+export interface Share {
+  id: string
+  title: string
+  /** The absolute public page URL (what a QR code encodes). */
+  url: string
+  createdAt: number
+  expiresAt: number
+  imageCount: number
+}
+
+/** Per-user share links; only the remote backend can create them. */
+export interface ShareStore {
+  /** Newest first. */
+  list(userId: string): Promise<Share[]>
+  /** `imageUrls` are managed upload URLs the caller owns. */
+  create(userId: string, title: string, imageUrls: readonly string[], expiresInDays?: number): Promise<Share>
+  /** Idempotent: revoking a missing share resolves. */
+  revoke(userId: string, id: string): Promise<void>
+}
+
 /** The full storage surface the app depends on. */
 export interface Storage {
   auth: AuthStore
   drafts: DraftStore
   images: ImageStore
   assets: AssetStore
+  shares: ShareStore
   /** true when backed by a real server (enables login UI, sync messaging). */
   readonly remote: boolean
 }

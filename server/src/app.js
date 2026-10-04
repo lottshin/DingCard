@@ -16,6 +16,8 @@ import assetRoutes from './routes/assets.js'
 import authRoutes from './routes/auth.js'
 import draftRoutes from './routes/drafts.js'
 import imageRoutes from './routes/images.js'
+import shareRoutes from './routes/shares.js'
+import { registerSharePage } from './sharePage.js'
 import { registerStaticSite } from './staticSite.js'
 import { createUserAssetLock } from './userAssetLock.js'
 
@@ -48,6 +50,7 @@ export async function buildApp({
       {
         listDraftDocuments: (ownerId) => appStmts.listDraftDocuments.all(ownerId),
         listAssetPaths: (ownerId) => appStmts.listAssetPaths.all(ownerId),
+        listSharePaths: (ownerId) => appStmts.listSharePaths.all(ownerId),
         listImages: (ownerId) => appStmts.listImages.all(ownerId),
         removeFile: fs.unlink,
         deleteImage: (imageId, ownerId) => appStmts.deleteImage.run(imageId, ownerId),
@@ -113,6 +116,18 @@ export async function buildApp({
       stmts: appStmts,
       reclaimImages,
     })
+
+    await app.register(shareRoutes, {
+      prefix: '/api/shares',
+      assetLock,
+      config: appConfig,
+      stmts: appStmts,
+      reclaimImages,
+    })
+
+    // The public share page is a real route (not SPA content), registered
+    // before the static site's not-found fallback serves index.html.
+    registerSharePage(app, { stmts: appStmts })
 
     await registerStaticSite(app, {
       webRoot: appConfig.webRoot,

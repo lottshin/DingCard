@@ -14,7 +14,7 @@ import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
 import { readLastSession, updateLastSession } from '../lastSession'
-import { GUEST_OWNER_ID, isGuestOwner, store, storeFor } from '../storage'
+import { GUEST_OWNER_ID, isGuestOwner, store, storeFor, type Share } from '../storage'
 import { assetDocumentSource } from '../workspaces/assetSource'
 import {
   ChevronLeftIcon,
@@ -74,6 +74,7 @@ import { rangeHasRichTextStyle, restyleRichTextRange, type RichTextStyle } from 
 import { BLEND_MODES, LINE_POINTS_MIN, sceneFilterEquals } from './appearance'
 import { FILTER_PRESETS, FILTER_PRESET_SWATCH, filterPresetCss } from './filterPresets'
 import { FreeformExportMenu } from './FreeformExportMenu'
+import { FreeformShareDialog } from './FreeformShareDialog'
 import { FreeformContextToolbar, type ContextToolbarSubject } from './FreeformContextToolbar'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorGlyph } from './InspectorGlyph'
@@ -1231,6 +1232,8 @@ export function FreeformWorkspace({
   } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
+  const [shareResult, setShareResult] = useState<Share | null>(null)
+  const [shareRevoking, setShareRevoking] = useState(false)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   /** The insert panel docked beside the tool rail; one at a time. */
@@ -5831,6 +5834,64 @@ export function FreeformWorkspace({
     }
   }
 
+  /** Render every page, upload it, and put the whole deck behind one share link. */
+  async function shareDeck() {
+    if (doc.slides.length === 0 || renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) return
+    const owner = ownerId ?? GUEST_OWNER_ID
+    const storage = storeFor(owner)
+    if (!storage.remote) return
+    setExporting(true)
+    setExportProgress(null)
+    const originalSlideId = activeSlide.id
+    try {
+      setSelection([])
+      const fontCSS = await freeformFontEmbedOnce(doc.slides)
+      const urls: string[] = []
+      for (let index = 0; index < doc.slides.length; index++) {
+        const slide = doc.slides[index]
+        setExportProgress({ current: index + 1, total: doc.slides.length })
+        replaceCurrent({ type: 'slide/select', slideId: slide.id })
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        // PNG regardless of the export format choice: the upload pipeline
+        // re-encodes opaque pages as JPEG, so nothing gets bigger than needed.
+        const canvas = await renderSlideCanvas(slide, fontCSS, viewPrefs.exportScale, false)
+        const blob = canvas ? await canvasBlob(canvas, 'image/png') : null
+        if (!blob) continue
+        const raw = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(reader.error)
+          reader.readAsDataURL(blob)
+        })
+        const sized = await downscaleDataUrl(raw, 2160)
+        urls.push(await storage.images.put(sized))
+      }
+      if (urls.length === 0) throw new Error(t('分享创建失败，请稍后重试'))
+      setShareResult(await storage.shares.create(owner, projectTitleRef.current, urls))
+    } catch (error) {
+      showOperationError(error, t('分享创建失败，请稍后重试'))
+    } finally {
+      replaceCurrent({ type: 'slide/select', slideId: originalSlideId })
+      setExportProgress(null)
+      setExporting(false)
+    }
+  }
+
+  async function revokeShare(share: Share) {
+    const owner = ownerId ?? GUEST_OWNER_ID
+    setShareRevoking(true)
+    try {
+      await storeFor(owner).shares.revoke(owner, share.id)
+      setShareResult(null)
+      setOperationNotice(t('分享已撤销，链接不再能打开'))
+    } catch (error) {
+      showOperationError(error, t('撤销分享失败，请稍后重试'))
+    } finally {
+      setShareRevoking(false)
+    }
+  }
+
   function requestExportAllSlides() {
     if (renderScale === null) return
     if (blockDocumentMutationDuringInteraction()) return
@@ -6321,6 +6382,7 @@ export function FreeformWorkspace({
               onExportAll={requestExportAllSlides}
               onExportLong={() => void exportLongImage()}
               onExportGrid={isGridPage(activeSlide) ? () => void exportGridSlices() : undefined}
+              onShare={ownerStore.remote ? () => void shareDeck() : undefined}
             />
           )}
         />
@@ -6330,6 +6392,15 @@ export function FreeformWorkspace({
         <OperationNotice
           title={operationNotice}
           onDismiss={() => setOperationNotice(null)}
+        />
+      )}
+
+      {shareResult && (
+        <FreeformShareDialog
+          share={shareResult}
+          revoking={shareRevoking}
+          onRevoke={() => void revokeShare(shareResult)}
+          onClose={() => setShareResult(null)}
         />
       )}
 

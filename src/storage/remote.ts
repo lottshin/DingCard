@@ -12,7 +12,7 @@ import {
   collectFreeformImageSources,
   uploadInlineFreeformImages,
 } from '../freeform/imageAssets'
-import type { AssetStore, AuthStore, DraftStore, ImageStore, Storage } from './types'
+import type { AssetStore, AuthStore, DraftStore, ImageStore, Share, ShareStore, Storage } from './types'
 
 const TOKEN_KEY = 'slicer.token.v1'
 const invalidationListeners = new Set<() => void>()
@@ -328,6 +328,54 @@ export function createRemoteStore(apiBase: string): Storage {
     return asset
   }
 
+  // The share page lives on the same server as the API; a QR code needs the
+  // absolute URL, so a root-relative path resolves against this origin.
+  function absoluteShareUrl(path: string): string {
+    if (/^https?:\/\//i.test(path)) return path
+    try {
+      return new URL(path, apiOrigin ?? window.location.origin).href
+    } catch {
+      return path
+    }
+  }
+
+  function toShare(raw: unknown): Share | null {
+    if (!isRecord(raw)) return null
+    if (typeof raw.id !== 'string' || typeof raw.url !== 'string' || raw.url.trim() === '') return null
+    return {
+      id: raw.id,
+      title: typeof raw.title === 'string' ? raw.title : '',
+      url: absoluteShareUrl(raw.url),
+      createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
+      expiresAt: typeof raw.expiresAt === 'number' ? raw.expiresAt : 0,
+      imageCount: typeof raw.imageCount === 'number' ? raw.imageCount : 0,
+    }
+  }
+
+  const shares: ShareStore = {
+    async list() {
+      const { data, status } = await api<unknown>('/api/shares')
+      if (!Array.isArray(data)) throw new ApiError('服务器返回了无效分享列表', status)
+      return data.map(toShare).filter((share): share is Share => share !== null)
+    },
+    async create(_userId, title, imageUrls, expiresInDays) {
+      const { data, status } = await api<unknown>('/api/shares', {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          urls: imageUrls,
+          ...(expiresInDays ? { expiresInDays } : {}),
+        }),
+      })
+      const share = toShare(data)
+      if (!share) throw new ApiError('服务器返回了无效分享', status)
+      return share
+    },
+    async revoke(_userId, id) {
+      await api(`/api/shares/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
+  }
+
   // An asset is a named pointer at one of the user's managed uploads; the
   // server keeps that upload out of image GC for as long as the asset exists.
   const assets: AssetStore = {
@@ -396,5 +444,5 @@ export function createRemoteStore(apiBase: string): Storage {
     },
   }
 
-  return { auth, drafts, images, assets, remote: true }
+  return { auth, drafts, images, assets, shares, remote: true }
 }

@@ -33,7 +33,7 @@ function validateInputs(deps, userId, now) {
     throw new TypeError('now must be a finite number')
   }
 
-  for (const name of ['listDraftDocuments', 'listAssetPaths', 'listImages', 'removeFile', 'deleteImage']) {
+  for (const name of ['listDraftDocuments', 'listAssetPaths', 'listSharePaths', 'listImages', 'removeFile', 'deleteImage']) {
     requireFunction(deps, name)
   }
   for (const name of ['uploadsDir', 'uploadsPublicPath']) {
@@ -102,6 +102,13 @@ export async function reclaimExpiredImages(deps, userId, now) {
 
   // Library assets keep their uploads alive exactly like draft references do.
   for (const row of await deps.listAssetPaths(userId)) {
+    const pathname = normalizeManagedImagePath(row?.image_path, deps.uploadsPublicPath)
+    if (pathname) referencedPaths.add(pathname)
+  }
+
+  // So do live shares: while the share row exists, its pages are referenced
+  // (expired shares keep their pages too, until the share is revoked).
+  for (const row of await deps.listSharePaths(userId)) {
     const pathname = normalizeManagedImagePath(row?.image_path, deps.uploadsPublicPath)
     if (pathname) referencedPaths.add(pathname)
   }

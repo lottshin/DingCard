@@ -6207,6 +6207,8 @@ test('export options switch format, quality, scale, and persist', async ({ page 
   await expect(options).toBeVisible()
   // PNG by default: no quality slider.
   await expect(options.getByTestId('export-quality-range')).toHaveCount(0)
+  // Local mode has no server to host a share page, so the entry stays away.
+  await expect(options.getByTestId('freeform-export-share')).toHaveCount(0)
 
   await options.getByTestId('export-format-jpeg').click()
   await expect(options.getByTestId('export-quality-range')).toBeVisible()

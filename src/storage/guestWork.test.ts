@@ -38,6 +38,11 @@ function memoryStorage(options: { remote?: boolean; failSaves?: Set<string> } = 
       current: async () => null,
       onInvalidated: () => () => {},
     },
+    shares: {
+      list: async () => { throw new Error('unused') },
+      create: async () => { throw new Error('unused') },
+      revoke: async () => { throw new Error('unused') },
+    },
     drafts: {
       list: async (userId) => [...(drafts.get(userId) ?? [])].sort((a, b) => b.updatedAt - a.updatedAt),
       save: async (userId, data) => {

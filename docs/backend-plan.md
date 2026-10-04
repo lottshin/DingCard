@@ -58,7 +58,7 @@
 
 ## 3. 数据库设计(SQLite)
 
-四张表就够。用 `better-sqlite3`(同步 API、单文件、零配置、速度快)。
+用户、草稿、图片、素材、分享六张表就够。用 `better-sqlite3`(同步 API、单文件、零配置、速度快)。
 
 ```sql
 -- 用户
@@ -108,6 +108,25 @@ CREATE TABLE assets (
   created_at  INTEGER NOT NULL
 );
 CREATE INDEX idx_assets_user ON assets(user_id, created_at DESC);
+
+-- 分享(一套已导出页面图片背后的不可猜链接;分享行存在,GC 就不回收这些图片)
+CREATE TABLE shares (
+  id          TEXT PRIMARY KEY,        -- uuid
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token       TEXT NOT NULL UNIQUE,    -- 128 位随机数,url-safe
+  title       TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL         -- 过期后公开页返回 410;图片仍被引用直到撤销
+);
+CREATE INDEX idx_shares_user ON shares(user_id, created_at DESC);
+
+CREATE TABLE share_images (
+  share_id    TEXT NOT NULL REFERENCES shares(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL,        -- 页序
+  image_path  TEXT NOT NULL,           -- 同 images.path
+  PRIMARY KEY (share_id, position)
+);
+CREATE INDEX idx_share_images_path ON share_images(image_path);
 ```
 
 要点:
@@ -176,6 +195,21 @@ DELETE /api/assets/:id    → { ok: true }
 - GC 把素材的 `image_path` 和草稿里的托管 URL 同样视为引用：素材还在，图片就不回收。删除素材在同一把用户资源锁内触发 GC；仍被草稿引用、或租约未到期的图片继续保留，所以删除素材不会让已经用上它的项目丢图。
 - 本地模式没有这组接口：LocalStore 把素材存在浏览器 IndexedDB（`dingcard.assets`），插入项目时复制一份进文档，删除素材同样不影响项目。
 
+### 分享链接
+```
+GET    /api/shares        → Share[]   (只返回当前用户的,按 created_at 倒序)
+POST   /api/shares        { urls, title, expiresInDays? }  → Share
+DELETE /api/shares/:id    → { ok: true }
+GET    /share/:token      → 公开 HTML 页(无需登录)
+```
+- 分享是把一套已导出的页面图片挂到一个不可猜链接后面：前端先按导出管线逐页渲染、走 `POST /api/images` 上传，再在这里按 URL 引用（与素材同一套同源校验）。
+- `Share` 为 `{ id, title, url: "/share/<token>", createdAt, expiresAt, imageCount }`；`token` 为 128 位随机数（url-safe base64），创建时唯一冲突自动换一个重试。
+- 标题去掉首尾空白、合并空白、最多 60 个字符，空名返回 400；`urls` 必须是 1–50 张；`expiresInDays` 是 1–365 的整数，缺省 30 天。
+- 图片不存在或不属于当前用户整批返回 409 + `SHARE_IMAGE_MISSING`；超过 50 张返回 400 + `SHARE_IMAGE_LIMIT_EXCEEDED`；撤销不存在或不属于自己的分享返回 404。
+- 公开页 `GET /share/:token` 无需登录：渲染手机友好的逐页浏览（长按存图），带 `noindex`；未知或已撤销的 token 返回 404，过期的返回 410。过期只关掉公开页，图片仍被引用；撤销删除分享行，之后 GC 才可能回收其页面图片（受租约约束）。
+- GC 把 `share_images.image_path` 和草稿、素材的引用同样对待：分享行存在，页面图片就不回收。
+- 本地模式没有这组接口，编辑器里也不显示「分享链接」入口。
+
 ### 状态码约定
 
 | 状态码 | 稳定语义 |
@@ -183,12 +217,13 @@ DELETE /api/assets/:id    → { ok: true }
 | 400 | 请求结构或字段无效，例如草稿信封、草稿 ID、retain 数组或 retain 数量上限不符合契约。 |
 | 401 | 公共登录请求凭据错误，或受保护请求的 JWT 缺失/无效/过期；只有后者满足当前 token 条件时才使客户端会话失效。 |
 | 404 | 草稿或素材不存在，或调用者尝试读取/更新不属于自己的草稿或素材；不泄露其他用户的数据是否存在。 |
-| 409 | 用户名冲突；retain 中至少一个托管图片不存在/不属于当前用户（整批失败，不部分续租）；或登记素材时图片不存在/不属于当前用户。 |
+| 409 | 用户名冲突；retain 中至少一个托管图片不存在/不属于当前用户（整批失败，不部分续租）；或登记素材/创建分享时图片不存在/不属于当前用户。 |
+| 410 | 分享链接已过期（公开页）。 |
 | 413 | 单图超过上传上限，或用户图片配额不足。 |
 | 415 | 上传文件 MIME 不在 PNG/JPEG/WebP 白名单。 |
 | 429 | 全局或认证路由触发限流；注册、登录等认证请求需稍后重试。 |
 
-图片 retain 的机器可读错误码为 `INVALID_IMAGE_RETAIN_REQUEST`、`IMAGE_RETAIN_LIMIT_EXCEEDED`、`IMAGE_RETAIN_CONFLICT`；配额错误码为 `IMAGE_QUOTA_EXCEEDED`；素材登记的图片缺失错误码为 `ASSET_IMAGE_MISSING`。
+图片 retain 的机器可读错误码为 `INVALID_IMAGE_RETAIN_REQUEST`、`IMAGE_RETAIN_LIMIT_EXCEEDED`、`IMAGE_RETAIN_CONFLICT`；配额错误码为 `IMAGE_QUOTA_EXCEEDED`；素材登记的图片缺失错误码为 `ASSET_IMAGE_MISSING`；分享的图片缺失/超量错误码为 `SHARE_IMAGE_MISSING`、`SHARE_IMAGE_LIMIT_EXCEEDED`。
 
 ---
 

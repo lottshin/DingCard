@@ -59,6 +59,27 @@ export function createDatabase(appConfig = defaultConfig) {
         created_at  INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_assets_user ON assets(user_id, created_at DESC);
+
+      -- A share is an unguessable link showing a deck's exported pages. The
+      -- pages are the user's managed uploads; image GC treats every share image
+      -- path as referenced while the share row exists (revoking deletes it).
+      CREATE TABLE IF NOT EXISTS shares (
+        id          TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token       TEXT NOT NULL UNIQUE,
+        title       TEXT NOT NULL,
+        created_at  INTEGER NOT NULL,
+        expires_at  INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_shares_user ON shares(user_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS share_images (
+        share_id    TEXT NOT NULL REFERENCES shares(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        image_path  TEXT NOT NULL,
+        PRIMARY KEY (share_id, position)
+      );
+      CREATE INDEX IF NOT EXISTS idx_share_images_path ON share_images(image_path);
     `)
 
     ensureImageLeaseSchema(database, Date.now(), appConfig.imageLeaseMs)
@@ -141,6 +162,37 @@ export function createDatabase(appConfig = defaultConfig) {
       renameAsset: database.prepare('UPDATE assets SET name = ? WHERE id = ? AND user_id = ?'),
       deleteAsset: database.prepare('DELETE FROM assets WHERE id = ? AND user_id = ?'),
       listAssetPaths: database.prepare('SELECT image_path FROM assets WHERE user_id = ?'),
+
+      shareByToken: database.prepare('SELECT * FROM shares WHERE token = ?'),
+      shareImages: database.prepare(
+        'SELECT image_path FROM share_images WHERE share_id = ? ORDER BY position',
+      ),
+      listShares: database.prepare(`
+        SELECT shares.*, COUNT(share_images.position) AS image_count
+        FROM shares
+        LEFT JOIN share_images ON share_images.share_id = shares.id
+        WHERE shares.user_id = ?
+        GROUP BY shares.id
+        ORDER BY shares.created_at DESC
+      `),
+      deleteShare: database.prepare('DELETE FROM shares WHERE id = ? AND user_id = ?'),
+      listSharePaths: database.prepare(`
+        SELECT share_images.image_path AS image_path
+        FROM share_images
+        JOIN shares ON shares.id = share_images.share_id
+        WHERE shares.user_id = ?
+      `),
+      createShare: database.transaction((shareRow, imagePaths) => {
+        database.prepare(`
+          INSERT INTO shares (id, user_id, token, title, created_at, expires_at)
+          VALUES (@id, @user_id, @token, @title, @created_at, @expires_at)
+        `).run(shareRow)
+        for (let position = 0; position < imagePaths.length; position++) {
+          database.prepare(
+            'INSERT INTO share_images (share_id, position, image_path) VALUES (?, ?, ?)',
+          ).run(shareRow.id, position, imagePaths[position])
+        }
+      }),
     }
 
     return { db: database, stmts }

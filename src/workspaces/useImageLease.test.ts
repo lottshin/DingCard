@@ -37,9 +37,11 @@ function createHarness(retain = vi.fn<(...sources: [readonly string[]]) => Promi
     windowTarget,
     documentTarget,
     visibilityState: () => visibilityState,
-    setTimeout: (callback, delay) => setTimeout(callback, delay),
+    // Global timers type as NodeJS.Timeout once @types/node is in the tree;
+    // the scheduler contract takes DOM-style numeric handles.
+    setTimeout: (callback, delay) => setTimeout(callback, delay) as unknown as number,
     clearTimeout: (handle) => clearTimeout(handle),
-    setInterval: (callback, delay) => setInterval(callback, delay),
+    setInterval: (callback, delay) => setInterval(callback, delay) as unknown as number,
     clearInterval: (handle) => clearInterval(handle),
   })
   return {

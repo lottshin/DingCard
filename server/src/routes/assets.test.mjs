@@ -251,6 +251,7 @@ test('SQLite assets keep an expired, undrafted upload alive until the asset is d
   const reclaim = () => reclaimExpiredImages({
     listDraftDocuments: (userId) => stmts.listDraftDocuments.all(userId),
     listAssetPaths: (userId) => stmts.listAssetPaths.all(userId),
+    listSharePaths: (userId) => stmts.listSharePaths.all(userId),
     listImages: (userId) => stmts.listImages.all(userId),
     removeFile: async (diskPath) => removedFiles.push(path.basename(diskPath)),
     deleteImage: (imageId, userId) => stmts.deleteImage.run(imageId, userId),
