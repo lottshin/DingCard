@@ -1152,3 +1152,97 @@ describe('RemoteStore asset library', () => {
     await expectApiError(store.assets.rename('user-1', 'asset-1', '名字'), 200, '服务器返回了无效素材')
   })
 })
+
+describe('RemoteStore share links', () => {
+  let values: Map<string, string>
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.resetModules()
+    values = new Map([[TOKEN_KEY, 'share-token']])
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+      removeItem: vi.fn((key: string) => values.delete(key)),
+    })
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  async function createStore() {
+    const { createRemoteStore } = await import('./remote')
+    return createRemoteStore(API_BASE)
+  }
+
+  const serverShare = {
+    id: 'share-1',
+    title: '一周早餐',
+    url: '/share/tok-1',
+    createdAt: 100,
+    expiresAt: 200,
+    imageCount: 3,
+  }
+
+  it('creates a share from managed upload URLs and resolves the page link absolutely', async () => {
+    let created: Record<string, unknown> | undefined
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      if (requestUrl(args) === `${API_BASE}/api/shares`) {
+        created = jsonRequestBody(args)
+        expect(requestHeaders(args).get('authorization')).toBe('Bearer share-token')
+        return jsonResponse(serverShare)
+      }
+      throw new Error(`Unexpected request: ${requestUrl(args)}`)
+    })
+    const store = await createStore()
+
+    const share = await store.shares.create('user-1', '一周早餐', ['/uploads/page-1.png', `${API_BASE}/uploads/page-2.jpg`], 7)
+
+    expect(created).toEqual({
+      title: '一周早餐',
+      urls: ['/uploads/page-1.png', `${API_BASE}/uploads/page-2.jpg`],
+      expiresInDays: 7,
+    })
+    expect(share).toEqual({
+      id: 'share-1',
+      title: '一周早餐',
+      url: `${API_BASE}/share/tok-1`,
+      createdAt: 100,
+      expiresAt: 200,
+      imageCount: 3,
+    })
+  })
+
+  it('lists shares newest first and drops broken rows', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([
+      serverShare,
+      { id: 'share-2', url: '/share/tok-2', createdAt: 300, expiresAt: 400, imageCount: 1 },
+      { id: 'broken' },
+    ]))
+    const store = await createStore()
+
+    const shares = await store.shares.list('user-1')
+
+    expect(shares.map((share) => [share.id, share.url, share.imageCount])).toEqual([
+      ['share-1', `${API_BASE}/share/tok-1`, 3],
+      ['share-2', `${API_BASE}/share/tok-2`, 1],
+    ])
+  })
+
+  it('revokes by encoded id and reports invalid envelopes', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'share-1' }))
+    const store = await createStore()
+
+    await store.shares.revoke('user-1', 'share/1')
+    await expectApiError(store.shares.create('user-1', '早餐', ['/uploads/a.png']), 200, '服务器返回了无效分享')
+
+    const [revokeCall] = fetchMock.mock.calls as FetchCall[]
+    expect(requestUrl(revokeCall)).toBe(`${API_BASE}/api/shares/share%2F1`)
+    expect(revokeCall[1]?.method).toBe('DELETE')
+  })
+})

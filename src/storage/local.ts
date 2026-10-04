@@ -14,7 +14,7 @@ import { materializeLocalFreeformImages } from '../freeform/imageAssets'
 import * as imagesImpl from '../imageStore'
 import { createLocalAssetStore } from './localAssets'
 import { createLocalPictures, isPictureRef, type PictureBackend } from './localPictures'
-import type { AuthStore, DraftStore, ImageStore, Storage } from './types'
+import type { AuthStore, DraftStore, ImageStore, ShareStore, Storage } from './types'
 
 const auth: AuthStore = {
   register: (username, password) => authImpl.register(username, password),
@@ -110,5 +110,20 @@ export function createLocalStore(pictureBackend?: PictureBackend | null): Storag
     },
   }
 
-  return { auth, drafts, images, assets: createLocalAssetStore(), remote: false }
+  // Share links need a server to host the public page; local mode has none.
+  // The UI hides the share entry in local mode, so these only ever fire if
+  // something calls them anyway — they fail with an explicit message.
+  const shares: ShareStore = {
+    list: async () => {
+      throw new Error('分享需要部署服务端')
+    },
+    create: async () => {
+      throw new Error('分享需要部署服务端')
+    },
+    revoke: async () => {
+      throw new Error('分享需要部署服务端')
+    },
+  }
+
+  return { auth, drafts, images, assets: createLocalAssetStore(), shares, remote: false }
 }

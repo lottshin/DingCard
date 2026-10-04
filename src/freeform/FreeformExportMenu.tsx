@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useDismiss } from '../app/useDismiss'
 import { t } from '../i18n'
-import { ChevronDownIcon, DownloadIcon, GridNineIcon, LongImageIcon, StackIcon } from '../ui/icons'
+import { ChevronDownIcon, DownloadIcon, GridNineIcon, LongImageIcon, ShareIcon, StackIcon } from '../ui/icons'
 import type { FreeformViewPrefs } from './viewPrefs'
 
 type ExportPrefs = Pick<FreeformViewPrefs, 'exportFormat' | 'exportScale' | 'exportQuality'>
@@ -20,6 +20,8 @@ interface FreeformExportMenuProps {
   onExportLong: () => void
   /** The current page cut into nine squares for WeChat Moments; only offered for a square page. */
   onExportGrid?: () => void
+  /** Share the whole deck as a link; only offered against a real server. */
+  onShare?: () => void
 }
 
 const FORMAT_LABELS = { png: 'PNG', jpeg: 'JPG', pdf: 'PDF' } as const
@@ -36,6 +38,7 @@ export function FreeformExportMenu({
   onExportAll,
   onExportLong,
   onExportGrid,
+  onShare,
 }: FreeformExportMenuProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -170,6 +173,18 @@ export function FreeformExportMenu({
               >
                 <GridNineIcon />
                 {t('切成九宫格')}
+              </button>
+            )}
+            {onShare && (
+              <button
+                className="ghost"
+                type="button"
+                data-testid="freeform-export-share"
+                disabled={disabled || exporting}
+                onClick={onShare}
+              >
+                <ShareIcon />
+                {t('分享链接')}
               </button>
             )}
           </div>

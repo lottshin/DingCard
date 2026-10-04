@@ -1675,6 +1675,44 @@ kbd {
   margin: 14px 0 0;
 }
 
+/* The share result: a scannable QR, the link to copy, and the way back. */
+.share-modal {
+  width: min(420px, calc(100vw - 32px));
+  text-align: left;
+}
+
+.share-qr {
+  display: block;
+  width: 208px;
+  height: 208px;
+  margin: 18px auto 0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.share-qr-pending {
+  background: var(--surface-2);
+}
+
+.share-link-label {
+  display: block;
+  margin-top: 16px;
+}
+
+.share-link-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
 .guest-left {
   display: flex;
   align-items: center;

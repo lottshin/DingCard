@@ -385,3 +385,31 @@ describe('LocalStore freeform image persistence', () => {
     expect(normalizeFreeformDocument(listed[0].document)).toEqual(listed[0].document)
   })
 })
+
+describe('LocalStore share links', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    })
+    vi.stubGlobal('sessionStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects share calls with an explicit message: local mode has no server', async () => {
+    const { createLocalStore } = await import('./local')
+    const store = createLocalStore()
+
+    await expect(store.shares.list('user-1')).rejects.toThrow('分享需要部署服务端')
+    await expect(store.shares.create('user-1', '早餐', ['/uploads/a.png'])).rejects.toThrow('分享需要部署服务端')
+    await expect(store.shares.revoke('user-1', 'share-1')).rejects.toThrow('分享需要部署服务端')
+  })
+})

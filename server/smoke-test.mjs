@@ -367,6 +367,44 @@ async function main() {
     aliceImageDiskPath,
   )
 
+  // --- share links: create from an owned upload, public page, revoke ---
+  uploaded = await uploadImage(auth, tinyPng, 'share-page.png')
+  check('share page upload succeeds', uploaded.response.status === 200, uploaded.body)
+
+  r = await fetch(`${base}/api/shares`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...auth },
+    body: JSON.stringify({ title: '早餐分享', urls: [uploaded.body.url] }),
+  })
+  body = await r.json()
+  check('share creation returns the public page path', r.ok && /^\/share\/[A-Za-z0-9_-]+$/.test(body.url), body)
+  const sharePagePath = body.url
+  const shareId = body.id
+
+  r = await fetch(`${base}${sharePagePath}`)
+  const shareHtml = await r.text()
+  check(
+    'public share page renders the page image',
+    r.status === 200 && shareHtml.includes('早餐分享') && shareHtml.includes(uploaded.body.url),
+    r.status,
+  )
+
+  r = await fetch(`${base}/api/shares`, { headers: bobAuth })
+  const bobShares = await r.json()
+  check("bob's share list does not include alice's share", r.ok && bobShares.length === 0, bobShares)
+
+  r = await fetch(`${base}/api/shares/${shareId}`, { method: 'DELETE', headers: bobAuth })
+  check("bob cannot revoke alice's share", r.status === 404, r.status)
+
+  r = await fetch(`${base}${sharePagePath}`)
+  check('share page stays live until the owner revokes it', r.status === 200, r.status)
+
+  r = await fetch(`${base}/api/shares/${shareId}`, { method: 'DELETE', headers: auth })
+  check('owner revokes the share', r.ok, r.status)
+
+  r = await fetch(`${base}${sharePagePath}`)
+  check('revoked share page answers 404', r.status === 404, r.status)
+
   // --- same-user concurrent uploads cannot both pass a stale quota check ---
   r = await fetch(`${base}/api/auth/register`, {
     method: 'POST',

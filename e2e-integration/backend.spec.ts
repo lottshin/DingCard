@@ -507,6 +507,44 @@ test.describe('remote backend integration', () => {
     expect(download.suggestedFilename()).toBe('slide-01.png')
   })
 
+  test('shares the deck as a link with a QR code, then revokes it', async ({ page }) => {
+    const pageErrors = collectPageErrors(page)
+    await page.goto('/#/edit')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await register(page, uniqueName())
+    await page.goto('/#/edit/canvas')
+
+    await openExportMenu(page)
+    await page.getByTestId('freeform-export-share').click()
+
+    // The share dialog carries the QR code and the absolute page link.
+    const dialog = page.getByTestId('freeform-share-dialog')
+    await expect(dialog).toBeVisible()
+    await expect(page.getByTestId('share-qr')).toHaveAttribute('src', /^data:image\/png;base64,/)
+    const link = await page.getByTestId('share-link-input').inputValue()
+    expect(link).toMatch(/\/share\/[A-Za-z0-9_-]+$/)
+
+    // The public page renders the deck's exported picture, no account needed.
+    const shared = await page.request.get(link)
+    expect(shared.status()).toBe(200)
+    const html = await shared.text()
+    expect(html).toContain('长按图片保存到相册')
+    expect(html).toMatch(/<img src="[^"]*\/uploads\//)
+
+    // The share shows up in the owner's list, and revoking closes the page.
+    const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
+    const list = await page.request.get(`${API_BASE}/api/shares`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(await list.json()).toHaveLength(1)
+
+    await page.getByTestId('share-revoke').click()
+    await expect(dialog).toHaveCount(0)
+    await expect((await page.request.get(link)).status()).toBe(404)
+    expect(pageErrors).toEqual([])
+  })
+
   test('round-trips a nested v3 scene and preserves hidden image references through GC', async ({
     browser,
     page,

@@ -63,6 +63,14 @@ export function DownloadIcon(props: IconProps) {
   )
 }
 
+export function ShareIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 10.75V2.5M4.75 5.75 8 2.5l3.25 3.25M3.5 10.5v2a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-2" />
+    </Icon>
+  )
+}
+
 export function MinusIcon(props: IconProps) {
   return (
     <Icon {...props}>
