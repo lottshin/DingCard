@@ -1237,6 +1237,9 @@ export function FreeformWorkspace({
   const [shareResult, setShareResult] = useState<Share | null>(null)
   const [shareRevoking, setShareRevoking] = useState(false)
   const [shareError, setShareError] = useState<string | null>(null)
+  // The document the current share was rendered from; a later edit replaces
+  // the document object, so the remembered link stops being offered.
+  const sharedDocumentRef = useRef<FreeformDocument | null>(doc)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   /** The insert panel docked beside the tool rail; one at a time. */
@@ -5873,6 +5876,7 @@ export function FreeformWorkspace({
       }
       if (urls.length === 0) throw new Error(t('分享创建失败，请稍后重试'))
       setShareResult(await storage.shares.create(owner, projectTitleRef.current, urls, expiresInHours))
+      sharedDocumentRef.current = doc
     } catch {
       // The share dialog is up; the failure has to show inside it, not behind the modal.
       setShareError(t('分享创建失败，请稍后重试'))
@@ -5889,6 +5893,7 @@ export function FreeformWorkspace({
     try {
       await storeFor(owner).shares.revoke(owner, share.id)
       setShareResult(null)
+      sharedDocumentRef.current = null
       setShareOpen(false)
       setOperationNotice(t('分享已撤销，链接不再能打开'))
     } catch (error) {
@@ -6390,7 +6395,8 @@ export function FreeformWorkspace({
               onExportGrid={isGridPage(activeSlide) ? () => void exportGridSlices() : undefined}
               onShare={ownerStore.remote
                 ? () => {
-                  setShareResult(null)
+                  // A remembered share from this document reappears until it
+                  // expires or the document changes; a fresh one can replace it.
                   setShareError(null)
                   setShareOpen(true)
                 }
@@ -6409,7 +6415,13 @@ export function FreeformWorkspace({
 
       {shareOpen && (
         <FreeformShareDialog
-          share={shareResult}
+          share={
+            shareResult
+              && sharedDocumentRef.current === currentDocumentRef.current
+              && shareResult.expiresAt > Date.now()
+              ? shareResult
+              : null
+          }
           creating={exporting}
           progress={exportProgress}
           slideCount={doc.slides.length}
@@ -6419,8 +6431,9 @@ export function FreeformWorkspace({
           onRevoke={() => shareResult && void revokeShare(shareResult)}
           onClose={() => {
             if (exporting) return
+            // Keep the share: reopening the dialog shows its QR again until
+            // it expires, the document changes, or it is revoked.
             setShareOpen(false)
-            setShareResult(null)
           }}
         />
       )}
