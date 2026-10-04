@@ -518,9 +518,23 @@ test.describe('remote backend integration', () => {
     await openExportMenu(page)
     await page.getByTestId('freeform-export-share').click()
 
-    // The share dialog carries the QR code and the absolute page link.
+    // The dialog first asks how long the link should live; no QR before that.
     const dialog = page.getByTestId('freeform-share-dialog')
     await expect(dialog).toBeVisible()
+    await expect(page.getByTestId('share-qr')).toHaveCount(0)
+
+    // Custom days are checked client-side: an out-of-range value keeps the button off.
+    await dialog.getByTestId('share-expiry-custom').click()
+    await dialog.getByTestId('share-expiry-days').fill('400')
+    await expect(dialog.getByTestId('share-create')).toBeDisabled()
+    await dialog.getByTestId('share-expiry-days').fill('100')
+    await expect(dialog.getByTestId('share-create')).toBeEnabled()
+
+    // A preset wins over the custom value; 90 days is what gets created below.
+    await dialog.getByTestId('share-expiry-90').click()
+    await dialog.getByTestId('share-create').click()
+
+    // The dialog carries the QR code and the absolute page link.
     await expect(page.getByTestId('share-qr')).toHaveAttribute('src', /^data:image\/png;base64,/)
     const link = await page.getByTestId('share-link-input').inputValue()
     expect(link).toMatch(/\/share\/[A-Za-z0-9_-]+$/)
@@ -532,12 +546,16 @@ test.describe('remote backend integration', () => {
     expect(html).toContain('长按图片保存到相册')
     expect(html).toMatch(/<img src="[^"]*\/uploads\//)
 
-    // The share shows up in the owner's list, and revoking closes the page.
+    // The share shows up in the owner's list with the chosen lifetime, and revoking closes the page.
     const token = await page.evaluate(() => localStorage.getItem('slicer.token.v1'))
     const list = await page.request.get(`${API_BASE}/api/shares`, {
       headers: { authorization: `Bearer ${token}` },
     })
-    expect(await list.json()).toHaveLength(1)
+    const shares = await list.json() as Array<{ createdAt: number; expiresAt: number }>
+    expect(shares).toHaveLength(1)
+    const lifetimeMs = shares[0].expiresAt - shares[0].createdAt
+    expect(lifetimeMs).toBeGreaterThanOrEqual(89 * 24 * 60 * 60 * 1000)
+    expect(lifetimeMs).toBeLessThanOrEqual(91 * 24 * 60 * 60 * 1000)
 
     await page.getByTestId('share-revoke').click()
     await expect(dialog).toHaveCount(0)

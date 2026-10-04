@@ -1232,8 +1232,10 @@ export function FreeformWorkspace({
   } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
   const [shareResult, setShareResult] = useState<Share | null>(null)
   const [shareRevoking, setShareRevoking] = useState(false)
+  const [shareError, setShareError] = useState<string | null>(null)
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   /** The insert panel docked beside the tool rail; one at a time. */
@@ -5835,7 +5837,7 @@ export function FreeformWorkspace({
   }
 
   /** Render every page, upload it, and put the whole deck behind one share link. */
-  async function shareDeck() {
+  async function shareDeck(expiresInDays: number) {
     if (doc.slides.length === 0 || renderScale === null) return
     if (blockDocumentMutationDuringInteraction()) return
     const owner = ownerId ?? GUEST_OWNER_ID
@@ -5843,6 +5845,7 @@ export function FreeformWorkspace({
     if (!storage.remote) return
     setExporting(true)
     setExportProgress(null)
+    setShareError(null)
     const originalSlideId = activeSlide.id
     try {
       setSelection([])
@@ -5868,9 +5871,10 @@ export function FreeformWorkspace({
         urls.push(await storage.images.put(sized))
       }
       if (urls.length === 0) throw new Error(t('分享创建失败，请稍后重试'))
-      setShareResult(await storage.shares.create(owner, projectTitleRef.current, urls))
-    } catch (error) {
-      showOperationError(error, t('分享创建失败，请稍后重试'))
+      setShareResult(await storage.shares.create(owner, projectTitleRef.current, urls, expiresInDays))
+    } catch {
+      // The share dialog is up; the failure has to show inside it, not behind the modal.
+      setShareError(t('分享创建失败，请稍后重试'))
     } finally {
       replaceCurrent({ type: 'slide/select', slideId: originalSlideId })
       setExportProgress(null)
@@ -5884,6 +5888,7 @@ export function FreeformWorkspace({
     try {
       await storeFor(owner).shares.revoke(owner, share.id)
       setShareResult(null)
+      setShareOpen(false)
       setOperationNotice(t('分享已撤销，链接不再能打开'))
     } catch (error) {
       showOperationError(error, t('撤销分享失败，请稍后重试'))
@@ -6382,7 +6387,13 @@ export function FreeformWorkspace({
               onExportAll={requestExportAllSlides}
               onExportLong={() => void exportLongImage()}
               onExportGrid={isGridPage(activeSlide) ? () => void exportGridSlices() : undefined}
-              onShare={ownerStore.remote ? () => void shareDeck() : undefined}
+              onShare={ownerStore.remote
+                ? () => {
+                  setShareResult(null)
+                  setShareError(null)
+                  setShareOpen(true)
+                }
+                : undefined}
             />
           )}
         />
@@ -6395,12 +6406,21 @@ export function FreeformWorkspace({
         />
       )}
 
-      {shareResult && (
+      {shareOpen && (
         <FreeformShareDialog
           share={shareResult}
+          creating={exporting}
+          progress={exportProgress}
+          slideCount={doc.slides.length}
           revoking={shareRevoking}
-          onRevoke={() => void revokeShare(shareResult)}
-          onClose={() => setShareResult(null)}
+          error={shareError}
+          onCreate={(expiresInDays) => void shareDeck(expiresInDays)}
+          onRevoke={() => shareResult && void revokeShare(shareResult)}
+          onClose={() => {
+            if (exporting) return
+            setShareOpen(false)
+            setShareResult(null)
+          }}
         />
       )}
 

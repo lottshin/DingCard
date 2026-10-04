@@ -1713,6 +1713,48 @@ kbd {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
 
+/* Choosing how long a share link stays open, before it is created. */
+.share-expiry-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.share-days-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.share-days-input {
+  width: 88px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.share-days-suffix {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.share-days-hint {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.share-error {
+  margin: 14px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
 .guest-left {
   display: flex;
   align-items: center;
