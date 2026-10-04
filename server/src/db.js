@@ -80,6 +80,21 @@ export function createDatabase(appConfig = defaultConfig) {
         PRIMARY KEY (share_id, position)
       );
       CREATE INDEX IF NOT EXISTS idx_share_images_path ON share_images(image_path);
+
+      -- An API token is a scoped key an agent presents as a Bearer token
+      -- instead of a user session; the value is shown once and only its
+      -- SHA-256 hash is stored. Revocation keeps the row for the audit trail.
+      CREATE TABLE IF NOT EXISTS api_tokens (
+        id           TEXT PRIMARY KEY,
+        user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash   TEXT NOT NULL UNIQUE,
+        name         TEXT NOT NULL,
+        scopes       TEXT NOT NULL,
+        created_at   INTEGER NOT NULL,
+        last_used_at INTEGER,
+        revoked_at   INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id, created_at DESC);
     `)
 
     ensureImageLeaseSchema(database, Date.now(), appConfig.imageLeaseMs)
@@ -193,6 +208,21 @@ export function createDatabase(appConfig = defaultConfig) {
           ).run(shareRow.id, position, imagePaths[position])
         }
       }),
+
+      apiTokenByHash: database.prepare(
+        'SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL',
+      ),
+      listApiTokens: database.prepare(
+        'SELECT * FROM api_tokens WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC',
+      ),
+      insertApiToken: database.prepare(`
+        INSERT INTO api_tokens (id, user_id, token_hash, name, scopes, created_at)
+        VALUES (@id, @user_id, @token_hash, @name, @scopes, @created_at)
+      `),
+      revokeApiToken: database.prepare(
+        'UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL',
+      ),
+      touchApiToken: database.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?'),
     }
 
     return { db: database, stmts }

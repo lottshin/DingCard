@@ -10,6 +10,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 
 import { config } from '../config.js'
+import { requireScope } from '../tokenGuards.js'
 import { stmts } from '../db.js'
 import { requestManagedImagePath } from './images.js'
 
@@ -90,6 +91,8 @@ export default async function shareRoutes(fastify, options = {}) {
   const { assetLock, reclaimImages } = options
 
   fastify.addHook('preHandler', fastify.authenticate)
+  // API tokens are scoped; a browser session is never checked here.
+  fastify.addHook('preHandler', requireScope('shares'))
 
   // GET /api/shares -> Share[]  (newest first)
   fastify.get('/', async (request) => {

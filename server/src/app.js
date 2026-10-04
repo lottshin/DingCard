@@ -18,6 +18,7 @@ import deckRoutes from './routes/decks.js'
 import draftRoutes from './routes/drafts.js'
 import imageRoutes from './routes/images.js'
 import shareRoutes from './routes/shares.js'
+import tokenRoutes from './routes/tokens.js'
 import { registerSharePage } from './sharePage.js'
 import { registerStaticSite } from './staticSite.js'
 import { createUserAssetLock } from './userAssetLock.js'
@@ -72,7 +73,7 @@ export async function buildApp({
     })
     // Basic global rate limit; auth routes get a tighter cap below.
     await app.register(rateLimit, { max: appConfig.rateLimitMax, timeWindow: '1 minute' })
-    await app.register(authPlugin, { config: appConfig })
+    await app.register(authPlugin, { config: appConfig, stmts: appStmts })
 
     // Upload URLs use randomized immutable filenames.
     await app.register(fastifyStatic, {
@@ -132,6 +133,11 @@ export async function buildApp({
       config: appConfig,
       stmts: appStmts,
       reclaimImages,
+    })
+
+    await app.register(tokenRoutes, {
+      prefix: '/api/tokens',
+      stmts: appStmts,
     })
 
     // The public share page is a real route (not SPA content), registered

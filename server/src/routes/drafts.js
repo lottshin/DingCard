@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { stmts } from '../db.js'
+import { requireScope } from '../tokenGuards.js'
 
 const KNOWN_MODES = new Set(['markdown-card', 'freeform-slide'])
 
@@ -58,6 +59,8 @@ export default async function draftRoutes(fastify, options = {}) {
 
   // Everything here requires a logged-in user.
   fastify.addHook('preHandler', fastify.authenticate)
+  // API tokens are scoped; a browser session is never checked here.
+  fastify.addHook('preHandler', requireScope('drafts'))
 
   // GET /api/drafts -> Draft[]  (newest first)
   fastify.get('/', async (request) => {

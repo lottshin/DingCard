@@ -150,6 +150,7 @@ test('MCP automation package stays documented, versioned, and tested', () => {
     'list_shares',
     'revoke_share',
     'DINGCARD_SERVER_URL',
+    'DINGCARD_SERVER_TOKEN',
     'dingcard://schema/freeform',
     'DINGCARD_DIST_DIR',
     '127.0.0.1',

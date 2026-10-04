@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { config } from '../config.js'
+import { requireScope } from '../tokenGuards.js'
 import { stmts } from '../db.js'
 import { persistImageFile } from '../imagePersistence.js'
 import { expiresInHours, insertShare, shareTitle } from './shares.js'
@@ -71,6 +72,8 @@ export default async function deckRoutes(fastify, options = {}) {
   const { assetLock, reclaimImages } = options
 
   fastify.addHook('preHandler', fastify.authenticate)
+  // API tokens are scoped; a browser session is never checked here.
+  fastify.addHook('preHandler', requireScope('decks'))
 
   // POST /api/decks  { document, title?, expiresInHours? }  ->  { images, share }
   fastify.post('/', { bodyLimit: MAX_BODY_BYTES }, async (request, reply) => {

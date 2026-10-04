@@ -427,6 +427,37 @@ async function main() {
   r = await fetch(`${base}${uploaded.body.url}`)
   check('alice existing small-image flow still serves the surviving upload', r.status === 200, r.status)
 
+  // --- API tokens: mint with the session, use scoped, revoke ---
+  r = await fetch(`${base}/api/tokens`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...auth },
+    body: JSON.stringify({ name: '智能体', scopes: ['shares', 'images'] }),
+  })
+  body = await r.json()
+  check('token creation returns the value once', r.ok && body.token?.startsWith('dc_') && body.scopes?.length === 2, body)
+
+  const tokenAuth = { authorization: `Bearer ${body.token}` }
+  r = await fetch(`${base}/api/shares`, { headers: tokenAuth })
+  let tokenList = null
+  try {
+    tokenList = await r.json()
+  } catch {
+    tokenList = null
+  }
+  check('token with the shares scope lists shares', r.ok && Array.isArray(tokenList), tokenList)
+
+  r = await fetch(`${base}/api/tokens`, { headers: tokenAuth })
+  check('token cannot manage tokens -> 403', r.status === 403, r.status)
+
+  r = await fetch(`${base}/api/drafts`, { headers: tokenAuth })
+  check('token without the drafts scope is denied -> 403', r.status === 403, r.status)
+
+  r = await fetch(`${base}/api/tokens/${body.id}`, { method: 'DELETE', headers: auth })
+  check('session revokes the token', r.ok, r.status)
+
+  r = await fetch(`${base}/api/shares`, { headers: tokenAuth })
+  check('revoked token no longer authenticates -> 401', r.status === 401, r.status)
+
   let registerRateLimited = false
   let registerRateLimitDetail = null
   for (let i = 0; i < 12; i++) {

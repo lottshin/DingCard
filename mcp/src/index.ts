@@ -605,7 +605,7 @@ export function createDingcardServer(): McpServer {
 
   const SHARE_SERVER_UNCONFIGURED = {
     ok: false as const,
-    error: '未配置服务端：设置环境变量 DINGCARD_SERVER_URL（部署的叮卡地址，如 https://cards.example.com）、DINGCARD_SERVER_USERNAME 和 DINGCARD_SERVER_PASSWORD（一个叮卡账号），重启 MCP 后再分享。',
+    error: '未配置服务端：设置环境变量 DINGCARD_SERVER_URL（部署的叮卡地址，如 https://cards.example.com）和 DINGCARD_SERVER_TOKEN（一个 API 令牌），或 DINGCARD_SERVER_USERNAME 和 DINGCARD_SERVER_PASSWORD（一个叮卡账号），重启 MCP 后再分享。',
   }
 
   server.tool(

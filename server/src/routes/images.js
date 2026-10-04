@@ -7,6 +7,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { config } from '../config.js'
+import { requireScope } from '../tokenGuards.js'
 import { stmts } from '../db.js'
 import { persistImageFile } from '../imagePersistence.js'
 import { normalizeManagedImagePath } from '../imageRefs.js'
@@ -87,7 +88,7 @@ export default async function imageRoutes(fastify, options = {}) {
   const removeFile = options.removeFile ?? fs.unlink
   const { assetLock, reclaimImages } = options
 
-  fastify.post('/retain', { preHandler: fastify.authenticate }, async (request, reply) => {
+  fastify.post('/retain', { preHandler: [fastify.authenticate, requireScope('images')] }, async (request, reply) => {
     if (!Array.isArray(request.body?.urls)) {
       return reply.code(400).send({
         error: 'urls 必须是数组',
@@ -135,7 +136,7 @@ export default async function imageRoutes(fastify, options = {}) {
     })
   })
 
-  fastify.post('/', { preHandler: fastify.authenticate }, async (request, reply) => {
+  fastify.post('/', { preHandler: [fastify.authenticate, requireScope('images')] }, async (request, reply) => {
     const userId = request.user.sub
     const part = await request.file()
     if (!part) return reply.code(400).send({ error: '缺少上传文件' })

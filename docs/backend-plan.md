@@ -219,12 +219,24 @@ POST   /api/decks   { document, title?, expiresInHours? }  →  { images: string
 - 渲染需要服务端所在机器有 Chrome/Chromium（Docker 镜像内置 Chromium 与 CJK 字体）；没有可用浏览器或渲染失败返回 503 + `DECK_RENDER_FAILED`（信息里带原因）。渲染逐个排队（每进程同时一个浏览器），图片配额不足返回 413 + `IMAGE_QUOTA_EXCEEDED`。
 - 渲染库是 `mcp` 包构建出的 `mcp/dist/render.mjs`（`DINGCARD_DIST_DIR` 指向前端 dist；`DINGCARD_CHROME_PATH` 可指定浏览器路径），服务端路由第一次用到时才懒加载。
 
+### API 令牌（给程序的钥匙）
+```
+POST   /api/tokens      { name, scopes }  →  { id, name, scopes, createdAt, token }
+GET    /api/tokens      → ApiToken[]   (只返回当前用户的,按 created_at 倒序;永远不含令牌值)
+DELETE /api/tokens/:id  →  { ok: true }
+```
+- 令牌是给程序（AI 客户端、脚本）用的凭证：请求带 `Authorization: Bearer dc_…` 就代表账号，不需要登录会话。值是 256 位随机数，只在创建响应里出现一次，库里只存 SHA-256 哈希；最多同时保留 10 个有效令牌（超出 409 + `TOKEN_LIMIT_EXCEEDED`）。
+- `scopes` 是 `decks`、`shares`、`drafts`、`assets`、`images` 的非空子集：令牌只能调自己权限覆盖的接口（缺权限 403 + `TOKEN_SCOPE_DENIED`），浏览器登录会话（JWT）是用户本人、不受限。
+- 令牌不能管理令牌（403 + `TOKEN_MANAGEMENT_DENIED`）：否则一个令牌可以给自己扩权。撤销立即生效，之后用它请求返回 401；`lastUsedAt` 按分钟粒度更新。
+- MCP 配 `DINGCARD_SERVER_TOKEN`（代替账号密码）即用令牌调用以上全部接口；`share_document` 需要 `images` + `shares` 权限。
+
 ### 状态码约定
 
 | 状态码 | 稳定语义 |
 |---|---|
 | 400 | 请求结构或字段无效，例如草稿信封、草稿 ID、retain 数组或 retain 数量上限不符合契约。 |
 | 401 | 公共登录请求凭据错误，或受保护请求的 JWT 缺失/无效/过期；只有后者满足当前 token 条件时才使客户端会话失效。 |
+| 403 | API 令牌缺少接口所需的作用域，或试图用令牌管理令牌；浏览器会话不会收到这个状态。 |
 | 404 | 草稿或素材不存在，或调用者尝试读取/更新不属于自己的草稿或素材；不泄露其他用户的数据是否存在。 |
 | 409 | 用户名冲突；retain 中至少一个托管图片不存在/不属于当前用户（整批失败，不部分续租）；或登记素材/创建分享时图片不存在/不属于当前用户。 |
 | 410 | 分享链接已过期（公开页）。 |
@@ -232,7 +244,7 @@ POST   /api/decks   { document, title?, expiresInHours? }  →  { images: string
 | 415 | 上传文件 MIME 不在 PNG/JPEG/WebP 白名单。 |
 | 429 | 全局或认证路由触发限流；注册、登录等认证请求需稍后重试。 |
 
-图片 retain 的机器可读错误码为 `INVALID_IMAGE_RETAIN_REQUEST`、`IMAGE_RETAIN_LIMIT_EXCEEDED`、`IMAGE_RETAIN_CONFLICT`；配额错误码为 `IMAGE_QUOTA_EXCEEDED`；素材登记的图片缺失错误码为 `ASSET_IMAGE_MISSING`；分享的图片缺失/超量错误码为 `SHARE_IMAGE_MISSING`、`SHARE_IMAGE_LIMIT_EXCEEDED`。
+图片 retain 的机器可读错误码为 `INVALID_IMAGE_RETAIN_REQUEST`、`IMAGE_RETAIN_LIMIT_EXCEEDED`、`IMAGE_RETAIN_CONFLICT`；配额错误码为 `IMAGE_QUOTA_EXCEEDED`；素材登记的图片缺失错误码为 `ASSET_IMAGE_MISSING`；分享的图片缺失/超量错误码为 `SHARE_IMAGE_MISSING`、`SHARE_IMAGE_LIMIT_EXCEEDED`；API 令牌的作用域/管理/数量错误码为 `TOKEN_SCOPE_DENIED`、`TOKEN_MANAGEMENT_DENIED`、`TOKEN_LIMIT_EXCEEDED`。
 
 ---
 

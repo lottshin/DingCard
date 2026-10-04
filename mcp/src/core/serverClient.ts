@@ -18,6 +18,8 @@ export interface ServerClientOptions {
   /** A dingcard account; both are required before the first request. */
   username?: string
   password?: string
+  /** A scoped API token (dc_…, minted on the server); used as-is, no login. */
+  apiToken?: string
   fetchImpl?: typeof fetch
 }
 
@@ -73,6 +75,7 @@ export function serverClientFromEnv(env: { [key: string]: string | undefined } =
     serverUrl,
     username: env.DINGCARD_SERVER_USERNAME,
     password: env.DINGCARD_SERVER_PASSWORD,
+    apiToken: env.DINGCARD_SERVER_TOKEN,
   })
 }
 
@@ -80,11 +83,15 @@ export function createServerClient(options: ServerClientOptions): DingcardServer
   const base = options.serverUrl.trim().replace(/\/+$/, '')
   if (base === '') throw new Error('服务端地址为空')
   const fetchImpl: typeof fetch = options.fetchImpl ?? ((input, init) => fetch(input, init))
-  let token: string | null = null
+  const apiToken = options.apiToken?.trim() ?? ''
+  let token: string | null = apiToken !== '' ? apiToken : null
 
   async function login(): Promise<void> {
+    if (apiToken !== '') {
+      throw new Error('API 令牌被服务端拒绝：DINGCARD_SERVER_TOKEN 可能已被撤销，或缺少 images / shares 权限')
+    }
     if (!options.username || !options.password) {
-      throw new Error('未配置服务端账号：设置 DINGCARD_SERVER_USERNAME 和 DINGCARD_SERVER_PASSWORD（一个叮卡账号），重启 MCP 后再分享')
+      throw new Error('未配置服务端账号：设置 DINGCARD_SERVER_TOKEN（一个 API 令牌），或 DINGCARD_SERVER_USERNAME 和 DINGCARD_SERVER_PASSWORD（一个叮卡账号），重启 MCP 后再分享')
     }
     const response = await fetchImpl(`${base}/api/auth/login`, {
       method: 'POST',

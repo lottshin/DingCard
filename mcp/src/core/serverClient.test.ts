@@ -37,6 +37,13 @@ describe('serverClientFromEnv', () => {
       DINGCARD_SERVER_PASSWORD: 'b',
     })).not.toBeNull()
   })
+
+  test('accepts DINGCARD_SERVER_TOKEN alongside the account variables', () => {
+    expect(serverClientFromEnv({
+      DINGCARD_SERVER_URL: 'https://cards.example.com',
+      DINGCARD_SERVER_TOKEN: 'dc_an-api-token',
+    })).not.toBeNull()
+  })
 })
 
 describe('createServerClient', () => {
@@ -142,5 +149,27 @@ describe('createServerClient', () => {
 
     await expect(client.revokeShare('gone')).resolves.toBeUndefined()
     await expect(client.revokeShare('blocked')).rejects.toThrow('nope')
+  })
+
+  test('an API token skips the login and is sent as the bearer', async () => {
+    const { fetchImpl, calls } = fakeFetch([
+      { path: '/api/shares', respond: () => Promise.resolve(jsonResponse(200, [])) },
+    ])
+    const client = createServerClient({ serverUrl: 'https://cards.example.com', apiToken: 'dc_an-api-token', fetchImpl: fetchImpl as unknown as typeof fetch })
+
+    await expect(client.listShares()).resolves.toEqual([])
+    expect(calls).toHaveLength(1)
+    expect(calls[0].init?.headers).toMatchObject({ authorization: 'Bearer dc_an-api-token' })
+  })
+
+  test('a rejected API token explains the revocation instead of retrying', async () => {
+    const { fetchImpl, calls } = fakeFetch([
+      { path: '/api/shares', respond: () => Promise.resolve(jsonResponse(401, { error: '未登录或登录已过期' })) },
+    ])
+    const client = createServerClient({ serverUrl: 'https://cards.example.com', apiToken: 'dc_revoked', fetchImpl: fetchImpl as unknown as typeof fetch })
+
+    await expect(client.listShares()).rejects.toThrow('DINGCARD_SERVER_TOKEN')
+    // No login attempt followed the 401: the token is all this client has.
+    expect(calls).toHaveLength(1)
   })
 })

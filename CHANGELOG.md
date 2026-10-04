@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 部署了服务端就可以给程序发钥匙——API 令牌：登录后在服务端开一个作用域受限的令牌（`POST /api/tokens`），程序带上 `Authorization: Bearer dc_…` 就能代表账号调用接口，不用再拿账号密码。权限按五类勾选（整卡渲染 `decks`、分享 `shares`、草稿 `drafts`、素材 `assets`、图片 `images`），令牌只能调勾选范围内的接口，浏览器登录不受影响；令牌值只在创建时显示一次（库里只存哈希），随时可撤销（立即失效），最多同时保留 10 个。MCP 配 `DINGCARD_SERVER_TOKEN` 即用令牌分享（代替账号密码环境变量）。
+
 ## [0.22.0] - 2026-10-04
 
 ### Added
