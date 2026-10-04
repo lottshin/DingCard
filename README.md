@@ -138,7 +138,7 @@ curl -f http://127.0.0.1:8080/api/health
 
 ## 本地开发
 
-本地开发需要 Git、Node.js 20+ 和 npm，不需要后端：
+本地开发需要 Git、Node.js 22+ 和 npm，不需要后端：
 
 ```bash
 git clone https://github.com/lottshin/DingCard.git

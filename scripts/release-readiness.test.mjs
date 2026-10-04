@@ -74,7 +74,7 @@ test('release entry documentation matches current versions and commands', () => 
   assert.match(readme, /独立图片[\s\S]*裁剪[\s\S]*八个黑柄/)
   assert.match(backendPlan, /当前源码版本：前端 `0\.21\.0`，后端 `0\.3\.0`/)
   assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/)
-  assert.match(readme, /Node\.js 20\+/)
+  assert.match(readme, /Node\.js 22\+/)
   for (const scriptName of Object.keys(frontend.scripts)) {
     const command = scriptName === 'test' ? 'npm test' : `npm run ${scriptName}`
     assert.match(readme, new RegExp(escapeRegExp(command)), `README must document ${command}`)
@@ -535,12 +535,12 @@ test('root Dockerfile builds the frontend and server into a non-root Node image'
     [...dockerfile.matchAll(/^FROM\s+\S+(?:\s+AS\s+(\S+))?/gim)].map((match) => match[1]),
     ['frontend-build', 'server-deps', 'final'],
   )
-  assert.match(dockerfile, /^FROM node:20-slim AS final$/m)
+  assert.match(dockerfile, /^FROM node:22-slim AS final$/m)
   assert.match(dockerfile, /^ARG VITE_API_BASE=\/$/m)
   assert.match(dockerfile, /^ENV VITE_API_BASE=\$VITE_API_BASE$/m)
   assert.match(dockerfile, /COPY package\.json package-lock\.json \.\//)
   assert.match(dockerfile, /RUN npm ci\s*$/m)
-  const frontendStage = dockerfile.split(/^FROM node:20-slim AS server-deps$/m)[0]
+  const frontendStage = dockerfile.split(/^FROM node:22-slim AS server-deps$/m)[0]
   assert.doesNotMatch(frontendStage, /^COPY \. \.\s*$/m)
   assert.match(frontendStage, /COPY tsconfig\.json tsconfig\.node\.json vite\.config\.ts index\.html render\.html \.\//)
   assert.match(frontendStage, /COPY public \.\/public/)

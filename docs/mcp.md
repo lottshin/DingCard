@@ -317,7 +317,7 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 其他要求：
 
-- **Node.js 20+**（与主项目一致）。
+- **Node.js 22+**（与主项目一致）。
 - **浏览器**：渲染优先使用系统安装的 Google Chrome（与 E2E 测试同一策略，零下载）。没有 Chrome 时会尝试默认 Chromium；两者都不可用会返回明确的错误信息。也可另行执行 `npx playwright install chromium`。
 - 首次渲染前需要一次前端构建（自动触发，产物会被后续渲染复用）。
 

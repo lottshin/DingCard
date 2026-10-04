@@ -1,4 +1,4 @@
-FROM node:20-slim AS frontend-build
+FROM node:22-slim AS frontend-build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -11,13 +11,13 @@ ARG VITE_API_BASE=/
 ENV VITE_API_BASE=$VITE_API_BASE
 RUN npm run build
 
-FROM node:20-slim AS server-deps
+FROM node:22-slim AS server-deps
 WORKDIR /app/server
 
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:20-slim AS final
+FROM node:22-slim AS final
 
 ENV NODE_ENV=production \
     DINGCARD_IMAGE=1 \

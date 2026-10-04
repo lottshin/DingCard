@@ -20,4 +20,4 @@
 }
 ```
 
-需要 Node.js 20 以上和本机安装的 Chrome（渲染、检查用）。完整说明见 [docs/mcp.md](https://github.com/lottshin/DingCard/blob/master/docs/mcp.md)。
+需要 Node.js 22 以上和本机安装的 Chrome（渲染、检查用）。完整说明见 [docs/mcp.md](https://github.com/lottshin/DingCard/blob/master/docs/mcp.md)。
