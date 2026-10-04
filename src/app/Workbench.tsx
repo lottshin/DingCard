@@ -13,6 +13,7 @@ import {
   ChevronDownIcon,
   FreeformMarkIcon,
   HomeIcon,
+  LockIcon,
   LogoutIcon,
   MarkdownMarkIcon,
   MoonIcon,
@@ -38,6 +39,7 @@ import { ProjectsPage } from './ProjectsPage'
 import { navigate, routes, type AppRoute } from './router'
 import { templatesFor, templateSystem } from './templates'
 import { TemplatesPage } from './TemplatesPage'
+import { TokenDialog } from './TokenDialog'
 import { uploadNotice, useAssets } from './useAssets'
 import { useProjects } from './useProjects'
 import { DocumentPreview } from './DocumentPreview'
@@ -122,6 +124,7 @@ export function Workbench({
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [meMenuOpen, setMeMenuOpen] = useState(false)
+  const [tokenDialogOpen, setTokenDialogOpen] = useState(false)
   const [sideOpen, setSideOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const newMenuRef = useRef<HTMLDivElement>(null)
@@ -406,6 +409,15 @@ export function Workbench({
                     <span>{store.remote ? t('服务器账号 · 多设备同步') : t('本地账号 · 数据只存在这台设备')}</span>
                   </div>
                   <div className="menu-sep" role="separator" />
+                  {store.remote && ownerId && (
+                    <button
+                      role="menuitem"
+                      type="button"
+                      data-testid="workbench-tokens"
+                      onClick={() => { setMeMenuOpen(false); setTokenDialogOpen(true) }}
+                    >
+                      <LockIcon />{t('API 令牌')}                    </button>
+                  )}
                   <button role="menuitem" type="button" onClick={() => { setMeMenuOpen(false); onLogout() }} data-testid="workbench-logout">
                     <LogoutIcon />{t('退出登录')}
                   </button>
@@ -555,6 +567,10 @@ export function Workbench({
           onCancel={() => setDeleting(null)}
           onConfirm={() => void confirmDelete(deleting)}
         />
+      )}
+
+      {tokenDialogOpen && ownerId && (
+        <TokenDialog ownerId={ownerId} onClose={() => setTokenDialogOpen(false)} />
       )}
     </div>
   )

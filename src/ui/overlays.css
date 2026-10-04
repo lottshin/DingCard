@@ -466,3 +466,124 @@
   background: var(--btn);
   color: var(--on-btn);
 }
+
+/* ---------- API tokens ---------- */
+.token-modal {
+  width: 480px;
+  max-height: min(640px, 90vh);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.token-intro {
+  margin: 6px 0 0;
+  font: 400 12px/1.6 var(--ui-font);
+  color: var(--ink-2);
+}
+
+.token-minted {
+  margin: 16px 0 0;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.token-minted-label {
+  font: 600 12px/1.4 var(--ui-font);
+}
+
+.token-value {
+  font-family: var(--mono-font, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+  user-select: all;
+}
+
+.token-minted-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.token-create {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.token-name-input {
+  width: 100%;
+}
+
+.token-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.token-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 13px/1.4 var(--ui-font);
+  cursor: pointer;
+}
+
+.token-create-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.token-error {
+  margin: 4px 0 0;
+  font: 400 12px/1.5 var(--ui-font);
+  color: var(--danger, #c0392b);
+}
+
+.token-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.token-empty {
+  margin: 0;
+  font: 400 13px/1.5 var(--ui-font);
+  color: var(--ink-2);
+}
+
+.token-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-1, rgba(0, 0, 0, 0.1));
+  border-radius: 10px;
+}
+
+.token-row-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.token-row-scopes {
+  font: 400 12px/1.4 var(--ui-font);
+  color: var(--ink-2);
+}
+
+.token-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  font: 400 12px/1.4 var(--ui-font);
+  color: var(--ink-2);
+}

@@ -12,7 +12,7 @@ import {
   collectFreeformImageSources,
   uploadInlineFreeformImages,
 } from '../freeform/imageAssets'
-import type { AssetStore, AuthStore, DraftStore, ImageStore, Share, ShareStore, Storage } from './types'
+import type { ApiToken, AssetStore, AuthStore, DraftStore, ImageStore, Share, ShareStore, Storage, TokenStore } from './types'
 
 const TOKEN_KEY = 'slicer.token.v1'
 const invalidationListeners = new Set<() => void>()
@@ -444,5 +444,40 @@ export function createRemoteStore(apiBase: string): Storage {
     },
   }
 
-  return { auth, drafts, images, assets, shares, remote: true }
+  function toApiToken(raw: unknown): ApiToken | null {
+    if (!isRecord(raw)) return null
+    if (typeof raw.id !== 'string' || typeof raw.name !== 'string') return null
+    return {
+      id: raw.id,
+      name: raw.name,
+      scopes: Array.isArray(raw.scopes) ? raw.scopes.filter((scope): scope is string => typeof scope === 'string') : [],
+      createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
+      lastUsedAt: typeof raw.lastUsedAt === 'number' ? raw.lastUsedAt : null,
+    }
+  }
+
+  const tokens: TokenStore = {
+    async list() {
+      const { data, status } = await api<unknown>('/api/tokens')
+      if (!Array.isArray(data)) throw new ApiError('服务器返回了无效令牌列表', status)
+      return data.map(toApiToken).filter((token): token is ApiToken => token !== null)
+    },
+    async create(_userId, name, scopes) {
+      const { data, status } = await api<unknown>('/api/tokens', {
+        method: 'POST',
+        body: JSON.stringify({ name, scopes }),
+      })
+      if (!isRecord(data) || typeof data.token !== 'string' || data.token === '') {
+        throw new ApiError('服务器返回了无效令牌', status)
+      }
+      const token = toApiToken(data)
+      if (!token) throw new ApiError('服务器返回了无效令牌', status)
+      return { ...token, token: data.token }
+    },
+    async revoke(_userId, id) {
+      await api(`/api/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
+  }
+
+  return { auth, drafts, images, assets, shares, tokens, remote: true }
 }

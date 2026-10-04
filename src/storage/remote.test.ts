@@ -1246,3 +1246,128 @@ describe('RemoteStore share links', () => {
     expect(revokeCall[1]?.method).toBe('DELETE')
   })
 })
+
+describe('RemoteStore API tokens', () => {
+  let values: Map<string, string>
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.resetModules()
+    values = new Map([[TOKEN_KEY, 'session-token']])
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+      removeItem: vi.fn((key: string) => values.delete(key)),
+    })
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  async function createStore() {
+    const { createRemoteStore } = await import('./remote')
+    return createRemoteStore(API_BASE)
+  }
+
+  it('creates a token and keeps the one-time value on the minted result', async () => {
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      if (requestUrl(args) === `${API_BASE}/api/tokens` && args[1]?.method !== 'DELETE') {
+        expect(requestHeaders(args).get('authorization')).toBe('Bearer session-token')
+        expect(jsonRequestBody(args)).toEqual({ name: '我的智能体', scopes: ['shares', 'images'] })
+        return jsonResponse({
+          id: 'token-1',
+          name: '我的智能体',
+          scopes: ['shares', 'images'],
+          createdAt: 100,
+          lastUsedAt: null,
+          token: 'dc_minted-value',
+        })
+      }
+      throw new Error(`Unexpected request: ${requestUrl(args)}`)
+    })
+    const store = await createStore()
+
+    const minted = await store.tokens.create('user-1', '我的智能体', ['shares', 'images'])
+
+    expect(minted).toEqual({
+      id: 'token-1',
+      name: '我的智能体',
+      scopes: ['shares', 'images'],
+      createdAt: 100,
+      lastUsedAt: null,
+      token: 'dc_minted-value',
+    })
+  })
+
+  it('lists tokens as envelopes without values', async () => {
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      if (requestUrl(args) === `${API_BASE}/api/tokens`) {
+        return jsonResponse([
+          { id: 'token-1', name: '我的智能体', scopes: ['shares'], createdAt: 100, lastUsedAt: 900 },
+          { id: 'token-2', name: 'nightly 脚本', scopes: ['decks', 'shares'], createdAt: 50, lastUsedAt: null },
+        ])
+      }
+      throw new Error(`Unexpected request: ${requestUrl(args)}`)
+    })
+    const store = await createStore()
+
+    const tokens = await store.tokens.list('user-1')
+
+    expect(tokens).toEqual([
+      { id: 'token-1', name: '我的智能体', scopes: ['shares'], createdAt: 100, lastUsedAt: 900 },
+      { id: 'token-2', name: 'nightly 脚本', scopes: ['decks', 'shares'], createdAt: 50, lastUsedAt: null },
+    ])
+    // A list request never carries a body, and the response holds no values.
+    for (const call of fetchMock.mock.calls as FetchCall[]) {
+      expect(call[1]?.body).toBeUndefined()
+    }
+  })
+
+  it('drops malformed token rows from the list', async () => {
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      if (requestUrl(args) === `${API_BASE}/api/tokens`) {
+        return jsonResponse([
+          { id: 'token-1', name: '好的', scopes: ['shares'], createdAt: 100, lastUsedAt: null },
+          { name: '没有 id' },
+          'not-an-object',
+        ])
+      }
+      throw new Error(`Unexpected request: ${requestUrl(args)}`)
+    })
+    const store = await createStore()
+
+    const tokens = await store.tokens.list('user-1')
+
+    expect(tokens).toEqual([
+      { id: 'token-1', name: '好的', scopes: ['shares'], createdAt: 100, lastUsedAt: null },
+    ])
+  })
+
+  it('rejects a mint response without a value', async () => {
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      if (requestUrl(args) === `${API_BASE}/api/tokens` && args[1]?.method !== 'DELETE') {
+        return jsonResponse({ id: 'token-1', name: 'x', scopes: ['shares'], createdAt: 100, lastUsedAt: null })
+      }
+      throw new Error(`Unexpected request: ${requestUrl(args)}`)
+    })
+    const store = await createStore()
+
+    await expect(store.tokens.create('user-1', 'x', ['shares'])).rejects.toThrow('服务器返回了无效令牌')
+  })
+
+  it('revokes by id with an encoded path', async () => {
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      if (requestUrl(args) === `${API_BASE}/api/tokens/token%2F1`) {
+        expect(args[1]?.method).toBe('DELETE')
+        return jsonResponse({ ok: true })
+      }
+      throw new Error(`Unexpected request: ${requestUrl(args)}`)
+    })
+    const store = await createStore()
+
+    await expect(store.tokens.revoke('user-1', 'token/1')).resolves.toBeUndefined()
+  })
+})

@@ -89,6 +89,27 @@ export interface ShareStore {
   revoke(userId: string, id: string): Promise<void>
 }
 
+/** A scoped key an agent presents as a Bearer token instead of a session. */
+export interface ApiToken {
+  id: string
+  name: string
+  scopes: string[]
+  createdAt: number
+  lastUsedAt: number | null
+}
+
+/** A freshly minted token: the value appears exactly once and is never stored. */
+export type MintedApiToken = ApiToken & { token: string }
+
+/** Per-user API tokens; only the remote backend can create them. */
+export interface TokenStore {
+  /** Newest first; never carries values. */
+  list(userId: string): Promise<ApiToken[]>
+  create(userId: string, name: string, scopes: readonly string[]): Promise<MintedApiToken>
+  /** Idempotent: revoking a missing token resolves. */
+  revoke(userId: string, id: string): Promise<void>
+}
+
 /** The full storage surface the app depends on. */
 export interface Storage {
   auth: AuthStore
@@ -96,6 +117,7 @@ export interface Storage {
   images: ImageStore
   assets: AssetStore
   shares: ShareStore
+  tokens: TokenStore
   /** true when backed by a real server (enables login UI, sync messaging). */
   readonly remote: boolean
 }

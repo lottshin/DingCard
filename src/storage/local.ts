@@ -14,7 +14,7 @@ import { materializeLocalFreeformImages } from '../freeform/imageAssets'
 import * as imagesImpl from '../imageStore'
 import { createLocalAssetStore } from './localAssets'
 import { createLocalPictures, isPictureRef, type PictureBackend } from './localPictures'
-import type { AuthStore, DraftStore, ImageStore, ShareStore, Storage } from './types'
+import type { AuthStore, DraftStore, ImageStore, ShareStore, Storage, TokenStore } from './types'
 
 const auth: AuthStore = {
   register: (username, password) => authImpl.register(username, password),
@@ -125,5 +125,19 @@ export function createLocalStore(pictureBackend?: PictureBackend | null): Storag
     },
   }
 
-  return { auth, drafts, images, assets: createLocalAssetStore(), shares, remote: false }
+  // API tokens stand in for a server account; without a server there is
+  // nothing to authenticate against.
+  const tokens: TokenStore = {
+    list: async () => {
+      throw new Error('API 令牌需要部署服务端')
+    },
+    create: async () => {
+      throw new Error('API 令牌需要部署服务端')
+    },
+    revoke: async () => {
+      throw new Error('API 令牌需要部署服务端')
+    },
+  }
+
+  return { auth, drafts, images, assets: createLocalAssetStore(), shares, tokens, remote: false }
 }
