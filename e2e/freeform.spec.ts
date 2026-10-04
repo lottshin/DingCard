@@ -857,6 +857,11 @@ async function registerUser(page: import('@playwright/test').Page, username: str
   await page.getByLabel('用户名').fill(username)
   await page.getByLabel('密码').fill('1234')
   await page.getByRole('button', { name: '创建账号' }).click()
+  // The register request is still in flight when the click returns. Wait for
+  // the session before acting as the new user: an import that races the login
+  // saves into the guest's local store while the follow-up open reads the
+  // account's and reports the project as missing.
+  await expect(page.getByTestId('account-menu')).toBeVisible()
 }
 
 /** Sign up from the editor and move the guest's canvas (saved on this device) into the new account. */
