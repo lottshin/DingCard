@@ -12,6 +12,7 @@
 const USERS_KEY = 'slicer.users.v1'
 const SESSION_KEY = 'slicer.session.v1'
 
+import { randomId } from './uid'
 export interface User {
   id: string
   username: string
@@ -77,7 +78,7 @@ export async function register(username: string, password: string): Promise<User
   }
 
   const user: StoredUser = {
-    id: crypto.randomUUID(),
+    id: randomId(),
     username: name,
     createdAt: Date.now(),
     pwHash: await weakHash(password),

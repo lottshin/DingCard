@@ -4,6 +4,7 @@
 // grid with the client's rows and columns, so the table always fills its
 // space whatever its size.
 
+import { randomId } from '../uid'
 import type { FreeformSceneNode } from '../freeform/types'
 
 export interface TableLayout {
@@ -64,7 +65,7 @@ export function tableCellNames(layout: TableLayout, cells: readonly (readonly st
 export function tableNodes(
   layout: TableLayout,
   cells: readonly (readonly string[])[],
-  newId: () => string = () => crypto.randomUUID(),
+  newId: () => string = () => randomId(),
 ): FreeformSceneNode[] {
   const { rows, columns } = tableShape(layout, cells)
   const labelWidth = columns > 1 ? layout.width * layout.labelShare : layout.width

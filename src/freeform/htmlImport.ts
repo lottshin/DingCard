@@ -7,6 +7,7 @@
 // every box, text, picture and SVG drawing becomes a freeform node, in the
 // order CSS paints them — and lists what it had to approximate in the notes.
 
+import { randomId } from '../uid'
 import { createDefaultImageFraming } from './imageFraming'
 import {
   type Affine,
@@ -2422,7 +2423,7 @@ async function pictureSizes(doc: Document): Promise<Map<string, { width: number;
  * document.
  */
 export async function importHtmlDocument(doc: Document, prepared: PreparedHtml, options: HtmlImportOptions): Promise<HtmlImportResult> {
-  const newId = options.newId ?? (() => crypto.randomUUID())
+  const newId = options.newId ?? (() => randomId())
   // One note per page and message, counting the elements it is about (an element read twice counts once).
   const notes = new Map<string, HtmlImportNote & { targets: Set<unknown> }>()
   const addNote = (page: number, target: string, message: string, about: unknown = target) => {

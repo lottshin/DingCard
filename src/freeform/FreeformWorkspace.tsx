@@ -1,3 +1,4 @@
+import { randomId } from '../uid'
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, SetStateAction } from 'react'
 import { toCanvas } from 'html-to-image'
@@ -3769,7 +3770,7 @@ export function FreeformWorkspace({
       return false
     }
 
-    const groupId = crypto.randomUUID()
+    const groupId = randomId()
     const mutation = createSceneGroup(currentSlide.nodes, parentPath, nodeIds, {
       id: groupId,
       name: t('组'),
@@ -5052,7 +5053,7 @@ export function FreeformWorkspace({
           slideId: slide.id,
           guides: [
             ...(slide.guides ?? []),
-            { id: `guide-${crypto.randomUUID()}`, axis, position: settled },
+            { id: `guide-${randomId()}`, axis, position: settled },
           ],
         },
         t('新增参考线'),

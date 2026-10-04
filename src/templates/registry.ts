@@ -1,3 +1,4 @@
+import { randomId } from '../uid'
 import { normalizeFreeformDocumentV20 } from '../freeform/sceneDocument'
 import type {
   BlendMode,
@@ -39,7 +40,7 @@ function copyProfile(profile: Profile): Profile {
 }
 
 function uuid(): string {
-  return crypto.randomUUID()
+  return randomId()
 }
 
 function textNode(

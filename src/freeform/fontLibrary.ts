@@ -4,6 +4,7 @@
 // where the font isn't imported — another browser, the MCP renderer — the
 // text falls back to the default sans-serif.
 
+import { randomId } from '../uid'
 import { useSyncExternalStore } from 'react'
 import { FONTS } from '../theme'
 import {
@@ -230,7 +231,7 @@ export function createFontLibrary(
       await registry.add(family, data)
       const existing = fonts.find((font) => font.family === family)
       const record: FontRecord = {
-        id: existing?.id ?? crypto.randomUUID(),
+        id: existing?.id ?? randomId(),
         family,
         format,
         bytes: data.byteLength,

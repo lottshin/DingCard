@@ -4,6 +4,7 @@
 // (选中格子 → 插入图片填充 → 调整取景). A collage is plain grouped shapes —
 // no schema of its own, so ungrouping and rearranging stay free.
 
+import { randomId } from '../uid'
 import type { FreeformGroupNode, FreeformShapeElement } from './types'
 
 export interface CollageCell {
@@ -147,7 +148,7 @@ export function createCollageGroup(
 ): FreeformGroupNode {
   const gap = options.gap ?? 12
   const cornerRadius = options.cornerRadius ?? 12
-  const createId = options.createId ?? (() => crypto.randomUUID())
+  const createId = options.createId ?? (() => randomId())
   const box = options.box ?? { x: 0, y: 0, width: 600, height: 600 / layout.aspect }
 
   const cells: FreeformShapeElement[] = layout.cells.map((cell, index) => ({

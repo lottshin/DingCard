@@ -4,6 +4,7 @@
 // (a path, or a text with a label effect) or a group of a few, scaled to the
 // size it is placed at, and repainted in the colour it is given.
 
+import { randomId } from '../uid'
 import {
   arrowHead,
   brushStroke,
@@ -1085,7 +1086,7 @@ function partNode(part: DecorationPart, map: (box: Box) => Box, uniform: number,
 export function createDecorationNode(
   definition: DecorationDefinition,
   placement: DecorationPlacement,
-  newId: () => string = () => crypto.randomUUID(),
+  newId: () => string = () => randomId(),
 ): FreeformSceneNode {
   const color = placement.color ?? definition.color
   const text = placement.text ?? definition.text?.[placement.language ?? 'zh'] ?? ''

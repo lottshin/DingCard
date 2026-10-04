@@ -1,3 +1,4 @@
+import { randomId } from '../uid'
 import {
   MAX_EFFECTIVE_SCALE,
   MAX_SCENE_DEPTH,
@@ -754,7 +755,7 @@ export async function mapSceneLeavesAsync(
 /** Deep-clone every group and leaf ID while retaining image/font source fields. */
 export function cloneSceneNodes(
   nodes: readonly FreeformSceneNode[],
-  createId: SceneIdFactory = () => crypto.randomUUID(),
+  createId: SceneIdFactory = () => randomId(),
 ): FreeformSceneNode[] {
   return nodes.map((node) => cloneSceneNode(node, createId, 1))
 }
@@ -1301,7 +1302,7 @@ export function createSceneGroup(
     return { ok: false, reason: 'depth-limit' }
   }
 
-  const id = options.id ?? crypto.randomUUID()
+  const id = options.id ?? randomId()
   if (typeof id !== 'string' || id.trim().length === 0 || collectSceneIds(nodes).has(id)) {
     return { ok: false, reason: 'duplicate-id' }
   }

@@ -5,6 +5,7 @@
 // What is written can be packed first: the local store swaps big pictures for
 // refs to IndexedDB (storage/localPictures.ts), which these functions never read.
 
+import { randomId } from './uid'
 import { normalizeFreeformDocument } from './freeform/sceneDocument'
 import type { FreeformDocument } from './freeform/types'
 import { collectImages } from './imageStore'
@@ -267,7 +268,7 @@ export function saveDraft(userId: string, data: SaveDraftInput, pack?: DraftPack
   data = normalized
   const drafts = listDrafts(userId)
   const base = {
-    id: data.id ?? crypto.randomUUID(),
+    id: data.id ?? randomId(),
     title: deriveTitle(data),
     schemaVersion: 2 as const,
     updatedAt: Date.now(),

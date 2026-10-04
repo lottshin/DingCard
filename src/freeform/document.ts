@@ -1,3 +1,4 @@
+import { randomId } from '../uid'
 import {
   MAX_FREEFORM_SLIDES,
   PAGE_SIZE_MAX,
@@ -132,7 +133,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
   const height = input.inheritFrom?.height ?? input.height ?? preset.height
 
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     name: 'Page 1',
     width,
     height,
@@ -161,7 +162,7 @@ function centerBox(slide: FreeformSlide, width: number, height: number) {
 
 export function createTextElement(slide: FreeformSlide): FreeformTextElement {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     name: '文本',
     locked: false,
     hidden: false,
@@ -184,7 +185,7 @@ export function createImageElement(
   alt = '图片',
 ): FreeformImageElement {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     name: '图片',
     locked: false,
     hidden: false,
@@ -204,7 +205,7 @@ export function createShapeElement(
   shape: FreeformShapeElement['shape'],
 ): FreeformShapeElement {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     name: '形状',
     locked: false,
     hidden: false,
@@ -224,7 +225,7 @@ export function createLineElement(
   lineKind: FreeformLineElement['lineKind'],
 ): FreeformLineElement {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     name: lineKind === 'arrow' ? '箭头' : '直线',
     locked: false,
     hidden: false,
@@ -255,7 +256,7 @@ export function createPathElement(slide: FreeformSlide, input: CreatePathInput):
   const width = aspect >= 1 ? input.size : Math.round(input.size * aspect)
   const height = aspect >= 1 ? Math.round(input.size / aspect) : input.size
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     name: input.name,
     locked: false,
     hidden: false,
@@ -1395,7 +1396,7 @@ export function reduceFreeformDocument(
           (slide) => slide.id === document.activeSlideId,
         )
         if (activeIndex < 0) return document
-        const id = action.slideId ?? crypto.randomUUID()
+        const id = action.slideId ?? randomId()
         if (
           typeof id !== 'string' ||
           id.trim().length === 0 ||
@@ -1426,7 +1427,7 @@ export function reduceFreeformDocument(
         if (document.slides.length >= MAX_FREEFORM_SLIDES) return document
         const index = document.slides.findIndex((slide) => slide.id === action.slideId)
         if (index < 0) return document
-        const id = action.duplicateSlideId ?? crypto.randomUUID()
+        const id = action.duplicateSlideId ?? randomId()
         if (
           typeof id !== 'string' ||
           id.trim().length === 0 ||

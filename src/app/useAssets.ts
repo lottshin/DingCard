@@ -1,3 +1,4 @@
+import { randomId } from '../uid'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sortAssets, type Asset } from '../assets'
 import { storeFor } from '../storage'
@@ -74,7 +75,7 @@ export function useAssets(ownerId: string | null): AssetsState {
     const uid = userIdRef.current
     const outcome: UploadOutcome = { added: [], failed: [] }
     if (!uid || files.length === 0) return outcome
-    const pending = files.map((file) => ({ id: crypto.randomUUID(), name: file.name }))
+    const pending = files.map((file) => ({ id: randomId(), name: file.name }))
     setUploads((current) => [...pending, ...current])
 
     // One at a time: each upload may run server-side GC under the user's asset lock.

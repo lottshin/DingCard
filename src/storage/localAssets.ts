@@ -4,6 +4,7 @@
 // The store logic runs against a tiny `AssetBackend`, so tests can swap the
 // IndexedDB backend for an in-memory one.
 
+import { randomId } from '../uid'
 import {
   ASSET_MIME_TYPES,
   dataUrlBytes,
@@ -140,7 +141,7 @@ export function createLocalAssetStore(
       if (!mime || !ASSET_MIME_TYPES.includes(mime)) throw new Error('仅支持 PNG、JPG、WebP 图片')
       if (!isAssetDimension(input.width) || !isAssetDimension(input.height)) throw new Error('图片尺寸无效')
       const record: AssetRecord = {
-        id: crypto.randomUUID(),
+        id: randomId(),
         userId,
         name: normalizeAssetName(input.name),
         src: input.dataUrl,
