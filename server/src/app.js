@@ -9,6 +9,7 @@ import Fastify from 'fastify'
 import fs from 'node:fs/promises'
 
 import { config as defaultConfig } from './config.js'
+import { registerAdmin } from './adminStats.js'
 import { createDatabase } from './db.js'
 import { reclaimExpiredImages } from './imageGc.js'
 import authPlugin from './plugins/auth.js'
@@ -140,9 +141,12 @@ export async function buildApp({
       stmts: appStmts,
     })
 
-    // The public share page is a real route (not SPA content), registered
-    // before the static site's not-found fallback serves index.html.
+    // The public share page and the operator dashboard are real routes (not
+    // SPA content), registered before the static site's not-found fallback
+    // serves index.html. The dashboard only exists when DINGCARD_ADMIN_TOKEN
+    // is set.
     registerSharePage(app, { stmts: appStmts })
+    registerAdmin(app, { adminToken: appConfig.adminToken, stmts: appStmts })
 
     await registerStaticSite(app, {
       webRoot: appConfig.webRoot,

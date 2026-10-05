@@ -135,6 +135,7 @@ curl -f https://dingcard.example.com/api/health
 | `JWT_EXPIRY` | 登录有效期，默认 `7d`。 |
 | `USER_QUOTA_BYTES` | 每个用户可使用的图片空间。 |
 | `MAX_UPLOAD_BYTES` | Fastify 接收的单张图片上限；修改后需要重建 `app`。 |
+| `DINGCARD_ADMIN_TOKEN` | 可选的管理员看板令牌。设置后打开 `/admin` 输入令牌即可查看实例总览（用户、作品、图片占用、分享链接、API 令牌的数量）；不设置则看板完全不注册。 |
 
 镜像自带无头 Chromium 与 CJK 字体：`POST /api/decks` 可以在服务端把一份自由画布文档 JSON 一步渲染成分享链接（接口契约见 `docs/backend-plan.md`），宿主机不需要装浏览器。渲染在容器内逐个排队，一台小机器同时只渲一份；内存余量建议 1 GB 以上。
 

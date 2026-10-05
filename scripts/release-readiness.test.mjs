@@ -402,6 +402,8 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
   assert.match(envExample, /127\.0\.0\.1:8080/)
   assert.match(envExample, /app:3000/)
   assert.match(envExample, /Fastify[^\n]*统一限制[^\n]*\r?\nMAX_UPLOAD_BYTES=/)
+  assert.match(envExample, /^# DINGCARD_ADMIN_TOKEN=$/m)
+  assert.match(read('docs/deployment.md'), /DINGCARD_ADMIN_TOKEN[^\n]*\/admin/)
   assert.doesNotMatch(envExample, /deploy\/nginx\.conf|server\/Dockerfile|容器内 Nginx|web 容器|server 容器/)
 
   const backendPlan = read('docs/backend-plan.md')

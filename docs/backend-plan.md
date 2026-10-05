@@ -347,6 +347,10 @@ Markdown 粘贴图片、自由编辑普通图片和形状图片填充都统一�
 
 不用 Docker 时，可在宿主机运行 `node server/src/index.js`，用 `server/.env.example` 配置环境变量，再由 systemd 守护。宿主机反向代理仍负责 HTTPS。
 
+### 6.7 运营看板
+
+自部署实例没有角色系统；运营者就是持有 `DINGCARD_ADMIN_TOKEN` 的人。设置该环境变量后注册两个路由（不设置则完全不注册）：`GET /admin` 是一个自带样式的极简页面（noindex，输入令牌就地取数），`GET /api/admin/stats` 返回实例总览——用户数、作品数（按 markdown-card / freeform-slide 分）、图片数与占用字节、素材数、分享链接总数与未过期数、启用中的 API 令牌数。令牌用常数时间比较，错误返回 401，不出现在任何响应或日志里；所有数字直接来自 SQL COUNT，不带任何用户内容。
+
 ---
 
 ## 7. 安全清单(上生产前必须)

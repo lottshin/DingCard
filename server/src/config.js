@@ -70,6 +70,10 @@ export const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+
+  // The operator dashboard token. Unset = the /admin page and /api/admin/stats
+  // are not registered at all, so a deployment that never opted in exposes nothing.
+  adminToken: (process.env.DINGCARD_ADMIN_TOKEN || '').trim(),
 }
 
 if (!config.dev && !config.jwtSecret) {

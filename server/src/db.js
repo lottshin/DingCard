@@ -223,6 +223,14 @@ export function createDatabase(appConfig = defaultConfig) {
         'UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL',
       ),
       touchApiToken: database.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?'),
+
+      // Instance-wide counts for the operator dashboard (/admin).
+      countUsers: database.prepare('SELECT COUNT(*) AS n FROM users'),
+      countDraftsByMode: database.prepare('SELECT mode, COUNT(*) AS n FROM drafts GROUP BY mode'),
+      countImages: database.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes FROM images'),
+      countAssets: database.prepare('SELECT COUNT(*) AS n FROM assets'),
+      countShares: database.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(expires_at > ?), 0) AS active FROM shares'),
+      countApiTokens: database.prepare('SELECT COUNT(*) AS n FROM api_tokens WHERE revoked_at IS NULL'),
     }
 
     return { db: database, stmts }
