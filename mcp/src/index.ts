@@ -696,16 +696,23 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_server_projects',
-    '列出部署的叮卡服务端账号里存的作品（id、标题、类型 mode：markdown-card / freeform-slide、最近更新时间），最新在前。这是接着做已有作品的第一步：先在这里找到作品，再用 open_server_project 按 id 载入接着编辑或再渲染。需要环境变量 DINGCARD_SERVER_URL（部署的服务端地址）和 DINGCARD_SERVER_TOKEN（一个带 drafts 权限的 API 令牌），或 DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。',
-    {},
-    async () => {
+    '列出部署的叮卡服务端账号里存的作品（id、标题、类型 mode：markdown-card / freeform-slide、最近更新时间），最新在前。这是接着做已有作品的第一步：先在这里找到作品，再用 open_server_project 按 id 载入接着编辑或再渲染。作品多时用 query 按标题关键词过滤（不区分大小写，中英文都行）。需要环境变量 DINGCARD_SERVER_URL（部署的服务端地址）和 DINGCARD_SERVER_TOKEN（一个带 drafts 权限的 API 令牌），或 DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。',
+    {
+      query: z.string().optional().describe('按标题关键词过滤，不区分大小写；不给就列全部'),
+    },
+    async ({ query }) => {
       const client = serverClientFromEnv()
       if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
       try {
+        const needle = query?.trim().toLowerCase() ?? ''
         const drafts = await client.listDrafts()
+        const matched = needle === ''
+          ? drafts
+          : drafts.filter((draft) => draft.title.toLowerCase().includes(needle))
         return jsonResult({
           ok: true,
-          projects: drafts.map((draft) => ({
+          ...(needle !== '' ? { query: needle, matched: matched.length, total: drafts.length } : {}),
+          projects: matched.map((draft) => ({
             id: draft.id,
             title: draft.title,
             mode: draft.mode,

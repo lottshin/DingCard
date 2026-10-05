@@ -167,6 +167,14 @@ describe('dingcard-mcp tool layer', () => {
         { id: 'd-md', title: 'Markdown 作品', mode: 'markdown-card', updatedAt: 4 },
       ])
 
+      // A query keeps only the matching titles, case-insensitively.
+      const filtered = await call<{ ok: boolean; matched: number; total: number; projects: Array<{ id: string }> }>(
+        client, 'list_server_projects', { query: 'markdown' },
+      )
+      expect(filtered.matched).toBe(1)
+      expect(filtered.total).toBe(2)
+      expect(filtered.projects.map((project) => project.id)).toEqual(['d-md'])
+
       const opened = await call<{ ok: boolean; mode: string; title: string; projectId: string; documentId: string; slides: Array<{ id: string; name: string }> }>(
         client, 'open_server_project', { id: 'd-free' },
       )
