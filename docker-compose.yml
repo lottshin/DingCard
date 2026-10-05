@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/lottshin/dingcard:${DINGCARD_VERSION:-0.26.0}
+    image: ghcr.io/lottshin/dingcard:${DINGCARD_VERSION:-0.27.0}
     build:
       context: .
       args:
