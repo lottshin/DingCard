@@ -82,6 +82,7 @@ function defaultNodeName(node: FreeformSceneNode): string {
   if (node.type === 'line') return node.lineKind === 'arrow' ? t('箭头') : t('直线')
   if (node.type === 'group') return t('组合')
   if (node.type === 'path') return t('图形')
+  if (node.type === 'qrcode') return t('二维码')
   return t('形状')
 }
 
@@ -154,6 +155,13 @@ function typeIcon(node: FreeformSceneNode) {
         <path d="M3.5 15.5c2.5-9 6-11 8-6.5s4.5 3 5-5" />
         <circle cx="3.5" cy="15.5" r="1.3" />
         <circle cx="16.5" cy="4" r="1.3" />
+      </svg>
+    )
+  }
+  if (node.type === 'qrcode') {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true" className="freeform-layer-icon">
+        <path d="M3.5 3.5h5v5h-5zM11.5 3.5h5v5h-5zM3.5 11.5h5v5h-5zM11 11h2.4v2.4H11zM14.1 14.1h2.4v2.4h-2.4zM11 14.1h2.4v2.4H11zM14.1 11h2.4v2.4h-2.4z" />
       </svg>
     )
   }

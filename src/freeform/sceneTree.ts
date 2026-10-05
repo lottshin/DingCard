@@ -34,6 +34,7 @@ import {
   isTextVerticalAlign,
   isValidParagraphSpacing,
 } from './appearance'
+import { isValidQrEcl, isValidQrPayload } from './qrCode'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -899,6 +900,10 @@ const PATH_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'd', 'viewBox', 'fill', 'stroke', 'strokeWidth',
 ])
+const QRCODE_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'payload', 'dark', 'light',
+])
 
 function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
   const actualKeys = Object.keys(value)
@@ -978,6 +983,14 @@ const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
     record.width as number,
     record.height as number,
   ) !== null,
+}
+
+const QRCODE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  ecl: (record) => isValidQrEcl(record.ecl),
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
 }
 
 const PATH_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
@@ -1092,6 +1105,14 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
       isValidScenePathFill(node.fill) &&
       isHexColor(node.stroke) &&
       isValidPathStrokeWidth(node.strokeWidth)
+    )
+  }
+  if (node.type === 'qrcode') {
+    return (
+      hasValidOptionalFields(record, QRCODE_NODE_KEYS, QRCODE_OPTIONAL_FIELD_CHECKS) &&
+      isValidQrPayload(node.payload) &&
+      isHexColor(node.dark) &&
+      isHexColor(node.light)
     )
   }
   return false

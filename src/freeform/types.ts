@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 21
+  documentVersion: 22
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -108,7 +108,7 @@ export type BlendMode =
   | 'luminosity'
 
 export interface FreeformElementBase extends SceneNodeState {
-  type: 'text' | 'image' | 'shape' | 'line' | 'path'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode'
   x: number
   y: number
   width: number
@@ -302,12 +302,28 @@ export interface FreeformPathElement extends FreeformElementBase {
   fillRule?: 'nonzero' | 'evenodd'
 }
 
+/** A QR code's error correction level (v22); absent means M. */
+export type QrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H'
+
+export interface FreeformQrCodeElement extends FreeformElementBase {
+  type: 'qrcode'
+  /** The text or URL the code carries (v22); 1–512 characters. */
+  payload: string
+  /** Module colour (#RRGGBB, v22). */
+  dark: string
+  /** Background colour (#RRGGBB, v22). */
+  light: string
+  /** Error correction level (v22); absent means M. */
+  ecl?: QrErrorCorrectionLevel
+}
+
 export type FreeformElement =
   | FreeformTextElement
   | FreeformImageElement
   | FreeformShapeElement
   | FreeformLineElement
   | FreeformPathElement
+  | FreeformQrCodeElement
 
 /**
  * A scene path contains node IDs from a slide root to one node. The empty
@@ -339,6 +355,8 @@ export interface FreeformNodeContentPatch {
   d?: string
   /** A path's coordinate space (v15). */
   viewBox?: PathViewBox
+  /** A QR code's text or URL (v22). */
+  payload?: string
 }
 
 export interface FreeformNodeStylePatch {
@@ -402,6 +420,12 @@ export interface FreeformNodeStylePatch {
   endCap?: LineEndpointCap | null
   /** Replace the line's polyline vertices (v14) wholesale. */
   points?: LinePoint[]
+  /** QR module colour (v22); `null` restores ink black. */
+  dark?: string | null
+  /** QR background colour (v22); `null` restores white. */
+  light?: string | null
+  /** QR error correction level (v22); `null` restores M. */
+  ecl?: QrErrorCorrectionLevel | null
 }
 
 export interface FreeformNodeGeometryPatch {

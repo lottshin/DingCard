@@ -72,6 +72,7 @@ import {
   shadowPaintEquals,
 } from './appearance'
 import { isValidPathData } from './pathData'
+import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrPayload } from './qrCode'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {
@@ -86,6 +87,7 @@ import type {
   FreeformNodeGeometryPatch,
   FreeformNodeStylePatch,
   FreeformPathElement,
+  FreeformQrCodeElement,
   FreeformSceneLeaf,
   FreeformSceneNode,
   FreeformShapeElement,
@@ -147,7 +149,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 21,
+    documentVersion: 22,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -271,6 +273,22 @@ export function createPathElement(slide: FreeformSlide, input: CreatePathInput):
     fill: input.fill ?? { type: 'transparent' },
     stroke: input.stroke ?? '#18181b',
     strokeWidth: input.strokeWidth ?? 2,
+  }
+}
+
+export function createQrCodeElement(slide: FreeformSlide, payload = 'https://dingcard.app'): FreeformQrCodeElement {
+  return {
+    id: randomId(),
+    name: '二维码',
+    locked: false,
+    hidden: false,
+    type: 'qrcode',
+    ...centerBox(slide, 240, 240),
+    rotation: 0,
+    scale: 1,
+    payload,
+    dark: QR_DARK_DEFAULT,
+    light: QR_LIGHT_DEFAULT,
   }
 }
 
@@ -460,7 +478,7 @@ interface NodePatchResult {
   node: FreeformSceneNode
 }
 
-const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox'])
+const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload'])
 const STYLE_KEYS = new Set([
   'effect',
   'fontSize',
@@ -479,6 +497,9 @@ const STYLE_KEYS = new Set([
   'cornerRadius',
   'starInnerRatio',
   'bubbleTailX',
+  'dark',
+  'light',
+  'ecl',
   'opacity',
   'shadow',
   'filter',
@@ -507,6 +528,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
   'stroke', 'strokeWidth', 'effect',
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
+const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
@@ -539,6 +561,10 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidStarInnerRatio(value)) return false
     } else if (key === 'bubbleTailX') {
       if (value !== null && !isValidBubbleTailX(value)) return false
+    } else if (key === 'dark' || key === 'light') {
+      if (value !== null && !isHexColor(value)) return false
+    } else if (key === 'ecl') {
+      if (value !== null && !isValidQrEcl(value)) return false
     } else if (key === 'filter') {
       if (value !== null && !cloneSceneFilter(value, true)) return false
     } else if (key === 'blendMode') {
@@ -677,6 +703,13 @@ function applyContentPatch(
             framing: sourceChanged ? createDefaultImageFraming() : node.framing,
           },
     }
+  }
+  if (node.type === 'qrcode') {
+    if (Object.keys(record).some((key) => key !== 'payload') || !isValidQrPayload(record.payload)) {
+      return { ok: false, node }
+    }
+    const payload = record.payload as string
+    return { ok: true, node: payload === node.payload ? node : { ...node, payload } }
   }
   if (node.type === 'path') {
     if (
@@ -974,6 +1007,36 @@ function applyStylePatch(
     ) && appearanceKeysSame(node, next, patch, LINE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
+  if (node.type === 'qrcode') {
+    if (
+      keys.some((key) => key !== 'dark' && key !== 'light' && key !== 'ecl'
+        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
+    ) {
+      return { ok: false, node }
+    }
+    if (
+      ('dark' in patch && patch.dark !== null && !isHexColor(patch.dark))
+      || ('light' in patch && patch.light !== null && !isHexColor(patch.light))
+      || !validAppearancePatch(patch, QRCODE_APPEARANCE_KEYS)
+    ) {
+      return { ok: false, node }
+    }
+    // dark/light are required fields: `null` restores their defaults instead
+    // of removing them.
+    const dark = 'dark' in patch
+      ? (patch.dark === null ? QR_DARK_DEFAULT : patch.dark as string)
+      : node.dark
+    const light = 'light' in patch
+      ? (patch.light === null ? QR_LIGHT_DEFAULT : patch.light as string)
+      : node.light
+    const next = withAppearancePatch({ ...node, dark, light }, patch, QRCODE_APPEARANCE_KEYS)
+    const same = keys.every((key) =>
+      QRCODE_APPEARANCE_KEYS.has(key)
+        ? true
+        : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+    ) && appearanceKeysSame(node, next, patch, QRCODE_APPEARANCE_KEYS)
+    return { ok: true, node: same ? node : next }
+  }
   if (node.type === 'path') {
     const allowed = new Set(['fill', 'stroke', 'strokeWidth', 'dash', ...PATH_APPEARANCE_KEYS])
     if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
@@ -1204,6 +1267,7 @@ function defaultSceneNodeName(element: FreeformElement): string {
   if (element.type === 'image') return '图片'
   if (element.type === 'shape') return '形状'
   if (element.type === 'path') return '图形'
+  if (element.type === 'qrcode') return '二维码'
   return element.lineKind === 'arrow' ? '箭头' : '直线'
 }
 
@@ -1322,6 +1386,7 @@ function applyLegacyElementPatch(
     shape: new Set(['x', 'y', 'width', 'height', 'rotation', 'shape', 'fill', 'stroke', 'strokeWidth']),
     line: new Set(['x', 'y', 'width', 'height', 'rotation', 'lineKind', 'stroke', 'strokeWidth']),
     path: new Set(['x', 'y', 'width', 'height', 'rotation']),
+    qrcode: new Set(['x', 'y', 'width', 'height', 'rotation']),
   }
   if (!hasOnlyKeys(patch, allowedByType[node.type])) return { ok: false, node }
   if (Object.keys(patch).length === 0) return { ok: true, node }

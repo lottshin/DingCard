@@ -35,7 +35,7 @@ async function rootBoxes(page: Page) {
 
 test('the library comes in three kinds, and a click puts a piece in the middle of the page', async ({ page }) => {
   const drawer = await openElements(page)
-  await expect(drawer.locator('.freeform-drawer-section')).toHaveText(['形状', '线条', '拼图', '手绘线条', '贴纸', '标签', '图标'])
+  await expect(drawer.locator('.freeform-drawer-section')).toHaveText(['形状', '线条', '实用', '拼图', '手绘线条', '贴纸', '标签', '图标'])
   await expect(drawer.getByRole('group', { name: '手绘线条' }).locator('.freeform-decoration-tile')).toHaveCount(16)
   await expect(drawer.getByRole('group', { name: '贴纸' }).locator('.freeform-decoration-tile')).toHaveCount(20)
   await expect(drawer.getByRole('group', { name: '标签' }).locator('.freeform-decoration-tile')).toHaveCount(12)
@@ -106,7 +106,7 @@ test('a label lands as a group whose words can be rewritten inside it', async ({
 test('in English the library, its sample words and the layers speak English', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('dingcard.lang.v1', 'en'))
   const drawer = await openElements(page)
-  await expect(drawer.locator('.freeform-drawer-section')).toHaveText(['Shape', 'Line', 'Collage', 'Hand-drawn', 'Stickers', 'Labels', 'Icons'])
+  await expect(drawer.locator('.freeform-drawer-section')).toHaveText(['Shape', 'Line', 'Utilities', 'Collage', 'Hand-drawn', 'Stickers', 'Labels', 'Icons'])
   await drawer.getByRole('button', { name: 'Burst badge', exact: true }).click()
   await expect(page.getByTestId('freeform-scene-group')).toContainText('SALE')
   await page.getByTestId('freeform-layers-tool').click()

@@ -4,7 +4,7 @@
 // MCP surface has exactly the same validation and reducer semantics as the
 // in-app editor:
 //
-//   - normalizeFreeformDocument: strict v21 validation (+ v1–v20 migration)
+//   - normalizeFreeformDocument: strict v22 validation (+ v1–v21 migration)
 //   - reduceFreeformDocument:    the exact action reducer the UI dispatches to
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v21 校验：需要 documentVersion=1–21 之一（旧版自动迁移为 v21）、非空 slides、'
+  '文档未通过自由画布 v22 校验：需要 documentVersion=1–22 之一（旧版自动迁移为 v22）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -36,7 +36,7 @@ export function validateDocument(value: unknown): ValidateResult {
 export interface NodeSummary {
   id: string
   name: string
-  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'group'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'group'
   x: number
   y: number
   rotation: number
@@ -48,6 +48,8 @@ export interface NodeSummary {
   fontSize?: number
   fontFamily?: string
   shape?: 'rect' | 'ellipse' | 'triangle' | 'diamond' | 'pentagon' | 'star' | 'hexagon' | 'heart' | 'bubble'
+  /** A QR code element's payload: the text or URL it carries. */
+  payload?: string
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */

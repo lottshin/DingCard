@@ -238,6 +238,8 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
       })
     case 'image':
       return patched(node, { shadow: recolorShadow(node.shadow, recolor) })
+    case 'qrcode':
+      return patched(node, { dark: recolor(node.dark), shadow: recolorShadow(node.shadow, recolor) })
   }
 }
 
@@ -507,7 +509,9 @@ function keepWordsReadable(document: FreeformDocument): FreeformDocument {
         if (centreX < below.box.x || centreX > below.box.x + below.box.width) continue
         if (centreY < below.box.y || centreY > below.box.y + below.box.height) continue
         if ((under.opacity ?? 1) < 0.7) continue
-        background = under.type === 'image' ? null : solidOf(under.fill)
+        background = under.type === 'image'
+          ? null
+          : under.type === 'qrcode' ? under.light : solidOf(under.fill)
         break
       }
       const needed = contrastNeeded(node) + CONTRAST_MARGIN

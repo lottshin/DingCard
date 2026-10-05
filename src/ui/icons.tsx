@@ -425,6 +425,9 @@ export function ShapePreviewIcon({ shape, ...props }: IconProps & { shape: strin
     pentagon: <path d="M16 4 28 13.4 23.3 27H8.7L4 13.4z" />,
     heart: <path d="M16 27 6.6 17.6C3.1 14.1 3.1 8.7 6.6 6c3-2.4 7-1.6 9.4 1.4C18.4 4.4 22.4 3.6 25.4 6c3.5 2.7 3.5 8.1 0 11.6z" />,
     bubble: <path d="M6 6h20a4 4 0 0 1 4 4v9a4 4 0 0 1-4 4H15l-6 6v-6H6a4 4 0 0 1-4-4v-9a4 4 0 0 1 4-4z" />,
+    qrcode: (
+      <path d="M5 5h8v8H5zM19 5h8v8h-8zM5 19h8v8H5zM18 18h3v3h-3zM23 18h4v4h-4zM18 23h3v4h-3zM23 24h4v4h-4z" />
+    ),
     line: <path d="M5 27 27 5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />,
     arrow: (
       <g fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

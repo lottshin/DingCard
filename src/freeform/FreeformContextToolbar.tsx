@@ -28,6 +28,7 @@ import type {
   FreeformLineElement,
   FreeformNodeStylePatch,
   FreeformPathElement,
+  FreeformQrCodeElement,
   FreeformShapeElement,
   FreeformTextElement,
   ShapeFill,
@@ -39,6 +40,7 @@ export type ContextToolbarSubject =
   | { kind: 'text'; node: FreeformTextElement; fontSize: number }
   | { kind: 'shape'; node: FreeformShapeElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'image'; node: FreeformImageElement; canCrop: boolean; cropDisabledReason: string | null }
+  | { kind: 'qrcode'; node: FreeformQrCodeElement }
   | { kind: 'line'; node: FreeformLineElement; strokeWidth: number }
   | { kind: 'path'; node: FreeformPathElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'group'; name: string }
@@ -504,6 +506,13 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
                 </button>
               ))}
             </div>
+          </>
+        )}
+
+        {subject.kind === 'qrcode' && (
+          <>
+            <SubjectChip icon={<PathIcon d="M3.5 3.5h4v4h-4zM12.5 3.5h4v4h-4zM3.5 12.5h4v4h-4zM11 11h2v2h-2zM14.5 14.5h2v2h-2zM11 14.5h2v2h-2zM14.5 11h2v2h-2z" />} label={t('二维码')} />
+            <Divider />
           </>
         )}
 

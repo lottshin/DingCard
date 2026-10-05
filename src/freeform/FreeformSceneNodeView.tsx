@@ -6,6 +6,7 @@ import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
 import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './richText'
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { bubbleClipPath, starClipPath } from './shapeGeometry'
+import { QR_ECL_DEFAULT, qrMatrix, qrPath } from './qrCode'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
 import { effectHollowsWords, textEffectLayer, textEffectWordsStyle } from './textEffects'
@@ -450,6 +451,27 @@ function SceneLeafContent({
           </defs>
         )}
         {strokePath}
+      </svg>
+    )
+  }
+
+  if (leaf.type === 'qrcode') {
+    // The spec's quiet zone: 2 modules of background on every side. The SVG
+    // scales to the node box and stays square (meet) inside it.
+    const quiet = 2
+    const matrix = qrMatrix(leaf.payload, leaf.ecl ?? QR_ECL_DEFAULT)
+    const total = (matrix ? matrix.size : 21) + quiet * 2
+    return (
+      <svg
+        className={presentationOnly ? 'freeform-preview-qrcode' : 'freeform-qrcode'}
+        data-testid={presentationOnly ? undefined : 'freeform-qrcode'}
+        viewBox={`0 0 ${total} ${total}`}
+        preserveAspectRatio="xMidYMid meet"
+        aria-hidden="true"
+        style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
+      >
+        <rect x={0} y={0} width={total} height={total} fill={leaf.light} />
+        {matrix && <path d={qrPath(matrix, quiet)} fill={leaf.dark} />}
       </svg>
     )
   }

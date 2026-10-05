@@ -53,11 +53,13 @@ import {
   createSlide,
   createImageElement,
   createLineElement,
+  createQrCodeElement,
   createPathElement,
   createShapeElement,
   createTextElement,
   freeformReducer,
 } from './document'
+import { QR_PAYLOAD_MAX_LENGTH } from './qrCode'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
 import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
@@ -233,6 +235,7 @@ import type {
   FreeformImageElement,
   ImageFraming,
   FreeformLineElement,
+  FreeformQrCodeElement,
   FreeformSceneNode,
   FreeformNodeContentPatch,
   FreeformNodeGeometryPatch,
@@ -882,6 +885,13 @@ function toRect(marquee: MarqueeState): Rect {
 
 function isShapeElement(element: FreeformElement | undefined): element is FreeformShapeElement {
   return element?.type === 'shape'
+}
+
+/** Error-correction levels, low to high; M is the default. */
+const QR_ECL_OPTIONS = ['L', 'M', 'Q', 'H'] as const
+
+function isQrCodeElement(element: FreeformElement | undefined): element is FreeformQrCodeElement {
+  return element?.type === 'qrcode'
 }
 
 function isImageElement(element: FreeformElement | undefined): element is FreeformImageElement {
@@ -3176,6 +3186,11 @@ export function FreeformWorkspace({
     insertNewElement(createShapeElement(activeSlide, shape), placeAt)
   }
 
+  /** A QR code for a link or any text, ready to restyle and resize. */
+  function addQrCode(placeAt?: { x: number; y: number }) {
+    insertNewElement(createQrCodeElement(activeSlide), placeAt)
+  }
+
   function addLine(
     pick: { id: FreeformLineElement['lineKind']; bothEnds?: boolean },
     placeAt?: { x: number; y: number },
@@ -3224,6 +3239,7 @@ export function FreeformWorkspace({
   function addElement(pick: ElementPick, placeAt?: { x: number; y: number }) {
     if (pick.kind === 'shape') addShape(pick.id, placeAt)
     else if (pick.kind === 'line') addLine(pick, placeAt)
+    else if (pick.kind === 'qrcode') addQrCode(placeAt)
     else if (pick.kind === 'collage') {
       const layout = collageById(pick.id)
       if (layout) addCollage(layout, placeAt)
@@ -6330,6 +6346,9 @@ export function FreeformWorkspace({
         frameDisabledReason: selectedFramingDisabledReason,
       }
     }
+    if (selectedElement.type === 'qrcode') {
+      return { kind: 'qrcode', node: selectedElement }
+    }
     return {
       kind: 'image',
       node: selectedElement,
@@ -8247,6 +8266,63 @@ export function FreeformWorkspace({
                           ))}
                         </ul>
                       )}
+                    </InspectorSection>
+                  )}
+
+                  {isQrCodeElement(selectedElement) && (
+                    <InspectorSection title={t('二维码')} testId="inspector-qrcode">
+                      <div className="field-label">{t('内容')}</div>
+                      <input
+                        key={`${selectedElement.id}:${selectedElement.payload.length}`}
+                        className="qr-payload-input"
+                        data-testid="qr-payload-input"
+                        type="text"
+                        defaultValue={selectedElement.payload}
+                        maxLength={QR_PAYLOAD_MAX_LENGTH}
+                        aria-label={t('二维码内容')}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return
+                          event.preventDefault()
+                          const payload = event.currentTarget.value.trim()
+                          if (payload && payload !== selectedElement.payload) {
+                            updateSelectedContent({ payload })
+                          }
+                          event.currentTarget.blur()
+                        }}
+                        onBlur={(event) => {
+                          const payload = event.currentTarget.value.trim()
+                          if (payload && payload !== selectedElement.payload) {
+                            updateSelectedContent({ payload })
+                          }
+                        }}
+                      />
+                      <div className="field-label with-gap">{t('纠错级别')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('纠错级别')}>
+                        {QR_ECL_OPTIONS.map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            className={(selectedElement.ecl ?? 'M') === level ? 'seg-btn on' : 'seg-btn'}
+                            data-testid={`qr-ecl-${level}`}
+                            onClick={() => updateSelectedStyle({ ecl: level === 'M' ? null : level })}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="field-label with-gap">{t('颜色')}</div>
+                      <div className="paint-row" data-testid="qr-colors">
+                        <ColorPickerButton
+                          label={t('码点颜色')}
+                          color={selectedElement.dark}
+                          onChange={(dark) => updateSelectedStyle({ dark })}
+                        />
+                        <ColorPickerButton
+                          label={t('背景颜色')}
+                          color={selectedElement.light}
+                          onChange={(light) => updateSelectedStyle({ light })}
+                        />
+                      </div>
                     </InspectorSection>
                   )}
 

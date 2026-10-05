@@ -1851,9 +1851,11 @@ html.theme-anim * {
 .freeform-shape,
 .freeform-line,
 .freeform-path,
+.freeform-qrcode,
 .freeform-preview-shape,
 .freeform-preview-line,
-.freeform-preview-path {
+.freeform-preview-path,
+.freeform-preview-qrcode {
   width: 100%;
   height: 100%;
   display: block;
@@ -3023,6 +3025,25 @@ html.theme-anim * {
 
 :is(.freeform-inspector, .freeform-drawer) .paint-hex {
   flex: 1 1 auto;
+}
+
+/* The QR payload field: one full-width text line in the inspector. */
+.freeform-inspector .qr-payload-input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.freeform-inspector .qr-payload-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+  outline: none;
 }
 
 :is(.freeform-inspector, .freeform-drawer) .paint-angle {

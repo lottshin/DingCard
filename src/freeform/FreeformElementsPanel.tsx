@@ -18,6 +18,7 @@ import type { FreeformLineElement, FreeformShapeElement, FreeformSlide } from '.
 export type ElementPick =
   | { kind: 'shape'; id: FreeformShapeElement['shape'] }
   | { kind: 'line'; id: FreeformLineElement['lineKind']; bothEnds?: boolean }
+  | { kind: 'qrcode' }
   | { kind: 'collage'; id: string }
   | { kind: 'decoration'; id: string }
   | { kind: 'icon'; id: string }
@@ -52,15 +53,22 @@ export function carriesElement(dataTransfer: DataTransfer): boolean {
 /** The element a drop carries, or null for anything else. */
 export function droppedElement(dataTransfer: DataTransfer): ElementPick | null {
   try {
-    const value = JSON.parse(dataTransfer.getData(ELEMENT_DRAG_TYPE)) as Partial<ElementPick>
+    const value = JSON.parse(dataTransfer.getData(ELEMENT_DRAG_TYPE)) as Record<string, unknown>
+    // The QR pick is the only id-less pick: one insert, nothing to choose.
+    if (value.kind === 'qrcode') return { kind: 'qrcode' }
     if (typeof value.id !== 'string') return null
-    if (value.kind === 'shape' && SHAPES.some((shape) => shape.id === value.id)) return value as ElementPick
-    if (value.kind === 'line'
-      && LINES.some((line) => line.id === value.id && !!line.bothEnds === !!value.bothEnds)
-    ) return value as ElementPick
-    if (value.kind === 'collage' && collageById(value.id)) return value as ElementPick
-    if (value.kind === 'decoration' && DECORATIONS.some((decoration) => decoration.id === value.id)) return value as ElementPick
-    if (value.kind === 'icon' && ICONS.some((icon) => icon.id === value.id)) return value as ElementPick
+    const id = value.id
+    if (value.kind === 'shape' && SHAPES.some((shape) => shape.id === id)) {
+      return { kind: 'shape', id: id as FreeformShapeElement['shape'] }
+    }
+    if (value.kind === 'line' && LINES.some((line) => line.id === id && !!line.bothEnds === !!value.bothEnds)) {
+      return { kind: 'line', id: id as FreeformLineElement['lineKind'], ...(value.bothEnds === true ? { bothEnds: true } : {}) }
+    }
+    if (value.kind === 'collage' && collageById(id)) return { kind: 'collage', id }
+    if (value.kind === 'decoration' && DECORATIONS.some((decoration) => decoration.id === id)) {
+      return { kind: 'decoration', id }
+    }
+    if (value.kind === 'icon' && ICONS.some((icon) => icon.id === id)) return { kind: 'icon', id }
     return null
   } catch {
     return null
@@ -120,8 +128,9 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
   const collages = useMemo(() => COLLAGE_LAYOUTS.filter((layout) => !searching || matchesLabel(layout.label, query)), [query, searching, lang])
   const decorations = useMemo(() => searchDecorations(query), [query])
   const icons = useMemo(() => searchIcons(query), [query])
+  const utilities = useMemo(() => !searching || matchesLabel('二维码', query), [query, searching, lang])
   const previews = useMemo(() => new Map(DECORATIONS.map((decoration) => [decoration.id, previewSlide(decoration, language)])), [language])
-  const nothing = shapes.length + lines.length + collages.length + decorations.length + icons.length === 0
+  const nothing = shapes.length + lines.length + collages.length + decorations.length + icons.length === 0 && !utilities
 
   return (
     <>
@@ -173,6 +182,23 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
                 <span>{t(line.label)}</span>
               </button>
             ))}
+          </div>
+        </>
+      )}
+      {utilities && (
+        <>
+          <div className="freeform-drawer-section">{t('实用')}</div>
+          <div className="freeform-element-tiles" role="group" aria-label={t('实用')}>
+            <button
+              type="button"
+              className="freeform-element-tile"
+              data-testid="insert-qrcode"
+              {...dragProps({ kind: 'qrcode' })}
+              onClick={() => onPick({ kind: 'qrcode' })}
+            >
+              <ShapePreviewIcon shape="qrcode" />
+              <span>{t('二维码')}</span>
+            </button>
           </div>
         </>
       )}
