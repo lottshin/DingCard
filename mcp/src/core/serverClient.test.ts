@@ -214,6 +214,34 @@ describe('createServerClient', () => {
     await expect(client.getDraft('x')).rejects.toThrow('无效的作品')
   })
 
+  test('saves a draft: created without an id, updated with one', async () => {
+    const deck = { slides: [{ id: 's1', nodes: [] }] }
+    const { fetchImpl, calls } = fakeFetch([
+      { path: '/api/auth/login', respond: () => Promise.resolve(jsonResponse(200, { token: 't' })) },
+      { path: '/api/drafts', respond: () => Promise.resolve(jsonResponse(200, { id: 'd1', title: '新作品', schemaVersion: 2, mode: 'freeform-slide', document: deck, updatedAt: 9 })) },
+      { path: '/api/drafts', respond: () => Promise.resolve(jsonResponse(200, { id: 'd1', title: '改过的', schemaVersion: 2, mode: 'freeform-slide', document: deck, updatedAt: 10 })) },
+    ])
+    const client = createServerClient({ serverUrl: 'https://cards.example.com', username: 'u', password: 'p', fetchImpl: fetchImpl as unknown as typeof fetch })
+
+    const created = await client.saveDraft({ mode: 'freeform-slide', title: '新作品', document: deck })
+    expect(created).toEqual({ id: 'd1', title: '新作品', schemaVersion: 2, mode: 'freeform-slide', document: deck, updatedAt: 9 })
+    expect(JSON.parse(textBody(calls[1]?.init))).toEqual({ mode: 'freeform-slide', title: '新作品', document: deck })
+
+    const updated = await client.saveDraft({ id: 'd1', mode: 'freeform-slide', document: deck })
+    expect(updated.updatedAt).toBe(10)
+    expect(JSON.parse(textBody(calls[2]?.init))).toEqual({ id: 'd1', mode: 'freeform-slide', document: deck })
+  })
+
+  test('a failed save surfaces the server\'s reason', async () => {
+    const { fetchImpl } = fakeFetch([
+      { path: '/api/auth/login', respond: () => Promise.resolve(jsonResponse(200, { token: 't' })) },
+      { path: '/api/drafts', respond: () => Promise.resolve(jsonResponse(413, { error: '请求体过大' })) },
+    ])
+    const client = createServerClient({ serverUrl: 'https://cards.example.com', username: 'u', password: 'p', fetchImpl: fetchImpl as unknown as typeof fetch })
+
+    await expect(client.saveDraft({ mode: 'freeform-slide', document: {} })).rejects.toThrow('作品保存失败')
+  })
+
   test('a rejected API token explains the revocation instead of retrying', async () => {
     const { fetchImpl, calls } = fakeFetch([
       { path: '/api/shares', respond: () => Promise.resolve(jsonResponse(401, { error: '未登录或登录已过期' })) },

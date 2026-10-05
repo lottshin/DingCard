@@ -8,7 +8,7 @@ list_templates → create_document_from_content / create_document_from_outline�
       → render_document → PNG / JPG / PDF / 长图 + 每页缩略图（直接给模型看）
       → open_in_editor → 在叮卡编辑器里打开，人接着改
       → share_document → 分享链接 + 二维码（手机扫码看图，见下文「分享给人」）
-list_server_projects → open_server_project（人在编辑器里存的作品载入，接着改 / 再渲染 / 再分享）
+list_server_projects → open_server_project（人在编辑器里存的作品载入，接着改 / 再渲染 / 再分享 / save_server_project 存回去）
 ```
 
 服务端保存它创建和修改的文档：工具之间传 `documentId` 即可，不必每次把整份文档 JSON 传来传去（见下文「文档句柄」）。
@@ -46,6 +46,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 | `revoke_share` | 撤销一个分享（`id` 从 `list_shares` 查）：链接立刻打不开，页面图片等图片回收清理。 |
 | `list_server_projects` | 列出部署的叮卡服务端账号里存的作品（id、标题、类型 `markdown-card` / `freeform-slide`、最近更新时间），最新在前；id 给 `open_server_project` 载入（见下文「读账号里的作品」）。需要 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（带 drafts 权限）或账号环境变量。 |
 | `open_server_project` | 把服务端账号里的一个作品载入接着做：自由画布作品返回 `documentId`（之后 `inspect_document` / `apply_actions` / `render_document` / `share_document` 都能用），Markdown 作品返回 `markdownDocument` 信封（交给 `render_markdown`）；作品里的图片已换成服务端的绝对地址。 |
+| `save_server_project` | 把一份自由画布文档存回部署的叮卡服务端账号：不给 `projectId` 存成新作品，给 `projectId`（`open_server_project` 返回的）覆盖那一份——人在编辑器里打开就是改过的版本（见下文「读账号里的作品」）。需要 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（带 drafts 权限）或账号环境变量。 |
 
 模板放不下的版式，可以写成网页交给 `create_document_from_html`，转出来同样接 `check_document` → `render_document`。
 
@@ -80,12 +81,13 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 
 ## 读账号里的作品
 
-`list_server_projects` 和 `open_server_project` 把方向反过来：人在编辑器里存好的作品，AI 也能接着做——改几个字、换个配色、再渲染、再分享，不用从零重做。
+`list_server_projects` 和 `open_server_project` 把方向反过来：人在编辑器里存好的作品，AI 也能接着做——改几个字、换个配色、再渲染、再分享，不用从零重做；`save_server_project` 再把改完的存回去。
 
-- **配置**与分享相同（`DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN` 或账号环境变量）；API 令牌需要带 `drafts` 权限（只读也要这个作用域）。
+- **配置**与分享相同（`DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN` 或账号环境变量）；API 令牌需要带 `drafts` 权限（读和写都是这个作用域）。
 - `list_server_projects` 返回作品的 `id`、`title`、`mode`（`markdown-card` / `freeform-slide`）和 `updatedAt`，最新在前。
-- `open_server_project` 按 `id` 载入：自由画布作品存进服务端并返回 `documentId`，之后 `inspect_document` / `apply_actions` / `check_document` / `render_document` / `share_document` / `open_in_editor` 都能用；Markdown 作品返回 `markdownDocument` 信封（`source`、`platformId`、`themeId` 等都在里面），交给 `render_markdown` 渲染。
-- 作品里的图片地址换成服务端的绝对地址（`/uploads/…` 指向部署的叮卡），渲染时能直接取到；改动只影响载入的这份，服务端存的原作品不变，要保存回去由人决定（`open_in_editor` 交给编辑器）。
+- `open_server_project` 按 `id` 载入：自由画布作品存进服务端并返回 `documentId` 和 `projectId`（服务端那份作品的 id），之后 `inspect_document` / `apply_actions` / `check_document` / `render_document` / `share_document` / `open_in_editor` 都能用；Markdown 作品返回 `markdownDocument` 信封（`source`、`platformId`、`themeId` 等都在里面），交给 `render_markdown` 渲染。
+- `save_server_project` 把文档存回服务端账号：不给 `projectId` 存成新作品（`title` 可选，不给时按第一页名称自动起）；给 `open_server_project` 返回的 `projectId` 时覆盖那一份——人在编辑器里打开看到的就是改过的版本。Markdown 作品不能从 MCP 存回（编辑器里的 Markdown 工作台没有对应的文档工具）。
+- 作品里的图片地址换成服务端的绝对地址（`/uploads/…` 指向部署的叮卡），渲染时能直接取到；不覆盖时（只载入、只渲染、另存新作品）服务端存的原作品不变。
 
 ## 用网页写法出图
 

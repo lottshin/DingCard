@@ -36,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the twenty-seven tools', async () => {
+  test('exposes the twenty-eight tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -66,6 +66,7 @@ describe('dingcard-mcp tool layer', () => {
       'render_document',
       'render_markdown',
       'revoke_share',
+      'save_server_project',
       'share_document',
       'validate_document',
     ])
@@ -99,6 +100,10 @@ describe('dingcard-mcp tool layer', () => {
       const opened = await call(client, 'open_server_project', { id: 'missing' })
       expect(opened).toMatchObject({ ok: false })
       expect(opened.error).toContain('DINGCARD_SERVER_URL')
+
+      const saved = await call(client, 'save_server_project', {})
+      expect(saved).toMatchObject({ ok: false })
+      expect(saved.error).toContain('DINGCARD_SERVER_URL')
     } finally {
       if (saved !== undefined) process.env.DINGCARD_SERVER_URL = saved
       await client.close()
@@ -121,9 +126,24 @@ describe('dingcard-mcp tool layer', () => {
       { id: 'd-md', title: 'Markdown 作品', schemaVersion: 2, mode: 'markdown-card', document: { source: '# 标题\n正文', platformId: 'rednote', themeId: 'light' }, updatedAt: 4 },
     ]
     const respond = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+    const posted: Array<{ body: Record<string, unknown> }> = []
     const originalFetch = globalThis.fetch
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      if (url === 'https://cards.example.com/api/drafts' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        posted.push({ body })
+        // An id updates that draft; no id creates one, like the server does.
+        const saved = {
+          id: typeof body.id === 'string' ? body.id : 'd-new',
+          title: typeof body.title === 'string' ? body.title : '自动标题',
+          schemaVersion: 2,
+          mode: body.mode,
+          document: body.document,
+          updatedAt: 99,
+        }
+        return respond(200, saved)
+      }
       if (url === 'https://cards.example.com/api/drafts') return respond(200, drafts)
       if (url === 'https://cards.example.com/api/drafts/d-free') return respond(200, drafts[0])
       if (url === 'https://cards.example.com/api/drafts/d-md') return respond(200, drafts[1])
@@ -147,16 +167,16 @@ describe('dingcard-mcp tool layer', () => {
         { id: 'd-md', title: 'Markdown 作品', mode: 'markdown-card', updatedAt: 4 },
       ])
 
-      const opened = await call<{ ok: boolean; mode: string; title: string; documentId: string; slides: Array<{ id: string; name: string }> }>(
+      const opened = await call<{ ok: boolean; mode: string; title: string; projectId: string; documentId: string; slides: Array<{ id: string; name: string }> }>(
         client, 'open_server_project', { id: 'd-free' },
       )
-      expect(opened).toMatchObject({ ok: true, mode: 'freeform-slide', title: '自由作品' })
+      expect(opened).toMatchObject({ ok: true, mode: 'freeform-slide', title: '自由作品', projectId: 'd-free' })
       expect(opened.documentId).toMatch(/^doc_[0-9a-f]{12}$/)
       expect(opened.slides).toHaveLength(instance.document.slides.length)
 
       // The opened document is kept and its root-relative picture became an
       // absolute server URL, so rendering on any origin finds it.
-      const fetched = await call<{ document: { slides: Array<{ background: { src?: string } }> } }>(
+      const fetched = await call<{ document: { slides: Array<{ background: { src?: string }; nodes: Array<{ id: string }> }> } }>(
         client, 'get_document', { documentId: opened.documentId },
       )
       expect(fetched.document.slides[0].background.src).toBe('https://cards.example.com/uploads/bg.png')
@@ -174,6 +194,29 @@ describe('dingcard-mcp tool layer', () => {
       expect(missing.isError).toBe(true)
       expect(missing.content[0].text).toContain('404')
       expect(missing.content[0].text).toContain('草稿不存在')
+
+      // Write-back: an edit saved with the opened project's id updates the
+      // same server draft; without one it becomes a new project.
+      const firstNodeId = fetched.document.slides[0].nodes[0]?.id
+      expect(firstNodeId).toBeTruthy()
+      const edited = await call<{ ok: boolean; changes: boolean[] }>(client, 'apply_actions', {
+        documentId: opened.documentId,
+        actions: [{ type: 'node/update-geometry', slideId: opened.slides[0].id, updates: [{ path: [firstNodeId!], patch: { x: 12, y: 34 } }] }],
+      })
+      expect(edited.ok).toBe(true)
+
+      const overwritten = await call<{ ok: boolean; project: { id: string; title: string; updatedAt: number } }>(
+        client, 'save_server_project', { documentId: opened.documentId, projectId: opened.projectId, title: '改完的作品' },
+      )
+      expect(overwritten).toMatchObject({ ok: true, project: { id: 'd-free', title: '改完的作品', updatedAt: 99 } })
+      expect(posted[0]?.body).toMatchObject({ id: 'd-free', title: '改完的作品', mode: 'freeform-slide' })
+      expect(Array.isArray(posted[0]?.body.document)).toBe(false)
+
+      const createdProject = await call<{ ok: boolean; project: { id: string } }>(
+        client, 'save_server_project', { documentId: opened.documentId },
+      )
+      expect(createdProject).toMatchObject({ ok: true, project: { id: 'd-new' } })
+      expect(posted[1]?.body.id).toBeUndefined()
     } finally {
       globalThis.fetch = originalFetch
       for (const [key, value] of Object.entries(savedEnv)) {

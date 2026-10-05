@@ -24,6 +24,14 @@ export interface ServerDraft {
   updatedAt: number
 }
 
+/** A draft to save: created new without an id, or the account's draft updated with one. */
+export interface SaveDraftInput {
+  id?: string
+  title?: string
+  mode: 'markdown-card' | 'freeform-slide'
+  document: unknown
+}
+
 export interface ServerClientOptions {
   /** The deployed server's origin, e.g. https://cards.example.com */
   serverUrl: string
@@ -47,6 +55,8 @@ export interface DingcardServer {
   /** The account's saved drafts, newest first. */
   listDrafts(): Promise<ServerDraft[]>
   getDraft(id: string): Promise<ServerDraft>
+  /** Save a draft: create without an id, update the account's own with one. */
+  saveDraft(draft: SaveDraftInput): Promise<ServerDraft>
 }
 
 interface ShareEnvelope {
@@ -210,6 +220,17 @@ export function createServerClient(options: ServerClientOptions): DingcardServer
       const draft = toDraft(await response.json())
       if (!draft) throw new Error('作品读取失败：服务器返回了无效的作品')
       return draft
+    },
+    async saveDraft(draft) {
+      const response = await request('/api/drafts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(draft),
+      })
+      if (!response.ok) throw new Error(`作品保存失败（${await errorText(response)}）`)
+      const saved = toDraft(await response.json())
+      if (!saved) throw new Error('作品保存失败：服务器返回了无效的作品')
+      return saved
     },
   }
 }

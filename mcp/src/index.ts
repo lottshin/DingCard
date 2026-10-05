@@ -750,12 +750,49 @@ export function createDingcardServer(): McpServer {
             ok: true,
             mode: 'freeform-slide',
             title: draft.title,
+            // The server draft's own id: hand it to save_server_project to
+            // write changes back over the same project.
+            projectId: draft.id,
             ...handleOf(stored, withDocument),
             slides: stored.document.slides.map((slide) => ({ id: slide.id, name: slide.name })),
-            note: '已载入：inspect_document 看结构，apply_actions 修改，share_document 直接再分享，open_in_editor 交给人接着手改。',
+            note: '已载入：inspect_document 看结构，apply_actions 修改，share_document 直接再分享，save_server_project 存回服务端，open_in_editor 交给人接着手改。',
           })
         }
         return jsonResult({ ok: false, error: `未知的作品类型：${draft.mode}` })
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
+
+  server.tool(
+    'save_server_project',
+    '把一份自由画布文档存到部署的叮卡服务端账号里，和人在编辑器里存的作品放在一起。不给 projectId 时存成一份新作品；给 projectId（open_server_project 返回的）时覆盖服务端那一份——人再在编辑器里打开，看到的就是改过的版本。返回 { ok, project: { id, title, updatedAt } }；之后 list_server_projects 能看到、open_server_project 随时载入。需要环境变量 DINGCARD_SERVER_URL（部署的服务端地址）和 DINGCARD_SERVER_TOKEN（一个带 drafts 权限的 API 令牌），或 DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。',
+    {
+      ...documentInput,
+      title: z.string().optional().describe('作品名；不给时按第一页的名称自动起'),
+      projectId: z.string().optional().describe('要覆盖的服务端作品 id（open_server_project 返回的 projectId）；不给就存成新作品'),
+    },
+    async ({ title, projectId, ...input }) => {
+      const client = serverClientFromEnv()
+      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+      const resolved = await documentFor(input)
+      if (!resolved.ok) return jsonResult(resolved)
+      try {
+        const saved = await client.saveDraft({
+          ...(projectId !== undefined ? { id: projectId } : {}),
+          ...(title !== undefined ? { title } : {}),
+          mode: 'freeform-slide',
+          document: resolved.document,
+        })
+        return jsonResult({
+          ok: true,
+          project: { id: saved.id, title: saved.title, mode: saved.mode, updatedAt: saved.updatedAt },
+          ...(resolved.documentId ? { documentId: resolved.documentId } : {}),
+          note: projectId !== undefined
+            ? '已写回服务端那一份：人在编辑器里打开就是最新版本。'
+            : '已存成新作品：list_server_projects 能看到，open_server_project 随时载入。',
+        })
       } catch (error) {
         return errorResult(error)
       }

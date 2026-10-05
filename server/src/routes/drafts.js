@@ -13,6 +13,10 @@ import { requireScope } from '../tokenGuards.js'
 
 const KNOWN_MODES = new Set(['markdown-card', 'freeform-slide'])
 
+// A saved document may carry pictures as data URLs (an agent's write-back
+// embeds them), so the same headroom as the deck render route applies.
+const MAX_BODY_BYTES = 8 * 1024 * 1024
+
 // DB row (snake_case, document as JSON string) -> frontend Draft envelope.
 function toDraft(row) {
   return {
@@ -76,7 +80,7 @@ export default async function draftRoutes(fastify, options = {}) {
 
   // POST /api/drafts  { ...envelope }  -> Draft
   // Omitted id creates a draft; a supplied id updates only the current user's draft.
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { bodyLimit: MAX_BODY_BYTES }, async (request, reply) => {
     const b = request.body ?? {}
 
     const mode = KNOWN_MODES.has(b.mode) ? b.mode : null
