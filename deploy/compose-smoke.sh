@@ -250,6 +250,23 @@ if [ -n "$deck_url" ]; then
   [ "$deck_page_code" = 200 ] && pass "deck share page is public" || fail "deck share page" "HTTP $deck_page_code"
 fi
 
+echo "=== markdown deck render (server-side) ==="
+# The same one-request render for a Markdown card envelope (what the Markdown
+# workspace and render_markdown use).
+md_body=$(node -e "process.stdout.write(JSON.stringify({document:{source:'# 容器冒烟\n\n第一页正文，验证 Markdown 管线。\n\n---\n\n第二页正文',platformId:'rednote',themeId:'light',fontFamily:'PingFang SC',radius:18,profile:{nickname:'冒烟',handle:'@smoke',location:'',avatarColor:'#26241f',avatarImage:null,verified:false,headerFirstPageOnly:false}},title:'容器 Markdown 渲染',expiresInHours:6}))")
+md_deck=$(curl -sS --connect-timeout 5 --max-time 180 -X POST "$base/api/decks" -H 'content-type: application/json' \
+  -H "authorization: Bearer $token" -d "$md_body")
+md_url=$(printf '%s' "$md_deck" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{process.stdout.write(JSON.parse(s).share.url||'')}catch{}})")
+if [ -n "$md_url" ]; then
+  pass "markdown deck rendered and shared at $md_url"
+else
+  fail "markdown deck render" "$md_deck"
+fi
+if [ -n "$md_url" ]; then
+  md_page_code=$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "$base$md_url")
+  [ "$md_page_code" = 200 ] && pass "markdown deck share page is public" || fail "markdown deck share page" "HTTP $md_page_code"
+fi
+
 echo "=== app maxUploadBytes ==="
 docker exec "$APP_ID" node -e "import('./src/config.js').then(m=>console.log(m.config.maxUploadBytes))" 2>&1 | tail -1
 

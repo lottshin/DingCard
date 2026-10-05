@@ -151,6 +151,64 @@ test('POST defaults the title and expiry and truncates a long title', async (t) 
   assert.equal(blank.json().share.title, '叮卡分享')
 })
 
+test('POST renders a Markdown card envelope down the Markdown pipeline', async (t) => {
+  const rendered = []
+  const created = []
+  const app = await buildApp(t, {
+    stmts: deckStatements({
+      createShare: (row, imagePaths) => {
+        created.push({ row: { ...row }, imagePaths: [...imagePaths] })
+        return { changes: 1 }
+      },
+    }),
+    renderDeck: async (document, kind) => {
+      rendered.push({ document, kind })
+      return { ok: true, pages: [{ bytes: Buffer.from('p') }, { bytes: Buffer.from('q') }] }
+    },
+  })
+
+  const envelope = {
+    source: '# 标题\n\n正文\n\n---\n\n第二页',
+    platformId: 'rednote',
+    themeId: 'light',
+    fontFamily: 'sans-serif',
+    radius: 18,
+    profile: { nickname: '叮卡', handle: '@dingcard', location: '', avatarColor: '#333', avatarImage: null, verified: false, headerFirstPageOnly: false },
+  }
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/decks',
+    payload: { document: envelope, title: 'Markdown 一步渲染' },
+  })
+
+  assert.equal(response.statusCode, 200, response.body)
+  assert.equal(rendered.length, 1)
+  assert.equal(rendered[0].kind, 'markdown')
+  assert.equal(rendered[0].document.platformId, 'rednote')
+  assert.equal(response.json().share.title, 'Markdown 一步渲染')
+  assert.equal(response.json().images.length, 2)
+
+  // A mode that contradicts the document's shape is rejected, not guessed.
+  const forced = await app.inject({
+    method: 'POST',
+    url: '/api/decks',
+    payload: { document: envelope, mode: 'freeform-slide' },
+  })
+  assert.equal(forced.statusCode, 400)
+  assert.ok(forced.json().error.includes('mode 指定的是自由画布'))
+  assert.equal(rendered.length, 1)
+
+  // An empty source is rejected before rendering.
+  const blank = await app.inject({
+    method: 'POST',
+    url: '/api/decks',
+    payload: { document: { ...envelope, source: '   ' } },
+  })
+  assert.equal(blank.statusCode, 400)
+  assert.ok(blank.json().error.includes('source'))
+  assert.equal(rendered.length, 1)
+})
+
 test('POST rejects bad input before rendering anything', async (t) => {
   let rendered = 0
   const app = await buildApp(t, {

@@ -610,7 +610,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'share_document',
-    '把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。需要先设环境变量 DINGCARD_SERVER_URL（部署的服务端地址）、DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里；list_shares 查已有分享，revoke_share 随时撤销（撤销后立刻打不开）。',
+    '把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。自由画布文档（documentId 或 v20 文档）和 Markdown 卡片信封（source、platformId、themeId 等，与 render_markdown 的 document 相同）都可以。需要先设环境变量 DINGCARD_SERVER_URL（部署的服务端地址）、DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里；list_shares 查已有分享，revoke_share 随时撤销（撤销后立刻打不开）。',
     {
       ...documentInput,
       title: z.string().optional().describe('分享页标题，默认「叮卡分享」'),
@@ -620,13 +620,26 @@ export function createDingcardServer(): McpServer {
     async ({ title, expiresInHours, qr, ...input }) => {
       const client = serverClientFromEnv()
       if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
-      const resolved = await documentFor(input)
+      const resolved = await resolveDocumentInput(input, documents)
       if (!resolved.ok) return jsonResult(resolved)
       // The pages only need to exist until they are uploaded.
       let tempDir: string | null = null
       try {
         tempDir = await mkdtemp(path.join(tmpdir(), 'dingcard-share-'))
-        const rendered = await renderDocument(resolved.document, { outputDir: tempDir, format: 'png' })
+        // A Markdown card envelope (no slides, a source and a platform) goes
+        // down the Markdown pipeline; everything else is a freeform document.
+        const isMarkdown = typeof (resolved.value as { slides?: unknown })?.slides === 'undefined'
+          && typeof (resolved.value as { source?: unknown })?.source === 'string'
+          && typeof (resolved.value as { platformId?: unknown })?.platformId === 'string'
+        const rendered = isMarkdown
+          ? await renderMarkdownDocument(resolved.value, { outputDir: tempDir })
+          : await (async () => {
+            const embedded = await embedLocalImages(resolved.value as FreeformDocument, resolved.baseDir)
+            if (!embedded.ok) return embedded
+            const validated = validateDocument(embedded.document)
+            if (!validated.ok) return validated
+            return renderDocument(validated.document, { outputDir: tempDir, format: 'png' })
+          })()
         if (!rendered.ok) return jsonResult(rendered)
         const urls: string[] = []
         for (const [index, file] of rendered.files.entries()) {
