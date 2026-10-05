@@ -93,6 +93,8 @@ test('我的项目 import rejects invalid JSON with an error notice', async ({ p
 
   await expect(page.getByRole('heading', { level: 1, name: '我的项目' })).toBeVisible()
   await expect(page.getByText('文件不是有效的 JSON')).toBeVisible()
+  // Local mode has no server trash; the entry stays away.
+  await expect(page.getByTestId('project-trash')).toHaveCount(0)
 })
 
 test('我的项目 imports a v14 polyline document and renders its vertices', async ({ page }) => {

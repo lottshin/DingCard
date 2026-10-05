@@ -1447,4 +1447,35 @@ describe('RemoteStore draft version history', () => {
     expect(restored.mode).toBe('markdown-card')
     expect((restored as { document: { source: string } }).document.source).toBe('# 第一版')
   })
+
+  it('lists the trash and restores or purges entries by id', async () => {
+    const calls: Array<{ url: string, method: string }> = []
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      const url = requestUrl(args)
+      calls.push({ url, method: args[1]?.method ?? 'GET' })
+      if (url === `${API_BASE}/api/drafts/trash`) {
+        return jsonResponse([
+          { id: 'd-2', title: '新的', mode: 'freeform-slide', schemaVersion: 2, updatedAt: 400, deletedAt: 2_000 },
+          'broken',
+          { id: 'd-1', title: '旧的', mode: 'markdown-card', schemaVersion: 2, updatedAt: 100, deletedAt: 1_000 },
+        ])
+      }
+      if (url === `${API_BASE}/api/drafts/trash/d-1/restore`) return jsonResponse({ ok: true, id: 'd-1' })
+      if (url === `${API_BASE}/api/drafts/trash/d-2`) return jsonResponse({ ok: true })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const store = await createStore()
+
+    await expect(store.drafts.listTrash('user-1')).resolves.toEqual([
+      { id: 'd-2', title: '新的', mode: 'freeform-slide', schemaVersion: 2, updatedAt: 400, deletedAt: 2_000 },
+      { id: 'd-1', title: '旧的', mode: 'markdown-card', schemaVersion: 2, updatedAt: 100, deletedAt: 1_000 },
+    ])
+    await store.drafts.restore('user-1', 'd-1')
+    await store.drafts.purge('user-1', 'd-2')
+    expect(calls.filter((call) => call.url.includes('/trash'))).toEqual([
+      { url: `${API_BASE}/api/drafts/trash`, method: 'GET' },
+      { url: `${API_BASE}/api/drafts/trash/d-1/restore`, method: 'POST' },
+      { url: `${API_BASE}/api/drafts/trash/d-2`, method: 'DELETE' },
+    ])
+  })
 })

@@ -39,6 +39,16 @@ export interface DraftVersionDetail extends DraftVersion {
   document: unknown
 }
 
+/** A deleted project sitting in the trash; the document stays behind restore. */
+export interface TrashedProject {
+  id: string
+  title: string
+  mode: string
+  schemaVersion: number
+  updatedAt: number
+  deletedAt: number
+}
+
 export interface DraftStore {
   list(userId: string): Promise<Draft[]>
   save(userId: string, data: SaveDraftInput): Promise<Draft>
@@ -48,6 +58,12 @@ export interface DraftStore {
   getVersion(userId: string, draftId: string, versionId: string): Promise<DraftVersionDetail>
   /** Writes a version back as the current draft and returns it. */
   restoreVersion(userId: string, draftId: string, versionId: string): Promise<Draft>
+  /** The trash, newest-deleted first (deployed server only). */
+  listTrash(userId: string): Promise<TrashedProject[]>
+  /** Moves a trashed project back into 我的项目. */
+  restore(userId: string, id: string): Promise<void>
+  /** Purges a trashed project for real. */
+  purge(userId: string, id: string): Promise<void>
 }
 
 /**

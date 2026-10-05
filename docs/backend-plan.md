@@ -160,16 +160,20 @@ GET  /api/auth/me                                 → { user }        (校验 to
 GET    /api/drafts            → Draft[]           (只返回当前用户的,按 updated_at 倒序)
 GET    /api/drafts/:id        → Draft
 POST   /api/drafts            { ...envelope }  → Draft   (upsert:带 id 覆盖,无 id 新建)
-DELETE /api/drafts/:id        → { ok: true }
+DELETE /api/drafts/:id        → { ok: true }     (移入回收站)
 GET    /api/drafts/:id/versions              → { id, title, mode, schemaVersion, createdAt }[]  (元数据,新→旧)
 GET    /api/drafts/:id/versions/:versionId   → 同上 + document
 POST   /api/drafts/:id/versions/:versionId/restore  → Draft  (版本内容写回为当前草稿)
+GET    /api/drafts/trash                  → { id, title, mode, schemaVersion, updatedAt, deletedAt }[]  (回收站,新删在前)
+POST   /api/drafts/trash/:id/restore      → { ok: true }  (移回「我的项目」)
+DELETE /api/drafts/trash/:id              → { ok: true }  (彻底删除,连带版本)
 ```
 - 请求体是完整信封 `{ id?, title?, schemaVersion, mode, document }`。`mode` 只接受 `markdown-card` / `freeform-slide`,其余返回 400。
 - `document` 缺失或不是对象、`id` 存在但为空/不是字符串时返回 400；GET 查询不到草稿、或带 `id` 更新不存在/属于其他用户的草稿时返回 404。不带 `id` 才创建新草稿。
 - `title` 缺省时后端派生:markdown 取正文首行、freeform 取首页名。
 - `document` 原样存取；草稿 API 不解析内部业务结构，GC 只递归收集托管图片 URL。
-- 版本历史：带 `id` 更新时，旧内容先冻结成一条版本（同一草稿距上一条不足 10 分钟则跳过——编辑器自动保存很频繁；每份草稿只保留最新 30 条，`created_at` 用旧内容自己的更新时间）。恢复把版本内容写回当前草稿，被替换的内容同样先存版本；删除草稿连同版本一起清掉。所有版本查询都带 `user_id`，与草稿同权限（API 令牌的 `drafts` 作用域）。本地浏览器模式没有版本历史，入口不显示。
+- 版本历史：带 `id` 更新时，旧内容先冻结成一条版本（同一草稿距上一条不足 10 分钟则跳过——编辑器自动保存很频繁；每份草稿只保留最新 30 条，`created_at` 用旧内容自己的更新时间）。恢复把版本内容写回当前草稿，被替换的内容同样先存版本；所有版本查询都带 `user_id`，与草稿同权限（API 令牌的 `drafts` 作用域）。本地浏览器模式没有版本历史，入口不显示。
+- 回收站：删除是软删除（行保留 `deleted_at`），期间对普通列表/读取/更新不可见（返回 404）；图片引用扫描照常读全部草稿，所以回收站里的项目不会丢图。恢复原样移回（内容与历史版本都在）；彻底删除只对回收站里的项目生效，连带清掉版本并触发图片 GC。回收站保留 30 天，读取时顺带清掉过期项。本地浏览器模式没有回收站，入口不显示。
 - 自由编辑器当前写入 `documentVersion: 4`，其中图片和形状图片填充带有 `framing`。v1/v2/v3 到 v4 的迁移由前端 LocalStore/RemoteStore 完成；服务端不补字段、不改版本，也不需要为这次升级修改 SQLite 结构。
 - 每个查询都带 `WHERE user_id = ?`,从 JWT 取 userId,**不信任前端传的 user_id**。
 

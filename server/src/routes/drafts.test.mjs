@@ -14,22 +14,47 @@ import draftRoutes from './drafts.js'
 function draftStatements() {
   const drafts = new Map()
   const versions = new Map()
+  const live = (row) => row.deleted_at == null
+  const owned = (row, userId) => row && row.user_id === userId
   return {
     drafts,
     versions,
-    listDrafts: { all: (userId) => [...drafts.values()].filter((row) => row.user_id === userId) },
-    draftById: { get: (id, userId) => drafts.get(id)?.user_id === userId ? drafts.get(id) : undefined },
-    insertDraft: { run: (row) => { drafts.set(row.id, row); return { changes: 1 } } },
+    listDrafts: { all: (userId) => [...drafts.values()].filter((row) => owned(row, userId) && live(row)) },
+    draftById: { get: (id, userId) => {
+      const row = drafts.get(id)
+      return owned(row, userId) && live(row) ? row : undefined
+    } },
+    insertDraft: { run: (row) => { drafts.set(row.id, { ...row, deleted_at: null }); return { changes: 1 } } },
     updateDraft: { run: (row) => {
-      if (!drafts.has(row.id) || drafts.get(row.id).user_id !== row.user_id) return { changes: 0 }
-      drafts.set(row.id, row)
+      const current = drafts.get(row.id)
+      if (!owned(current, row.user_id) || !live(current)) return { changes: 0 }
+      drafts.set(row.id, { ...row, deleted_at: current.deleted_at })
       return { changes: 1 }
     } },
-    deleteDraft: { run: (id, userId) => {
-      const had = drafts.get(id)?.user_id === userId
-      drafts.delete(id)
-      return { changes: had ? 1 : 0 }
+    trashDraft: { run: (at, id, userId) => {
+      const row = drafts.get(id)
+      if (!owned(row, userId) || !live(row)) return { changes: 0 }
+      drafts.set(id, { ...row, deleted_at: at })
+      return { changes: 1 }
     } },
+    listTrashedDrafts: { all: (userId) => [...drafts.values()]
+      .filter((row) => owned(row, userId) && !live(row))
+      .sort((a, b) => b.deleted_at - a.deleted_at) },
+    restoreDraft: { run: (id, userId) => {
+      const row = drafts.get(id)
+      if (!owned(row, userId) || live(row)) return { changes: 0 }
+      drafts.set(id, { ...row, deleted_at: null })
+      return { changes: 1 }
+    } },
+    purgeTrashedDraft: { run: (id, userId) => {
+      const row = drafts.get(id)
+      if (!owned(row, userId) || live(row)) return { changes: 0 }
+      drafts.delete(id)
+      return { changes: 1 }
+    } },
+    expiredTrashIds: { all: (userId, cutoff) => [...drafts.values()]
+      .filter((row) => owned(row, userId) && !live(row) && row.deleted_at < cutoff)
+      .map((row) => ({ id: row.id })) },
     insertDraftVersion: { run: (row) => { versions.set(row.id, row); return { changes: 1 } } },
     listDraftVersions: { all: (draftId, userId) => [...versions.values()]
       .filter((row) => row.draft_id === draftId && row.user_id === userId)
@@ -186,7 +211,7 @@ test('restore writes a version back as the current draft', async (t) => {
   })).statusCode, 404)
 })
 
-test('deleting a draft removes its versions', async (t) => {
+test('deleting moves a draft to the trash; restoring brings it back whole; purging removes it', async (t) => {
   let at = 1_000_000
   const { app, stmts } = await buildApp(t, { now: () => at })
   const created = await app.inject({
@@ -201,9 +226,88 @@ test('deleting a draft removes its versions', async (t) => {
   })
   assert.equal(stmts.versions.size, 1)
 
+  // Delete: the draft moves to the trash — row, content and versions stay.
   const removed = await app.inject({ method: 'DELETE', url: `/api/drafts/${draftId}` })
   assert.equal(removed.statusCode, 200)
+  assert.equal(stmts.drafts.size, 1, 'the row stays until purged')
+  assert.equal(stmts.versions.size, 1, 'trashing keeps the version history')
+  assert.equal((await app.inject({ method: 'GET', url: `/api/drafts/${draftId}` })).statusCode, 404)
+  assert.equal((await app.inject({ method: 'GET', url: '/api/drafts' })).json().length, 0)
+
+  // The trash lists metadata only.
+  const trash = await app.inject({ method: 'GET', url: '/api/drafts/trash' })
+  assert.equal(trash.statusCode, 200)
+  const [entry] = trash.json()
+  assert.equal(entry.id, draftId)
+  assert.equal(entry.title, '第二版')
+  assert.equal(entry.deletedAt, at)
+  assert.ok(!('document' in entry), 'the trash list stays metadata-only')
+
+  // Restore: the draft returns exactly as it was trashed.
+  at += 5 * 60_000
+  assert.equal((await app.inject({
+    method: 'POST', url: `/api/drafts/trash/${draftId}/restore`,
+  })).statusCode, 200)
+  const afterRestore = await app.inject({ method: 'GET', url: `/api/drafts/${draftId}` })
+  assert.equal(afterRestore.statusCode, 200)
+  assert.deepEqual(afterRestore.json().document, markdownDocument('第二版'))
+  assert.equal(stmts.versions.size, 1, 'the version history survived the round trip')
+  assert.equal((await app.inject({ method: 'GET', url: '/api/drafts/trash' })).json().length, 0)
+
+  // A live draft is not in the trash: restore answers 404, purge leaves it alone.
+  assert.equal((await app.inject({
+    method: 'POST', url: `/api/drafts/trash/${draftId}/restore`,
+  })).statusCode, 404)
+  assert.equal((await app.inject({
+    method: 'DELETE', url: `/api/drafts/trash/${draftId}`,
+  })).statusCode, 200)
+  assert.equal((await app.inject({ method: 'GET', url: `/api/drafts/${draftId}` })).statusCode, 200)
+
+  // Purge: for real this time — the draft and its versions go away.
+  await app.inject({ method: 'DELETE', url: `/api/drafts/${draftId}` })
+  at += 60_000
+  assert.equal((await app.inject({
+    method: 'DELETE', url: `/api/drafts/trash/${draftId}`,
+  })).statusCode, 200)
+  assert.equal(stmts.drafts.size, 0)
   assert.equal(stmts.versions.size, 0)
+  assert.equal((await app.inject({
+    method: 'POST', url: `/api/drafts/trash/${draftId}/restore`,
+  })).statusCode, 404)
+})
+
+test('the trash purges entries past the retention window whenever it is read', async (t) => {
+  let at = 1_000_000_000_000
+  const { app, stmts } = await buildApp(t, { now: () => at })
+  const old = await app.inject({
+    method: 'POST', url: '/api/drafts',
+    payload: { mode: 'markdown-card', document: markdownDocument('旧的') },
+  })
+  await app.inject({ method: 'DELETE', url: `/api/drafts/${old.json().id}` })
+
+  at += 60_000
+  const fresh = await app.inject({
+    method: 'POST', url: '/api/drafts',
+    payload: { mode: 'markdown-card', document: markdownDocument('新的') },
+  })
+  const freshId = fresh.json().id
+  await app.inject({ method: 'DELETE', url: `/api/drafts/${freshId}` })
+
+  // 30 seconds short of 30 days later: the first entry is past the window,
+  // the second (deleted 60s after it) still has 30 seconds of grace.
+  at += 30 * 24 * 60 * 60 * 1000 - 30_000
+  const trash = await app.inject({ method: 'GET', url: '/api/drafts/trash' })
+  assert.equal(trash.statusCode, 200)
+  const entries = trash.json()
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0].id, freshId)
+  assert.equal(stmts.drafts.size, 1, 'the expired entry was purged for real')
+  assert.equal((await app.inject({
+    method: 'POST', url: `/api/drafts/trash/${old.json().id}/restore`,
+  })).statusCode, 404)
+  assert.equal((await app.inject({
+    method: 'POST', url: `/api/drafts/trash/${freshId}/restore`,
+  })).statusCode, 200)
 })
 
 test('only the newest versions are kept', async (t) => {

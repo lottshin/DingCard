@@ -117,6 +117,15 @@ export function createLocalStore(pictureBackend?: PictureBackend | null): Storag
     restoreVersion: async () => {
       throw new Error('版本历史需要部署服务端')
     },
+    listTrash: async () => {
+      throw new Error('回收站需要部署服务端')
+    },
+    restore: async () => {
+      throw new Error('回收站需要部署服务端')
+    },
+    purge: async () => {
+      throw new Error('回收站需要部署服务端')
+    },
   }
 
   // Share links need a server to host the public page; local mode has none.

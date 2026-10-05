@@ -12,7 +12,7 @@ import {
   collectFreeformImageSources,
   uploadInlineFreeformImages,
 } from '../freeform/imageAssets'
-import type { ApiToken, AssetStore, AuthStore, DraftStore, DraftVersion, ImageStore, Share, ShareStore, Storage, TokenStore } from './types'
+import type { ApiToken, AssetStore, AuthStore, DraftStore, DraftVersion, ImageStore, Share, ShareStore, Storage, TokenStore, TrashedProject } from './types'
 
 const TOKEN_KEY = 'slicer.token.v1'
 const invalidationListeners = new Set<() => void>()
@@ -462,6 +462,30 @@ export function createRemoteStore(apiBase: string): Storage {
       if (!normalized) throw new ApiError('服务器返回了无效草稿', status)
       return normalized
     },
+    async listTrash() {
+      const { data, status } = await api<unknown>('/api/drafts/trash')
+      if (!Array.isArray(data)) throw new ApiError('服务器返回了无效回收站列表', status)
+      return data.map(toTrashedProject).filter((entry): entry is TrashedProject => entry !== null)
+    },
+    async restore(_userId, id) {
+      await api(`/api/drafts/trash/${encodeURIComponent(id)}/restore`, { method: 'POST' })
+    },
+    async purge(_userId, id) {
+      await api(`/api/drafts/trash/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
+  }
+
+  function toTrashedProject(raw: unknown): TrashedProject | null {
+    if (!isRecord(raw)) return null
+    if (typeof raw.id !== 'string' || typeof raw.title !== 'string') return null
+    return {
+      id: raw.id,
+      title: raw.title,
+      mode: typeof raw.mode === 'string' ? raw.mode : '',
+      schemaVersion: typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 2,
+      updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
+      deletedAt: typeof raw.deletedAt === 'number' ? raw.deletedAt : 0,
+    }
   }
 
   function toDraftVersion(raw: unknown): DraftVersion | null {

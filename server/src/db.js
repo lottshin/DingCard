@@ -5,7 +5,7 @@ import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import { config as defaultConfig } from './config.js'
-import { ensureImageLeaseSchema, ensureShareViewsSchema } from './dbMigrations.js'
+import { ensureDraftTrashSchema, ensureImageLeaseSchema, ensureShareViewsSchema } from './dbMigrations.js'
 
 export function createDatabase(appConfig = defaultConfig) {
   fs.mkdirSync(path.dirname(appConfig.dbPath), { recursive: true })
@@ -113,6 +113,7 @@ export function createDatabase(appConfig = defaultConfig) {
 
     ensureImageLeaseSchema(database, Date.now(), appConfig.imageLeaseMs)
     ensureShareViewsSchema(database)
+    ensureDraftTrashSchema(database)
 
     const imageByUserPath = database.prepare(
       'SELECT * FROM images WHERE user_id = ? AND path = ?',
@@ -144,8 +145,14 @@ export function createDatabase(appConfig = defaultConfig) {
       userByName: database.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE'),
       userById: database.prepare('SELECT * FROM users WHERE id = ?'),
 
-      listDrafts: database.prepare('SELECT * FROM drafts WHERE user_id = ? ORDER BY updated_at DESC'),
-      draftById: database.prepare('SELECT * FROM drafts WHERE id = ? AND user_id = ?'),
+      // Live drafts only: a trashed draft (deleted_at set) hides from the
+      // normal surface until it is restored or purged.
+      listDrafts: database.prepare(`
+        SELECT * FROM drafts WHERE user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC
+      `),
+      draftById: database.prepare(
+        'SELECT * FROM drafts WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
+      ),
       insertDraft: database.prepare(`
         INSERT INTO drafts (id, user_id, title, mode, schema_version, document, updated_at)
         VALUES (@id, @user_id, @title, @mode, @schema_version, @document, @updated_at)
@@ -154,9 +161,28 @@ export function createDatabase(appConfig = defaultConfig) {
         UPDATE drafts SET
           title = @title, mode = @mode, schema_version = @schema_version,
           document = @document, updated_at = @updated_at
-        WHERE id = @id AND user_id = @user_id
+        WHERE id = @id AND user_id = @user_id AND deleted_at IS NULL
       `),
-      deleteDraft: database.prepare('DELETE FROM drafts WHERE id = ? AND user_id = ?'),
+      trashDraft: database.prepare(`
+        UPDATE drafts SET deleted_at = ?
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+      `),
+      listTrashedDrafts: database.prepare(`
+        SELECT id, title, mode, schema_version, updated_at, deleted_at
+        FROM drafts WHERE user_id = ? AND deleted_at IS NOT NULL
+        ORDER BY deleted_at DESC
+      `),
+      restoreDraft: database.prepare(`
+        UPDATE drafts SET deleted_at = NULL
+        WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL
+      `),
+      purgeTrashedDraft: database.prepare(`
+        DELETE FROM drafts WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL
+      `),
+      expiredTrashIds: database.prepare(`
+        SELECT id FROM drafts
+        WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?
+      `),
 
       insertDraftVersion: database.prepare(`
         INSERT INTO draft_versions (id, draft_id, user_id, title, mode, schema_version, document, created_at)
@@ -271,7 +297,9 @@ export function createDatabase(appConfig = defaultConfig) {
 
       // Instance-wide counts for the operator dashboard (/admin).
       countUsers: database.prepare('SELECT COUNT(*) AS n FROM users'),
-      countDraftsByMode: database.prepare('SELECT mode, COUNT(*) AS n FROM drafts GROUP BY mode'),
+      countDraftsByMode: database.prepare(
+        'SELECT mode, COUNT(*) AS n FROM drafts WHERE deleted_at IS NULL GROUP BY mode',
+      ),
       countImages: database.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes FROM images'),
       countAssets: database.prepare('SELECT COUNT(*) AS n FROM assets'),
       countShares: database.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(expires_at > ?), 0) AS active FROM shares'),

@@ -31,6 +31,7 @@ import { AssetsPage } from './AssetsPage'
 import { assetUsage } from './assetUsage'
 import { CommandPalette, type PaletteAction } from './CommandPalette'
 import { ConfirmDialog } from './ConfirmDialog'
+import { ProjectTrashDialog } from './ProjectTrashDialog'
 import { errorText } from './errors'
 import { HomePage } from './HomePage'
 import { LanguageMenu } from './LanguageMenu'
@@ -120,6 +121,7 @@ export function Workbench({
   const usage = useMemo(() => assetUsage(assets.assets, projects.projects), [assets.assets, projects.projects])
   const [pending, setPending] = useState<PendingNavigation | null>(null)
   const [deleting, setDeleting] = useState<Draft | null>(null)
+  const [trashOpen, setTrashOpen] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [newMenuOpen, setNewMenuOpen] = useState(false)
@@ -294,7 +296,12 @@ export function Workbench({
       onProjectRemoved(draft.mode, draft.id)
       projects.forget(draft.id)
       projects.reload()
-      setNotice({ title: t('已删除「{title}」', { title: draft.title }), tone: 'info' })
+      setNotice({
+        title: store.remote
+          ? t('已删除「{title}」，30 天内可在回收站恢复', { title: draft.title })
+          : t('已删除「{title}」', { title: draft.title }),
+        tone: 'info',
+      })
     } catch (error) {
       setNotice({ title: t('删除失败'), detail: errorText(error, t('暂时无法删除，请稍后重试')), tone: 'error' })
     }
@@ -520,6 +527,7 @@ export function Workbench({
               onNewMarkdown={() => newMarkdown()}
               onNewFreeform={() => newFreeform()}
               onImport={(file) => void importProject(file)}
+              onOpenTrash={store.remote && ownerId ? () => setTrashOpen(true) : undefined}
               onOpenProject={openProject}
               onDuplicate={duplicate}
               onRename={(draft, title) => void rename(draft, title)}
@@ -569,11 +577,21 @@ export function Workbench({
       {deleting && (
         <ConfirmDialog
           title={t('删除「{title}」？', { title: deleting.title })}
-          body={t('删除后无法恢复。')}
+          body={store.remote
+            ? t('删除后进入回收站：30 天内可以恢复，之后自动清除。')
+            : t('删除后无法恢复。')}
           confirmLabel={t('删除')}
           danger
           onCancel={() => setDeleting(null)}
           onConfirm={() => void confirmDelete(deleting)}
+        />
+      )}
+
+      {trashOpen && ownerId && store.remote && (
+        <ProjectTrashDialog
+          ownerId={ownerId}
+          onChanged={() => projects.reload()}
+          onClose={() => setTrashOpen(false)}
         />
       )}
 

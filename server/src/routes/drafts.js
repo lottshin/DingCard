@@ -22,6 +22,10 @@ const MAX_BODY_BYTES = 8 * 1024 * 1024
 const SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000
 const MAX_VERSIONS = 30
 
+// The trash: a deleted draft stays restorable for this long, then the next
+// trash read purges it for real (with its versions).
+const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+
 /**
  * Freeze a draft's previous content before it is overwritten: at most one
  * snapshot per interval, keeping the newest MAX_VERSIONS. The version's
@@ -53,6 +57,19 @@ function toDraft(row) {
     mode: row.mode,
     document: JSON.parse(row.document),
     updatedAt: row.updated_at,
+  }
+}
+
+// A trashed draft's list entry: metadata only. The document stays behind
+// restore — the draft comes back whole, versions included.
+function toTrashEntry(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    mode: row.mode,
+    schemaVersion: row.schema_version,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
   }
 }
 
@@ -206,18 +223,76 @@ export default async function draftRoutes(fastify, options = {}) {
   })
 
   // DELETE /api/drafts/:id -> { ok: true }
+  // Deleting moves the draft to the trash: restorable while it is in there,
+  // purged (with its versions) after the retention window. The draft keeps
+  // referencing its images, so restoring loses nothing. Idempotent: a missing
+  // or already-trashed draft still reports ok.
   fastify.delete('/:id', async (request) => {
     const userId = request.user.sub
     return assetLock.run(userId, async () => {
-      await routeStmts.deleteDraft.run(request.params.id, userId)
-      await routeStmts.deleteDraftVersions.run(request.params.id, userId)
+      await routeStmts.trashDraft.run(now(), request.params.id, userId)
+      return { ok: true }
+    })
+  })
+
+  // GET /api/drafts/trash -> trash metadata, newest-deleted first.
+  // Entries past the retention window are purged for real (with their
+  // versions and now-unreferenced images) whenever the trash is read.
+  fastify.get('/trash', async (request) => {
+    const userId = request.user.sub
+    const purged = await assetLock.run(userId, async () => {
+      const expired = routeStmts.expiredTrashIds.all(userId, now() - TRASH_RETENTION_MS)
+      for (const { id } of expired) {
+        if ((await routeStmts.purgeTrashedDraft.run(id, userId)).changes > 0) {
+          await routeStmts.deleteDraftVersions.run(id, userId)
+        }
+      }
+      return expired.length
+    })
+    if (purged > 0) {
       try {
         await reclaimImages(userId)
       } catch (err) {
         try {
-          fastify.log.error({ err, userId }, 'image GC failed after draft deletion')
+          fastify.log.error({ err, userId }, 'image GC failed after trash purge')
         } catch {
-          // The completed draft deletion remains authoritative even if logging fails.
+          // The completed purge remains authoritative even if logging fails.
+        }
+      }
+    }
+    return routeStmts.listTrashedDrafts.all(userId).map(toTrashEntry)
+  })
+
+  // POST /api/drafts/trash/:id/restore -> { ok: true }
+  // The draft returns exactly as it was trashed — content, title and its
+  // version history. Only a trashed draft restores; anything else is a 404.
+  fastify.post('/trash/:id/restore', async (request, reply) => {
+    const userId = request.user.sub
+    return assetLock.run(userId, async () => {
+      const result = await routeStmts.restoreDraft.run(request.params.id, userId)
+      if (result.changes === 0) {
+        return reply.code(404).send({ error: '回收站里没有这个项目' })
+      }
+      return { ok: true, id: request.params.id }
+    })
+  })
+
+  // DELETE /api/drafts/trash/:id -> { ok: true }
+  // Purges a trashed draft for real: the draft, its versions, and its
+  // now-unreferenced images. A live draft is never touched here. Idempotent.
+  fastify.delete('/trash/:id', async (request) => {
+    const userId = request.user.sub
+    return assetLock.run(userId, async () => {
+      if ((await routeStmts.purgeTrashedDraft.run(request.params.id, userId)).changes > 0) {
+        await routeStmts.deleteDraftVersions.run(request.params.id, userId)
+      }
+      try {
+        await reclaimImages(userId)
+      } catch (err) {
+        try {
+          fastify.log.error({ err, userId }, 'image GC failed after trash purge')
+        } catch {
+          // The completed purge remains authoritative even if logging fails.
         }
       }
       return { ok: true }

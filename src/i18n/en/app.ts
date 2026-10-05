@@ -89,10 +89,27 @@ export const app: Record<string, Translation> = {
   '复制失败': 'Could not duplicate',
   '暂时无法复制，请稍后重试': 'Could not duplicate right now. Please try again later.',
   '已删除「{title}」': 'Deleted “{title}”',
+  '已删除「{title}」，30 天内可在回收站恢复': 'Deleted “{title}” — it stays in the trash for 30 days',
   '删除失败': 'Could not delete',
   '暂时无法删除，请稍后重试': 'Could not delete right now. Please try again later.',
   '重命名失败': 'Could not rename',
   '暂时无法重命名，请稍后重试': 'Could not rename right now. Please try again later.',
+
+  // Trash (deployed server only)
+  '回收站': 'Trash',
+  '删除后进入回收站：30 天内可以恢复，之后自动清除。': 'Deleting moves it to the trash: restore it within 30 days, after that it is cleared automatically.',
+  '删除的项目在这里保留 30 天，可以恢复或彻底删除': 'Deleted projects stay here for 30 days — restore or delete forever',
+  '删除的项目在这里保留 30 天：恢复就回到「我的项目」，内容和历史版本都在；到期没管的会被自动清除。':
+    'Deleted projects stay here for 30 days: restoring moves one back to My projects with its content and version history; anything left past the window is cleared for good.',
+  '回收站是空的——删除的项目会在这里保留 30 天。': 'The trash is empty — deleted projects stay here for 30 days.',
+  '彻底删除': 'Delete forever',
+  '彻底删除「{title}」？': 'Delete “{title}” forever?',
+  '彻底删除后无法恢复，它的内容和历史版本都会一起清掉。':
+    'A permanent delete cannot be undone — the content and its version history go with it.',
+  '彻底删除失败，请稍后重试': 'Could not delete forever right now. Please try again later.',
+  '暂时无法读取回收站，请稍后重试': 'Could not load the trash; please try again shortly',
+  '{n} 天后自动清除': (params) =>
+    `Cleared automatically in ${Number(params.n) === 1 ? '1 day' : `${params.n} days`}`,
 
   // Command palette
   '项目': 'Projects',

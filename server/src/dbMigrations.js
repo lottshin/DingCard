@@ -41,3 +41,16 @@ export function ensureShareViewsSchema(db) {
     db.exec('ALTER TABLE shares ADD COLUMN views INTEGER NOT NULL DEFAULT 0')
   }
 }
+
+/**
+ * The drafts trash: a deleted draft keeps its row with `deleted_at` set —
+ * restorable for a retention window, then purged for real (with its
+ * versions). Image reference scanning reads every row, so a trashed draft
+ * keeps its pictures alive until it is purged. NULL means live.
+ */
+export function ensureDraftTrashSchema(db) {
+  const columns = db.prepare('PRAGMA table_info(drafts)').all()
+  if (!columns.some((column) => column.name === 'deleted_at')) {
+    db.exec('ALTER TABLE drafts ADD COLUMN deleted_at INTEGER')
+  }
+}

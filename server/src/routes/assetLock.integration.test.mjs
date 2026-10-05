@@ -35,7 +35,11 @@ function draftStatements(overrides = {}) {
     draftById: { get: () => undefined },
     insertDraft: { run: () => ({ changes: 1 }) },
     updateDraft: { run: () => ({ changes: 1 }) },
-    deleteDraft: { run: () => ({ changes: 1 }) },
+    trashDraft: { run: () => ({ changes: 1 }) },
+    listTrashedDrafts: { all: () => [] },
+    restoreDraft: { run: () => ({ changes: 1 }) },
+    purgeTrashedDraft: { run: () => ({ changes: 1 }) },
+    expiredTrashIds: { all: () => [] },
     insertDraftVersion: { run: () => ({ changes: 1 }) },
     listDraftVersions: { all: () => [] },
     draftVersionById: { get: () => undefined },
@@ -610,15 +614,15 @@ test('retain returns 409 without renewing any path when ownership validation fai
   assert.equal(renewals, 0)
 })
 
-test('draft delete stays idempotently successful after a post-delete GC failure', async (t) => {
-  let deletes = 0
+test('trash purge stays idempotently successful after a post-purge GC failure', async (t) => {
+  let purges = 0
   let gcAttempts = 0
   const app = await buildApp({
     assetLock: createUserAssetLock(),
     draftsStmts: draftStatements({
-      deleteDraft: {
+      purgeTrashedDraft: {
         run() {
-          deletes += 1
+          purges += 1
           return { changes: 1 }
         },
       },
@@ -626,16 +630,16 @@ test('draft delete stays idempotently successful after a post-delete GC failure'
     imagesStmts: imageStatements(),
     async reclaimImages() {
       gcAttempts += 1
-      throw new Error('simulated GC failure after delete')
+      throw new Error('simulated GC failure after purge')
     },
   })
   t.after(() => app.close())
 
-  const response = await app.inject({ method: 'DELETE', url: '/api/drafts/missing-is-fine' })
+  const response = await app.inject({ method: 'DELETE', url: '/api/drafts/trash/missing-is-fine' })
 
   assert.equal(response.statusCode, 200)
   assert.deepEqual(response.json(), { ok: true })
-  assert.equal(deletes, 1)
+  assert.equal(purges, 1)
   assert.equal(gcAttempts, 1)
 })
 

@@ -71,6 +71,9 @@ function memoryStorage(options: { remote?: boolean; failSaves?: Set<string> } = 
       listVersions: async () => [],
       getVersion: async () => { throw new Error('unused') },
       restoreVersion: async () => { throw new Error('unused') },
+      listTrash: async () => { throw new Error('unused') },
+      restore: async () => { throw new Error('unused') },
+      purge: async () => { throw new Error('unused') },
     },
     images: {
       put: async (dataUrl) => {

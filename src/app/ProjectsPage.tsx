@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react'
 import type { Draft } from '../drafts'
 import { Select } from '../Select'
-import { DeviceCheckIcon, FileImportIcon, FreeformMarkIcon, MarkdownMarkIcon } from '../ui/icons'
+import { DeviceCheckIcon, FileImportIcon, FreeformMarkIcon, MarkdownMarkIcon, TrashIcon } from '../ui/icons'
 import type { WorkspaceMode } from '../workspaces/types'
 import { ProjectCard } from './ProjectCard'
 import { navigate, routes } from './router'
@@ -22,6 +22,8 @@ interface ProjectsPageProps {
   onNewFreeform: () => void
   /** A .json document to turn into a project. */
   onImport: (file: File) => void
+  /** Opens the trash (deployed server only; absent in local mode). */
+  onOpenTrash?: () => void
   onOpenProject: (draft: Draft) => void
   onDuplicate: (draft: Draft) => void
   onRename: (draft: Draft, title: string) => void
@@ -41,6 +43,7 @@ export function ProjectsPage({
   onNewMarkdown,
   onNewFreeform,
   onImport,
+  onOpenTrash,
   onOpenProject,
   onDuplicate,
   onRename,
@@ -87,6 +90,17 @@ export function ProjectsPage({
           <h1>{t('我的项目')}</h1>
         </div>
         <div className="page-actions">
+          {onOpenTrash && (
+            <button
+              className="ghost"
+              type="button"
+              data-testid="project-trash"
+              title={t('删除的项目在这里保留 30 天，可以恢复或彻底删除')}
+              onClick={onOpenTrash}
+            >
+              <TrashIcon />{t('回收站')}
+            </button>
+          )}
           {ownerId && (
             <button
               className="ghost"
