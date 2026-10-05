@@ -36,6 +36,20 @@ export function createDatabase(appConfig = defaultConfig) {
       );
       CREATE INDEX IF NOT EXISTS idx_drafts_user ON drafts(user_id, updated_at DESC);
 
+      -- Point-in-time snapshots of a draft's previous content, taken as the
+      -- draft is updated (at most one per interval, newest N kept).
+      CREATE TABLE IF NOT EXISTS draft_versions (
+        id             TEXT PRIMARY KEY,
+        draft_id       TEXT NOT NULL,
+        user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title          TEXT NOT NULL,
+        mode           TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        document       TEXT NOT NULL,
+        created_at     INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_draft_versions ON draft_versions(draft_id, created_at DESC);
+
       CREATE TABLE IF NOT EXISTS images (
         id               TEXT PRIMARY KEY,
         user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -143,6 +157,35 @@ export function createDatabase(appConfig = defaultConfig) {
         WHERE id = @id AND user_id = @user_id
       `),
       deleteDraft: database.prepare('DELETE FROM drafts WHERE id = ? AND user_id = ?'),
+
+      insertDraftVersion: database.prepare(`
+        INSERT INTO draft_versions (id, draft_id, user_id, title, mode, schema_version, document, created_at)
+        VALUES (@id, @draft_id, @user_id, @title, @mode, @schema_version, @document, @created_at)
+      `),
+      listDraftVersions: database.prepare(`
+        SELECT id, title, mode, schema_version, created_at FROM draft_versions
+        WHERE draft_id = ? AND user_id = ?
+        ORDER BY created_at DESC
+      `),
+      draftVersionById: database.prepare(`
+        SELECT * FROM draft_versions WHERE id = ? AND draft_id = ? AND user_id = ?
+      `),
+      latestDraftVersionAt: database.prepare(`
+        SELECT created_at FROM draft_versions
+        WHERE draft_id = ? AND user_id = ?
+        ORDER BY created_at DESC LIMIT 1
+      `),
+      pruneDraftVersions: database.prepare(`
+        DELETE FROM draft_versions
+        WHERE draft_id = ? AND user_id = ?
+          AND id NOT IN (
+            SELECT id FROM draft_versions WHERE draft_id = ? AND user_id = ?
+            ORDER BY created_at DESC LIMIT ?
+          )
+      `),
+      deleteDraftVersions: database.prepare(
+        'DELETE FROM draft_versions WHERE draft_id = ? AND user_id = ?',
+      ),
 
       insertImage: database.prepare(`
         INSERT INTO images (id, user_id, path, mime, bytes, created_at, lease_expires_at)

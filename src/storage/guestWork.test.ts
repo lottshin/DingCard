@@ -68,6 +68,9 @@ function memoryStorage(options: { remote?: boolean; failSaves?: Set<string> } = 
       remove: async (userId, id) => {
         drafts.set(userId, (drafts.get(userId) ?? []).filter((item) => item.id !== id))
       },
+      listVersions: async () => [],
+      getVersion: async () => { throw new Error('unused') },
+      restoreVersion: async () => { throw new Error('unused') },
     },
     images: {
       put: async (dataUrl) => {

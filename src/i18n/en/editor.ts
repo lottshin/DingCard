@@ -3,6 +3,17 @@ import type { Translation } from '../index'
 import { plural } from './plural'
 
 export const editor: Record<string, Translation> = {
+  '历史版本': 'Version history',
+  '服务端每隔一段时间自动存一份旧内容（最多保留 30 个）。恢复哪个，哪个就成为当前内容；被替换的内容也会先存成一个版本。': 'The server keeps an old copy every once in a while (up to 30). Restoring one makes it the current content; the content it replaces is saved as a version first.',
+  '暂时无法读取历史版本，请稍后重试': 'Could not load the version history; please try again shortly',
+  '恢复失败，请稍后重试': 'Restore failed; please try again shortly',
+  '还没有历史版本——编辑并保存一段时间后，这里会出现可以回去的版本。': 'No versions yet — keep editing and saving, and versions you can go back to will appear here.',
+  '读取中…': 'Loading…',
+  '恢复': 'Restore',
+  '恢复这个版本？': 'Restore this version?',
+  '当前内容会被替换（替换前也会存成一个版本，随时能再换回来）。': 'The current content will be replaced (it is saved as a version first, so you can always switch back).',
+  '正在恢复…': 'Restoring…',
+
   '保存中…': 'Saving…',
   '导出中…': 'Exporting…',
   '平台': 'Platform',

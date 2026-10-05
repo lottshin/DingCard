@@ -12,7 +12,7 @@ import {
   collectFreeformImageSources,
   uploadInlineFreeformImages,
 } from '../freeform/imageAssets'
-import type { ApiToken, AssetStore, AuthStore, DraftStore, ImageStore, Share, ShareStore, Storage, TokenStore } from './types'
+import type { ApiToken, AssetStore, AuthStore, DraftStore, DraftVersion, ImageStore, Share, ShareStore, Storage, TokenStore } from './types'
 
 const TOKEN_KEY = 'slicer.token.v1'
 const invalidationListeners = new Set<() => void>()
@@ -443,6 +443,37 @@ export function createRemoteStore(apiBase: string): Storage {
     async remove(_userId, id) {
       await api(`/api/drafts/${encodeURIComponent(id)}`, { method: 'DELETE' })
     },
+    async listVersions(_userId, draftId) {
+      const { data, status } = await api<unknown>(`/api/drafts/${encodeURIComponent(draftId)}/versions`)
+      if (!Array.isArray(data)) throw new ApiError('服务器返回了无效版本列表', status)
+      return data.map(toDraftVersion).filter((version): version is DraftVersion => version !== null)
+    },
+    async getVersion(_userId, draftId, versionId) {
+      const { data, status } = await api<unknown>(`/api/drafts/${encodeURIComponent(draftId)}/versions/${encodeURIComponent(versionId)}`)
+      const version = toDraftVersion(data)
+      if (!version || !isRecord(data)) throw new ApiError('服务器返回了无效版本', status)
+      return { ...version, document: data.document }
+    },
+    async restoreVersion(_userId, draftId, versionId) {
+      const { data, status } = await api<unknown>(`/api/drafts/${encodeURIComponent(draftId)}/versions/${encodeURIComponent(versionId)}/restore`, {
+        method: 'POST',
+      })
+      const normalized = normalizeDraftForRead(data)
+      if (!normalized) throw new ApiError('服务器返回了无效草稿', status)
+      return normalized
+    },
+  }
+
+  function toDraftVersion(raw: unknown): DraftVersion | null {
+    if (!isRecord(raw)) return null
+    if (typeof raw.id !== 'string' || typeof raw.title !== 'string') return null
+    return {
+      id: raw.id,
+      title: raw.title,
+      mode: typeof raw.mode === 'string' ? raw.mode : '',
+      schemaVersion: typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 2,
+      createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
+    }
   }
 
   function toApiToken(raw: unknown): ApiToken | null {

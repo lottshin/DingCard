@@ -25,10 +25,29 @@ export interface AuthStore {
 }
 
 /** Per-user draft persistence. All scoped to the signed-in user. */
+/** A point-in-time snapshot of a draft's previous content; newest first. */
+export interface DraftVersion {
+  id: string
+  title: string
+  mode: string
+  schemaVersion: number
+  createdAt: number
+}
+
+/** The same snapshot with its document included. */
+export interface DraftVersionDetail extends DraftVersion {
+  document: unknown
+}
+
 export interface DraftStore {
   list(userId: string): Promise<Draft[]>
   save(userId: string, data: SaveDraftInput): Promise<Draft>
   remove(userId: string, id: string): Promise<void>
+  /** Version history of one draft, newest first (deployed server only). */
+  listVersions(userId: string, draftId: string): Promise<DraftVersion[]>
+  getVersion(userId: string, draftId: string, versionId: string): Promise<DraftVersionDetail>
+  /** Writes a version back as the current draft and returns it. */
+  restoreVersion(userId: string, draftId: string, versionId: string): Promise<Draft>
 }
 
 /**

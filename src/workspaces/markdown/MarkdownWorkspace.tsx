@@ -43,6 +43,7 @@ import {
   MinusIcon,
   PageBreakIcon,
   PlusIcon,
+  HistoryIcon,
   QuoteIcon,
   ShareIcon,
   TemplatesIcon,
@@ -50,6 +51,7 @@ import {
 import { TemplateGallery } from '../../templates/TemplateGallery'
 import type { TemplateDefinition } from '../../templates/types'
 import { FreeformShareDialog } from '../../freeform/FreeformShareDialog'
+import { DraftHistoryDialog } from '../../app/DraftHistoryDialog'
 import { downscaleDataUrl } from '../../imageStore'
 import type { Share } from '../../storage'
 import { t } from '../../i18n'
@@ -144,6 +146,8 @@ export function MarkdownWorkspace({
   const handledRequestRef = useRef(0)
   const openDraftRef = useRef<(draft: Draft) => void>(() => {})
   const [draftId, setDraftId] = useState<string | null>(null)
+  /** The version-history dialog (deployed server accounts only). */
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   /** A name the user gave the project; otherwise the title follows the first line. */
   const [customTitle, setCustomTitle] = useState<string | null>(null)
@@ -823,6 +827,17 @@ export function MarkdownWorkspace({
           onRename={renameProject}
           save={saveState}
           onRetrySave={() => void autosave.flush()}
+          actions={ownerStore.remote && draftId ? (
+            <button
+              className="bar-btn"
+              type="button"
+              data-testid="draft-history"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <HistoryIcon />
+              {t('历史版本')}
+            </button>
+          ) : undefined}
           primary={(
             <>
               {ownerStore.remote && (
@@ -1190,6 +1205,18 @@ export function MarkdownWorkspace({
       )}
 
       {/* ---------- Overlays ---------- */}
+      {historyOpen && ownerId && draftId && (
+        <DraftHistoryDialog
+          ownerId={ownerId}
+          draftId={draftId}
+          onRestored={(draft) => {
+            setHistoryOpen(false)
+            openDraft(draft)
+          }}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
+
       {shareOpen && (
         <FreeformShareDialog
           share={

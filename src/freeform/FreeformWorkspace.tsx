@@ -20,6 +20,7 @@ import { assetDocumentSource } from '../workspaces/assetSource'
 import {
   ChevronLeftIcon,
   CloseIcon,
+  HistoryIcon,
   ImageIcon,
   LayersIcon,
   MoreIcon,
@@ -76,6 +77,7 @@ import { BLEND_MODES, LINE_POINTS_MIN, sceneFilterEquals } from './appearance'
 import { FILTER_PRESETS, FILTER_PRESET_SWATCH, filterPresetCss } from './filterPresets'
 import { FreeformExportMenu } from './FreeformExportMenu'
 import { FreeformShareDialog } from './FreeformShareDialog'
+import { DraftHistoryDialog } from '../app/DraftHistoryDialog'
 import { FreeformContextToolbar, type ContextToolbarSubject } from './FreeformContextToolbar'
 import { FreeformInsertMenu } from './FreeformInsertMenu'
 import { InspectorGlyph } from './InspectorGlyph'
@@ -1276,6 +1278,8 @@ export function FreeformWorkspace({
   } | null>(null)
   const [draftId, setDraftId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  /** The version-history dialog (deployed server accounts only). */
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [projectTitle, setProjectTitle] = useState(() => t('未命名设计'))
   /** Renamed since the last save. */
   const [titleDirty, setTitleDirty] = useState(false)
@@ -6313,6 +6317,18 @@ export function FreeformWorkspace({
           onRename={renameProject}
           save={saveState}
           onRetrySave={() => void autosave.flush()}
+          actions={ownerStore.remote && draftId ? (
+            <button
+              className="bar-btn"
+              type="button"
+              data-testid="draft-history"
+              disabled={hasImageEditSession}
+              onClick={() => setHistoryOpen(true)}
+            >
+              <HistoryIcon />
+              {t('历史版本')}
+            </button>
+          ) : undefined}
           center={(
             <WorkspaceToolbar
               testId="freeform-toolbar"
@@ -6456,6 +6472,18 @@ export function FreeformWorkspace({
             // it expires, the document changes, or it is revoked.
             setShareOpen(false)
           }}
+        />
+      )}
+
+      {historyOpen && ownerId && draftId && (
+        <DraftHistoryDialog
+          ownerId={ownerId}
+          draftId={draftId}
+          onRestored={(draft) => {
+            setHistoryOpen(false)
+            openDraft(draft)
+          }}
+          onClose={() => setHistoryOpen(false)}
         />
       )}
 

@@ -17,6 +17,33 @@ const KNOWN_MODES = new Set(['markdown-card', 'freeform-slide'])
 // embeds them), so the same headroom as the deck render route applies.
 const MAX_BODY_BYTES = 8 * 1024 * 1024
 
+// Version history: an editor autosaves every few seconds, so a snapshot is
+// only taken when the newest one is older than this, keeping this many.
+const SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000
+const MAX_VERSIONS = 30
+
+/**
+ * Freeze a draft's previous content before it is overwritten: at most one
+ * snapshot per interval, keeping the newest MAX_VERSIONS. The version's
+ * created_at is the content's own updated_at, so the list reads "the version
+ * as of that time".
+ */
+function snapshotDraftVersion(routeStmts, previous, at) {
+  const latest = routeStmts.latestDraftVersionAt.get(previous.id, previous.user_id)
+  if (latest && at - latest.created_at < SNAPSHOT_INTERVAL_MS) return
+  routeStmts.insertDraftVersion.run({
+    id: randomUUID(),
+    draft_id: previous.id,
+    user_id: previous.user_id,
+    title: previous.title,
+    mode: previous.mode,
+    schema_version: previous.schema_version,
+    document: previous.document,
+    created_at: previous.updated_at,
+  })
+  routeStmts.pruneDraftVersions.run(previous.id, previous.user_id, previous.id, previous.user_id, MAX_VERSIONS)
+}
+
 // DB row (snake_case, document as JSON string) -> frontend Draft envelope.
 function toDraft(row) {
   return {
@@ -59,6 +86,7 @@ export default async function draftRoutes(fastify, options = {}) {
   }
 
   const routeStmts = options.stmts ?? stmts
+  const now = options.now ?? Date.now
   const { assetLock, reclaimImages } = options
 
   // Everything here requires a logged-in user.
@@ -101,11 +129,16 @@ export default async function draftRoutes(fastify, options = {}) {
       mode,
       schema_version: Number.isFinite(b.schemaVersion) ? b.schemaVersion : 2,
       document: JSON.stringify(b.document),
-      updated_at: Date.now(),
+      updated_at: now(),
     }
 
     return assetLock.run(request.user.sub, async () => {
       if (hasId) {
+        const previous = routeStmts.draftById.get(row.id, row.user_id)
+        if (!previous) {
+          return reply.code(404).send({ error: '草稿不存在' })
+        }
+        snapshotDraftVersion(routeStmts, previous, row.updated_at)
         const result = await routeStmts.updateDraft.run(row)
         if (result.changes === 0) {
           return reply.code(404).send({ error: '草稿不存在' })
@@ -117,11 +150,67 @@ export default async function draftRoutes(fastify, options = {}) {
     })
   })
 
+  // GET /api/drafts/:id/versions -> version metadata, newest first
+  // (documents stay behind their own endpoint; a version list is cheap).
+  fastify.get('/:id/versions', async (request, reply) => {
+    const draft = routeStmts.draftById.get(request.params.id, request.user.sub)
+    if (!draft) return reply.code(404).send({ error: '草稿不存在' })
+    return routeStmts.listDraftVersions.all(draft.id, request.user.sub).map((version) => ({
+      id: version.id,
+      title: version.title,
+      mode: version.mode,
+      schemaVersion: version.schema_version,
+      createdAt: version.created_at,
+    }))
+  })
+
+  // GET /api/drafts/:id/versions/:versionId -> the full version envelope
+  fastify.get('/:id/versions/:versionId', async (request, reply) => {
+    const draft = routeStmts.draftById.get(request.params.id, request.user.sub)
+    if (!draft) return reply.code(404).send({ error: '草稿不存在' })
+    const version = routeStmts.draftVersionById.get(request.params.versionId, draft.id, request.user.sub)
+    if (!version) return reply.code(404).send({ error: '版本不存在' })
+    return {
+      id: version.id,
+      title: version.title,
+      mode: version.mode,
+      schemaVersion: version.schema_version,
+      document: JSON.parse(version.document),
+      createdAt: version.created_at,
+    }
+  })
+
+  // POST /api/drafts/:id/versions/:versionId/restore -> Draft
+  // Writes the version's content back as the current draft; the content being
+  // replaced becomes a version too (the same interval applies).
+  fastify.post('/:id/versions/:versionId/restore', async (request, reply) => {
+    const userId = request.user.sub
+    return assetLock.run(userId, async () => {
+      const draft = routeStmts.draftById.get(request.params.id, userId)
+      if (!draft) return reply.code(404).send({ error: '草稿不存在' })
+      const version = routeStmts.draftVersionById.get(request.params.versionId, draft.id, userId)
+      if (!version) return reply.code(404).send({ error: '版本不存在' })
+      snapshotDraftVersion(routeStmts, draft, now())
+      const row = {
+        id: draft.id,
+        user_id: userId,
+        title: version.title,
+        mode: version.mode,
+        schema_version: version.schema_version,
+        document: version.document,
+        updated_at: now(),
+      }
+      await routeStmts.updateDraft.run(row)
+      return toDraft(row)
+    })
+  })
+
   // DELETE /api/drafts/:id -> { ok: true }
   fastify.delete('/:id', async (request) => {
     const userId = request.user.sub
     return assetLock.run(userId, async () => {
       await routeStmts.deleteDraft.run(request.params.id, userId)
+      await routeStmts.deleteDraftVersions.run(request.params.id, userId)
       try {
         await reclaimImages(userId)
       } catch (err) {

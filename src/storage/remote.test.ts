@@ -1373,3 +1373,78 @@ describe('RemoteStore API tokens', () => {
     await expect(store.tokens.revoke('user-1', 'token/1')).resolves.toBeUndefined()
   })
 })
+
+describe('RemoteStore draft version history', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => 'session-token'),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    } as unknown as Storage)
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  async function createStore() {
+    const { createRemoteStore } = await import('./remote')
+    return createRemoteStore(API_BASE)
+  }
+
+  it('lists versions as metadata and reads one back with its document', async () => {
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      if (requestUrl(args) === `${API_BASE}/api/drafts/draft-1/versions`) {
+        return jsonResponse([
+          { id: 'v-2', title: '第二版', mode: 'markdown-card', schemaVersion: 2, createdAt: 200 },
+          'broken',
+          { id: 'v-1', title: '第一版', mode: 'markdown-card', schemaVersion: 2, createdAt: 100 },
+        ])
+      }
+      if (requestUrl(args) === `${API_BASE}/api/drafts/draft-1/versions/v-1`) {
+        return jsonResponse({ id: 'v-1', title: '第一版', mode: 'markdown-card', schemaVersion: 2, createdAt: 100, document: { source: '# 第一版' } })
+      }
+      throw new Error(`Unexpected request: ${requestUrl(args)}`)
+    })
+    const store = await createStore()
+
+    await expect(store.drafts.listVersions('user-1', 'draft-1')).resolves.toEqual([
+      { id: 'v-2', title: '第二版', mode: 'markdown-card', schemaVersion: 2, createdAt: 200 },
+      { id: 'v-1', title: '第一版', mode: 'markdown-card', schemaVersion: 2, createdAt: 100 },
+    ])
+    await expect(store.drafts.getVersion('user-1', 'draft-1', 'v-1')).resolves.toEqual({
+      id: 'v-1', title: '第一版', mode: 'markdown-card', schemaVersion: 2, createdAt: 100,
+      document: { source: '# 第一版' },
+    })
+  })
+
+  it('restores a version and normalizes the returned draft', async () => {
+    fetchMock.mockImplementation(async (...args: FetchCall) => {
+      if (requestUrl(args) === `${API_BASE}/api/drafts/draft-1/versions/v-1/restore`) {
+        expect(args[1]?.method).toBe('POST')
+        return jsonResponse({
+          id: 'draft-1', title: '第一版', mode: 'markdown-card', schemaVersion: 2,
+          document: {
+            source: '# 第一版', platformId: 'rednote', themeId: 'light',
+            fontFamily: 'PingFang SC', radius: 18, profile: { nickname: 'a', handle: 'b', location: '', avatarColor: '#111', avatarImage: null, verified: false, headerFirstPageOnly: false },
+            images: {},
+          },
+          updatedAt: 300,
+        })
+      }
+      throw new Error(`Unexpected request: ${requestUrl(args)}`)
+    })
+    const store = await createStore()
+
+    const restored = await store.drafts.restoreVersion('user-1', 'draft-1', 'v-1')
+    expect(restored.id).toBe('draft-1')
+    expect(restored.mode).toBe('markdown-card')
+    expect((restored as { document: { source: string } }).document.source).toBe('# 第一版')
+  })
+})

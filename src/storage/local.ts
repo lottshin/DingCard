@@ -108,6 +108,15 @@ export function createLocalStore(pictureBackend?: PictureBackend | null): Storag
       draftsImpl.deleteDraft(userId, id, (draft) => pictures.pack(draft))
       sweepPictures()
     },
+    listVersions: async () => {
+      throw new Error('版本历史需要部署服务端')
+    },
+    getVersion: async () => {
+      throw new Error('版本历史需要部署服务端')
+    },
+    restoreVersion: async () => {
+      throw new Error('版本历史需要部署服务端')
+    },
   }
 
   // Share links need a server to host the public page; local mode has none.

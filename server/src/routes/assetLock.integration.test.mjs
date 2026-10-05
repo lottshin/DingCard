@@ -36,6 +36,12 @@ function draftStatements(overrides = {}) {
     insertDraft: { run: () => ({ changes: 1 }) },
     updateDraft: { run: () => ({ changes: 1 }) },
     deleteDraft: { run: () => ({ changes: 1 }) },
+    insertDraftVersion: { run: () => ({ changes: 1 }) },
+    listDraftVersions: { all: () => [] },
+    draftVersionById: { get: () => undefined },
+    latestDraftVersionAt: { get: () => undefined },
+    pruneDraftVersions: { run: () => ({ changes: 0 }) },
+    deleteDraftVersions: { run: () => ({ changes: 0 }) },
     ...overrides,
   }
 }
