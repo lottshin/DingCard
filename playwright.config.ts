@@ -7,8 +7,11 @@ const E2E_ORIGIN = `http://127.0.0.1:${E2E_PORT}`
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
-  workers: 1,
-  fullyParallel: false,
+  // Every test is a self-contained browser context (no shared storage or
+  // files), so they all run in parallel: 4 workers on a 4-vCPU CI runner,
+  // Playwright's default (half the cores) locally.
+  workers: process.env.CI ? 4 : undefined,
+  fullyParallel: true,
   reporter: 'list',
   projects: [
     {
