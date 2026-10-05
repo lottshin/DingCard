@@ -1240,6 +1240,27 @@ export function FreeformWorkspace({
   // The document the current share was rendered from; a later edit replaces
   // the document object, so the remembered link stops being offered.
   const sharedDocumentRef = useRef<FreeformDocument | null>(doc)
+  // Reopening the dialog refreshes the remembered share from the server's
+  // list: the view count and a possibly shortened remaining lifetime.
+  const openShareId = shareOpen && shareResult ? shareResult.id : null
+  useEffect(() => {
+    if (!openShareId || !ownerId) return
+    let cancelled = false
+    const owner = ownerId
+    void storeFor(owner).shares.list(owner).then(
+      (list) => {
+        if (cancelled) return
+        const fresh = list.find((share) => share.id === openShareId)
+        if (fresh) setShareResult(fresh)
+      },
+      () => {
+        // The remembered share still shows; only the count stays stale.
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [openShareId, ownerId])
   const [showMixedSizeWarning, setShowMixedSizeWarning] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   /** The insert panel docked beside the tool rail; one at a time. */

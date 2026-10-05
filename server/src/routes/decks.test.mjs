@@ -114,6 +114,7 @@ test('POST renders the document, stores every page, and creates the share', asyn
     createdAt: 1_000,
     expiresAt: 1_000 + 7 * 60 * 60 * 1000,
     imageCount: 2,
+    views: 0,
   })
 })
 

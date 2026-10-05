@@ -1185,6 +1185,7 @@ describe('RemoteStore share links', () => {
     createdAt: 100,
     expiresAt: 200,
     imageCount: 3,
+    views: 5,
   }
 
   it('creates a share from managed upload URLs and resolves the page link absolutely', async () => {
@@ -1213,6 +1214,7 @@ describe('RemoteStore share links', () => {
       createdAt: 100,
       expiresAt: 200,
       imageCount: 3,
+      views: 5,
     })
   })
 
@@ -1226,9 +1228,9 @@ describe('RemoteStore share links', () => {
 
     const shares = await store.shares.list('user-1')
 
-    expect(shares.map((share) => [share.id, share.url, share.imageCount])).toEqual([
-      ['share-1', `${API_BASE}/share/tok-1`, 3],
-      ['share-2', `${API_BASE}/share/tok-2`, 1],
+    expect(shares.map((share) => [share.id, share.url, share.imageCount, share.views])).toEqual([
+      ['share-1', `${API_BASE}/share/tok-1`, 3, 5],
+      ['share-2', `${API_BASE}/share/tok-2`, 1, 0],
     ])
   })
 

@@ -29,6 +29,8 @@ function toShare(row) {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     imageCount: Number.isFinite(row.image_count) ? row.image_count : 0,
+    // One per successful public page render; a fresh share starts at zero.
+    views: Number.isFinite(row.views) ? row.views : 0,
   }
 }
 

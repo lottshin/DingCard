@@ -77,6 +77,8 @@ export interface Share {
   createdAt: number
   expiresAt: number
   imageCount: number
+  /** Successful public page renders so far; the share dialog shows it. */
+  views: number
 }
 
 /** Per-user share links; only the remote backend can create them. */

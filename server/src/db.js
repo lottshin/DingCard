@@ -5,7 +5,7 @@ import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import { config as defaultConfig } from './config.js'
-import { ensureImageLeaseSchema } from './dbMigrations.js'
+import { ensureImageLeaseSchema, ensureShareViewsSchema } from './dbMigrations.js'
 
 export function createDatabase(appConfig = defaultConfig) {
   fs.mkdirSync(path.dirname(appConfig.dbPath), { recursive: true })
@@ -98,6 +98,7 @@ export function createDatabase(appConfig = defaultConfig) {
     `)
 
     ensureImageLeaseSchema(database, Date.now(), appConfig.imageLeaseMs)
+    ensureShareViewsSchema(database)
 
     const imageByUserPath = database.prepare(
       'SELECT * FROM images WHERE user_id = ? AND path = ?',
@@ -191,6 +192,7 @@ export function createDatabase(appConfig = defaultConfig) {
         ORDER BY shares.created_at DESC
       `),
       deleteShare: database.prepare('DELETE FROM shares WHERE id = ? AND user_id = ?'),
+      incrementShareViews: database.prepare('UPDATE shares SET views = views + 1 WHERE id = ?'),
       listSharePaths: database.prepare(`
         SELECT share_images.image_path AS image_path
         FROM share_images

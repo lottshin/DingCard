@@ -497,6 +497,27 @@ export function MarkdownWorkspace({
   const [shareProgress, setShareProgress] = useState<{ current: number; total: number } | null>(null)
   /** The document the remembered share was made from; an edited deck starts over. */
   const sharedDocumentKeyRef = useRef<string | null>(null)
+  // Reopening the dialog refreshes the remembered share from the server's
+  // list: the view count and a possibly shortened remaining lifetime.
+  const openShareId = shareOpen && shareResult ? shareResult.id : null
+  useEffect(() => {
+    if (!openShareId || !ownerId) return
+    let cancelled = false
+    const owner = ownerId
+    void storeFor(owner).shares.list(owner).then(
+      (list) => {
+        if (cancelled) return
+        const fresh = list.find((share) => share.id === openShareId)
+        if (fresh) setShareResult(fresh)
+      },
+      () => {
+        // The remembered share still shows; only the count stays stale.
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [openShareId, ownerId])
 
   async function shareDeck(expiresInHours: number) {
     const storage = storeFor(ownerId ?? GUEST_OWNER_ID)

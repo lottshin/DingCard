@@ -231,6 +231,10 @@ export function registerSharePage(app, options = {}) {
       return
     }
 
+    // The owner sees this counter in the share dialog: one per successful
+    // page render, never for a 404 or the expired notice.
+    routeStmts.incrementShareViews.run(row.id)
+
     const host = typeof request.headers.host === 'string' ? request.headers.host : ''
     const origin = host === '' ? '' : `${request.protocol}://${host}`
     reply.type('text/html; charset=utf-8').send(render(row.title, imagePaths, {

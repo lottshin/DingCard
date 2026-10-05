@@ -30,3 +30,14 @@ export function ensureImageLeaseSchema(db, now, leaseMs) {
 
   migrate()
 }
+
+/**
+ * The share view counter: one per successful public page render. Added after
+ * the first release, so existing databases get the column here.
+ */
+export function ensureShareViewsSchema(db) {
+  const columns = db.prepare('PRAGMA table_info(shares)').all()
+  if (!columns.some((column) => column.name === 'views')) {
+    db.exec('ALTER TABLE shares ADD COLUMN views INTEGER NOT NULL DEFAULT 0')
+  }
+}

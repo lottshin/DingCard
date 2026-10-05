@@ -55,7 +55,7 @@ describe('createServerClient', () => {
         respond: (init) => {
           expect(textBody(init)).toBe(JSON.stringify({ title: '早餐', urls: ['https://cards.example.com/uploads/a.png'] }))
           return Promise.resolve(jsonResponse(200, {
-            id: 's1', title: '早餐', url: '/share/tok-1', createdAt: 100, expiresAt: 200, imageCount: 1,
+            id: 's1', title: '早餐', url: '/share/tok-1', createdAt: 100, expiresAt: 200, imageCount: 1, views: 3,
           }))
         },
       },
@@ -70,7 +70,7 @@ describe('createServerClient', () => {
     const share = await client.createShare('早餐', ['https://cards.example.com/uploads/a.png'])
 
     expect(share).toEqual({
-      id: 's1', title: '早餐', url: 'https://cards.example.com/share/tok-1', createdAt: 100, expiresAt: 200, imageCount: 1,
+      id: 's1', title: '早餐', url: 'https://cards.example.com/share/tok-1', createdAt: 100, expiresAt: 200, imageCount: 1, views: 3,
     })
     expect(calls[1]?.init?.headers).toMatchObject({ authorization: 'Bearer tok-1' })
   })

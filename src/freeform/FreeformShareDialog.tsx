@@ -117,6 +117,7 @@ export function FreeformShareDialog({
             <p className="confirm-body">
               {t('手机扫码或在浏览器打开链接就能看这 {n} 张卡片，长按图片可以保存到相册。', { n: share.imageCount })}
               {expiry ? t('有效期到 {date}。', { date: expiry }) : ''}
+              {t('链接已被打开 {n} 次。', { n: share.views })}
             </p>
             {qrDataUrl
               ? <img className="share-qr" src={qrDataUrl} alt={t('分享二维码')} data-testid="share-qr" />

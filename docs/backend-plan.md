@@ -203,7 +203,7 @@ DELETE /api/shares/:id    → { ok: true }
 GET    /share/:token      → 公开 HTML 页(无需登录)
 ```
 - 分享是把一套已导出的页面图片挂到一个不可猜链接后面：前端先按导出管线逐页渲染、走 `POST /api/images` 上传，再在这里按 URL 引用（与素材同一套同源校验）。
-- `Share` 为 `{ id, title, url: "/share/<token>", createdAt, expiresAt, imageCount }`；`token` 为 128 位随机数（url-safe base64），创建时唯一冲突自动换一个重试。
+- `Share` 为 `{ id, title, url: "/share/<token>", createdAt, expiresAt, imageCount, views }`；`token` 为 128 位随机数（url-safe base64），创建时唯一冲突自动换一个重试。`views` 是公开页成功渲染的次数（只有 200 计数，404/过期页不计）；旧库 `ALTER TABLE` 补列、默认 0。
 - 标题去掉首尾空白、合并空白、最多 60 个字符，空名返回 400；`urls` 必须是 1–50 张；`expiresInHours` 是 1–720 的整数小时（上限一个月），缺省 24 小时。
 - 图片不存在或不属于当前用户整批返回 409 + `SHARE_IMAGE_MISSING`；超过 50 张返回 400 + `SHARE_IMAGE_LIMIT_EXCEEDED`；撤销不存在或不属于自己的分享返回 404。
 - 公开页 `GET /share/:token` 无需登录：手机友好的逐页浏览——逐张吸附滚动加页码提示、每页一个「保存这张」按钮（fetch 转 blob 下载，被拦截时退回打开原图长按保存）、og/twitter 卡片预览（第一页作预览图，绝对地址由请求 Host 推出）、标注有效期；深色模式与 `noindex` 保持。未知或已撤销的 token 返回 404，过期的返回 410。过期只关掉公开页，图片仍被引用；撤销删除分享行，之后 GC 才可能回收其页面图片（受租约约束）。

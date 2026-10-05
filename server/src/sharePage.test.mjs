@@ -9,6 +9,7 @@ function sharePageStatements(overrides = {}) {
   return {
     shareByToken: { get: () => undefined },
     shareImages: { all: () => [] },
+    incrementShareViews: { run: () => {} },
     ...overrides,
   }
 }
@@ -134,4 +135,26 @@ test('a share whose images vanished answers 404 rather than an empty page', asyn
 
   const response = await app.inject({ method: 'GET', url: '/share/tok' })
   assert.equal(response.statusCode, 404)
+})
+
+test('only a successful page render counts as a view', async (t) => {
+  const counted = []
+  const stamp = sharePageStatements({
+    shareByToken: { get: (token) => (token === 'tok' ? {
+      id: 'share-1', token: 'tok', title: '早餐', expires_at: 2_000,
+    } : token === 'gone' ? {
+      id: 'share-2', token: 'gone', title: '早餐', expires_at: 1_000,
+    } : undefined) },
+    shareImages: { all: (id) => (id === 'share-1' ? [{ image_path: '/uploads/page-1.png' }] : []) },
+    incrementShareViews: { run: (id) => counted.push(id) },
+  })
+  const app = await buildApp(t, { stmts: stamp })
+
+  assert.equal((await app.inject({ method: 'GET', url: '/share/tok' })).statusCode, 200)
+  assert.equal((await app.inject({ method: 'GET', url: '/share/tok' })).statusCode, 200)
+  assert.equal((await app.inject({ method: 'GET', url: '/share/gone' })).statusCode, 410)
+  assert.equal((await app.inject({ method: 'GET', url: '/share/none' })).statusCode, 404)
+
+  // Two renders counted; the expired and unknown answers did not.
+  assert.deepEqual(counted, ['share-1', 'share-1'])
 })

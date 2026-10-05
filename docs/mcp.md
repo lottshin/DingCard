@@ -42,7 +42,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 | `render_document` | 无头渲染自由画布 v20 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`grid: true`（png / jpeg，只用于正方形页面）把每页切成九宫格 `<baseName>-01-1.png` … `-01-9.png`（`files[i].tile` 是 1–9，从左到右、从上到下，按这个顺序发朋友圈拼回一整张），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
 | `share_document` | 把文档渲染上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接，并附上二维码图片给用户扫（见下文「分享给人」）。需要环境变量 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（API 令牌）或 `DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`。 |
-| `list_shares` | 列出账号在服务端已有的分享（id、标题、链接、创建与过期时间、卡片数），按创建时间倒序。 |
+| `list_shares` | 列出账号在服务端已有的分享（id、标题、链接、创建与过期时间、卡片数、被打开次数），按创建时间倒序。 |
 | `revoke_share` | 撤销一个分享（`id` 从 `list_shares` 查）：链接立刻打不开，页面图片等图片回收清理。 |
 | `list_server_projects` | 列出部署的叮卡服务端账号里存的作品（id、标题、类型 `markdown-card` / `freeform-slide`、最近更新时间），最新在前，`query` 按标题关键词过滤（不区分大小写）；id 给 `open_server_project` 载入（见下文「读账号里的作品」）。需要 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（带 drafts 权限）或账号环境变量。 |
 | `open_server_project` | 把服务端账号里的一个作品载入接着做：自由画布作品返回 `documentId`（之后 `inspect_document` / `apply_actions` / `render_document` / `share_document` 都能用），Markdown 作品返回 `markdownDocument` 信封（交给 `render_markdown`）；作品里的图片已换成服务端的绝对地址。 |

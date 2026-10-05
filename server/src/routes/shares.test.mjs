@@ -71,6 +71,7 @@ test('GET lists only the caller\'s shares as API envelopes', async (t) => {
             created_at: 50,
             expires_at: 500,
             image_count: 3,
+            views: 7,
           }]
         },
       },
@@ -82,7 +83,7 @@ test('GET lists only the caller\'s shares as API envelopes', async (t) => {
   assert.equal(response.statusCode, 200)
   assert.equal(listedFor, 'user-1')
   assert.deepEqual(response.json(), [
-    { id: 'share-1', title: '一周早餐', url: '/share/tok-1', createdAt: 50, expiresAt: 500, imageCount: 3 },
+    { id: 'share-1', title: '一周早餐', url: '/share/tok-1', createdAt: 50, expiresAt: 500, imageCount: 3, views: 7 },
   ])
 })
 
@@ -131,6 +132,7 @@ test('POST creates a share from owned same-origin uploads', async (t) => {
     createdAt: 1_000,
     expiresAt: 1_000 + 7 * 60 * 60 * 1000,
     imageCount: 2,
+    views: 0,
   })
 })
 

@@ -12,6 +12,8 @@ export interface ServerShare {
   createdAt: number
   expiresAt: number
   imageCount: number
+  /** Successful public page renders so far. */
+  views: number
 }
 
 /** A draft exactly as the server's API describes it: an opaque envelope. */
@@ -66,6 +68,7 @@ interface ShareEnvelope {
   createdAt?: unknown
   expiresAt?: unknown
   imageCount?: unknown
+  views?: unknown
 }
 
 interface DraftEnvelope {
@@ -100,6 +103,7 @@ function toShare(base: string, raw: unknown): ServerShare | null {
     createdAt: typeof envelope.createdAt === 'number' ? envelope.createdAt : 0,
     expiresAt: typeof envelope.expiresAt === 'number' ? envelope.expiresAt : 0,
     imageCount: typeof envelope.imageCount === 'number' ? envelope.imageCount : 0,
+    views: typeof envelope.views === 'number' ? envelope.views : 0,
   }
 }
 

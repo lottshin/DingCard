@@ -349,6 +349,7 @@ export function createRemoteStore(apiBase: string): Storage {
       createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
       expiresAt: typeof raw.expiresAt === 'number' ? raw.expiresAt : 0,
       imageCount: typeof raw.imageCount === 'number' ? raw.imageCount : 0,
+      views: typeof raw.views === 'number' ? raw.views : 0,
     }
   }
 

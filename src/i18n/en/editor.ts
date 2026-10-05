@@ -81,6 +81,7 @@ export const editor: Record<string, Translation> = {
   '分享链接已创建': 'Share link created',
   '手机扫码或在浏览器打开链接就能看这 {n} 张卡片，长按图片可以保存到相册。': 'Scan the code or open the link to view these {n} cards; long-press a picture to save it.',
   '有效期到 {date}。': 'Valid until {date}.',
+  '链接已被打开 {n} 次。': 'The link has been opened {n} time(s).',
   '分享二维码': 'QR code for the share link',
   '链接': 'Link',
   '复制链接': 'Copy link',
