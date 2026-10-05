@@ -356,12 +356,30 @@ async function main() {
     aliceImageDiskPath,
   )
 
-  // --- deleting the final reference triggers GC inside the same user lock ---
+  // --- deleting moves the draft to the trash; the reference survives ---
   r = await fetch(`${base}/api/drafts/${imageDraft.id}`, { method: 'DELETE', headers: auth })
   body = await r.json()
   check('deleting image draft remains idempotent', r.ok && body.ok === true, body)
   check(
-    'expired orphan is removed from SQLite and disk after draft deletion',
+    'expired image referenced by the trashed draft survives GC',
+    existsSync(aliceImageDiskPath)
+      && directDb.prepare('SELECT COUNT(*) FROM images WHERE id = ?').pluck().get(aliceImageId) === 1,
+    aliceImageDiskPath,
+  )
+  r = await fetch(`${base}/api/drafts/trash`, { headers: auth })
+  const trashList = await r.json()
+  check(
+    'trash lists the deleted draft as metadata',
+    r.ok && trashList.some((entry) => entry.id === imageDraft.id && !('document' in entry)),
+    trashList,
+  )
+
+  // --- purging from the trash removes the final reference and triggers GC ---
+  r = await fetch(`${base}/api/drafts/trash/${imageDraft.id}`, { method: 'DELETE', headers: auth })
+  body = await r.json()
+  check('purging the trashed draft stays idempotent', r.ok && body.ok === true, body)
+  check(
+    'expired orphan is removed from SQLite and disk after the trash purge',
     !existsSync(aliceImageDiskPath)
       && directDb.prepare('SELECT COUNT(*) FROM images WHERE id = ?').pluck().get(aliceImageId) === 0,
     aliceImageDiskPath,
