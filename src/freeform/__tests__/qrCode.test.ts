@@ -7,9 +7,8 @@ import {
   QR_PAYLOAD_MAX_LENGTH,
   isValidQrEcl,
   isValidQrPayload,
-  qrMatrix,
-  qrPath,
 } from '../qrCode'
+import { qrMatrix, qrPath } from '../qrMatrix'
 import { createQrCodeElement, createFreeformDocument, freeformReducer } from '../document'
 import { normalizeFreeformDocument } from '../sceneDocument'
 import type { FreeformDocument, FreeformQrCodeElement, FreeformSlide } from '../types'
