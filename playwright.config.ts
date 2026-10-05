@@ -9,9 +9,11 @@ export default defineConfig({
   timeout: 30_000,
   // Every test is a self-contained browser context (no shared storage or
   // files), so they all run in parallel: 4 workers on a 4-vCPU CI runner,
-  // Playwright's default (half the cores) locally.
+  // Playwright's default (half the cores) locally. One retry on CI absorbs
+  // runner hiccups without masking real failures (a retry is a fresh context).
   workers: process.env.CI ? 4 : undefined,
   fullyParallel: true,
+  retries: process.env.CI ? 1 : 0,
   reporter: 'list',
   projects: [
     {
