@@ -258,17 +258,55 @@ export function pathViewBoxEquals(a: PathViewBox, b: PathViewBox): boolean {
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 }
 
-export function isValidShape(value: unknown): value is 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon' {
+export type FreeformShapeKind =
+  | 'rect'
+  | 'ellipse'
+  | 'triangle'
+  | 'star'
+  | 'hexagon'
+  | 'diamond'
+  | 'pentagon'
+  | 'heart'
+  | 'bubble'
+
+export function isValidShape(value: unknown): value is FreeformShapeKind {
   return value === 'rect'
     || value === 'ellipse'
     || value === 'triangle'
     || value === 'star'
     || value === 'hexagon'
+    || isV21Shape(value)
 }
 
 /** Shapes introduced in v7; older input versions must reject them. */
 export function isV7Shape(value: unknown): boolean {
   return value === 'star' || value === 'hexagon'
+}
+
+/** Shapes introduced in v21; older input versions must reject them. */
+export function isV21Shape(value: unknown): boolean {
+  return value === 'diamond' || value === 'pentagon' || value === 'heart' || value === 'bubble'
+}
+
+export const STAR_INNER_RATIO_MIN = 0.15
+export const STAR_INNER_RATIO_MAX = 0.85
+export const BUBBLE_TAIL_X_MIN = 0.05
+export const BUBBLE_TAIL_X_MAX = 0.95
+
+/** Star inner-vertex radius as a ratio of the outer one (v21). */
+export function isValidStarInnerRatio(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= STAR_INNER_RATIO_MIN
+    && value <= STAR_INNER_RATIO_MAX
+}
+
+/** Speech-bubble tail position along the bottom edge (v21). */
+export function isValidBubbleTailX(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= BUBBLE_TAIL_X_MIN
+    && value <= BUBBLE_TAIL_X_MAX
 }
 
 const GRADIENT_STOP_KEYS = new Set(['offset', 'color'])

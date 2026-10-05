@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 20,
+    documentVersion: 21,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(20)
+    expect(result.document.documentVersion).toBe(21)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -528,6 +528,55 @@ describe('applyActions', () => {
     expect(applyDocumentInvalid().ok).toBe(false)
     const result = applyActions(seedDocument(), 'nope')
     expect(result.ok).toBe(false)
+  })
+
+  test('applies the v21 shape parameters through node/update-style', () => {
+    const withStar = seedDocument()
+    withStar.slides[0].nodes.push({
+      id: 'star-1',
+      name: '五角星',
+      locked: false,
+      hidden: false,
+      type: 'shape',
+      x: 72,
+      y: 800,
+      width: 240,
+      height: 240,
+      rotation: 0,
+      scale: 1,
+      shape: 'star',
+      fill: { type: 'solid', color: '#fbbf24' },
+      stroke: 'transparent',
+      strokeWidth: 0,
+    })
+    const valid = validateDocument(withStar)
+    expect(valid.ok).toBe(true)
+    if (!valid.ok) return
+
+    const result = applyActions(valid.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['star-1'], patch: { starInnerRatio: 0.6 } }],
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const star = result.document.slides[0].nodes.find((node) => node.id === 'star-1')
+    expect(star && star.type === 'shape' ? star.starInnerRatio : undefined).toBe(0.6)
+
+    // A ratio outside the valid band rejects the patch and leaves the star as-is.
+    const rejected = applyActions(result.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['star-1'], patch: { starInnerRatio: 2 } }],
+      },
+    ])
+    expect(rejected.ok).toBe(true)
+    if (!rejected.ok) return
+    const kept = rejected.document.slides[0].nodes.find((node) => node.id === 'star-1')
+    expect(kept && kept.type === 'shape' ? kept.starInnerRatio : undefined).toBe(0.6)
   })
 
   function applyDocumentInvalid() {

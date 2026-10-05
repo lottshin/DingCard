@@ -4,7 +4,7 @@
 // MCP surface has exactly the same validation and reducer semantics as the
 // in-app editor:
 //
-//   - normalizeFreeformDocument: strict v20 validation (+ v1–v19 migration)
+//   - normalizeFreeformDocument: strict v21 validation (+ v1–v20 migration)
 //   - reduceFreeformDocument:    the exact action reducer the UI dispatches to
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v20 校验：需要 documentVersion=1–20 之一（旧版自动迁移为 v20）、非空 slides、'
+  '文档未通过自由画布 v21 校验：需要 documentVersion=1–21 之一（旧版自动迁移为 v21）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -47,7 +47,7 @@ export interface NodeSummary {
   text?: string
   fontSize?: number
   fontFamily?: string
-  shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
+  shape?: 'rect' | 'ellipse' | 'triangle' | 'diamond' | 'pentagon' | 'star' | 'hexagon' | 'heart' | 'bubble'
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */

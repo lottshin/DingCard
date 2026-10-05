@@ -48,6 +48,7 @@ import {
   cloneShadowPaint,
   gradientStopsEquals,
   isValidBlendMode,
+  isValidBubbleTailX,
   isValidCornerRadius,
   isValidDash,
   isValidFillRule,
@@ -61,6 +62,7 @@ import {
   isValidPathDash,
   isValidPathStrokeWidth,
   isValidShape,
+  isValidStarInnerRatio,
   isValidTextStrokeWidth,
   isTextList,
   isTextVerticalAlign,
@@ -145,7 +147,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 20,
+    documentVersion: 21,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -475,6 +477,8 @@ const STYLE_KEYS = new Set([
   'italic',
   'vertical',
   'cornerRadius',
+  'starInnerRatio',
+  'bubbleTailX',
   'opacity',
   'shadow',
   'filter',
@@ -502,7 +506,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
   'lineHeight', 'letterSpacing', 'italic', 'vertical', 'opacity', 'shadow', 'filter', 'blendMode',
   'stroke', 'strokeWidth', 'effect',
 ])
-const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'filter', 'blendMode'])
+const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
@@ -531,6 +535,10 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (typeof value !== 'boolean') return false
     } else if (key === 'cornerRadius') {
       if (value !== null && !isValidCornerRadius(value)) return false
+    } else if (key === 'starInnerRatio') {
+      if (value !== null && !isValidStarInnerRatio(value)) return false
+    } else if (key === 'bubbleTailX') {
+      if (value !== null && !isValidBubbleTailX(value)) return false
     } else if (key === 'filter') {
       if (value !== null && !cloneSceneFilter(value, true)) return false
     } else if (key === 'blendMode') {
@@ -864,6 +872,8 @@ function applyStylePatch(
       'stroke',
       'strokeWidth',
       'cornerRadius',
+      'starInnerRatio',
+      'bubbleTailX',
       'opacity',
       'shadow',
       'filter',

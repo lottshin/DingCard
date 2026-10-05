@@ -25,7 +25,7 @@ const TEXT_STYLE_KEYS = [
   'strokeWidth',
   'effect',
 ] as const
-const SHAPE_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'cornerRadius'] as const
+const SHAPE_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'cornerRadius', 'starInnerRatio', 'bubbleTailX'] as const
 const LINE_STYLE_KEYS = ['stroke', 'strokeWidth', 'dash', 'cap'] as const
 const PATH_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'dash', 'cap', 'join', 'fillRule'] as const
 const IMAGE_STYLE_KEYS = ['fit'] as const

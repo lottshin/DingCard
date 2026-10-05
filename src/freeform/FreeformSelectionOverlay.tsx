@@ -12,6 +12,7 @@ import {
 } from './sceneTransform'
 import type { Matrix2D, SceneBounds } from './sceneTransform'
 import type { FreeformSceneNode, LinePoint, ScenePath } from './types'
+import { cornerHandlePosition, shapeHandlePosition, shapeParamOf, type ShapeParam } from './shapeGeometry'
 import { t } from '../i18n'
 
 export type SelectionOverlayInteraction = 'move' | 'resize' | 'rotate' | null
@@ -86,11 +87,23 @@ export interface FreeformSelectionOverlayProps {
     target: SelectionOverlayTarget,
     vertexIndex: number,
   ) => void
+  /** A parametric shape's handle (single selected shape only); drags edit the parameter. */
+  onShapeParamPointerDown?: (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    target: SelectionOverlayTarget,
+    param: ShapeParam,
+  ) => void
 }
 
 type SelectionOverlayStyle = CSSProperties & {
   '--freeform-inverse-scale': number
 }
+
+const SHAPE_PARAM_LABEL = {
+  cornerRadius: '调整圆角',
+  starInnerRatio: '调整星角内径',
+  bubbleTailX: '调整气泡尾巴',
+} as const
 
 const MOVE_LABEL = '移动对象'
 const MOVE_TITLE = '拖拽移动'
@@ -104,6 +117,8 @@ interface OverlayFrame {
   height: number
   /** Polyline vertices in the frame's local coordinates (single line leaf only). */
   vertices?: LinePoint[]
+  /** A parametric shape's parameter handle, in the frame's local coordinates. */
+  shapeParamHandle?: { param: ShapeParam; x: number; y: number }
 }
 
 function frameCorners(matrix: Matrix2D, width: number, height: number): SelectionOverlayTarget['corners'] {
@@ -127,6 +142,7 @@ function unionBounds(bounds: readonly SceneBounds[]): SceneBounds | null {
 function buildOverlayFrames(
   nodes: readonly FreeformSceneNode[],
   selectedPaths: readonly ScenePath[],
+  renderScale: number,
 ): OverlayFrame[] {
   const visiblePaths = selectedPaths.filter((path) => (
     effectiveSceneState(nodes, path)?.hidden === false &&
@@ -173,6 +189,23 @@ function buildOverlayFrames(
   const vertices = node.type === 'line' && node.points
     ? node.points.map((point) => ({ x: point.x + localBounds.x, y: point.y + localBounds.y }))
     : undefined
+  let shapeParamPosition = node.type === 'shape' && !node.locked
+    ? shapeHandlePosition(node.shape, localBounds.width, localBounds.height, node)
+    : null
+  // The corner-radius handle parks past the corner resize handle's reach
+  // instead of under it; the drag base stays the true arc position.
+  if (shapeParamPosition && node.type === 'shape' && node.shape === 'rect') {
+    shapeParamPosition = cornerHandlePosition(
+      node.cornerRadius ?? 16,
+      localBounds.width,
+      localBounds.height,
+      renderScale,
+    )
+  }
+  const shapeParam = node.type === 'shape' ? shapeParamOf(node.shape) : null
+  const shapeParamHandle = shapeParamPosition && shapeParam
+    ? { param: shapeParam, x: shapeParamPosition.x, y: shapeParamPosition.y }
+    : undefined
   return [{
     target: {
       key: scenePathKey(path),
@@ -191,6 +224,7 @@ function buildOverlayFrames(
     width: localBounds.width,
     height: localBounds.height,
     vertices,
+    ...(shapeParamHandle ? { shapeParamHandle } : {}),
   }]
 }
 
@@ -214,8 +248,9 @@ export function FreeformSelectionOverlay({
   onRotatePointerDown,
   onVertexPointerDown,
   onVertexDoubleClick,
+  onShapeParamPointerDown,
 }: FreeformSelectionOverlayProps) {
-  const frames = buildOverlayFrames(nodes, selectedPaths)
+  const frames = buildOverlayFrames(nodes, selectedPaths, renderScale)
   const inverseRenderScale = renderScale > 0 ? 1 / renderScale : 1
 
   return (
@@ -226,7 +261,7 @@ export function FreeformSelectionOverlay({
       role="presentation"
       style={{ '--freeform-inverse-scale': inverseRenderScale } as SelectionOverlayStyle}
     >
-      {frames.map(({ target, matrix, width, height, vertices }) => {
+      {frames.map(({ target, matrix, width, height, vertices, shapeParamHandle }) => {
           const frameScale = decomposeSimilarity(matrix)?.scale ?? 1
           const itemStyle: SelectionOverlayStyle = {
             left: 0,
@@ -330,6 +365,17 @@ export function FreeformSelectionOverlay({
                     />
                   ))}
                 </>
+              )}
+              {interactive && shapeParamHandle && onShapeParamPointerDown && (
+                <button
+                  className="freeform-ui-only freeform-vertex-handle freeform-param-handle"
+                  data-testid={`freeform-shape-param-${shapeParamHandle.param}`}
+                  type="button"
+                  aria-label={t(SHAPE_PARAM_LABEL[shapeParamHandle.param])}
+                  title={t(SHAPE_PARAM_LABEL[shapeParamHandle.param])}
+                  style={{ left: shapeParamHandle.x, top: shapeParamHandle.y }}
+                  onPointerDown={(event) => onShapeParamPointerDown(event, target, shapeParamHandle.param)}
+                />
               )}
               {badge && (
                 <span

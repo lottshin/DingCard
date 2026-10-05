@@ -58,7 +58,9 @@ import {
   cloneSceneFilter,
   cloneShadowPaint,
   isV7Shape,
+  isV21Shape,
   isValidBlendMode,
+  isValidBubbleTailX,
   isValidCornerRadius,
   isValidDash,
   isValidFillRule,
@@ -71,6 +73,7 @@ import {
   isValidPathDash,
   isValidPathStrokeWidth,
   isValidShape,
+  isValidStarInnerRatio,
   isValidTextStrokeWidth,
   isTextList,
   isTextVerticalAlign,
@@ -91,7 +94,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -326,6 +329,7 @@ const TEXT_OPTIONAL_V9_KEYS = new Set([
 const TEXT_OPTIONAL_V17_KEYS = new Set([...TEXT_OPTIONAL_V9_KEYS, 'effect'])
 const TEXT_OPTIONAL_V20_KEYS = new Set([...TEXT_OPTIONAL_V17_KEYS, 'verticalAlign', 'paragraphSpacing', 'list'])
 const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
+const SHAPE_OPTIONAL_V21_KEYS = new Set([...SHAPE_OPTIONAL_V9_KEYS, 'starInnerRatio', 'bubbleTailX'])
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
 const LINE_OPTIONAL_V14_KEYS = new Set([...LINE_OPTIONAL_V13_KEYS, 'points'])
@@ -377,7 +381,7 @@ function optionalKeysFor(
     if (inputVersion >= 20) return TEXT_OPTIONAL_V20_KEYS
     return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
   }
-  if (type === 'shape') return SHAPE_OPTIONAL_V9_KEYS
+  if (type === 'shape') return inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
@@ -625,6 +629,7 @@ function normalizeStrictSceneNode(
     if (
       !isValidShape(value.shape) ||
       (inputVersion < 7 && isV7Shape(value.shape)) ||
+      (inputVersion < 21 && isV21Shape(value.shape)) ||
       !fill ||
       typeof value.stroke !== 'string' ||
       !isFiniteNumber(value.strokeWidth)
@@ -632,6 +637,13 @@ function normalizeStrictSceneNode(
       return null
     }
     if (inputVersion >= 6 && 'cornerRadius' in value && !isValidCornerRadius(value.cornerRadius)) {
+      return null
+    }
+    // Parametric shape fields are v21-only; older input versions reject them.
+    if (inputVersion >= 21) {
+      if ('starInnerRatio' in value && !isValidStarInnerRatio(value.starInnerRatio)) return null
+      if ('bubbleTailX' in value && !isValidBubbleTailX(value.bubbleTailX)) return null
+    } else if ('starInnerRatio' in value || 'bubbleTailX' in value) {
       return null
     }
     const shapeAppearance = cloneStrictAppearance(value, inputVersion)
@@ -644,6 +656,8 @@ function normalizeStrictSceneNode(
       stroke: value.stroke,
       strokeWidth: value.strokeWidth,
       ...('cornerRadius' in value ? { cornerRadius: value.cornerRadius as number } : {}),
+      ...('starInnerRatio' in value ? { starInnerRatio: value.starInnerRatio as number } : {}),
+      ...('bubbleTailX' in value ? { bubbleTailX: value.bubbleTailX as number } : {}),
       ...shapeAppearance,
     }
   }
@@ -801,7 +815,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 20,
+    documentVersion: 21,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -895,6 +909,11 @@ export function normalizeFreeformDocumentV19(value: unknown): FreeformDocument |
 /** Strictly validates and clones an already-v20 document. */
 export function normalizeFreeformDocumentV20(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 20)
+}
+
+/** Strictly validates and clones an already-v21 document (the current version). */
+export function normalizeFreeformDocumentV21(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 21)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1161,9 +1180,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v20 object. */
+/** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 21) return normalizeFreeformDocumentV21(value)
   if (value.documentVersion === 20) return normalizeFreeformDocumentV20(value)
   if (value.documentVersion === 19) return normalizeFreeformDocumentV19(value)
   if (value.documentVersion === 18) return normalizeFreeformDocumentV18(value)
@@ -1223,7 +1243,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 20,
+    documentVersion: 21,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1256,7 +1276,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 20,
+    documentVersion: 21,
     activeSlideId: document.activeSlideId,
     slides,
   }

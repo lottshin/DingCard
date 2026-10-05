@@ -108,6 +108,7 @@ import {
   type SelectionOverlayTarget,
   type SelectionOverlayInteraction,
 } from './FreeformSelectionOverlay'
+import { shapeHandlePosition, shapeParamFromPointer, shapeParamOf, type ShapeParam } from './shapeGeometry'
 import { InspectorSection } from './InspectorSection'
 import {
   createHistory,
@@ -266,6 +267,13 @@ import { useMediaQuery } from '../useMediaQuery'
 
 const FIT_SCALE_EPSILON = 0.0001
 const EXPORT_IMAGE_WAIT_MS = 3_500
+
+/** One history entry per shape-parameter drag, named by the parameter. */
+const SHAPE_PARAM_HISTORY_LABEL = {
+  cornerRadius: '调整圆角',
+  starInnerRatio: '调整星角内径',
+  bubbleTailX: '调整气泡尾巴',
+} as const
 
 /** Preset highlight colors for rich text spans (solid hex, 6 digits). */
 const RICH_SPAN_COLORS = ['#d92d20', '#f97316', '#f79009', '#129211', '#1570ef', '#6941c6'] as const
@@ -3168,8 +3176,17 @@ export function FreeformWorkspace({
     insertNewElement(createShapeElement(activeSlide, shape), placeAt)
   }
 
-  function addLine(lineKind: FreeformLineElement['lineKind'], placeAt?: { x: number; y: number }) {
-    insertNewElement(createLineElement(activeSlide, lineKind), placeAt)
+  function addLine(
+    pick: { id: FreeformLineElement['lineKind']; bothEnds?: boolean },
+    placeAt?: { x: number; y: number },
+  ) {
+    const element = createLineElement(activeSlide, pick.id)
+    // 双向箭头 is an arrow with a matching cap on its start end.
+    if (pick.bothEnds) {
+      element.name = t('双向箭头')
+      element.startCap = 'arrow'
+    }
+    insertNewElement(element, placeAt)
   }
 
   /** A picture grid: a group of rounded rect cells, each ready for a
@@ -3206,7 +3223,7 @@ export function FreeformWorkspace({
 
   function addElement(pick: ElementPick, placeAt?: { x: number; y: number }) {
     if (pick.kind === 'shape') addShape(pick.id, placeAt)
-    else if (pick.kind === 'line') addLine(pick.id, placeAt)
+    else if (pick.kind === 'line') addLine(pick, placeAt)
     else if (pick.kind === 'collage') {
       const layout = collageById(pick.id)
       if (layout) addCollage(layout, placeAt)
@@ -5370,6 +5387,95 @@ export function FreeformWorkspace({
     window.addEventListener('blur', onBlur)
   }
 
+  /**
+   * A shape parameter handle (圆角 / 星角内径 / 气泡尾巴): the drag maps the
+   * pointer into the shape's local box and writes the parameter, exactly like
+   * a vertex drag — one live edit, one history entry.
+   */
+  function onShapeParamPointerDown(
+    event: React.PointerEvent<HTMLButtonElement>,
+    target: SelectionOverlayTarget,
+    param: ShapeParam,
+  ) {
+    if (renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    blurActiveTypingTarget()
+    const interactionScale = renderScale
+    const pointerId = event.pointerId
+    const startDocument = currentDocumentRef.current
+    const startSlide = startDocument.slides.find((slide) => slide.id === activeSlide.id)
+    if (!startSlide) return
+    const path = [...activeGroupPath, target.nodeIds[0]]
+    const node = findNodeAtPath(startSlide.nodes, path)
+    if (!node || node.type !== 'shape' || node.locked) return
+    if (shapeParamOf(node.shape) !== param) return
+    const world = sceneWorldMatrixAtPath(startSlide.nodes, path)
+    const inverseWorld = world ? invert(world) : null
+    if (!world || !inverseWorld) return
+    const startHandle = shapeHandlePosition(node.shape, node.width, node.height, node)
+    if (!startHandle) return
+    const startX = event.clientX
+    const startY = event.clientY
+    activeInteractionRef.current = 'move'
+    setActiveInteraction('move')
+
+    const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
+      const worldDelta = {
+        x: (moveEvent.clientX - startX) / interactionScale,
+        y: (moveEvent.clientY - startY) / interactionScale,
+      }
+      const localDelta = transformVector(inverseWorld, worldDelta)
+      const value = shapeParamFromPointer(param, {
+        x: startHandle.x + localDelta.x,
+        y: startHandle.y + localDelta.y,
+      }, node.width, node.height)
+      replaceCurrent({
+        type: 'node/update-style',
+        slideId: startSlide.id,
+        updates: [{ path, patch: { [param]: value } }],
+      })
+    }
+
+    const cleanupParamDrag = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onBlur)
+      activeInteractionRef.current = null
+      setActiveInteraction(null)
+    }
+
+    const finishParamDrag = () => {
+      cleanupParamDrag()
+      commitLiveEdit(startDocument, t(SHAPE_PARAM_HISTORY_LABEL[param]))
+    }
+
+    const cancelParamDrag = () => {
+      cleanupParamDrag()
+      cancelLiveEdit(startDocument)
+    }
+
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId === pointerId) finishParamDrag()
+    }
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId === pointerId) cancelParamDrag()
+    }
+    const onBlur = () => cancelParamDrag()
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onBlur)
+  }
+
   /** Double-clicking a vertex handle removes that vertex (the overlay only shows unlocked lines). */
   function onVertexDoubleClick(
     event: React.MouseEvent<HTMLButtonElement>,
@@ -7328,6 +7434,7 @@ export function FreeformWorkspace({
                       onRotatePointerDown={onRotatePointerDown}
                       onVertexPointerDown={onVertexPointerDown}
                       onVertexDoubleClick={onVertexDoubleClick}
+                      onShapeParamPointerDown={onShapeParamPointerDown}
                     />
                   )}
                 </div>

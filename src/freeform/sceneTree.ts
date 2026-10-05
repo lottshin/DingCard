@@ -14,6 +14,7 @@ import {
   cloneSceneFilter,
   cloneShadowPaint,
   isValidBlendMode,
+  isValidBubbleTailX,
   isValidCornerRadius,
   isValidDash,
   isValidFillRule,
@@ -27,6 +28,7 @@ import {
   isValidPathDash,
   isValidPathStrokeWidth,
   isValidShape,
+  isValidStarInnerRatio,
   isValidTextStrokeWidth,
   isTextList,
   isTextVerticalAlign,
@@ -947,6 +949,8 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 
 const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
+  starInnerRatio: (record) => isValidStarInnerRatio(record.starInnerRatio),
+  bubbleTailX: (record) => isValidBubbleTailX(record.bubbleTailX),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,

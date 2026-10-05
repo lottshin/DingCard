@@ -5,6 +5,7 @@ import { FramedImage } from './FramedImage'
 import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
 import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './richText'
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
+import { bubbleClipPath, starClipPath } from './shapeGeometry'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
 import { effectHollowsWords, textEffectLayer, textEffectWordsStyle } from './textEffects'
@@ -455,6 +456,21 @@ function SceneLeafContent({
 
   const imageFill = leaf.fill.type === 'image' ? leaf.fill : null
   const resolvedFillSrc = imageFill ? store.images.resolve(imageFill.src) : ''
+  // Parametric shapes clip inline: a star with an explicit inner ratio and
+  // every bubble compute their polygon; the fixed shapes keep their class.
+  const parametricClipPath = leaf.shape === 'star' && leaf.starInnerRatio !== undefined
+    ? starClipPath(leaf.starInnerRatio)
+    : leaf.shape === 'bubble'
+      ? bubbleClipPath(leaf.width, leaf.height, leaf.bubbleTailX ?? 0.5)
+      : null
+  // Clipped shapes cannot carry a box shadow: it would draw the rectangle.
+  const clippedShape = leaf.shape === 'triangle'
+    || leaf.shape === 'star'
+    || leaf.shape === 'hexagon'
+    || leaf.shape === 'diamond'
+    || leaf.shape === 'pentagon'
+    || leaf.shape === 'heart'
+    || leaf.shape === 'bubble'
   return (
     <div
       className={`${presentationOnly ? 'freeform-preview-shape' : 'freeform-shape'} shape-${leaf.shape}`}
@@ -466,8 +482,9 @@ function SceneLeafContent({
         ...(leaf.shape === 'rect' && leaf.cornerRadius !== undefined
           ? { borderRadius: `${leaf.cornerRadius}px` }
           : {}),
+        ...(parametricClipPath ? { clipPath: parametricClipPath } : {}),
         ...(leaf.shadow
-          ? (leaf.shape === 'triangle' || leaf.shape === 'star' || leaf.shape === 'hexagon')
+          ? clippedShape
             ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` }
             : { boxShadow: shadowCss(leaf.shadow) }
           : {}),

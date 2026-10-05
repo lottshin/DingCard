@@ -1200,7 +1200,7 @@ export async function insertText(page: import('@playwright/test').Page) {
 
 export async function insertShape(
   page: import('@playwright/test').Page,
-  label: '矩形' | '圆形' | '三角形' | '五角星' | '六边形' = '矩形',
+  label: '矩形' | '圆形' | '三角形' | '菱形' | '五边形' | '六边形' | '五角星' | '心形' | '对话气泡' = '矩形',
 ) {
   await withToolPanel(page, 'elements', (panel) => panel
     .getByRole('group', { name: '形状' })
@@ -1272,7 +1272,7 @@ export async function setRangeValue(
 
 export async function insertLine(
   page: import('@playwright/test').Page,
-  label: '直线' | '箭头',
+  label: '直线' | '箭头' | '双向箭头',
 ) {
   await withToolPanel(page, 'elements', (panel) => panel
     .getByRole('group', { name: '线条' })

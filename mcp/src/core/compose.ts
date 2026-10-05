@@ -50,7 +50,7 @@ export interface ComposeSuccess {
   ok: true
   document: FreeformDocument
   summary: {
-    documentVersion: 20
+    documentVersion: 21
     templateId: string
     slideCount: number
     coverTitle: string
@@ -612,14 +612,14 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
 
   const filled = plan.map((entry) => ({ ...entry, result: fillSlide(entry.layout.slide, entry.layout.slots, entry.fill) }))
   const slides = filled.map((entry) => entry.result.slide)
-  const document = normalizeFreeformDocument({ documentVersion: 20, activeSlideId: slides[0].id, slides })
+  const document = normalizeFreeformDocument({ documentVersion: 21, activeSlideId: slides[0].id, slides })
   if (!document) return { ok: false, error: '生成的文档未通过 v20 校验。' }
 
   return {
     ok: true,
     document,
     summary: {
-      documentVersion: 20,
+      documentVersion: 21,
       templateId,
       slideCount: document.slides.length,
       coverTitle: content.title,

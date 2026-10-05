@@ -17,7 +17,7 @@ import type { FreeformLineElement, FreeformShapeElement, FreeformSlide } from '.
 /** Something the Elements panel puts on the page, by click or by dragging it onto the canvas. */
 export type ElementPick =
   | { kind: 'shape'; id: FreeformShapeElement['shape'] }
-  | { kind: 'line'; id: FreeformLineElement['lineKind'] }
+  | { kind: 'line'; id: FreeformLineElement['lineKind']; bothEnds?: boolean }
   | { kind: 'collage'; id: string }
   | { kind: 'decoration'; id: string }
   | { kind: 'icon'; id: string }
@@ -29,13 +29,19 @@ export const SHAPES: Array<{ id: FreeformShapeElement['shape']; label: string }>
   { id: 'rect', label: '矩形' },
   { id: 'ellipse', label: '圆形' },
   { id: 'triangle', label: '三角形' },
-  { id: 'star', label: '五角星' },
+  { id: 'diamond', label: '菱形' },
+  { id: 'pentagon', label: '五边形' },
   { id: 'hexagon', label: '六边形' },
+  { id: 'star', label: '五角星' },
+  { id: 'heart', label: '心形' },
+  { id: 'bubble', label: '对话气泡' },
 ]
 
-export const LINES: Array<{ id: FreeformLineElement['lineKind']; label: string }> = [
+/** Line presets; 双向箭头 is an arrow with caps on both ends. */
+export const LINES: Array<{ id: FreeformLineElement['lineKind']; label: string; bothEnds?: boolean }> = [
   { id: 'line', label: '直线' },
   { id: 'arrow', label: '箭头' },
+  { id: 'arrow', label: '双向箭头', bothEnds: true },
 ]
 
 /** Whether a drag carries an element tile (the data itself is only readable on drop). */
@@ -49,7 +55,9 @@ export function droppedElement(dataTransfer: DataTransfer): ElementPick | null {
     const value = JSON.parse(dataTransfer.getData(ELEMENT_DRAG_TYPE)) as Partial<ElementPick>
     if (typeof value.id !== 'string') return null
     if (value.kind === 'shape' && SHAPES.some((shape) => shape.id === value.id)) return value as ElementPick
-    if (value.kind === 'line' && LINES.some((line) => line.id === value.id)) return value as ElementPick
+    if (value.kind === 'line'
+      && LINES.some((line) => line.id === value.id && !!line.bothEnds === !!value.bothEnds)
+    ) return value as ElementPick
     if (value.kind === 'collage' && collageById(value.id)) return value as ElementPick
     if (value.kind === 'decoration' && DECORATIONS.some((decoration) => decoration.id === value.id)) return value as ElementPick
     if (value.kind === 'icon' && ICONS.some((icon) => icon.id === value.id)) return value as ElementPick
@@ -154,14 +162,14 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
           <div className="freeform-element-tiles" role="group" aria-label={t('线条')}>
             {lines.map((line) => (
               <button
-                key={line.id}
+                key={line.bothEnds ? 'arrow-both' : line.id}
                 type="button"
                 className="freeform-element-tile"
-                data-testid={`insert-line-${line.id}`}
-                {...dragProps({ kind: 'line', id: line.id })}
-                onClick={() => onPick({ kind: 'line', id: line.id })}
+                data-testid={`insert-line-${line.bothEnds ? 'arrow-both' : line.id}`}
+                {...dragProps({ kind: 'line', id: line.id, bothEnds: line.bothEnds })}
+                onClick={() => onPick({ kind: 'line', id: line.id, bothEnds: line.bothEnds })}
               >
-                <ShapePreviewIcon shape={line.id} />
+                <ShapePreviewIcon shape={line.bothEnds ? 'arrowBoth' : line.id} />
                 <span>{t(line.label)}</span>
               </button>
             ))}

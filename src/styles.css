@@ -1693,6 +1693,18 @@ html.theme-anim * {
   pointer-events: auto;
 }
 
+/* Shape parameter handles reuse the vertex handle look with a warm accent. */
+/* Param handles stay clear of the corner resize handles: a smaller target
+   parked at the resize clearance (see cornerHandlePosition in shapeGeometry). */
+.freeform-param-handle {
+  width: calc(20px * var(--freeform-inverse-scale, 1));
+  height: calc(20px * var(--freeform-inverse-scale, 1));
+}
+
+.freeform-param-handle::before {
+  background: #f59e0b;
+}
+
 .freeform-vertex-handle::before {
   content: '';
   position: absolute;
@@ -2205,6 +2217,28 @@ html.theme-anim * {
 .shape-hexagon {
   clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
 }
+
+.shape-diamond {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.shape-pentagon {
+  clip-path: polygon(50% 0%, 100% 38%, 81% 100%, 19% 100%, 0% 38%);
+}
+
+/* A heart sampled from the classic parametric curve. */
+.shape-heart {
+  clip-path: polygon(
+    50% 92%, 38.46% 82.68%, 28.44% 73.87%, 19.93% 64.6%, 12.7% 55.4%,
+    7.2% 46.14%, 3.9% 36.9%, 2.9% 27.71%, 4.9% 18.82%, 9.3% 11.1%,
+    15.9% 6.06%, 24.1% 3.76%, 32.8% 4.04%, 41.4% 6.81%, 50% 11.9%,
+    58.6% 6.81%, 67.2% 4.04%, 75.9% 3.76%, 84.1% 6.06%, 90.7% 11.1%,
+    95.1% 18.82%, 97.1% 27.71%, 96.1% 36.9%, 92.8% 46.14%, 87.3% 55.4%,
+    80.07% 64.6%, 71.56% 73.87%, 61.54% 82.68%
+  );
+}
+
+/* A bubble computes its clip inline (rounded box + tail at bubbleTailX). */
 
 .freeform-inspector {
   overflow-y: auto;

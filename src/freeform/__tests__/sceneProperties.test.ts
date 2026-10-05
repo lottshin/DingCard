@@ -99,7 +99,7 @@ function group(
 
 function documentWith(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 20,
+    documentVersion: 21,
     activeSlideId: 'slide',
     slides: [{
       id: 'slide',

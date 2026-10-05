@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 20
+  documentVersion: 21
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -224,12 +224,16 @@ export interface FreeformImageElement extends FreeformElementBase {
 
 export interface FreeformShapeElement extends FreeformElementBase {
   type: 'shape'
-  shape: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
+  shape: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon' | 'diamond' | 'pentagon' | 'heart' | 'bubble'
   fill: ShapeFill
   stroke: string
   strokeWidth: number
   /** Corner radius in px; rendered for rect shapes (overrides the 16px default). */
   cornerRadius?: number
+  /** Star inner-vertex radius as a ratio of the outer one, 0.15–0.85 (v21). */
+  starInnerRatio?: number
+  /** Speech-bubble tail position along the bottom edge, 0.05–0.95 (v21). */
+  bubbleTailX?: number
 }
 
 /** One endpoint decoration on a line; 'arrow' and 'dot' draw at the endpoint. */
@@ -373,7 +377,11 @@ export interface FreeformNodeStylePatch {
   blendMode?: BlendMode | null
   fit?: 'cover' | 'contain'
   framing?: ImageFraming
-  shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon'
+  shape?: 'rect' | 'ellipse' | 'triangle' | 'star' | 'hexagon' | 'diamond' | 'pentagon' | 'heart' | 'bubble'
+  /** Star inner-vertex radius ratio, 0.15–0.85; `null` restores the default look (v21). */
+  starInnerRatio?: number | null
+  /** Speech-bubble tail position along the bottom edge, 0.05–0.95 (v21). */
+  bubbleTailX?: number | null
   /** Shape fill, or a path fill (v15; no picture fills on paths). */
   fill?: ShapeFill
   /** Shape/line/path stroke color, or the text outline color; text `null` clears it. */

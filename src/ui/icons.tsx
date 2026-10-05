@@ -421,11 +421,22 @@ export function ShapePreviewIcon({ shape, ...props }: IconProps & { shape: strin
     triangle: <path d="M16 5 28 26H4z" />,
     star: <path d="m16 4 3.6 7.6 8.4 1-6.2 5.8 1.6 8.3L16 22.6l-7.4 4.1 1.6-8.3L4 12.6l8.4-1z" />,
     hexagon: <path d="M10 5h12l6 11-6 11H10L4 16z" />,
+    diamond: <path d="M16 4 28 16 16 28 4 16z" />,
+    pentagon: <path d="M16 4 28 13.4 23.3 27H8.7L4 13.4z" />,
+    heart: <path d="M16 27 6.6 17.6C3.1 14.1 3.1 8.7 6.6 6c3-2.4 7-1.6 9.4 1.4C18.4 4.4 22.4 3.6 25.4 6c3.5 2.7 3.5 8.1 0 11.6z" />,
+    bubble: <path d="M6 6h20a4 4 0 0 1 4 4v9a4 4 0 0 1-4 4H15l-6 6v-6H6a4 4 0 0 1-4-4v-9a4 4 0 0 1 4-4z" />,
     line: <path d="M5 27 27 5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />,
     arrow: (
       <g fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M5 27 26 6" />
         <path d="M15 6h11v11" />
+      </g>
+    ),
+    arrowBoth: (
+      <g fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 26 26 6" />
+        <path d="M15 6h11v11" />
+        <path d="M17 26H6V15" />
       </g>
     ),
   }

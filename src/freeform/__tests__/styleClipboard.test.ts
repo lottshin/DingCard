@@ -102,6 +102,23 @@ describe('style clipboard', () => {
 
     expect(pasteStylePatch(copied, 'group')).toEqual({})
   })
+
+  it('carries the v21 parametric shape fields to shapes only', () => {
+    const starNode = {
+      ...base,
+      type: 'shape',
+      shape: 'star',
+      fill: { type: 'solid', color: '#fbbf24' },
+      stroke: '#92400e',
+      strokeWidth: 0,
+      starInnerRatio: 0.6,
+    } as FreeformSceneNode
+    const patch = copyStylePatch(starNode)!
+    expect(patch).toMatchObject({ starInnerRatio: 0.6 })
+    expect(pasteStylePatch(patch, 'shape')).toMatchObject({ starInnerRatio: 0.6 })
+    expect(pasteStylePatch(patch, 'line')).not.toHaveProperty('starInnerRatio')
+    expect(pasteStylePatch(patch, 'text')).not.toHaveProperty('starInnerRatio')
+  })
 })
 
 describe('style clipboard with paths', () => {

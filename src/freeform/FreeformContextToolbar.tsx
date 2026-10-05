@@ -81,8 +81,12 @@ const SHAPE_OPTIONS: Array<{ id: FreeformShapeElement['shape']; label: string }>
   { id: 'rect', label: '矩形' },
   { id: 'ellipse', label: '圆形' },
   { id: 'triangle', label: '三角形' },
-  { id: 'star', label: '五角星' },
+  { id: 'diamond', label: '菱形' },
+  { id: 'pentagon', label: '五边形' },
   { id: 'hexagon', label: '六边形' },
+  { id: 'star', label: '五角星' },
+  { id: 'heart', label: '心形' },
+  { id: 'bubble', label: '对话气泡' },
 ]
 
 const ALIGN_OPTIONS: Array<{ id: ToolbarAlignment | 'distribute-h' | 'distribute-v'; label: string; icon: string }> = [
@@ -441,6 +445,32 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
                 resetKey={resetKey}
                 className="ctx-fold-details"
                 onCommit={(value) => props.onStyle({ cornerRadius: value })}
+              />
+            )}
+            {subject.node.shape === 'star' && (
+              <ToolbarNumber
+                label={t('星角内径')}
+                glyph="radius"
+                value={Math.round((subject.node.starInnerRatio ?? 0.38) * 100)}
+                min={15}
+                max={85}
+                unit="%"
+                resetKey={resetKey}
+                className="ctx-fold-details"
+                onCommit={(value) => props.onStyle({ starInnerRatio: value / 100 })}
+              />
+            )}
+            {subject.node.shape === 'bubble' && (
+              <ToolbarNumber
+                label={t('尾巴位置')}
+                glyph="radius"
+                value={Math.round((subject.node.bubbleTailX ?? 0.5) * 100)}
+                min={5}
+                max={95}
+                unit="%"
+                resetKey={resetKey}
+                className="ctx-fold-details"
+                onCommit={(value) => props.onStyle({ bubbleTailX: value / 100 })}
               />
             )}
           </>
