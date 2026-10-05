@@ -36,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the twenty-five tools', async () => {
+  test('exposes the twenty-seven tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -56,11 +56,13 @@ describe('dingcard-mcp tool layer', () => {
       'list_decorations',
       'list_filter_presets',
       'list_icons',
+      'list_server_projects',
       'list_shares',
       'list_styles',
       'list_templates',
       'list_text_styles',
       'open_in_editor',
+      'open_server_project',
       'render_document',
       'render_markdown',
       'revoke_share',
@@ -73,7 +75,7 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
-  test('share tools explain the missing server configuration', async () => {
+  test('server tools explain the missing server configuration', async () => {
     const saved = process.env.DINGCARD_SERVER_URL
     delete process.env.DINGCARD_SERVER_URL
     const client = await connect()
@@ -89,8 +91,95 @@ describe('dingcard-mcp tool layer', () => {
       const revoked = await call(client, 'revoke_share', { id: 'missing' })
       expect(revoked).toMatchObject({ ok: false })
       expect(revoked.error).toContain('DINGCARD_SERVER_URL')
+
+      const projects = await call(client, 'list_server_projects', {})
+      expect(projects).toMatchObject({ ok: false })
+      expect(projects.error).toContain('DINGCARD_SERVER_URL')
+
+      const opened = await call(client, 'open_server_project', { id: 'missing' })
+      expect(opened).toMatchObject({ ok: false })
+      expect(opened.error).toContain('DINGCARD_SERVER_URL')
     } finally {
       if (saved !== undefined) process.env.DINGCARD_SERVER_URL = saved
+      await client.close()
+    }
+  })
+
+  test('server project tools read the account\'s drafts and load them for editing', async () => {
+    // A freeform deck whose pictures are root-relative site paths, as a
+    // same-origin deployment saves them, plus a markdown draft.
+    const instance = instantiateTemplate('editorial-freeform')
+    if (instance.workspace !== 'freeform') throw new Error('expected a freeform template')
+    const deck = {
+      ...instance.document,
+      slides: instance.document.slides.map((slide, index) => (index === 0
+        ? { ...slide, background: { type: 'image' as const, src: '/uploads/bg.png', fit: 'cover' as const, framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } }
+        : slide)),
+    }
+    const drafts = [
+      { id: 'd-free', title: '自由作品', schemaVersion: 2, mode: 'freeform-slide', document: deck, updatedAt: 5 },
+      { id: 'd-md', title: 'Markdown 作品', schemaVersion: 2, mode: 'markdown-card', document: { source: '# 标题\n正文', platformId: 'rednote', themeId: 'light' }, updatedAt: 4 },
+    ]
+    const respond = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === 'https://cards.example.com/api/drafts') return respond(200, drafts)
+      if (url === 'https://cards.example.com/api/drafts/d-free') return respond(200, drafts[0])
+      if (url === 'https://cards.example.com/api/drafts/d-md') return respond(200, drafts[1])
+      if (url === 'https://cards.example.com/api/drafts/d-none') return respond(404, { error: '草稿不存在' })
+      return respond(404, { error: `unexpected ${url}` })
+    }) as typeof fetch
+
+    const savedEnv: Record<string, string | undefined> = {}
+    savedEnv.DINGCARD_SERVER_URL = process.env.DINGCARD_SERVER_URL
+    savedEnv.DINGCARD_SERVER_TOKEN = process.env.DINGCARD_SERVER_TOKEN
+    process.env.DINGCARD_SERVER_URL = 'https://cards.example.com'
+    process.env.DINGCARD_SERVER_TOKEN = 'dc_test-token'
+    const client = await connect()
+    try {
+      const list = await call<{ ok: boolean; projects: Array<{ id: string; title: string; mode: string; updatedAt: number }> }>(
+        client, 'list_server_projects', {},
+      )
+      expect(list.ok).toBe(true)
+      expect(list.projects).toEqual([
+        { id: 'd-free', title: '自由作品', mode: 'freeform-slide', updatedAt: 5 },
+        { id: 'd-md', title: 'Markdown 作品', mode: 'markdown-card', updatedAt: 4 },
+      ])
+
+      const opened = await call<{ ok: boolean; mode: string; title: string; documentId: string; slides: Array<{ id: string; name: string }> }>(
+        client, 'open_server_project', { id: 'd-free' },
+      )
+      expect(opened).toMatchObject({ ok: true, mode: 'freeform-slide', title: '自由作品' })
+      expect(opened.documentId).toMatch(/^doc_[0-9a-f]{12}$/)
+      expect(opened.slides).toHaveLength(instance.document.slides.length)
+
+      // The opened document is kept and its root-relative picture became an
+      // absolute server URL, so rendering on any origin finds it.
+      const fetched = await call<{ document: { slides: Array<{ background: { src?: string } }> } }>(
+        client, 'get_document', { documentId: opened.documentId },
+      )
+      expect(fetched.document.slides[0].background.src).toBe('https://cards.example.com/uploads/bg.png')
+
+      // A markdown draft comes back as the envelope render_markdown takes.
+      const markdown = await call<{ ok: boolean; mode: string; markdownDocument: { source: string } }>(
+        client, 'open_server_project', { id: 'd-md' },
+      )
+      expect(markdown).toMatchObject({ ok: true, mode: 'markdown-card' })
+      expect(markdown.markdownDocument.source).toBe('# 标题\n正文')
+
+      // A thrown failure (here: the draft does not exist) comes back as an
+      // error result with the reason as text, not a JSON payload.
+      const missing = await client.callTool({ name: 'open_server_project', arguments: { id: 'd-none' } }) as Content & { isError?: boolean }
+      expect(missing.isError).toBe(true)
+      expect(missing.content[0].text).toContain('404')
+      expect(missing.content[0].text).toContain('草稿不存在')
+    } finally {
+      globalThis.fetch = originalFetch
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
       await client.close()
     }
   })

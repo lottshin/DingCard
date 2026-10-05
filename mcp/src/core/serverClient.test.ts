@@ -162,6 +162,58 @@ describe('createServerClient', () => {
     expect(calls[0].init?.headers).toMatchObject({ authorization: 'Bearer dc_an-api-token' })
   })
 
+  test('lists drafts and reads one by id, verbatim', async () => {
+    const deck = { slides: [{ id: 's1', nodes: [] }] }
+    const { fetchImpl, calls } = fakeFetch([
+      { path: '/api/auth/login', respond: () => Promise.resolve(jsonResponse(200, { token: 't' })) },
+      {
+        path: '/api/drafts',
+        respond: () => Promise.resolve(jsonResponse(200, [
+          { id: 'd1', title: '作品一', schemaVersion: 2, mode: 'freeform-slide', document: deck, updatedAt: 9 },
+          'not-a-draft',
+          { id: 'd2', title: '', mode: 'markdown-card', document: { source: '# hi' }, updatedAt: 8 },
+        ])),
+      },
+      {
+        path: '/api/drafts/d1',
+        respond: () => Promise.resolve(jsonResponse(200, { id: 'd1', title: '作品一', schemaVersion: 2, mode: 'freeform-slide', document: deck, updatedAt: 9 })),
+      },
+    ])
+    const client = createServerClient({ serverUrl: 'https://cards.example.com/', username: 'u', password: 'p', fetchImpl: fetchImpl as unknown as typeof fetch })
+    expect(client.serverUrl).toBe('https://cards.example.com')
+
+    await expect(client.listDrafts()).resolves.toEqual([
+      { id: 'd1', title: '作品一', schemaVersion: 2, mode: 'freeform-slide', document: deck, updatedAt: 9 },
+      { id: 'd2', title: '', schemaVersion: 2, mode: 'markdown-card', document: { source: '# hi' }, updatedAt: 8 },
+    ])
+    await expect(client.getDraft('d1')).resolves.toEqual({
+      id: 'd1', title: '作品一', schemaVersion: 2, mode: 'freeform-slide', document: deck, updatedAt: 9,
+    })
+    expect(calls[2]?.path).toBe('/api/drafts/d1')
+  })
+
+  test('a missing draft surfaces the server\'s reason', async () => {
+    const { fetchImpl } = fakeFetch([
+      { path: '/api/auth/login', respond: () => Promise.resolve(jsonResponse(200, { token: 't' })) },
+      { path: '/api/drafts/none', respond: () => Promise.resolve(jsonResponse(404, { error: '草稿不存在' })) },
+    ])
+    const client = createServerClient({ serverUrl: 'https://cards.example.com', username: 'u', password: 'p', fetchImpl: fetchImpl as unknown as typeof fetch })
+
+    await expect(client.getDraft('none')).rejects.toThrow('草稿不存在')
+  })
+
+  test('an invalid draft answer is an error, not a made-up draft', async () => {
+    const { fetchImpl } = fakeFetch([
+      { path: '/api/auth/login', respond: () => Promise.resolve(jsonResponse(200, { token: 't' })) },
+      { path: '/api/drafts', respond: () => Promise.resolve(jsonResponse(200, { ok: true })) },
+      { path: '/api/drafts/x', respond: () => Promise.resolve(jsonResponse(200, 'nope')) },
+    ])
+    const client = createServerClient({ serverUrl: 'https://cards.example.com', username: 'u', password: 'p', fetchImpl: fetchImpl as unknown as typeof fetch })
+
+    await expect(client.listDrafts()).rejects.toThrow('无效列表')
+    await expect(client.getDraft('x')).rejects.toThrow('无效的作品')
+  })
+
   test('a rejected API token explains the revocation instead of retrying', async () => {
     const { fetchImpl, calls } = fakeFetch([
       { path: '/api/shares', respond: () => Promise.resolve(jsonResponse(401, { error: '未登录或登录已过期' })) },

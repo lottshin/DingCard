@@ -8,6 +8,7 @@ list_templates → create_document_from_content / create_document_from_outline�
       → render_document → PNG / JPG / PDF / 长图 + 每页缩略图（直接给模型看）
       → open_in_editor → 在叮卡编辑器里打开，人接着改
       → share_document → 分享链接 + 二维码（手机扫码看图，见下文「分享给人」）
+list_server_projects → open_server_project（人在编辑器里存的作品载入，接着改 / 再渲染 / 再分享）
 ```
 
 服务端保存它创建和修改的文档：工具之间传 `documentId` 即可，不必每次把整份文档 JSON 传来传去（见下文「文档句柄」）。
@@ -43,6 +44,8 @@ list_templates → create_document_from_content / create_document_from_outline�
 | `share_document` | 把文档渲染上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接，并附上二维码图片给用户扫（见下文「分享给人」）。需要环境变量 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（API 令牌）或 `DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`。 |
 | `list_shares` | 列出账号在服务端已有的分享（id、标题、链接、创建与过期时间、卡片数），按创建时间倒序。 |
 | `revoke_share` | 撤销一个分享（`id` 从 `list_shares` 查）：链接立刻打不开，页面图片等图片回收清理。 |
+| `list_server_projects` | 列出部署的叮卡服务端账号里存的作品（id、标题、类型 `markdown-card` / `freeform-slide`、最近更新时间），最新在前；id 给 `open_server_project` 载入（见下文「读账号里的作品」）。需要 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（带 drafts 权限）或账号环境变量。 |
+| `open_server_project` | 把服务端账号里的一个作品载入接着做：自由画布作品返回 `documentId`（之后 `inspect_document` / `apply_actions` / `render_document` / `share_document` 都能用），Markdown 作品返回 `markdownDocument` 信封（交给 `render_markdown`）；作品里的图片已换成服务端的绝对地址。 |
 
 模板放不下的版式，可以写成网页交给 `create_document_from_html`，转出来同样接 `check_document` → `render_document`。
 
@@ -74,6 +77,15 @@ list_templates → create_document_from_content / create_document_from_outline�
 - `expiresInHours` 是有效期（小时）：1–720（最长一个月），默认 24。过期后链接打不开（410），页面图片仍留在账号里，和编辑器里「分享链接」的规则一致。
 - 返回 `{ ok, share: { id, url, expiresAt, imageCount } }`，并附上二维码 PNG 图片（`qr: false` 关掉）——直接给用户扫即可。
 - `list_shares` 列出已有分享，`revoke_share` 撤销一个（链接立刻 404）。分享出去的图片与素材库同样受图片回收保护，不会被误清。
+
+## 读账号里的作品
+
+`list_server_projects` 和 `open_server_project` 把方向反过来：人在编辑器里存好的作品，AI 也能接着做——改几个字、换个配色、再渲染、再分享，不用从零重做。
+
+- **配置**与分享相同（`DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN` 或账号环境变量）；API 令牌需要带 `drafts` 权限（只读也要这个作用域）。
+- `list_server_projects` 返回作品的 `id`、`title`、`mode`（`markdown-card` / `freeform-slide`）和 `updatedAt`，最新在前。
+- `open_server_project` 按 `id` 载入：自由画布作品存进服务端并返回 `documentId`，之后 `inspect_document` / `apply_actions` / `check_document` / `render_document` / `share_document` / `open_in_editor` 都能用；Markdown 作品返回 `markdownDocument` 信封（`source`、`platformId`、`themeId` 等都在里面），交给 `render_markdown` 渲染。
+- 作品里的图片地址换成服务端的绝对地址（`/uploads/…` 指向部署的叮卡），渲染时能直接取到；改动只影响载入的这份，服务端存的原作品不变，要保存回去由人决定（`open_in_editor` 交给编辑器）。
 
 ## 用网页写法出图
 

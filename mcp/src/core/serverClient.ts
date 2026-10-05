@@ -1,6 +1,8 @@
 // A minimal client for a deployed dingcard server: log in, upload rendered
-// pages, and put a deck behind a share link. Agents hand their work to
-// humans as a link (or QR code) instead of a file the human never receives.
+// pages, put a deck behind a share link, and read the account's saved
+// drafts. Agents hand their work to humans as a link (or QR code) instead
+// of a file the human never receives — and pick up work a human started in
+// the editor.
 
 /** A share exactly as the server's API describes it, with an absolute url. */
 export interface ServerShare {
@@ -10,6 +12,16 @@ export interface ServerShare {
   createdAt: number
   expiresAt: number
   imageCount: number
+}
+
+/** A draft exactly as the server's API describes it: an opaque envelope. */
+export interface ServerDraft {
+  id: string
+  title: string
+  schemaVersion: number
+  mode: string
+  document: unknown
+  updatedAt: number
 }
 
 export interface ServerClientOptions {
@@ -24,12 +36,17 @@ export interface ServerClientOptions {
 }
 
 export interface DingcardServer {
+  /** The configured origin, without a trailing slash. */
+  readonly serverUrl: string
   /** Upload one rendered page; returns its managed (absolute) URL. */
   uploadImage(bytes: Uint8Array, filename: string): Promise<string>
   createShare(title: string, urls: readonly string[], expiresInHours?: number): Promise<ServerShare>
   listShares(): Promise<ServerShare[]>
   /** Idempotent: revoking a share that is already gone resolves. */
   revokeShare(id: string): Promise<void>
+  /** The account's saved drafts, newest first. */
+  listDrafts(): Promise<ServerDraft[]>
+  getDraft(id: string): Promise<ServerDraft>
 }
 
 interface ShareEnvelope {
@@ -39,6 +56,15 @@ interface ShareEnvelope {
   createdAt?: unknown
   expiresAt?: unknown
   imageCount?: unknown
+}
+
+interface DraftEnvelope {
+  id?: unknown
+  title?: unknown
+  schemaVersion?: unknown
+  mode?: unknown
+  document?: unknown
+  updatedAt?: unknown
 }
 
 async function errorText(response: Response): Promise<string> {
@@ -64,6 +90,20 @@ function toShare(base: string, raw: unknown): ServerShare | null {
     createdAt: typeof envelope.createdAt === 'number' ? envelope.createdAt : 0,
     expiresAt: typeof envelope.expiresAt === 'number' ? envelope.expiresAt : 0,
     imageCount: typeof envelope.imageCount === 'number' ? envelope.imageCount : 0,
+  }
+}
+
+function toDraft(raw: unknown): ServerDraft | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const envelope = raw as DraftEnvelope
+  if (typeof envelope.id !== 'string' || envelope.id === '') return null
+  return {
+    id: envelope.id,
+    title: typeof envelope.title === 'string' ? envelope.title : '',
+    schemaVersion: typeof envelope.schemaVersion === 'number' ? envelope.schemaVersion : 2,
+    mode: typeof envelope.mode === 'string' ? envelope.mode : '',
+    document: envelope.document,
+    updatedAt: typeof envelope.updatedAt === 'number' ? envelope.updatedAt : 0,
   }
 }
 
@@ -120,6 +160,7 @@ export function createServerClient(options: ServerClientOptions): DingcardServer
   }
 
   return {
+    serverUrl: base,
     async uploadImage(bytes: Uint8Array, filename: string) {
       const form = new FormData()
       form.append('file', new Blob([bytes as BlobPart], { type: 'image/png' }), filename)
@@ -155,6 +196,20 @@ export function createServerClient(options: ServerClientOptions): DingcardServer
       if (!response.ok && response.status !== 404) {
         throw new Error(`撤销分享失败（${await errorText(response)}）`)
       }
+    },
+    async listDrafts() {
+      const response = await request('/api/drafts')
+      if (!response.ok) throw new Error(`作品列表读取失败（${await errorText(response)}）`)
+      const raw = await response.json()
+      if (!Array.isArray(raw)) throw new Error('作品列表读取失败：服务器返回了无效列表')
+      return raw.map((item) => toDraft(item)).filter((draft): draft is ServerDraft => draft !== null)
+    },
+    async getDraft(id) {
+      const response = await request(`/api/drafts/${encodeURIComponent(id)}`)
+      if (!response.ok) throw new Error(`作品读取失败（${await errorText(response)}）`)
+      const draft = toDraft(await response.json())
+      if (!draft) throw new Error('作品读取失败：服务器返回了无效的作品')
+      return draft
     },
   }
 }

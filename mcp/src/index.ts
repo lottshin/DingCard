@@ -16,7 +16,7 @@ import type { FreeformDocument, FreeformSlide } from '../../src/freeform/types'
 import { composeDeck } from './core/compose'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
 import { DocumentStore, expandPath, resolveDocumentInput, writeDocumentFile, type DocumentInput, type StoredDocument } from './core/documents'
-import { embedLocalHtmlImages, embedLocalImages } from './core/localImages'
+import { absolutizeRootRelativeImages, embedLocalHtmlImages, embedLocalImages } from './core/localImages'
 import { listDecorations, placeDecorations } from './core/decorations'
 import { iconCatalogue, listIcons } from './core/icons'
 import { createDocumentFromOutline } from './core/outline'
@@ -605,7 +605,7 @@ export function createDingcardServer(): McpServer {
 
   const SHARE_SERVER_UNCONFIGURED = {
     ok: false as const,
-    error: '未配置服务端：设置环境变量 DINGCARD_SERVER_URL（部署的叮卡地址，如 https://cards.example.com）和 DINGCARD_SERVER_TOKEN（一个 API 令牌），或 DINGCARD_SERVER_USERNAME 和 DINGCARD_SERVER_PASSWORD（一个叮卡账号），重启 MCP 后再分享。',
+    error: '未配置服务端：设置环境变量 DINGCARD_SERVER_URL（部署的叮卡地址，如 https://cards.example.com）和 DINGCARD_SERVER_TOKEN（一个 API 令牌），或 DINGCARD_SERVER_USERNAME 和 DINGCARD_SERVER_PASSWORD（一个叮卡账号），重启 MCP 后再使用服务端功能。',
   }
 
   server.tool(
@@ -685,6 +685,77 @@ export function createDingcardServer(): McpServer {
       try {
         await client.revokeShare(id)
         return jsonResult({ ok: true, id })
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
+
+  // ---- Reading the account's saved work: pick up a deck a human started in
+  // the editor and continue on it — inspect, change, render, re-share. ----
+
+  server.tool(
+    'list_server_projects',
+    '列出部署的叮卡服务端账号里存的作品（id、标题、类型 mode：markdown-card / freeform-slide、最近更新时间），最新在前。这是接着做已有作品的第一步：先在这里找到作品，再用 open_server_project 按 id 载入接着编辑或再渲染。需要环境变量 DINGCARD_SERVER_URL（部署的服务端地址）和 DINGCARD_SERVER_TOKEN（一个带 drafts 权限的 API 令牌），或 DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。',
+    {},
+    async () => {
+      const client = serverClientFromEnv()
+      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+      try {
+        const drafts = await client.listDrafts()
+        return jsonResult({
+          ok: true,
+          projects: drafts.map((draft) => ({
+            id: draft.id,
+            title: draft.title,
+            mode: draft.mode,
+            updatedAt: draft.updatedAt,
+          })),
+        })
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
+
+  server.tool(
+    'open_server_project',
+    '把服务端账号里的一个作品载入进来接着做。自由画布作品（freeform-slide）返回 documentId，之后 inspect_document / apply_actions / check_document / render_document / share_document / open_in_editor 都能用它；Markdown 作品（markdown-card）返回 markdownDocument 信封，直接交给 render_markdown 渲染。id 从 list_server_projects 查。作品里的图片已换成服务端的绝对地址，渲染时能直接取到。',
+    {
+      id: z.string().describe('要打开的作品 id（list_server_projects 里查）'),
+      includeDocument,
+    },
+    async ({ id, includeDocument: withDocument }) => {
+      const client = serverClientFromEnv()
+      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+      try {
+        const draft = await client.getDraft(id)
+        if (draft.mode === 'markdown-card') {
+          return jsonResult({
+            ok: true,
+            mode: 'markdown-card',
+            title: draft.title,
+            markdownDocument: draft.document,
+            note: 'Markdown 作品不能用在自由画布工具上：把 markdownDocument 交给 render_markdown 渲染（source、platformId、themeId 等都在里面）。',
+          })
+        }
+        if (draft.mode === 'freeform-slide') {
+          // A same-origin deployment saves root-relative "/uploads/…" picture
+          // srcs; against any other origin they would render as broken images.
+          const relocated = absolutizeRootRelativeImages(draft.document as FreeformDocument, client.serverUrl)
+          const validated = validateDocument(relocated)
+          if (!validated.ok) return jsonResult(validated)
+          const stored = documents.add(validated.document)
+          return jsonResult({
+            ok: true,
+            mode: 'freeform-slide',
+            title: draft.title,
+            ...handleOf(stored, withDocument),
+            slides: stored.document.slides.map((slide) => ({ id: slide.id, name: slide.name })),
+            note: '已载入：inspect_document 看结构，apply_actions 修改，share_document 直接再分享，open_in_editor 交给人接着手改。',
+          })
+        }
+        return jsonResult({ ok: false, error: `未知的作品类型：${draft.mode}` })
       } catch (error) {
         return errorResult(error)
       }

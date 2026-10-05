@@ -77,6 +77,43 @@ function localImageReader(baseDir: string) {
   return { dataUrlFor, failures, embedded }
 }
 
+/**
+ * Root-relative picture srcs ("/uploads/…", as a same-origin deployment saves
+ * them) made absolute against `base`, so a document read from one origin
+ * renders on any other. Absolute and data URLs pass through untouched.
+ */
+export function absolutizeRootRelativeImages(document: FreeformDocument, base: string): FreeformDocument {
+  if (base === '') return document
+  const absolutize = (src: string): string => (src.startsWith('/') && !src.startsWith('//') ? `${base}${src}` : src)
+  const changedNode = (current: FreeformSceneNode): FreeformSceneNode => {
+    if (current.type === 'group') {
+      const children = current.children.map(changedNode)
+      return children.every((child, index) => child === current.children[index]) ? current : { ...current, children }
+    }
+    if (current.type === 'image') {
+      const src = absolutize(current.src)
+      return src === current.src ? current : { ...current, src }
+    }
+    if ((current.type === 'shape' || current.type === 'path') && current.fill.type === 'image') {
+      const src = absolutize(current.fill.src)
+      return src === current.fill.src ? current : { ...current, fill: { ...current.fill, src } }
+    }
+    return current
+  }
+  const changedSlide = (current: FreeformSlide): FreeformSlide => {
+    const nodes = current.nodes.map(changedNode)
+    if (current.background.type !== 'image') {
+      return nodes.every((entry, index) => entry === current.nodes[index]) ? current : { ...current, nodes }
+    }
+    const src = absolutize(current.background.src)
+    return src === current.background.src && nodes.every((entry, index) => entry === current.nodes[index])
+      ? current
+      : { ...current, background: { ...current.background, src }, nodes }
+  }
+  const slides = document.slides.map(changedSlide)
+  return slides.every((entry, index) => entry === document.slides[index]) ? document : { ...document, slides }
+}
+
 /** The document with every picture path read from disk and embedded as a data URL. */
 export async function embedLocalImages(document: FreeformDocument, baseDir: string): Promise<EmbedResult> {
   const { dataUrlFor, failures, embedded } = localImageReader(baseDir)
