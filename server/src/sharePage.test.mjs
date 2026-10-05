@@ -13,9 +13,9 @@ function sharePageStatements(overrides = {}) {
   }
 }
 
-async function buildApp(t, { stmts = sharePageStatements(), now = () => 1_000 } = {}) {
+async function buildApp(t, { stmts = sharePageStatements(), now = () => 1_000, render } = {}) {
   const app = Fastify()
-  registerSharePage(app, { stmts, now })
+  registerSharePage(app, { stmts, now, ...(render ? { renderSharePage: render } : {}) })
   await app.ready()
   t.after(() => app.close())
   return app
@@ -28,7 +28,7 @@ test('an active share renders its pages in order with noindex headers', async (t
         id: 'share-1',
         token: 'tok',
         title: '一周早餐 <小结>',
-        expires_at: 2_000,
+        expires_at: Date.UTC(2026, 9, 6),
       }) },
       shareImages: { all: () => [
         { image_path: '/uploads/page-1.png' },
@@ -37,7 +37,11 @@ test('an active share renders its pages in order with noindex headers', async (t
     }),
   })
 
-  const response = await app.inject({ method: 'GET', url: '/share/tok' })
+  const response = await app.inject({
+    method: 'GET',
+    url: '/share/tok',
+    headers: { host: 'cards.example.com' },
+  })
 
   assert.equal(response.statusCode, 200)
   assert.match(response.headers['content-type'], /text\/html/)
@@ -49,6 +53,51 @@ test('an active share renders its pages in order with noindex headers', async (t
   assert.ok(body.includes('长按图片保存到相册'))
   assert.ok(body.includes('<meta name="viewport"'))
   assert.ok(body.includes('<meta name="robots" content="noindex">'))
+  // The meta line names the expiry so a recipient knows how long the link lives.
+  assert.match(body, /有效期至 2026年10月6日/)
+  // Social preview meta: the first page doubles as the share card image.
+  assert.ok(body.includes('<meta property="og:title" content="一周早餐 &lt;小结&gt;">'))
+  assert.ok(body.includes('<meta property="og:description" content="2 张卡片">'))
+  assert.ok(body.includes('<meta property="og:image" content="http://cards.example.com/uploads/page-1.png">'))
+  assert.ok(body.includes('<meta property="og:url" content="http://cards.example.com/share/tok">'))
+  assert.ok(body.includes('<meta name="twitter:card" content="summary_large_image">'))
+  // Every page carries its own save button, plus a scroll position pill.
+  assert.equal(body.match(/<button class="save" type="button"/g)?.length, 2)
+  assert.ok(body.includes('data-src="/uploads/page-2.png"'))
+  assert.ok(body.includes('>保存这张</button>'))
+  assert.ok(body.includes('id="pager"'))
+  assert.ok(body.includes('1 / 2'))
+})
+
+test('the route hands the render function title, pages, and share metadata', async (t) => {
+  const calls = []
+  const app = await buildApp(t, {
+    stmts: sharePageStatements({
+      shareByToken: { get: () => ({
+        id: 'share-1', token: 'tok', title: '早餐', expires_at: 2_000,
+      }) },
+      shareImages: { all: () => [{ image_path: '/uploads/page-1.png' }] },
+    }),
+    now: () => 1_500,
+    render: (...args) => {
+      calls.push(args)
+      return '<!doctype html><html><body>ok</body></html>'
+    },
+  })
+
+  const response = await app.inject({
+    method: 'GET',
+    url: '/share/tok',
+    headers: { host: 'cards.example.com' },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(calls, [[
+    '早餐',
+    ['/uploads/page-1.png'],
+    { expiresAt: 2_000, origin: 'http://cards.example.com', token: 'tok' },
+  ]])
+  assert.equal(response.body, '<!doctype html><html><body>ok</body></html>')
 })
 
 test('an expired share answers 410 and an unknown one 404', async (t) => {

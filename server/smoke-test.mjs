@@ -388,6 +388,15 @@ async function main() {
     r.status === 200 && shareHtml.includes('早餐分享') && shareHtml.includes(uploaded.body.url),
     r.status,
   )
+  check(
+    'public share page carries social preview meta and per-page save buttons',
+    shareHtml.includes('property="og:image"')
+      && shareHtml.includes('twitter:card')
+      && shareHtml.includes('有效期至')
+      && shareHtml.includes('保存这张')
+      && shareHtml.includes('id="pager"'),
+    'og/twitter meta, expiry line, save buttons, pager',
+  )
 
   r = await fetch(`${base}/api/shares`, { headers: bobAuth })
   const bobShares = await r.json()
