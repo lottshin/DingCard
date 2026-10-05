@@ -38,6 +38,8 @@ function readPngSize(buffer: Buffer) {
   }
 }
 
+const today = () => new Date().toISOString().slice(0, 10)
+
 async function applyTemplate(page: import('@playwright/test').Page, name: string) {
   await page.getByTestId('markdown-template-button').click()
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
@@ -531,6 +533,44 @@ test('single-page PNG export keeps template dimensions and chrome', async ({ pag
   expect(readPngSize(await readFile(path!))).toEqual({ width: 1080, height: 1440 })
 })
 
+test('PDF export packs every page into one file, each page as large as its card', async ({ page }) => {
+  await setDoc(page, [
+    '# 第一页的标题',
+    '',
+    '第一页的正文。',
+    '',
+    '---',
+    '',
+    '## 第二页的小标题',
+    '',
+    '第二页的正文。',
+    '',
+    '---',
+    '',
+    '最后一页只有正文。',
+  ].join('\n'))
+  await expect(page.locator('.page-dot')).toHaveCount(3)
+
+  const toolbarDownload = page.waitForEvent('download')
+  await page.getByTestId('markdown-export-pdf').click()
+  const toolbar = await toolbarDownload
+  expect(toolbar.suggestedFilename()).toBe(`cards-${today()}.pdf`)
+  const toolbarPath = await toolbar.path()
+  expect(toolbarPath).toBeTruthy()
+  const source = (await readFile(toolbarPath!)).toString('latin1')
+  expect(source.startsWith('%PDF-1.4')).toBe(true)
+  expect(source).toContain('/Count 3')
+  // 360×480 px cards print at 96 px to the inch: 270×360 pt pages.
+  expect(source.match(/\/MediaBox \[0 0 270 360\]/g)).toHaveLength(3)
+
+  // The right-click menu offers the same PDF alongside the zip.
+  await page.locator('.stage .card-frame').dispatchEvent('contextmenu')
+  const ctxDownload = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出全部 3 页 PDF', exact: true }).click()
+  const ctx = await ctxDownload
+  expect(ctx.suggestedFilename()).toBe(`cards-${today()}.pdf`)
+})
+
 test('local mode keeps the share entry away', async ({ page }) => {
   await page.goto('/#/edit')
   // No server in local mode: there is no share page to hand out a link to,
@@ -539,4 +579,6 @@ test('local mode keeps the share entry away', async ({ page }) => {
   await expect(page.getByTestId('markdown-share')).toHaveCount(0)
   await expect(page.getByTestId('draft-history')).toHaveCount(0)
   await expect(page.getByRole('button', { name: /打包下载/ })).toBeVisible()
+  // PDF export is all client-side, so local mode offers it too.
+  await expect(page.getByTestId('markdown-export-pdf')).toBeVisible()
 })

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorView } from '@codemirror/view'
-import { toPng } from 'html-to-image'
+import { toCanvas, toPng } from 'html-to-image'
 import { AssetDrawer } from '../../app/AssetDrawer'
 import { navigate, routes } from '../../app/router'
 import { buildFontEmbedCSS } from '../../fontEmbed'
@@ -20,6 +20,7 @@ import { Card } from '../../Card'
 import { ProfileModal } from '../../ProfileModal'
 import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
+import { buildPdf, pdfPageFor, type PdfPage } from '../../exportPdf'
 import { deriveMarkdownTitle, type Draft, type MarkdownCardDocument } from '../../drafts'
 import { readLastSession, updateLastSession } from '../../lastSession'
 import { GUEST_OWNER_ID, isGuestOwner, storeFor } from '../../storage'
@@ -415,12 +416,17 @@ export function MarkdownWorkspace({
   } as React.CSSProperties
 
   // ---- Export -----------------------------------------------------------
-  // Render page `index` by briefly swapping the visible card to it, letting
-  // React paint, then snapshotting the single mounted card node.
-  async function renderPage(index: number, fontEmbedCSS?: string): Promise<string | null> {
+  // Bring page `index` on stage, let React paint it, and hand back the single
+  // mounted card node for a snapshot.
+  async function stagePage(index: number): Promise<HTMLDivElement | null> {
     setActive(index)
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-    const node = cardRef.current
+    return cardRef.current
+  }
+
+  // Render page `index` as a PNG data URL (used by the single-page and zip exports).
+  async function renderPage(index: number, fontEmbedCSS?: string): Promise<string | null> {
+    const node = await stagePage(index)
     if (!node) return null
     return toPng(node, {
       pixelRatio: EXPORT_PIXEL_RATIO,
@@ -433,6 +439,25 @@ export function MarkdownWorkspace({
       // Keep drag handles out of the exported PNG.
       filter: (el) => !(el instanceof HTMLElement && el.classList.contains('img-handle')),
     })
+  }
+
+  // One PDF page for page `index`: its JPEG at the export ratio, the page as
+  // large as the card — the same assembly the freeform editor and the MCP
+  // server use. JPEG has no alpha, so composite on white behind the card.
+  async function renderPagePdfPart(index: number, fontEmbedCSS?: string): Promise<PdfPage | null> {
+    const node = await stagePage(index)
+    if (!node) return null
+    const canvas = await toCanvas(node, {
+      pixelRatio: EXPORT_PIXEL_RATIO,
+      width: config.width,
+      height: config.height,
+      backgroundColor: '#ffffff',
+      fontEmbedCSS,
+      filter: (el) => !(el instanceof HTMLElement && el.classList.contains('img-handle')),
+    })
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+    if (!blob) return null
+    return pdfPageFor(new Uint8Array(await blob.arrayBuffer()), config, canvas)
   }
 
   function saveSingle(dataUrl: string, index: number) {
@@ -485,6 +510,35 @@ export function MarkdownWorkspace({
         const stamp = new Date().toISOString().slice(0, 10)
         await downloadZip(urls, `cards-${stamp}.zip`)
       }
+    } finally {
+      setActive(prev)
+      setExporting(false)
+    }
+  }
+
+  // Export every page bundled into a single PDF, one page per card.
+  async function exportAllPdf() {
+    if (pages.length === 0) return
+    setExporting(true)
+    const prev = active
+    try {
+      const fontCSS = await fontEmbedOnce()
+      const parts: PdfPage[] = []
+      for (let i = 0; i < pages.length; i++) {
+        const part = await renderPagePdfPart(i, fontCSS)
+        if (part) parts.push(part)
+      }
+      if (parts.length > 0) {
+        const stamp = new Date().toISOString().slice(0, 10)
+        const objectUrl = URL.createObjectURL(new Blob([buildPdf(parts)], { type: 'application/pdf' }))
+        const a = document.createElement('a')
+        a.href = objectUrl
+        a.download = `cards-${stamp}.pdf`
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+      }
+    } catch (error) {
+      showOperationError(t('导出 PDF 失败'), error, t('导出失败，请稍后重试'))
     } finally {
       setActive(prev)
       setExporting(false)
@@ -858,6 +912,17 @@ export function MarkdownWorkspace({
                 </button>
               )}
               <button
+                className="bar-btn"
+                type="button"
+                data-testid="markdown-export-pdf"
+                aria-label={t('导出 PDF')}
+                onClick={exportAllPdf}
+                disabled={exporting}
+              >
+                <DownloadIcon />
+                {t('导出 PDF')}
+              </button>
+              <button
                 className="toolbar-primary editor-primary"
                 type="button"
                 aria-label={exporting ? t('导出中…') : t('打包下载 {n} 页', { n: pages.length })}
@@ -1200,6 +1265,15 @@ export function MarkdownWorkspace({
             }}
           >
             {t('打包下载全部 {n} 页', { n: pages.length })}
+          </button>
+          <button
+            className="ctx-item"
+            onClick={() => {
+              setCtx(null)
+              exportAllPdf()
+            }}
+          >
+            {t('导出全部 {n} 页 PDF', { n: pages.length })}
           </button>
         </div>
       )}
