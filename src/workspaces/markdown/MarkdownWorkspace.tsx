@@ -44,10 +44,14 @@ import {
   PageBreakIcon,
   PlusIcon,
   QuoteIcon,
+  ShareIcon,
   TemplatesIcon,
 } from '../../ui/icons'
 import { TemplateGallery } from '../../templates/TemplateGallery'
 import type { TemplateDefinition } from '../../templates/types'
+import { FreeformShareDialog } from '../../freeform/FreeformShareDialog'
+import { downscaleDataUrl } from '../../imageStore'
+import type { Share } from '../../storage'
 import { t } from '../../i18n'
 
 // CodeMirror weighs in at roughly half the entry chunk; it is only needed
@@ -483,6 +487,64 @@ export function MarkdownWorkspace({
     }
   }
 
+  // ---- Share link (deployed server only) --------------------------------
+  // The same dialog and rules as the freeform workspace's share entry: pick a
+  // lifetime, get a link plus QR, revoke any time.
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareResult, setShareResult] = useState<Share | null>(null)
+  const [shareRevoking, setShareRevoking] = useState(false)
+  const [shareError, setShareError] = useState<string | null>(null)
+  const [shareProgress, setShareProgress] = useState<{ current: number; total: number } | null>(null)
+  /** The document the remembered share was made from; an edited deck starts over. */
+  const sharedDocumentKeyRef = useRef<string | null>(null)
+
+  async function shareDeck(expiresInHours: number) {
+    const storage = storeFor(ownerId ?? GUEST_OWNER_ID)
+    if (!storage.remote) return
+    setExporting(true)
+    setShareProgress(null)
+    setShareError(null)
+    const original = active
+    try {
+      const fontCSS = await fontEmbedOnce()
+      const urls: string[] = []
+      for (let index = 0; index < pages.length; index++) {
+        setShareProgress({ current: index + 1, total: pages.length })
+        const raw = await renderPage(index, fontCSS)
+        if (!raw) continue
+        // Pages render at pixelRatio 3; keep uploads in line with the freeform share.
+        urls.push(await storage.images.put(await downscaleDataUrl(raw, 2160)))
+      }
+      if (urls.length === 0) throw new Error('no pages rendered')
+      const owner = ownerId ?? GUEST_OWNER_ID
+      const share = await storage.shares.create(owner, documentTitle, urls, expiresInHours)
+      sharedDocumentKeyRef.current = shareDocumentKey
+      setShareResult(share)
+    } catch {
+      // The dialog is up; the failure has to show inside it, not behind the modal.
+      setShareError(t('分享创建失败，请稍后重试'))
+    } finally {
+      setActive(original)
+      setShareProgress(null)
+      setExporting(false)
+    }
+  }
+
+  async function revokeShare(share: Share) {
+    const owner = ownerId ?? GUEST_OWNER_ID
+    setShareRevoking(true)
+    try {
+      await storeFor(owner).shares.revoke(owner, share.id)
+      setShareResult(null)
+      setShareOpen(false)
+      setOperationNotice({ title: t('分享已撤销，链接不再能打开'), detail: '' })
+    } catch (error) {
+      showOperationError(t('撤销分享失败，请稍后重试'), error, t('撤销分享失败，请稍后重试'))
+    } finally {
+      setShareRevoking(false)
+    }
+  }
+
   // Right-click the card to export the page currently on screen.
   function onCardContext(e: React.MouseEvent) {
     e.preventDefault()
@@ -643,6 +705,8 @@ export function MarkdownWorkspace({
 
   const derivedTitle = deriveMarkdownTitle(source)
   const documentTitle = customTitle ?? (derivedTitle === '未命名草稿' ? t('未命名') : derivedTitle)
+  /** Identity of the document, so a remembered share follows it and not a reworked deck. */
+  const shareDocumentKey = JSON.stringify({ source, platformId, themeId, fontFamily, radius, profile })
   const unsaved = dirty && (ownerId === null || parkedFor !== null || autosave.status === 'error')
   useEffect(() => {
     onMetaChange?.({ title: documentTitle, draftId, unsaved })
@@ -739,18 +803,37 @@ export function MarkdownWorkspace({
           save={saveState}
           onRetrySave={() => void autosave.flush()}
           primary={(
-            <button
-              className="toolbar-primary editor-primary"
-              type="button"
-              aria-label={exporting ? t('导出中…') : t('打包下载 {n} 页', { n: pages.length })}
-              onClick={exportAllZip}
-              disabled={exporting}
-            >
-              <DownloadIcon />
-              <span className="editor-primary-label">
-                {exporting ? t('导出中…') : t('打包下载 {n} 页', { n: pages.length })}
-              </span>
-            </button>
+            <>
+              {ownerStore.remote && (
+                <button
+                  className="bar-btn"
+                  type="button"
+                  data-testid="markdown-share"
+                  onClick={() => {
+                    // A remembered share from this document reappears until it
+                    // expires or the document changes; a fresh one can replace it.
+                    setShareError(null)
+                    setShareOpen(true)
+                  }}
+                  disabled={exporting}
+                >
+                  <ShareIcon />
+                  {t('分享链接')}
+                </button>
+              )}
+              <button
+                className="toolbar-primary editor-primary"
+                type="button"
+                aria-label={exporting ? t('导出中…') : t('打包下载 {n} 页', { n: pages.length })}
+                onClick={exportAllZip}
+                disabled={exporting}
+              >
+                <DownloadIcon />
+                <span className="editor-primary-label">
+                  {exporting ? t('导出中…') : t('打包下载 {n} 页', { n: pages.length })}
+                </span>
+              </button>
+            </>
           )}
         />
       )}
@@ -1086,6 +1169,31 @@ export function MarkdownWorkspace({
       )}
 
       {/* ---------- Overlays ---------- */}
+      {shareOpen && (
+        <FreeformShareDialog
+          share={
+            shareResult
+              && sharedDocumentKeyRef.current === shareDocumentKey
+              && shareResult.expiresAt > Date.now()
+              ? shareResult
+              : null
+          }
+          creating={exporting}
+          progress={shareProgress}
+          slideCount={pages.length}
+          revoking={shareRevoking}
+          error={shareError}
+          onCreate={(expiresInHours) => void shareDeck(expiresInHours)}
+          onRevoke={() => shareResult && void revokeShare(shareResult)}
+          onClose={() => {
+            if (exporting) return
+            // Keep the share: reopening the dialog shows its QR again until
+            // it expires, the document changes, or it is revoked.
+            setShareOpen(false)
+          }}
+        />
+      )}
+
       {showProfile && (
         <ProfileModal
           profile={profile}

@@ -530,3 +530,11 @@ test('single-page PNG export keeps template dimensions and chrome', async ({ pag
   expect(path).toBeTruthy()
   expect(readPngSize(await readFile(path!))).toEqual({ width: 1080, height: 1440 })
 })
+
+test('local mode keeps the share entry away', async ({ page }) => {
+  await page.goto('/#/edit')
+  // No server in local mode: there is no share page to hand out a link to,
+  // so the toolbar shows the zip download and nothing else.
+  await expect(page.getByTestId('markdown-share')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /打包下载/ })).toBeVisible()
+})
