@@ -39,6 +39,7 @@ export type FreeformPosterSeriesId =
   | 'contact-card'
   | 'data-roundup'
   | 'follow-card'
+  | 'trend-compare'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

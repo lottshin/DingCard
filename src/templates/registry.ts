@@ -1747,6 +1747,44 @@ function createFollowCardDocument(): FreeformDocument {
   ])
 }
 
+function createTrendCompareDocument(): FreeformDocument {
+  const paper = '#faf7f2'
+  const ink = '#1f2937'
+  const teal = '#0f766e'
+  const coral = '#ea580c'
+  const muted = '#78716c'
+  const stat = (index: number, label: string, value: string) => {
+    const x = 80 + index * 300
+    const n = NUMBERED[index]
+    return [
+      textNode(label, x, 1508, 280, 44, { name: `标签${n}`, fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 4 }),
+      textNode(value, x, 1556, 280, 100, { name: `信息${n}`, fontSize: 64, fontFamily: UI, textFill: solid(ink), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('趋势对比', solid(paper), [
+      shapeNode('diamond', 880, 116, 84, 84, solid(teal), { name: '菱形', opacity: 0.9 }),
+      lineNode(80, 1448, 920, '#e7e0d4', 2, { name: '分隔线', cap: 'butt' }),
+      shapeNode('rect', 80, 540, 920, 800, solid('#ffffff'), { name: '图表卡', cornerRadius: 48, shadow: { color: '#e5ddd0', blur: 36, offsetX: 0, offsetY: 16 } }),
+      textNode('TREND REPORT', 80, 104, 400, 60, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: teal, amount: 44, radius: 8 },
+      }),
+      textNode('渠道占比，变在哪', 80, 204, 920, 150, { name: '标题', fontSize: 92, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('六个季度的小样本观察', 80, 420, 920, 60, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      textNode('CHANNEL MIX', 140, 604, 800, 40, { name: '图表标注', fontSize: 26, fontFamily: UI, textFill: solid('#a8a29e'), letterSpacing: 8 }),
+      chartNode('bar', ['一季度', '二季度', '三季度', '四季度'], [
+        { name: '图文', values: [6, 5, 4, 3], color: teal },
+        { name: '视频', values: [4, 5, 6, 7], color: coral },
+      ], 140, 664, 800, 600, { name: '图表', showValues: true, barMode: 'percent' }),
+      ...stat(0, '涨得最快', '视频号'),
+      ...stat(1, '掉得最多', '朋友圈'),
+      ...stat(2, '下季看点', '直播'),
+      textNode('@叮卡观察室', 80, 1796, 920, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),
+    ], STORY),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -1805,6 +1843,7 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'contact-card': poster('联系卡', '姓名配联系方式和一张带 logo 的圆角二维码，扫一下就能存下名片，适合个人名片和工作室联系页。', ['名片', '联系'], 'square'),
   'data-roundup': poster('数据盘点', '大标题配一张双系列对比柱状图和三个大数字，适合年度盘点、月度总结和数据海报。', ['盘点', '数据'], 'story'),
   'follow-card': poster('关注引导', '圆点二维码配爱心和关注按钮，适合涨粉海报、主页引导和活动招募。', ['涨粉', '关注'], 'square'),
+  'trend-compare': poster('趋势对比', '百分比堆叠柱看占比变化，适合渠道结构、预算分配和人群构成对比。', ['占比', '趋势'], 'story'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -1836,6 +1875,7 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'contact-card': createContactCardDocument,
   'data-roundup': createDataRoundupDocument,
   'follow-card': createFollowCardDocument,
+  'trend-compare': createTrendCompareDocument,
 }
 
 const markdownSeriesIds: MarkdownTemplateSeriesId[] = [
@@ -1873,6 +1913,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'contact-card',
   'data-roundup',
   'follow-card',
+  'trend-compare',
 ]
 
 function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {

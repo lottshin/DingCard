@@ -541,6 +541,14 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '品牌' },
   },
+  'trend-compare': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    chart: { node: '图表' },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {
