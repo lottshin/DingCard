@@ -35,7 +35,7 @@ import {
   isValidParagraphSpacing,
 } from './appearance'
 import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
-import { isValidChartKind, isValidChartSeries } from './charts'
+import { CHART_POINTS_MAX, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -907,7 +907,7 @@ const QRCODE_NODE_KEYS = new Set([
 ])
 const CHART_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
-  'scale', 'chartKind', 'labels', 'values', 'accent',
+  'scale', 'chartKind', 'labels', 'series',
 ])
 
 function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
@@ -1134,8 +1134,10 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
     return (
       hasValidOptionalFields(record, CHART_NODE_KEYS, CHART_OPTIONAL_FIELD_CHECKS) &&
       isValidChartKind(node.chartKind) &&
-      isValidChartSeries(node.labels, node.values) &&
-      isHexColor(node.accent)
+      node.labels.length > 0 &&
+      node.labels.length <= CHART_POINTS_MAX &&
+      node.labels.every(isValidChartLabel) &&
+      isValidChartSeriesList(node.series, node.labels.length)
     )
   }
   return false

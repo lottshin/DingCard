@@ -24,10 +24,13 @@ async function insertChart(page: import('@playwright/test').Page) {
   await expect(page.getByTestId('freeform-chart')).toBeVisible()
 }
 
-/** The rendered bar heights, in the chart's view-box pixels. */
+/** The rendered bar heights, in the chart's view-box pixels; the legend's
+ *  colour chips are rects too, so they stay out of the count. */
 async function barHeights(page: import('@playwright/test').Page) {
-  return page.getByTestId('freeform-chart').locator('rect').evaluateAll((bars) =>
-    bars.map((bar) => Math.round(Number((bar as SVGRectElement).getAttribute('height')))))
+  return page.getByTestId('freeform-chart').locator('rect').evaluateAll((rects) =>
+    rects
+      .filter((rect) => !(rect as SVGRectElement).closest('[data-testid="freeform-chart-legend-item"]'))
+      .map((bar) => Math.round(Number((bar as SVGRectElement).getAttribute('height')))))
 }
 
 test('inserts a bar chart with its sample series', async ({ page }) => {
@@ -106,15 +109,51 @@ test('switches kinds and styles with one history entry each', async ({ page }) =
   await expect(chart.getByText('4', { exact: true })).toHaveCount(0)
   await expect(chart.locator('polyline')).toHaveCount(1)
 
-  // The accent recolours the line; one undo lands back on the default blue.
-  await page.getByRole('button', { name: '图表颜色', exact: true }).click()
-  const hex = page.getByLabel('图表颜色 自定义 HEX', { exact: true })
+  // The series colour recolours the line; one undo lands back on the default blue.
+  await page.getByRole('button', { name: '系列颜色', exact: true }).click()
+  const hex = page.getByLabel('系列颜色 自定义 HEX', { exact: true })
   await hex.fill('#dc2626')
   await hex.press('Enter')
   await page.keyboard.press('Escape')
   await expect(chart.locator('polyline')).toHaveAttribute('stroke', '#dc2626')
   await page.getByRole('button', { name: '撤销', exact: true }).click()
   await expect(chart.locator('polyline')).toHaveAttribute('stroke', '#1d4ed8')
+})
+
+test('adds a second series with grouped bars, a legend and nested rings', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+
+  // One unnamed series shows no legend; the series seg names the first by index.
+  await expect(page.getByTestId('chart-series-0')).toHaveClass(/on/)
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
+
+  // Name the first series, add a second and name it: grouped bars and a legend.
+  await page.getByTestId('chart-series-name').fill('去年')
+  await page.getByTestId('chart-series-add').click()
+  await expect(page.getByTestId('chart-series-1')).toHaveClass(/on/)
+  await expect(chart.locator('rect:not(g [data-testid="freeform-chart-legend-item"] rect)')).toHaveCount(8)
+  await page.getByTestId('chart-series-name').fill('今年')
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(2)
+  await expect(chart.getByText('去年')).toHaveCount(1)
+  await expect(chart.getByText('今年')).toHaveCount(1)
+
+  // The second series starts flat; raising its last value grows only its bar.
+  const heightsBefore = await barHeights(page)
+  await page.getByLabel('第 4 项数值', { exact: true }).fill('12')
+  const heightsAfter = await barHeights(page)
+  expect(heightsAfter[7]).toBeGreaterThan(heightsBefore[7])
+  expect(heightsAfter[3]).toBeLessThan(heightsAfter[7])
+
+  // As a ring, both series nest: eight segments in two rings.
+  await page.getByTestId('chart-kind-ring').click()
+  await expect(chart.locator('[data-testid="freeform-chart-segment"]')).toHaveCount(8)
+
+  // Removing the second series leaves the first, legend gone with it.
+  await page.getByTestId('chart-series-remove').click()
+  await expect(chart.locator('[data-testid="freeform-chart-segment"]')).toHaveCount(4)
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
 })
 
 test('round-trips a saved v24 chart and rejects it at v23', async ({ page }) => {

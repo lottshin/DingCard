@@ -73,10 +73,10 @@ import {
 } from './appearance'
 import { isValidPathData } from './pathData'
 import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
-import { CHART_ACCENT_DEFAULT, isValidChartKind, isValidChartSeries } from './charts'
+import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
-import type {
+import type {  FreeformChartSeries,
   ColorPaint,
   FreeformAction,
   FreeformDocument,
@@ -151,7 +151,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 25,
+    documentVersion: 26,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -290,8 +290,7 @@ export function createChartElement(slide: FreeformSlide): FreeformChartElement {
     scale: 1,
     chartKind: 'bar',
     labels: ['一月', '二月', '三月', '四月'],
-    values: [4, 7, 5, 9],
-    accent: CHART_ACCENT_DEFAULT,
+    series: [{ values: [4, 7, 5, 9], color: CHART_ACCENT_DEFAULT }],
   }
 }
 
@@ -497,7 +496,7 @@ interface NodePatchResult {
   node: FreeformSceneNode
 }
 
-const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'values'])
+const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series'])
 const STYLE_KEYS = new Set([
   'effect',
   'fontSize',
@@ -740,13 +739,35 @@ function applyContentPatch(
     }
   }
   if (node.type === 'chart') {
-    if (!isValidChartSeries(record.labels, record.values)) return { ok: false, node }
-    const labels = record.labels as string[]
-    const values = record.values as number[]
-    const same = labels.length === node.labels.length
-      && labels.every((label, index) => label === node.labels[index])
-      && values.every((value, index) => value === node.values[index])
-    return { ok: true, node: same ? node : { ...node, labels: [...labels], values: [...values] } }
+    const patchKeys = Object.keys(record)
+    if (patchKeys.some((key) => key !== 'labels' && key !== 'series')) return { ok: false, node }
+    const labels = 'labels' in record ? record.labels as unknown : node.labels
+    if (!Array.isArray(labels) || labels.length === 0 || labels.length > CHART_POINTS_MAX
+      || !labels.every(isValidChartLabel)) return { ok: false, node }
+    const series = 'series' in record ? record.series as unknown : node.series
+    if (!isValidChartSeriesList(series, labels.length)) return { ok: false, node }
+    const same = ('labels' in record || 'series' in record)
+      && (node.labels.length === labels.length
+        && node.labels.every((label, index) => label === labels[index])
+        && node.series.length === (series as FreeformChartSeries[]).length
+        && node.series.every((entry, index) => {
+          const next = (series as FreeformChartSeries[])[index]
+          return entry.color === next.color
+            && entry.name === next.name
+            && entry.values.every((value, valueIndex) => value === next.values[valueIndex])
+        }))
+    return {
+      ok: true,
+      node: same ? node : {
+        ...node,
+        labels: (labels as string[]).map((label) => label),
+        series: (series as FreeformChartSeries[]).map((entry) => ({
+          values: [...entry.values],
+          color: entry.color,
+          ...('name' in entry ? { name: entry.name } : {}),
+        })),
+      },
+    }
   }
   if (node.type === 'qrcode') {
     if (Object.keys(record).some((key) => key !== 'payload') || !isValidQrPayload(record.payload)) {
@@ -1065,13 +1086,14 @@ function applyStylePatch(
     ) {
       return { ok: false, node }
     }
-    // accent is a required field: `null` restores the default blue.
+    // accent recolours every series at once (a v24 habit kept replayable);
+    // `null` restores the default blue on each of them.
     const accent = 'accent' in patch
       ? (patch.accent === null ? CHART_ACCENT_DEFAULT : patch.accent as string)
-      : node.accent
+      : null
     const base = {
       ...node,
-      accent,
+      ...(accent !== null ? { series: node.series.map((entry) => ({ ...entry, color: accent })) } : {}),
       ...('chartKind' in patch ? { chartKind: patch.chartKind as typeof node.chartKind } : {}),
     }
     const next = withAppearancePatch(base, patch, CHART_APPEARANCE_KEYS)

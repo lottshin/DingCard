@@ -4,7 +4,7 @@
 // MCP surface has exactly the same validation and reducer semantics as the
 // in-app editor:
 //
-//   - normalizeFreeformDocument: strict v25 validation (+ v1–v24 migration)
+//   - normalizeFreeformDocument: strict v26 validation (+ v1–v25 migration)
 //   - reduceFreeformDocument:    the exact action reducer the UI dispatches to
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v25 校验：需要 documentVersion=1–25 之一（旧版自动迁移为 v25）、非空 slides、'
+  '文档未通过自由画布 v26 校验：需要 documentVersion=1–26 之一（旧版自动迁移为 v26）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -52,9 +52,10 @@ export interface NodeSummary {
   payload?: string
   /** A QR code element's centre logo: an image source (v25). */
   logoSrc?: string
-  /** A chart's category labels and values. */
+  /** A chart's category labels. */
   labels?: string[]
-  values?: number[]
+  /** A chart's series (v26): each carries its own values and colour. */
+  series?: Array<{ name?: string; values: number[]; color: string }>
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
@@ -145,7 +146,7 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
     return { ...leaf, payload: node.payload, ...(node.logoSrc !== undefined ? { logoSrc: node.logoSrc } : {}) }
   }
   if (node.type === 'chart') {
-    return { ...leaf, labels: node.labels, values: node.values }
+    return { ...leaf, labels: node.labels, series: node.series }
   }
   if (node.type === 'path') {
     const icon = ICON_BY_PATH.get(node.d)

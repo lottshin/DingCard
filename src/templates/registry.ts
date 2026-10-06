@@ -1,5 +1,5 @@
 import { randomId } from '../uid'
-import { normalizeFreeformDocumentV25 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV26 } from '../freeform/sceneDocument'
 import type {
   BlendMode,
   ColorPaint,
@@ -255,11 +255,11 @@ function slide(
 
 function documentFromSlides(slides: FreeformSlide[]): FreeformDocument {
   const document: FreeformDocument = {
-    documentVersion: 25,
+    documentVersion: 26,
     activeSlideId: slides[0].id,
     slides,
   }
-  const normalized = normalizeFreeformDocumentV25(document)
+  const normalized = normalizeFreeformDocumentV26(document)
   if (!normalized) throw new Error('内置模板生成了无效的自由画布文档')
   return normalized
 }
@@ -1101,14 +1101,13 @@ function qrCodeNode(
 function chartNode(
   chartKind: FreeformChartElement['chartKind'],
   labels: readonly string[],
-  values: readonly number[],
+  series: ReadonlyArray<{ name?: string; values: readonly number[]; color: string }>,
   x: number,
   y: number,
   width: number,
   height: number,
   options: {
     name?: string
-    accent?: string
     showValues?: boolean
     rotation?: number
     opacity?: number
@@ -1128,8 +1127,11 @@ function chartNode(
     scale: 1,
     chartKind,
     labels: [...labels],
-    values: [...values],
-    accent: options.accent ?? '#1d4ed8',
+    series: series.map((entry) => ({
+      values: [...entry.values],
+      color: entry.color,
+      ...(entry.name !== undefined ? { name: entry.name } : {}),
+    })),
     ...(options.showValues ? { showValues: true } : {}),
     ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
   }
@@ -1703,7 +1705,7 @@ function createDataRoundupDocument(): FreeformDocument {
       textNode('这一年，做了多少事', 80, 204, 920, 160, { name: '标题', fontSize: 92, textFill: solid(cream), fontWeight: 'bold', letterSpacing: 2 }),
       textNode('叮卡工作室 · 2026 年度盘点', 80, 436, 920, 64, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
       textNode('MONTHLY WORKS', 140, 616, 800, 40, { name: '图表标注', fontSize: 26, fontFamily: UI, textFill: solid('#a8a29e'), letterSpacing: 8 }),
-      chartNode('bar', ['一月', '二月', '三月', '四月', '五月', '六月'], [12, 18, 15, 24, 20, 28], 140, 684, 800, 600, { name: '图表', accent: amberInk, showValues: true }),
+      chartNode('bar', ['一月', '二月', '三月', '四月', '五月', '六月'], [{ values: [12, 18, 15, 24, 20, 28], color: amberInk }], 140, 684, 800, 600, { name: '图表', showValues: true }),
       ...stat(0, '发布作品', '128 件'),
       ...stat(1, '累计读者', '5.2 万'),
       ...stat(2, '去过的城市', '12 座'),

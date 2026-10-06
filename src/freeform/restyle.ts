@@ -241,7 +241,10 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
     case 'qrcode':
       return patched(node, { dark: recolor(node.dark), shadow: recolorShadow(node.shadow, recolor) })
     case 'chart':
-      return patched(node, { accent: recolor(node.accent), shadow: recolorShadow(node.shadow, recolor) })
+      return patched(node, {
+        series: node.series.map((entry) => ({ ...entry, color: recolor(entry.color) })),
+        shadow: recolorShadow(node.shadow, recolor),
+      })
   }
 }
 

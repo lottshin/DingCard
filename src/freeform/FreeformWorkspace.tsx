@@ -61,7 +61,7 @@ import {
   freeformReducer,
 } from './document'
 import { QR_PAYLOAD_MAX_LENGTH } from './qrCode'
-import { CHART_POINTS_MAX, isValidChartSeries } from './charts'
+import { CHART_POINTS_MAX, CHART_SERIES_MAX, isValidChartSeries } from './charts'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
 import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
@@ -916,6 +916,9 @@ function isChartElement(element: FreeformElement | undefined): element is Freefo
 
 /** Chart kinds in the inspector segment order. */
 const CHART_KINDS = ['bar', 'ring', 'line'] as const
+const CHART_SERIES_COLORS = ['#1d4ed8', '#e11d48', '#f59e0b'] as const
+const chartSeriesColorInUse = (colors: readonly string[]) =>
+  CHART_SERIES_COLORS.find((color) => !colors.includes(color)) ?? CHART_SERIES_COLORS[0]
 const CHART_KIND_LABELS = { bar: '柱状图', ring: '环形图', line: '折线图' } as const
 
 function isImageElement(element: FreeformElement | undefined): element is FreeformImageElement {
@@ -1238,6 +1241,8 @@ export function FreeformWorkspace({
   const [clipboard, setClipboard] = useState<SceneClipboard | null>(null)
   const [styleClipboard, setStyleClipboard] = useState<FreeformNodeStylePatch | null>(null)
   const [zoomPercent, setZoomPercent] = useState(DEFAULT_ZOOM_PERCENT)
+  // Which chart series the inspector's data rows edit (v26 charts carry up to three).
+  const [activeChartSeries, setActiveChartSeries] = useState(0)
   const [fitScale, setFitScale] = useState<number | null>(null)
   // Space-held canvas panning and the anchor point for cursor-centered zoom.
   const [spacePanReady, setSpacePanReady] = useState(false)
@@ -1526,6 +1531,14 @@ export function FreeformWorkspace({
     [activeSlide.nodes, selectionPaths],
   )
   const selectedPath = selectionPaths.length === 1 ? selectionPaths[0] : null
+  // The series the chart inspector edits: the chosen one, kept in range as
+  // series come and go.
+  const activeSeriesIndex = isChartElement(selectedElement)
+    ? Math.min(activeChartSeries, selectedElement.series.length - 1)
+    : 0
+  const activeSeries = isChartElement(selectedElement)
+    ? selectedElement.series[activeSeriesIndex]
+    : undefined
   const inspectorNumberResetKey = JSON.stringify([
     documentIdentityGenerationRef.current,
     inspectorNumberResetGenerationRef.current,
@@ -8321,7 +8334,7 @@ export function FreeformWorkspace({
                     </InspectorSection>
                   )}
 
-                  {isChartElement(selectedElement) && (
+                  {isChartElement(selectedElement) && activeSeries && (
                     <InspectorSection title={t('图表')} testId="inspector-chart">
                       <div className="field-label">{t('类型')}</div>
                       <div className="seg stretch" role="group" aria-label={t('图表类型')}>
@@ -8337,6 +8350,82 @@ export function FreeformWorkspace({
                           </button>
                         ))}
                       </div>
+                      <div className="field-label with-gap">{t('系列')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('系列')}>
+                        {selectedElement.series.map((entry, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            className={index === activeSeriesIndex ? 'seg-btn on' : 'seg-btn'}
+                            data-testid={`chart-series-${index}`}
+                            onClick={() => setActiveChartSeries(index)}
+                          >
+                            {entry.name?.trim() || t('第 {n} 系列', { n: index + 1 })}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="paint-row with-gap" data-testid="chart-series-style">
+                        <input
+                          type="text"
+                          className="qr-payload-input"
+                          maxLength={12}
+                          value={activeSeries.name ?? ''}
+                          placeholder={t('第 {n} 系列', { n: activeSeriesIndex + 1 })}
+                          aria-label={t('系列名称')}
+                          data-testid="chart-series-name"
+                          onChange={(event) => {
+                            const name = event.currentTarget.value.trim()
+                            const series = selectedElement.series.map((entry, index) => (
+                              index === activeSeriesIndex
+                                ? { ...entry, ...(name ? { name: event.currentTarget.value } : {}) }
+                                : entry
+                            ))
+                            updateSelectedContent({ series })
+                          }}
+                        />
+                        <ColorPickerButton
+                          label={t('系列颜色')}
+                          color={activeSeries.color}
+                          onChange={(color) => updateSelectedContent({
+                            series: selectedElement.series.map((entry, index) => (
+                              index === activeSeriesIndex ? { ...entry, color } : entry
+                            )),
+                          })}
+                        />
+                        {selectedElement.series.length > 1 && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="chart-series-remove"
+                            onClick={() => {
+                              updateSelectedContent({
+                                series: selectedElement.series.filter((_, at) => at !== activeSeriesIndex),
+                              })
+                              setActiveChartSeries(0)
+                            }}
+                          >
+                            {t('删除系列')}
+                          </button>
+                        )}
+                      </div>
+                      {selectedElement.series.length < CHART_SERIES_MAX && (
+                        <button
+                          type="button"
+                          className="ghost chart-series-add"
+                          data-testid="chart-series-add"
+                          onClick={() => {
+                            updateSelectedContent({
+                              series: [...selectedElement.series, {
+                                values: selectedElement.labels.map(() => 0),
+                                color: chartSeriesColorInUse(selectedElement.series.map((entry) => entry.color)),
+                              }],
+                            })
+                            setActiveChartSeries(selectedElement.series.length)
+                          }}
+                        >
+                          {t('添加系列')}
+                        </button>
+                      )}
                       <div className="field-label with-gap">{t('数据')}</div>
                       <div className="chart-data-rows" data-testid="chart-data-rows">
                         {selectedElement.labels.map((label, index) => (
@@ -8349,22 +8438,26 @@ export function FreeformWorkspace({
                               onChange={(event) => {
                                 const labels = [...selectedElement.labels]
                                 labels[index] = event.currentTarget.value
-                                if (!isValidChartSeries(labels, selectedElement.values)) return
-                                updateSelectedContent({ labels, values: selectedElement.values })
+                                if (!isValidChartSeries(labels, activeSeries.values)) return
+                                updateSelectedContent({ labels })
                               }}
                             />
                             <input
                               type="number"
                               min={0}
                               step="any"
-                              value={String(selectedElement.values[index])}
+                              value={String(activeSeries.values[index])}
                               aria-label={t('第 {n} 项数值', { n: index + 1 })}
                               onChange={(event) => {
                                 const value = Number(event.currentTarget.value)
                                 if (!Number.isFinite(value) || value < 0) return
-                                const values = [...selectedElement.values]
+                                const values = [...activeSeries.values]
                                 values[index] = value
-                                updateSelectedContent({ labels: selectedElement.labels, values })
+                                updateSelectedContent({
+                                  series: selectedElement.series.map((entry, index_) => (
+                                    index_ === activeSeriesIndex ? { ...entry, values } : entry
+                                  )),
+                                })
                               }}
                             />
                             {selectedElement.labels.length > 1 && (
@@ -8375,7 +8468,9 @@ export function FreeformWorkspace({
                                 data-testid={`chart-data-remove-${index}`}
                                 onClick={() => updateSelectedContent({
                                   labels: selectedElement.labels.filter((_, at) => at !== index),
-                                  values: selectedElement.values.filter((_, at) => at !== index),
+                                  series: selectedElement.series.map((entry) => (
+                                    { ...entry, values: entry.values.filter((_, at) => at !== index) }
+                                  )),
                                 })}
                               >
                                 ×
@@ -8391,7 +8486,9 @@ export function FreeformWorkspace({
                           data-testid="chart-data-add"
                           onClick={() => updateSelectedContent({
                             labels: [...selectedElement.labels, t('新增')],
-                            values: [...selectedElement.values, 0],
+                            series: selectedElement.series.map((entry) => (
+                              { ...entry, values: [...entry.values, 0] }
+                            )),
                           })}
                         >
                           {t('添加一项')}
@@ -8407,14 +8504,6 @@ export function FreeformWorkspace({
                         >
                           {t('显示')}
                         </button>
-                      </div>
-                      <div className="field-label with-gap">{t('颜色')}</div>
-                      <div className="paint-row" data-testid="chart-colors">
-                        <ColorPickerButton
-                          label={t('图表颜色')}
-                          color={selectedElement.accent}
-                          onChange={(accent) => updateSelectedStyle({ accent })}
-                        />
                       </div>
                     </InspectorSection>
                   )}

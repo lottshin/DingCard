@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 25
+  documentVersion: 26
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -328,16 +328,24 @@ export interface FreeformQrCodeElement extends FreeformElementBase {
   logoSrc?: string
 }
 
+/** One series of a chart (v26): its own colour and one value per category. */
+export interface FreeformChartSeries {
+  /** The legend name, up to 12 characters; absent means an unnamed series. */
+  name?: string
+  /** One non-negative value per label (v24 carried this on the element). */
+  values: number[]
+  /** The series colour (#RRGGBB, v24's accent). */
+  color: string
+}
+
 export interface FreeformChartElement extends FreeformElementBase {
   type: 'chart'
   /** Which chart is drawn (v24). */
   chartKind: 'bar' | 'ring' | 'line'
   /** One category label per point, 1–24 characters (v24). */
   labels: string[]
-  /** One non-negative value per point (v24). */
-  values: number[]
-  /** The chart colour (#RRGGBB, v24); rings tint a ramp from it. */
-  accent: string
+  /** The drawn series, 1–3 of them (v26; v24–v25 carried one on the element). */
+  series: FreeformChartSeries[]
   /** Draw the value on each point (v24); absent means off. */
   showValues?: true
 }
@@ -385,8 +393,8 @@ export interface FreeformNodeContentPatch {
   payload?: string
   /** A chart's category labels (v24), replaced wholesale. */
   labels?: string[]
-  /** A chart's values (v24), replaced wholesale. */
-  values?: number[]
+  /** A chart's series (v26), replaced wholesale with their values and colours. */
+  series?: FreeformChartSeries[]
 }
 
 export interface FreeformNodeStylePatch {
@@ -462,7 +470,11 @@ export interface FreeformNodeStylePatch {
   logoSrc?: string | null
   /** Which chart is drawn (v24); like the shape switcher on shapes. */
   chartKind?: 'bar' | 'ring' | 'line'
-  /** Chart colour (#RRGGBB, v24); `null` restores the default blue. */
+  /**
+   *  Every series' colour at once (#RRGGBB, v24); `null` restores the default
+   *  blue. Series carry their own colours since v26 — this key keeps old
+   *  history entries replayable.
+   */
   accent?: string | null
   /** Draw the value on each chart point (v24); `null` turns it off. */
   showValues?: true | null

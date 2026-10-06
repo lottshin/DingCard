@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 25,
+    documentVersion: 26,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(25)
+    expect(result.document.documentVersion).toBe(26)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -540,8 +540,10 @@ describe('applyActions', () => {
       scale: 1,
       chartKind: 'bar',
       labels: ['一', '二', '三'],
-      values: [2, 4, 6],
-      accent: '#1d4ed8',
+      series: [
+        { name: '去年', values: [2, 4, 6], color: '#1d4ed8' },
+        { name: '今年', values: [3, 5, 7], color: '#e11d48' },
+      ],
     })
     const valid = validateDocument(withChart)
     expect(valid.ok).toBe(true)
@@ -559,25 +561,41 @@ describe('applyActions', () => {
     const styledChart = styled.document.slides[0].nodes.find((node) => node.id === 'chart-1')
     expect(styledChart && styledChart.type === 'chart' ? styledChart.chartKind : '').toBe('ring')
     expect(styledChart && styledChart.type === 'chart' ? styledChart.showValues : undefined).toBe(true)
+    // The v24 accent habit recolours every series at once.
+    expect(styledChart && styledChart.type === 'chart'
+      ? styledChart.series.every((entry) => entry.color === '#dc2626')
+      : false).toBe(true)
 
     const edited = applyActions(styled.document, [
       {
         type: 'node/update-content',
         slideId: 'slide-1',
-        updates: [{ path: ['chart-1'], patch: { labels: ['住', '行', '吃'], values: [3, 2, 5] } }],
+        updates: [{
+          path: ['chart-1'],
+          patch: {
+            labels: ['住', '行', '吃'],
+            series: [
+              { name: '去年', values: [3, 2, 5], color: '#dc2626' },
+              { name: '今年', values: [4, 3, 6], color: '#f59e0b' },
+            ],
+          },
+        }],
       },
     ])
     expect(edited.ok).toBe(true)
     if (!edited.ok) return
     const editedChart = edited.document.slides[0].nodes.find((node) => node.id === 'chart-1')
     expect(editedChart && editedChart.type === 'chart' ? editedChart.labels : []).toEqual(['住', '行', '吃'])
+    expect(editedChart && editedChart.type === 'chart'
+      ? editedChart.series.map((entry) => entry.values)
+      : []).toEqual([[3, 2, 5], [4, 3, 6]])
 
     // A ragged series rejects the content patch and keeps the element as-is.
     const rejected = applyActions(edited.document, [
       {
         type: 'node/update-content',
         slideId: 'slide-1',
-        updates: [{ path: ['chart-1'], patch: { labels: ['住'], values: [3, 2] } }],
+        updates: [{ path: ['chart-1'], patch: { labels: ['住'], series: editedChart && editedChart.type === 'chart' ? editedChart.series : [] } }],
       },
     ])
     expect(rejected.ok).toBe(true)
