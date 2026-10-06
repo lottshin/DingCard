@@ -1798,6 +1798,42 @@ function createSkillRadarDocument(): FreeformDocument {
   ])
 }
 
+function createTimeSplitDocument(): FreeformDocument {
+  const paper = '#f7f3ea'
+  const ink = '#33301f'
+  const muted = '#8a8272'
+  const teal = '#0f766e'
+  const stat = (index: number, label: string, value: string) => {
+    const x = 80 + index * 300
+    const n = NUMBERED[index]
+    return [
+      textNode(label, x, 880, 260, 40, { name: `标签${n}`, fontSize: 26, fontFamily: UI, textFill: solid(muted), letterSpacing: 4 }),
+      textNode(value, x, 922, 260, 72, { name: `信息${n}`, fontSize: 52, textFill: solid(teal), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('时间分配', solid(paper), [
+      shapeNode('ellipse', 892, 96, 88, 88, solid('#d9e7e2'), { name: '圆点' }),
+      lineNode(80, 856, 920, '#e2dbc8', 2, { name: '分隔线', cap: 'butt' }),
+      shapeNode('rect', 80, 344, 920, 480, solid('#ffffff'), { name: '图表卡', cornerRadius: 48, shadow: { color: '#e8e0cd', blur: 36, offsetX: 0, offsetY: 16 } }),
+      textNode('TIME SPLIT', 80, 84, 400, 56, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: teal, amount: 44, radius: 8 },
+      }),
+      textNode('我的一天怎么过', 80, 156, 920, 104, { name: '标题', fontSize: 72, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('24 小时的时间分配', 80, 272, 920, 50, { name: '副标题', fontSize: 34, textFill: solid(muted) }),
+      textNode('HOURS IN A DAY', 140, 380, 800, 36, { name: '图表标注', fontSize: 24, fontFamily: UI, textFill: solid('#a8a29e'), letterSpacing: 8 }),
+      chartNode('ring', ['睡眠', '工作', '通勤', '运动', '学习', '家务'], [
+        { values: [8, 9, 1, 1, 3, 2], color: teal },
+      ], 250, 432, 580, 360, { name: '图表', showValues: true }),
+      ...stat(0, '睡眠', '8 小时'),
+      ...stat(1, '专注', '9 小时'),
+      ...stat(2, '留白', '3 小时'),
+      textNode('@叮卡时间账本', 80, 1016, 920, 44, { name: '品牌', fontSize: 26, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),
+    ], SQUARE),
+  ])
+}
+
 function createFollowCardDocument(): FreeformDocument {
   const blush = '#fdf2f5'
   const rose = '#e11d48'
@@ -2014,6 +2050,7 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'picks': poster('好物安利', '两张圆角大图配回购理由，适合小红书好物清单和开箱分享。', ['好物', '清单'], 'xhs'),
   'mono-travel': poster('黑白旅拍', '深色底上一张黑白滤镜的圆角大图配竖排标题，适合街拍、展览和城市记录。', ['黑白', '旅拍'], 'story'),
   'skill-radar': poster('能力雷达', '大标题配一张六维能力雷达图和三枚成长关键词，适合个人年度总结、技能盘点和自我介绍。', ['盘点', '成长'], 'story'),
+  'time-split': poster('时间分配', '浅色方图：一张环形图把一天的 24 小时切成几块，配三组关键数字，适合作息盘点、时间管理和习惯打卡。', ['时间', '作息'], 'square'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -2045,6 +2082,7 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'contact-card': createContactCardDocument,
   'data-roundup': createDataRoundupDocument,
   'skill-radar': createSkillRadarDocument,
+  'time-split': createTimeSplitDocument,
   'follow-card': createFollowCardDocument,
   'trend-compare': createTrendCompareDocument,
   'polaroid-wall': createPolaroidWallDocument,
@@ -2092,6 +2130,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'picks',
   'mono-travel',
   'skill-radar',
+  'time-split',
 ]
 
 function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {

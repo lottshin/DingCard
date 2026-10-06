@@ -582,6 +582,14 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     chart: { node: '图表' },
   },
+  'time-split': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    chart: { node: '图表' },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

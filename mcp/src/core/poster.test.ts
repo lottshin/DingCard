@@ -119,6 +119,35 @@ describe('composePoster', () => {
     expect(keptChart && keptChart.type === 'chart' ? keptChart.labels : []).toEqual(['设计', '写作', '摄影', '剪辑', '运营', '表达'])
   })
 
+  test('fills the ring chart and the hour stats on the time-split poster', () => {
+    const result = compose('time-split-freeform', {
+      title: '这一周的时间去哪了',
+      chart: {
+        labels: ['睡觉', '上班', '读书', '健身', '发呆'],
+        series: [{ values: [56, 50, 12, 6, 10] }],
+      },
+      details: ['睡觉：56 小时', '上班：50 小时', '读书：12 小时'],
+      brand: '@叮卡时间账本',
+    })
+    const chart = result.document.slides[0].nodes.find((node) => node.type === 'chart')
+    if (!chart || chart.type !== 'chart') throw new Error('Expected a chart')
+    expect(chart.chartKind).toBe('ring')
+    expect(chart.labels).toEqual(['睡觉', '上班', '读书', '健身', '发呆'])
+    expect(chart.series).toHaveLength(1)
+    expect(chart.series[0].values).toEqual([56, 50, 12, 6, 10])
+    // The template's own series colour carries over.
+    expect(chart.series[0].color).toBe('#0f766e')
+    // The hour stats split on the colon into their label and value nodes.
+    expect((named(result, '标签一') as FreeformTextElement | undefined)?.text).toBe('睡觉')
+    expect((named(result, '信息一') as FreeformTextElement | undefined)?.text).toBe('56 小时')
+    expect((named(result, '信息三') as FreeformTextElement | undefined)?.text).toBe('12 小时')
+
+    // Without details the ungiven rows go with their labels.
+    const bare = compose('time-split-freeform', { title: '时间分配' })
+    expect(named(bare, '标签一')).toBeUndefined()
+    expect(named(bare, '信息一')).toBeUndefined()
+  })
+
   test('puts the picture in the picture slot, or a colour block in a photo frame and nothing where an illustration was', () => {
     const photo = compose('talk-poster-freeform', { ...TALK, image: 'https://example.com/hall.jpg' })
     const frame = named(photo, '主图') as FreeformShapeElement

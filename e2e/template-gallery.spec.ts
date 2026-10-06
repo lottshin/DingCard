@@ -127,8 +127,8 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(33)
-  await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(34)
+  await expect(dialog.locator('.template-tile')).toHaveCount(34)
+  await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(35)
   await expect(dialog.locator('.template-freeform-artboard .freeform-preview-element').first()).toBeVisible()
 
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
@@ -177,7 +177,7 @@ test('gallery search narrows the list by keyword and combines with the size filt
   await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(33)
+  await expect(dialog.locator('.template-tile')).toHaveCount(34)
 
   const search = dialog.getByTestId('template-search')
 
@@ -331,7 +331,7 @@ test('templates come from the repository only; the editors offer no way to save 
   await insertFreeformText(page)
   await openFreeformTemplateGallery(page)
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(gallery.locator('.template-tile')).toHaveCount(33)
+  await expect(gallery.locator('.template-tile')).toHaveCount(34)
   await expect(gallery.getByText('我的模板')).toHaveCount(0)
   await expect(gallery.getByRole('button', { name: '删除此模板' })).toHaveCount(0)
   await gallery.getByRole('button', { name: '使用这套模板', exact: true }).click()
