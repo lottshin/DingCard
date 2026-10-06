@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 22
+  documentVersion: 23
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -304,6 +304,8 @@ export interface FreeformPathElement extends FreeformElementBase {
 
 /** A QR code's error correction level (v22); absent means M. */
 export type QrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H'
+/** A QR code's module shape (v23); absent means square. */
+export type QrModuleStyle = 'square' | 'rounded' | 'dot'
 
 export interface FreeformQrCodeElement extends FreeformElementBase {
   type: 'qrcode'
@@ -315,6 +317,9 @@ export interface FreeformQrCodeElement extends FreeformElementBase {
   light: string
   /** Error correction level (v22); absent means M. */
   ecl?: QrErrorCorrectionLevel
+  /** Module shape (v23); absent means square. The finder patterns stay
+   *  square in every style so the code keeps scanning. */
+  moduleStyle?: QrModuleStyle
 }
 
 export type FreeformElement =
@@ -426,6 +431,8 @@ export interface FreeformNodeStylePatch {
   light?: string | null
   /** QR error correction level (v22); `null` restores M. */
   ecl?: QrErrorCorrectionLevel | null
+  /** QR module shape (v23); `null` restores square. */
+  moduleStyle?: QrModuleStyle | null
 }
 
 export interface FreeformNodeGeometryPatch {

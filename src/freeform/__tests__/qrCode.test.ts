@@ -8,7 +8,7 @@ import {
   isValidQrEcl,
   isValidQrPayload,
 } from '../qrCode'
-import { qrMatrix, qrPath } from '../qrMatrix'
+import { qrMatrix, qrModulePaths } from '../qrMatrix'
 import { createQrCodeElement, createFreeformDocument, freeformReducer } from '../document'
 import { normalizeFreeformDocument } from '../sceneDocument'
 import type { FreeformDocument, FreeformQrCodeElement, FreeformSlide } from '../types'
@@ -51,10 +51,31 @@ describe('qr matrix', () => {
     const long = qrMatrix('https://example.com/with/a/much/longer/path?and=query', 'M')!
     expect(long!.size).toBeGreaterThan(short.size)
     const dark = short.rows.flat().filter(Boolean).length
-    const squares = qrPath(short, 2).match(/M\d/g)?.length ?? 0
+    const squarePaths = qrModulePaths(short, 2, 'square')
+    const squares = `${squarePaths.finder}${squarePaths.data}`.match(/M\d/g)?.length ?? 0
     expect(squares).toBe(dark)
     // The quiet zone offsets every square by two modules.
-    expect(qrPath(short, 2)).toContain('M2 2h1v1h-1z')
+    expect(`${squarePaths.finder}${squarePaths.data}`).toContain('M2 2h1v1h-1z')
+  })
+
+  it('shapes the data modules by style, keeping the finders square', () => {
+    const matrix = qrMatrix('HELLO WORLD', 'M')!
+    const square = qrModulePaths(matrix, 2, 'square')
+    // The whole code is plain squares.
+    expect(`${square.finder}${square.data}`).not.toContain('a0.42')
+
+    const dot = qrModulePaths(matrix, 2, 'dot')
+    // Data modules become dot arcs, away from the finder areas.
+    expect(dot.data).toContain('a0.42 0.42 0 1 0')
+    expect(dot.finder).not.toContain('a0.42')
+    // The top-left finder stays seven square modules wide.
+    expect(dot.finder).toContain('M2 2h1v1h-1z')
+    expect(dot.finder).toContain('M8 2h1v1h-1z')
+    expect(dot.data).not.toContain('M2 2h1v1h-1z')
+
+    // Rounded keeps square outlines; the view strokes their joins round.
+    const rounded = qrModulePaths(matrix, 2, 'rounded')
+    expect(`${rounded.finder}${rounded.data}`).not.toContain('a0.42')
   })
 
   it('returns null for payloads the encoder cannot handle', () => {
@@ -71,7 +92,7 @@ describe('qrcode element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 22, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 23, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred square with the defaults', () => {
     const element = createQrCodeElement(slide)
@@ -141,16 +162,42 @@ describe('qrcode element in the document', () => {
     expect(badColor).toBe(restored)
   })
 
-  it('normalizes qrcode nodes at v22 and rejects them at v21', () => {
+  it('normalizes qrcode nodes at v23 and rejects them at v21', () => {
     const qrSlide = {
       ...slide,
       nodes: [createQrCodeElement(slide)],
     }
+    const v23 = normalizeFreeformDocument({ documentVersion: 23, activeSlideId: slide.id, slides: [qrSlide] })
+    expect(v23).not.toBeNull()
+    expect((v23!.slides[0].nodes[0] as FreeformQrCodeElement).payload).toBeTruthy()
     const v22 = normalizeFreeformDocument({ documentVersion: 22, activeSlideId: slide.id, slides: [qrSlide] })
     expect(v22).not.toBeNull()
-    expect((v22!.slides[0].nodes[0] as FreeformQrCodeElement).payload).toBeTruthy()
     const v21 = normalizeFreeformDocument({ documentVersion: 21, activeSlideId: slide.id, slides: [qrSlide] })
     expect(v21).toBeNull()
+  })
+
+  it('carries module styles at v23 and rejects them at v22', () => {
+    const styled: FreeformQrCodeElement = { ...createQrCodeElement(slide), moduleStyle: 'dot' }
+    const qrSlide = { ...slide, nodes: [styled] }
+    const v23 = normalizeFreeformDocument({ documentVersion: 23, activeSlideId: slide.id, slides: [qrSlide] })
+    expect(v23).not.toBeNull()
+    expect((v23!.slides[0].nodes[0] as FreeformQrCodeElement).moduleStyle).toBe('dot')
+    const v22 = normalizeFreeformDocument({ documentVersion: 22, activeSlideId: slide.id, slides: [qrSlide] })
+    expect(v22).toBeNull()
+    // The style patch round-trips through the reducer, and null restores square.
+    const base = createQrCodeElement(slide)
+    const patched = freeformReducer(
+      { documentVersion: 23, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { moduleStyle: 'rounded' } }] },
+    )
+    const next = patched.slides[0].nodes[0] as FreeformQrCodeElement
+    expect(next.moduleStyle).toBe('rounded')
+    const restored = freeformReducer(patched, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { moduleStyle: null } }],
+    })
+    expect('moduleStyle' in (restored.slides[0].nodes[0] as FreeformQrCodeElement)).toBe(false)
   })
 
   it('keeps a v22 document without any qrcode valid', () => {

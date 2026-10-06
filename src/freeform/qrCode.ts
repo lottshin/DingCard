@@ -5,7 +5,7 @@
 // which breaks ESM bundling. The module matrix lives in qrMatrix.ts, which
 // only the browser view imports.
 
-import type { QrErrorCorrectionLevel } from './types'
+import type { QrErrorCorrectionLevel, QrModuleStyle } from './types'
 
 /** Payloads stay short enough for every error-correction level. */
 export const QR_PAYLOAD_MAX_LENGTH = 512
@@ -19,4 +19,8 @@ export function isValidQrPayload(value: unknown): value is string {
 
 export function isValidQrEcl(value: unknown): value is QrErrorCorrectionLevel {
   return value === 'L' || value === 'M' || value === 'Q' || value === 'H'
+}
+
+export function isValidQrModuleStyle(value: unknown): value is QrModuleStyle {
+  return value === 'square' || value === 'rounded' || value === 'dot'
 }

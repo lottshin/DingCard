@@ -72,7 +72,7 @@ import {
   shadowPaintEquals,
 } from './appearance'
 import { isValidPathData } from './pathData'
-import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrPayload } from './qrCode'
+import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {
@@ -149,7 +149,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 22,
+    documentVersion: 23,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -500,6 +500,7 @@ const STYLE_KEYS = new Set([
   'dark',
   'light',
   'ecl',
+  'moduleStyle',
   'opacity',
   'shadow',
   'filter',
@@ -528,7 +529,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
   'stroke', 'strokeWidth', 'effect',
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
-const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'opacity', 'shadow', 'filter', 'blendMode'])
+const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
@@ -565,6 +566,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isHexColor(value)) return false
     } else if (key === 'ecl') {
       if (value !== null && !isValidQrEcl(value)) return false
+    } else if (key === 'moduleStyle') {
+      if (value !== null && !isValidQrModuleStyle(value)) return false
     } else if (key === 'filter') {
       if (value !== null && !cloneSceneFilter(value, true)) return false
     } else if (key === 'blendMode') {
@@ -1010,6 +1013,7 @@ function applyStylePatch(
   if (node.type === 'qrcode') {
     if (
       keys.some((key) => key !== 'dark' && key !== 'light' && key !== 'ecl'
+        && key !== 'moduleStyle'
         && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
     ) {
       return { ok: false, node }

@@ -34,7 +34,7 @@ import {
   isTextVerticalAlign,
   isValidParagraphSpacing,
 } from './appearance'
-import { isValidQrEcl, isValidQrPayload } from './qrCode'
+import { isValidQrEcl, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -987,6 +987,7 @@ const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 
 const QRCODE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   ecl: (record) => isValidQrEcl(record.ecl),
+  moduleStyle: (record) => isValidQrModuleStyle(record.moduleStyle),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,

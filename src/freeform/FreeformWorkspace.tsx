@@ -890,6 +890,19 @@ function isShapeElement(element: FreeformElement | undefined): element is Freefo
 /** Error-correction levels, low to high; M is the default. */
 const QR_ECL_OPTIONS = ['L', 'M', 'Q', 'H'] as const
 
+/** Module shapes; square is the default. */
+const QR_MODULE_STYLES = ['square', 'rounded', 'dot'] as const
+const QR_MODULE_STYLE_LABELS = { square: '方块', rounded: '圆角', dot: '圆点' } as const
+
+/** One-tap looks: colours plus a module shape, applied as one style patch. */
+const QR_PRESETS = [
+  { id: 'classic', label: '经典', dark: '#18181b', light: '#ffffff', moduleStyle: 'square' },
+  { id: 'dot', label: '圆点', dark: '#18181b', light: '#ffffff', moduleStyle: 'dot' },
+  { id: 'blue', label: '商务蓝', dark: '#1d4ed8', light: '#eff6ff', moduleStyle: 'rounded' },
+  { id: 'warm', label: '暖橙', dark: '#b45309', light: '#fef3c7', moduleStyle: 'dot' },
+  { id: 'promo', label: '促销红', dark: '#dc2626', light: '#fff1f2', moduleStyle: 'square' },
+] as const
+
 function isQrCodeElement(element: FreeformElement | undefined): element is FreeformQrCodeElement {
   return element?.type === 'qrcode'
 }
@@ -8310,6 +8323,20 @@ export function FreeformWorkspace({
                           </button>
                         ))}
                       </div>
+                      <div className="field-label with-gap">{t('模块样式')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('模块样式')}>
+                        {QR_MODULE_STYLES.map((style) => (
+                          <button
+                            key={style}
+                            type="button"
+                            className={(selectedElement.moduleStyle ?? 'square') === style ? 'seg-btn on' : 'seg-btn'}
+                            data-testid={`qr-module-${style}`}
+                            onClick={() => updateSelectedStyle({ moduleStyle: style === 'square' ? null : style })}
+                          >
+                            {t(QR_MODULE_STYLE_LABELS[style])}
+                          </button>
+                        ))}
+                      </div>
                       <div className="field-label with-gap">{t('颜色')}</div>
                       <div className="paint-row" data-testid="qr-colors">
                         <ColorPickerButton
@@ -8322,6 +8349,25 @@ export function FreeformWorkspace({
                           color={selectedElement.light}
                           onChange={(light) => updateSelectedStyle({ light })}
                         />
+                      </div>
+                      <div className="field-label with-gap">{t('预设')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('预设')}>
+                        {QR_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            className="seg-btn"
+                            data-testid={`qr-preset-${preset.id}`}
+                            title={t(preset.label)}
+                            onClick={() => updateSelectedStyle({
+                              dark: preset.dark,
+                              light: preset.light,
+                              moduleStyle: preset.moduleStyle === 'square' ? null : preset.moduleStyle,
+                            })}
+                          >
+                            {t(preset.label)}
+                          </button>
+                        ))}
                       </div>
                     </InspectorSection>
                   )}

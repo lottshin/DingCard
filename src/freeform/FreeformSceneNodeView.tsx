@@ -7,7 +7,7 @@ import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './r
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { bubbleClipPath, starClipPath } from './shapeGeometry'
 import { QR_ECL_DEFAULT } from './qrCode'
-import { qrMatrix, qrPath } from './qrMatrix'
+import { qrMatrix, qrModulePaths } from './qrMatrix'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
 import { effectHollowsWords, textEffectLayer, textEffectWordsStyle } from './textEffects'
@@ -460,8 +460,10 @@ function SceneLeafContent({
     // The spec's quiet zone: 2 modules of background on every side. The SVG
     // scales to the node box and stays square (meet) inside it.
     const quiet = 2
+    const style = leaf.moduleStyle ?? 'square'
     const matrix = qrMatrix(leaf.payload, leaf.ecl ?? QR_ECL_DEFAULT)
     const total = (matrix ? matrix.size : 21) + quiet * 2
+    const paths = matrix ? qrModulePaths(matrix, quiet, style) : null
     return (
       <svg
         className={presentationOnly ? 'freeform-preview-qrcode' : 'freeform-qrcode'}
@@ -472,7 +474,20 @@ function SceneLeafContent({
         style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
       >
         <rect x={0} y={0} width={total} height={total} fill={leaf.light} />
-        {matrix && <path d={qrPath(matrix, quiet)} fill={leaf.dark} />}
+        {paths && (style === 'square'
+          ? <path d={`${paths.finder}${paths.data}`} fill={leaf.dark} />
+          : (
+            <>
+              <path d={paths.finder} fill={leaf.dark} />
+              <path
+                d={paths.data}
+                fill={leaf.dark}
+                stroke={style === 'rounded' ? leaf.dark : undefined}
+                strokeWidth={style === 'rounded' ? 0.42 : undefined}
+                strokeLinejoin={style === 'rounded' ? 'round' : undefined}
+              />
+            </>
+          ))}
       </svg>
     )
   }

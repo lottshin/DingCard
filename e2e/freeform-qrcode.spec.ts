@@ -123,6 +123,39 @@ test('switches the correction level and recolours the code', async ({ page }) =>
   await expect(page.getByTestId('freeform-qrcode').locator('path')).toHaveAttribute('fill', '#18181b')
 })
 
+test('switches module styles and applies one-tap presets', async ({ page }) => {
+  await openFreeform(page)
+  await insertQrCode(page)
+  const code = page.getByTestId('freeform-qrcode')
+
+  // Square is the default: every module in one merged path of squares.
+  await expect(code.locator('path')).toHaveCount(1)
+  await expect(code.locator('path')).toHaveAttribute('d', /h1v1h-1z/)
+
+  // Dots split the square finder patterns from the dot data modules.
+  await page.getByTestId('qr-module-dot').click()
+  await expect(page.getByTestId('qr-module-dot')).toHaveClass(/on/)
+  await expect(code.locator('path')).toHaveCount(2)
+  await expect(code.locator('path').first()).toHaveAttribute('d', /h1v1h-1z/)
+  await expect(code.locator('path').nth(1)).toHaveAttribute('d', /a0\.42 0\.42 0 1 0/)
+
+  // Rounded keeps the split and strokes the data modules round.
+  await page.getByTestId('qr-module-rounded').click()
+  await expect(code.locator('path').nth(1)).toHaveAttribute('stroke-width', '0.42')
+  await expect(code.locator('path').nth(1)).toHaveAttribute('stroke-linejoin', 'round')
+
+  // One preset is one style patch: colours and shape together, one undo.
+  await page.getByTestId('qr-preset-blue').click()
+  await expect(code.locator('rect')).toHaveAttribute('fill', '#eff6ff')
+  await expect(code.locator('path').first()).toHaveAttribute('fill', '#1d4ed8')
+  await expect(code.locator('path').nth(1)).toHaveAttribute('stroke', '#1d4ed8')
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(code.locator('rect')).toHaveAttribute('fill', '#ffffff')
+  await expect(code.locator('path').first()).toHaveAttribute('fill', '#18181b')
+  // The preset's shape fell back with the same undo, leaving rounded on.
+  await expect(page.getByTestId('qr-module-rounded')).toHaveClass(/on/)
+})
+
 test('keeps the QR code editable alongside other elements', async ({ page }) => {
   await openFreeform(page)
   await insertQrCode(page)
