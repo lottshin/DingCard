@@ -162,7 +162,7 @@ function insertPages(
 export function createDingcardServer(): McpServer {
   const server = new McpServer({
     name: 'dingcard-mcp',
-    version: '0.33.1',
+    version: '0.34.0',
   })
   const documents = new DocumentStore()
 
