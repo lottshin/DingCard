@@ -151,7 +151,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 29,
+    documentVersion: 30,
     activeSlideId: slide.id,
     slides: [slide],
   }

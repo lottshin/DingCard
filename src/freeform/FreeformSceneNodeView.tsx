@@ -7,7 +7,7 @@ import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './r
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { bubbleClipPath, starClipPath } from './shapeGeometry'
 import { QR_ECL_DEFAULT } from './qrCode'
-import { barChartGeometry, lineChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
+import { barChartGeometry, lineChartGeometry, radarChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
 import { qrMatrix, qrModulePaths } from './qrMatrix'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
@@ -606,6 +606,53 @@ function SceneLeafContent({
                 </g>
               ))}
               <line x1={chart.axis.leftPad - 2} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
+              {chart.labels.map((label, index) => (
+                <text key={index} x={label.x} y={label.y} {...commonText}>
+                  {label.lines.map((line, lineIndex) => (
+                    <tspan key={lineIndex} x={label.x} dy={lineIndex === 0 ? 0 : fontSize * 1.2}>{line}</tspan>
+                  ))}
+                </text>
+              ))}
+            </>
+          )
+        })()}
+        {leaf.chartKind === 'radar' && (() => {
+          const chart = radarChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues })
+          return (
+            <>
+              {legend(chart.legend, fontSize)}
+              {chart.rings.map((d, index) => (
+                <path
+                  key={index}
+                  d={d}
+                  fill="none"
+                  stroke={fontColor}
+                  strokeWidth={index === 0 ? 1 : 0.6}
+                  opacity={index === 0 ? 0.35 : 0.18}
+                />
+              ))}
+              {chart.axes.map((axis, index) => (
+                <line
+                  key={index}
+                  x1={axis.x1}
+                  y1={axis.y1}
+                  x2={axis.x2}
+                  y2={axis.y2}
+                  stroke={fontColor}
+                  strokeWidth={0.6}
+                  opacity={0.18}
+                  data-testid="freeform-chart-axis"
+                />
+              ))}
+              {chart.series.map((entry, index) => (
+                <g key={index}>
+                  <path d={entry.d} fill={entry.color} opacity={0.18} />
+                  <path d={entry.d} fill="none" stroke={entry.color} strokeWidth={Math.max(2, leaf.height * 0.012)} strokeLinejoin="round" />
+                  {entry.values.map((value, valueIndex) => (
+                    <text key={valueIndex} x={value.x} y={value.y} {...commonText} fontWeight={600}>{value.text}</text>
+                  ))}
+                </g>
+              ))}
               {chart.labels.map((label, index) => (
                 <text key={index} x={label.x} y={label.y} {...commonText}>
                   {label.lines.map((line, lineIndex) => (

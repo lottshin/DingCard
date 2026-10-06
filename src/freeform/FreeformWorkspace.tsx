@@ -923,7 +923,7 @@ function isChartElement(element: FreeformElement | undefined): element is Freefo
 }
 
 /** Chart kinds in the inspector segment order. */
-const CHART_KINDS = ['bar', 'ring', 'line'] as const
+const CHART_KINDS = ['bar', 'ring', 'line', 'radar'] as const
 const CHART_BAR_MODES = ['grouped', 'stacked', 'percent'] as const
 const CHART_BAR_MODE_LABELS: Record<(typeof CHART_BAR_MODES)[number], string> = {
   grouped: '分组',
@@ -933,7 +933,7 @@ const CHART_BAR_MODE_LABELS: Record<(typeof CHART_BAR_MODES)[number], string> = 
 const CHART_SERIES_COLORS = ['#1d4ed8', '#e11d48', '#f59e0b'] as const
 const chartSeriesColorInUse = (colors: readonly string[]) =>
   CHART_SERIES_COLORS.find((color) => !colors.includes(color)) ?? CHART_SERIES_COLORS[0]
-const CHART_KIND_LABELS = { bar: '柱状图', ring: '环形图', line: '折线图' } as const
+const CHART_KIND_LABELS = { bar: '柱状图', ring: '环形图', line: '折线图', radar: '雷达图' } as const
 
 function isImageElement(element: FreeformElement | undefined): element is FreeformImageElement {
   return element?.type === 'image'

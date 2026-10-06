@@ -24,7 +24,7 @@ export function isValidChartBarMode(value: unknown): value is ChartBarMode {
 }
 
 export function isValidChartKind(value: unknown): value is ChartKind {
-  return value === 'bar' || value === 'ring' || value === 'line'
+  return value === 'bar' || value === 'ring' || value === 'line' || value === 'radar'
 }
 
 /** Labels: 1–24 non-blank characters each. */
@@ -435,6 +435,91 @@ export interface ChartRingSegment {
   color: string
   /** Where the percentage label sits, when the slice is big enough for one. */
   label: { x: number; y: number; text: string } | null
+}
+
+export interface ChartRadarSeriesGeometry {
+  /** The closed polygon path through the series' points. */
+  d: string
+  color: string
+  /** Value labels at the vertices (only when asked for). */
+  values: Array<{ x: number; y: number; text: string }>
+}
+
+export interface ChartRadarGeometry {
+  /** One polygon per series, the first drawn on top of the web. */
+  series: ChartRadarSeriesGeometry[]
+  /** The web rings at 1/4 steps, outermost first, as closed polygons. */
+  rings: string[]
+  /** Axis lines from the centre to the outer ring's vertices. */
+  axes: Array<{ x1: number; y1: number; x2: number; y2: number }>
+  /** Dimension labels centred past each axis end, wrapped when too wide. */
+  labels: Array<{ x: number; y: number; lines: string[] }>
+  legend: ChartLegendItem[]
+}
+
+/**
+ * A radar chart: one polygon per series over a shared web, the first axis
+ * pointing up. The outer ring sits at the nice ceiling of every value, so
+ * shapes stay comparable across series.
+ */
+export function radarChartGeometry(
+  width: number,
+  height: number,
+  labels: readonly string[],
+  series: readonly ChartSeriesInput[],
+  options: { showValues: boolean },
+): ChartRadarGeometry {
+  const legend = legendLayout(width, height, series)
+  const count = Math.max(3, labels.length)
+  const fontSize = chartLabelFont(height)
+  const center = { x: width / 2, y: height * 0.46 + legend.height / 2 }
+  const radius = Math.max(1, Math.min(width / 2, height * 0.42) - fontSize * 1.6)
+  const angleAt = (index: number) => -Math.PI / 2 + (index * 2 * Math.PI) / count
+  const pointAt = (index: number, distance: number) => ({
+    x: center.x + Math.cos(angleAt(index)) * distance,
+    y: center.y + Math.sin(angleAt(index)) * distance,
+  })
+  const polygon = (distance: number) => labels
+    .map((_, index) => {
+      const point = pointAt(index, distance)
+      return `${point.x.toFixed(1)} ${point.y.toFixed(1)}`
+    })
+    .join(' L')
+  const rings = [1, 0.75, 0.5, 0.25].map((share) => `M${polygon(radius * share)} Z`)
+  const axes = labels.map((_, index) => {
+    const point = pointAt(index, radius)
+    return { x1: center.x, y1: center.y, x2: point.x, y2: point.y }
+  })
+  const max = niceChartCeiling(Math.max(...series.flatMap((entry) => entry.values), 0))
+  const scale = max > 0 ? radius / max : 0
+  return {
+    series: series.map((entry) => {
+      const points = labels.map((_, index) => pointAt(index, (entry.values[index] ?? 0) * scale))
+      return {
+        d: `M${points.map((point) => `${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' L')} Z`,
+        color: entry.color,
+        values: options.showValues
+          ? points.map((point, index) => ({
+            x: point.x,
+            y: point.y - fontSize * 0.55,
+            text: formatChartValue(entry.values[index] ?? 0),
+          }))
+          : [],
+      }
+    }),
+    rings,
+    axes,
+    labels: labels.map((text, index) => {
+      const anchor = pointAt(index, radius + fontSize * 1.1)
+      const slot = (2 * Math.PI * (radius + fontSize)) / count
+      return {
+        x: anchor.x,
+        y: anchor.y + fontSize * 0.35,
+        lines: chartLabelLines(text, Math.max(slot * 0.94, fontSize * 2), fontSize),
+      }
+    }),
+    legend: legend.items,
+  }
 }
 
 export interface ChartRingGeometry {

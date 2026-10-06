@@ -254,6 +254,43 @@ test('stacks bars and normalises them to percentages with axis ticks', async ({ 
   await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(0)
 })
 
+test('switches to a radar web with one polygon per series', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+
+  await page.getByTestId('chart-kind-radar').click()
+  // The web: four rings (quarter steps) and one axis per category; the
+  // single series draws as a fill plus a stroke.
+  await expect(chart.locator('path')).toHaveCount(6)
+  await expect(chart.getByTestId('freeform-chart-axis')).toHaveCount(4)
+  // The dimension labels sit past the axis ends.
+  await expect(chart.getByText('一月', { exact: true })).toBeVisible()
+  await expect(chart.getByText('四月', { exact: true })).toBeVisible()
+  // Value labels ride the vertices when asked for.
+  await expect(chart.getByText('4', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await expect(chart.getByText('4', { exact: true })).toHaveCount(1)
+
+  // A second series draws a second polygon and names a legend.
+  await page.getByTestId('chart-series-add').click()
+  await page.getByLabel('系列名称', { exact: true }).fill('本期')
+  await page.getByTestId('chart-series-0').click()
+  await page.getByLabel('系列名称', { exact: true }).fill('上期')
+  await expect(chart.locator('path')).toHaveCount(8)
+  await expect(chart.getByTestId('freeform-chart-legend-item')).toHaveCount(2)
+
+  // Undo walks the edits back one at a time: the two names, the added
+  // series, the value labels, then the radar switch onto the sample bars.
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole('button', { name: '撤销', exact: true }).click()
+  }
+  await expect(chart.locator('path')).toHaveCount(6)
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(chart.locator('path')).toHaveCount(0)
+  await expect(chart.locator('rect')).toHaveCount(4)
+})
+
 test('round-trips a saved v24 chart and rejects it at v23', async ({ page }) => {
   await page.goto('/#/edit/canvas')
   await page.evaluate(() => localStorage.clear())

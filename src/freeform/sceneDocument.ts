@@ -107,7 +107,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -470,6 +470,7 @@ function hasStrictNodeKeys(
     const required = inputVersion >= 26 ? CHART_NODE_KEYS_V26 : CHART_NODE_KEYS
     return hasKeysWithOptionals(value, required, optionalKeysFor('chart', inputVersion))
       && (inputVersion >= 27 || !('barMode' in value))
+      && (inputVersion >= 30 || value.chartKind !== 'radar')
   }
   return false
 }
@@ -805,6 +806,8 @@ function normalizeStrictSceneNode(
   if (value.type === 'chart') {
     if (inputVersion >= 26) {
       if (!isValidChartKind(value.chartKind) || !Array.isArray(value.labels)) return null
+      // The radar kind is v30-only; older input versions reject it.
+      if (inputVersion < 30 && value.chartKind === 'radar') return null
       const labels = value.labels as unknown[]
       if (!labels.every(isValidChartLabel) || labels.length === 0 || labels.length > CHART_POINTS_MAX) return null
       if (!isValidChartSeriesList(value.series, labels.length)) return null
@@ -957,7 +960,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 29,
+    documentVersion: 30,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1096,6 +1099,11 @@ export function normalizeFreeformDocumentV28(value: unknown): FreeformDocument |
 /** Strictly validates an already-v29 document (v29 adds the image frame). */
 export function normalizeFreeformDocumentV29(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 29)
+}
+
+/** Strictly validates an already-v30 document (v30 adds the radar chart). */
+export function normalizeFreeformDocumentV30(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 30)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1365,6 +1373,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 30) return normalizeFreeformDocumentV30(value)
   if (value.documentVersion === 29) return normalizeFreeformDocumentV29(value)
   if (value.documentVersion === 28) return normalizeFreeformDocumentV28(value)
   if (value.documentVersion === 27) return normalizeFreeformDocumentV27(value)
@@ -1433,7 +1442,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 29,
+    documentVersion: 30,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1466,7 +1475,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 29,
+    documentVersion: 30,
     activeSlideId: document.activeSlideId,
     slides,
   }

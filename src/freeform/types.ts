@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 29
+  documentVersion: 30
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -347,7 +347,7 @@ export interface FreeformChartSeries {
 export interface FreeformChartElement extends FreeformElementBase {
   type: 'chart'
   /** Which chart is drawn (v24). */
-  chartKind: 'bar' | 'ring' | 'line'
+  chartKind: 'bar' | 'ring' | 'line' | 'radar'
   /** One category label per point, 1–24 characters (v24). */
   labels: string[]
   /** The drawn series, 1–3 of them (v26; v24–v25 carried one on the element). */
@@ -481,7 +481,7 @@ export interface FreeformNodeStylePatch {
   /** QR centre logo (v25); `null` removes it. */
   logoSrc?: string | null
   /** Which chart is drawn (v24); like the shape switcher on shapes. */
-  chartKind?: 'bar' | 'ring' | 'line'
+  chartKind?: 'bar' | 'ring' | 'line' | 'radar'
   /**
    *  Every series' colour at once (#RRGGBB, v24); `null` restores the default
    *  blue. Series carry their own colours since v26 — this key keeps old

@@ -15,6 +15,7 @@ import {
   isValidChartSeriesList,
   isValidChartSeriesName,
   lineChartGeometry,
+  radarChartGeometry,
   ringChartGeometry,
   tintTowardWhite,
 } from '../charts'
@@ -263,6 +264,41 @@ describe('chart geometry', () => {
   })
 })
 
+describe('radar chart geometry', () => {
+  it('webs the dimensions and polygons every series against a shared ceiling', () => {
+    const chart = radarChartGeometry(400, 320, ['速度', '力量', '技巧', '心态'], [
+      { name: '本期', values: [8, 5, 7, 6], color: '#1d4ed8' },
+      { name: '上期', values: [4, 6, 3, 5], color: '#e11d48' },
+    ], { showValues: true })
+    // Four rings at quarter steps, four axes, two named legend entries.
+    expect(chart.rings).toHaveLength(4)
+    expect(chart.axes).toHaveLength(4)
+    expect(chart.legend.map((item) => item.text)).toEqual(['本期', '上期'])
+    // The first axis points straight up from the centre.
+    expect(chart.axes[0].x2 - chart.axes[0].x1).toBeCloseTo(0, 0)
+    expect(chart.axes[0].y2).toBeLessThan(chart.axes[0].y1)
+    // Every series closes a polygon with one vertex per dimension.
+    for (const entry of chart.series) {
+      expect((entry.d.match(/ L/g) ?? []).length).toBe(3)
+      expect(entry.d.endsWith('Z')).toBe(true)
+      expect(entry.values).toHaveLength(4)
+    }
+    // Dimension labels sit past their axis ends, wrapped like the x axis.
+    expect(chart.labels.map((label) => label.lines.join(''))).toEqual(['速度', '力量', '技巧', '心态'])
+    // The nicer ceiling puts both series in the same web.
+    const taller = chart.series[0].d
+    const flatter = chart.series[1].d
+    expect(taller).not.toEqual(flatter)
+  })
+
+  it('keeps a small dimension count readable', () => {
+    const chart = radarChartGeometry(400, 320, ['甲', '乙', '丙'], [{ values: [2, 4, 6], color: '#1d4ed8' }], { showValues: false })
+    expect(chart.axes).toHaveLength(3)
+    expect(chart.series[0].values).toEqual([])
+    expect(chart.rings).toHaveLength(4)
+  })
+})
+
 describe('chart element in the document', () => {
   const slide: FreeformSlide = {
     id: 'slide-1',
@@ -272,7 +308,7 @@ describe('chart element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 29, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 30, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred bar chart with one sample series', () => {
     const element = createChartElement(slide)
@@ -385,6 +421,16 @@ describe('chart element in the document', () => {
     expect(v23).toBeNull()
   })
 
+  it('carries the radar kind at v30 and rejects it at v29', () => {
+    const radared: FreeformChartElement = { ...createChartElement(slide), chartKind: 'radar' }
+    const radarSlide = { ...slide, nodes: [radared as unknown as FreeformSceneNode] }
+    const v30 = normalizeFreeformDocument({ documentVersion: 30, activeSlideId: slide.id, slides: [radarSlide] })
+    expect(v30).not.toBeNull()
+    expect((v30!.slides[0].nodes[0] as FreeformChartElement).chartKind).toBe('radar')
+    const v29 = normalizeFreeformDocument({ documentVersion: 29, activeSlideId: slide.id, slides: [radarSlide] })
+    expect(v29).toBeNull()
+  })
+
   it('carries bar stacking at v27 and rejects it at v26', () => {
     const stacked: FreeformChartElement = { ...createChartElement(slide), barMode: 'percent' }
     const stackedSlide = { ...slide, nodes: [stacked as unknown as FreeformSceneNode] }
@@ -396,7 +442,7 @@ describe('chart element in the document', () => {
     // The style patch switches modes; null restores grouped by removal.
     const base = createChartElement(slide)
     const withMode = freeformReducer(
-      { documentVersion: 29, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 30, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { barMode: 'stacked' } }] },
     )
     expect((withMode.slides[0].nodes[0] as FreeformChartElement).barMode).toBe('stacked')
