@@ -185,6 +185,9 @@ export const app: Record<string, Translation> = {
   '关闭模板中心': 'Close templates',
   '模板列表': 'Template list',
   '模板详情': 'Template details',
+  '搜索模板': 'Search templates',
+  '搜索：名称、说明或标签': 'Search: name, description or tag',
+  '没有找到相关模板，换个关键词或尺寸试试。': 'No templates matched. Try another keyword or size.',
   'Markdown 长文排版': 'Markdown long-form layout',
   '自由画布轻设计': 'Freeform canvas design',
   '{n} 页示例已经排好，正文、主题和字体都可以改。': plural(

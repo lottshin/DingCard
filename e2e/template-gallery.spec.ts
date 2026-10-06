@@ -172,6 +172,43 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   await expect(page.locator('.freeform-workspace')).toHaveAttribute('data-history-depth', '0')
 })
 
+test('gallery search narrows the list by keyword and combines with the size filter', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await openFreeformTemplateGallery(page)
+
+  const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
+  await expect(dialog.locator('.template-tile')).toHaveCount(29)
+
+  const search = dialog.getByTestId('template-search')
+
+  // A tag keyword leaves the templates that carry it.
+  await search.fill('小红书')
+  await expect(dialog.locator('.template-tile')).toHaveCount(2)
+  await expect(dialog.locator('.template-tile h3')).toContainText(['干货笔记', '图片拼贴'])
+
+  // Words from the description count too.
+  await search.fill('柱状图')
+  await expect(dialog.locator('.template-tile')).toHaveCount(1)
+  await expect(dialog.locator('.template-tile h3')).toHaveText('数据盘点')
+
+  // The keyword combines with a size filter; a miss explains itself.
+  await search.fill('名片')
+  await expect(dialog.locator('.template-tile')).toHaveCount(1)
+  await dialog.getByTestId('template-format-story').click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(0)
+  await expect(dialog.getByTestId('template-search-empty')).toBeVisible()
+
+  // Escape in the box clears the keyword first; the gallery stays open.
+  await search.click()
+  await page.keyboard.press('Escape')
+  await expect(search).toHaveValue('')
+  await expect(dialog.locator('.template-tile')).toHaveCount(8)
+
+  // A second Escape closes the gallery.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+})
+
 test('Freeform sidebar mounts scene nodes only near the visible thumbnails', async ({ page }) => {
   await page.goto('/#/edit/canvas')
   await openFreeformTemplateGallery(page)

@@ -94,10 +94,21 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
   const allTemplates = templatesForWorkspace(workspace)
   const formats = TEMPLATE_FORMATS.filter((format) => allTemplates.some((template) => template.format === format.id))
   const [format, setFormat] = useState<TemplateFormatId | null>(null)
-  const templates = format ? allTemplates.filter((template) => template.format === format) : allTemplates
+  const [query, setQuery] = useState('')
+  const queryRef = useRef('')
+  // The keyword looks at the copy a tile shows, so it finds what the reader sees.
+  const keyword = query.trim().toLowerCase()
+  const templates = useMemo(() => {
+    const byFormat = format ? allTemplates.filter((template) => template.format === format) : allTemplates
+    if (!keyword) return byFormat
+    return byFormat.filter((template) =>
+      [template.title, template.description, ...template.tags]
+        .some((text) => t(text).toLowerCase().includes(keyword)))
+  }, [allTemplates, format, keyword])
   const [selectedId, setSelectedId] = useState(templates[0]?.id ?? '')
   const [pending, setPending] = useState<TemplateDefinition | null>(null)
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0]
+  queryRef.current = query
   pendingRef.current = pending
   onCloseRef.current = onClose
 
@@ -111,6 +122,15 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
+        // Escape in the search box clears the keyword first; the gallery stays.
+        if (
+          queryRef.current
+          && event.target instanceof HTMLElement
+          && event.target.closest('.template-search')
+        ) {
+          setQuery('')
+          return
+        }
         if (pendingRef.current) closePending()
         else onCloseRef.current()
         return
@@ -149,18 +169,24 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
 
   useEffect(() => {
     setFormat(null)
+    setQuery('')
     setSelectedId(allTemplates[0]?.id ?? '')
     pendingReturnFocusRef.current = null
     setPending(null)
   }, [workspace])
 
+  // Filtering can hide the picked tile; the selection follows what is shown.
+  useEffect(() => {
+    if (!templates.some((template) => template.id === selectedId)) {
+      setSelectedId(templates[0]?.id ?? '')
+    }
+  }, [templates, selectedId])
+
   function pickFormat(next: TemplateFormatId | null) {
     setFormat(next)
-    const shown = next ? allTemplates.filter((template) => template.format === next) : allTemplates
-    if (!shown.some((template) => template.id === selectedId)) setSelectedId(shown[0]?.id ?? '')
   }
 
-  if (!open || !selected) return null
+  if (!open) return null
 
   function requestApply(template: TemplateDefinition) {
     if (hasCurrentContent) {
@@ -185,12 +211,12 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
 
   function renderTile(template: TemplateDefinition) {
     return (
-      <article key={template.id} className={template.id === selected.id ? 'template-tile selected' : 'template-tile'}>
+      <article key={template.id} className={template.id === selected?.id ? 'template-tile selected' : 'template-tile'}>
         <button
           className='template-tile-preview'
           type='button'
           aria-label={t('预览{title}', { title: t(template.title) })}
-          aria-pressed={template.id === selected.id}
+          aria-pressed={template.id === selected?.id}
           onClick={() => setSelectedId(template.id)}
         >
           <TemplatePreview template={template} />
@@ -238,6 +264,15 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
 
         <div className='template-dialog-body'>
           <section className='template-list' aria-label={t('模板列表')}>
+            <input
+              className='template-search'
+              type='search'
+              data-testid='template-search'
+              aria-label={t('搜索模板')}
+              placeholder={t('搜索：名称、说明或标签')}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
             {formats.length > 1 && (
               <div className='template-formats' role='group' aria-label={t('按尺寸筛选')}>
                 <button type='button' aria-pressed={format === null} onClick={() => pickFormat(null)}>{t('全部')}</button>
@@ -249,8 +284,14 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
               </div>
             )}
             {templates.map(renderTile)}
+            {templates.length === 0 && (
+              <p className='template-search-empty' data-testid='template-search-empty'>
+                {t('没有找到相关模板，换个关键词或尺寸试试。')}
+              </p>
+            )}
           </section>
 
+          {selected && (
           <aside className='template-detail' aria-label={t('模板详情')}>
             <div className='template-detail-preview'><TemplatePreview template={selected} detail /></div>
             <div className='template-detail-copy'>
@@ -270,6 +311,7 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
               )}
             </div>
           </aside>
+          )}
         </div>
 
         {pending && (

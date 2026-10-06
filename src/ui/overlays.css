@@ -445,6 +445,36 @@
   gap: 6px;
 }
 
+/* Keyword search above the size filter: title, description, or tag text. */
+.template-search {
+  grid-column: 1 / -1;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: 400 13px/1 var(--ui-font);
+}
+
+.template-search::placeholder {
+  color: var(--text-3);
+}
+
+.template-search:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.template-search-empty {
+  grid-column: 1 / -1;
+  margin: 24px 0;
+  color: var(--text-2);
+  font: 400 13px/1.6 var(--ui-font);
+  text-align: center;
+}
+
+
 .template-formats button {
   height: 30px;
   padding: 0 12px;
