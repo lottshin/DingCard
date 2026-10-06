@@ -79,21 +79,21 @@ describe('shape parameter mapping', () => {
     expect(shapeParamFromPointer('cornerRadius', { x: 400, y: 0 }, 300, 200)).toBe(100)
   })
 
-  it('parks a small corner handle past the corner resize handle, on the arc beyond it', () => {
-    // A deep radius clears the resize handle and stays on the arc.
-    expect(cornerHandlePosition(120, 360, 240, 0.5)).toEqual({ x: 120, y: 120 })
-    // A small radius parks at the viewport clearance (24 px at the zoom).
+  it('rides the outline at the arc edge, parking past the corner resize handle', () => {
+    // A deep radius rides the outline where the arc meets the top edge.
+    expect(cornerHandlePosition(120, 360, 240, 0.5)).toEqual({ x: 120, y: 0 })
+    // A small radius parks along the same edge at the viewport clearance.
     expect(cornerHandlePosition(16, 360, 240, 0.5)).toEqual({
       x: SHAPE_PARAM_HANDLE_CLEARANCE_VIEWPORT_PX / 0.5,
-      y: SHAPE_PARAM_HANDLE_CLEARANCE_VIEWPORT_PX / 0.5,
+      y: 0,
     })
-    // A zoomed-out clearance is capped at a quarter of the short side, so the
-    // element's centre grab area stays free and the handle never overreaches.
-    expect(cornerHandlePosition(16, 360, 240, 0.25)).toEqual({ x: 60, y: 60 })
-    expect(cornerHandlePosition(16, 120, 100, 0.725)).toEqual({ x: 25, y: 25 })
-    expect(25 + 10 / 0.725).toBeLessThan(50)
-    // A tiny box keeps the handle inside its own half.
-    expect(cornerHandlePosition(8, 40, 30, 0.5)).toEqual({ x: 8, y: 8 })
+    // A zoomed-out park stays clear of the top edge handle's reach too.
+    expect(cornerHandlePosition(16, 360, 240, 0.25)).toEqual({ x: 84, y: 0 })
+    expect(cornerHandlePosition(16, 120, 100, 0.725).x).toBeCloseTo(26.9, 1)
+    expect(cornerHandlePosition(16, 120, 100, 0.725).y).toBe(0)
+    expect(26.9 + 10 / 0.725).toBeLessThan(50)
+    // A tiny box keeps the dot on its own edge half.
+    expect(cornerHandlePosition(8, 40, 30, 0.5)).toEqual({ x: 8, y: 0 })
   })
 
   it('places the star handle on the first inner vertex and reads the ratio back', () => {

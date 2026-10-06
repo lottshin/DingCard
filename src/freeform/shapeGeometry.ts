@@ -93,9 +93,9 @@ export function shapeParamOf(shape: FreeformShapeElement['shape']): ShapeParam |
 export const SHAPE_PARAM_HANDLE_CLEARANCE_VIEWPORT_PX = 24
 
 /**
- * Where the corner-radius handle is drawn: on the arc, but never inside the
- * corner resize handle's reach — small radii park the handle just past it
- * (the drag itself stays relative to the true arc, so nothing jumps).
+ * Where the corner-radius dot rides: on the outline, where the arc meets the
+ * top edge. A small radius parks it just past the corner resize handle's
+ * reach (24 viewport px), never into the top edge handle's own reach.
  */
 export function cornerHandlePosition(
   radius: number,
@@ -104,14 +104,10 @@ export function cornerHandlePosition(
   renderScale: number,
 ): { x: number; y: number } {
   const half = Math.min(width, height) / 2
-  // Park past the corner resize handle, but never deeper than a quarter of
-  // the short side, so the element's centre grab area stays free.
-  const clearance = Math.min(
-    SHAPE_PARAM_HANDLE_CLEARANCE_VIEWPORT_PX / Math.max(renderScale, 0.01),
-    half / 2,
-  )
-  const clamped = Math.max(Math.min(radius, half), clearance)
-  return { x: clamped, y: clamped }
+  const clamped = Math.max(Math.min(radius, half), 0)
+  const reach = SHAPE_PARAM_HANDLE_CLEARANCE_VIEWPORT_PX / Math.max(renderScale, 0.01)
+  const parked = Math.min(reach, Math.max(width / 2 - reach, width * 0.1))
+  return { x: Math.max(clamped, parked), y: 0 }
 }
 
 /** Where a shape's parameter handle sits, in the node's local px box. */

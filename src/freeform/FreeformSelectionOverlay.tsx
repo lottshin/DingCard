@@ -192,8 +192,8 @@ function buildOverlayFrames(
   let shapeParamPosition = node.type === 'shape' && !node.locked
     ? shapeHandlePosition(node.shape, localBounds.width, localBounds.height, node)
     : null
-  // The corner-radius handle parks past the corner resize handle's reach
-  // instead of under it; the drag base stays the true arc position.
+  // The corner-radius dot rides the outline at the arc's top-edge endpoint;
+  // the drag base stays the arc-centre anchor, so drawing never shifts it.
   if (shapeParamPosition && node.type === 'shape' && node.shape === 'rect') {
     shapeParamPosition = cornerHandlePosition(
       node.cornerRadius ?? 16,
