@@ -545,6 +545,7 @@ function SceneLeafContent({
           const chart = barChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, {
             showValues,
             mode: leaf.barMode ?? 'grouped',
+            showLegend: leaf.showLegend,
           })
           return (
             <>
@@ -579,7 +580,7 @@ function SceneLeafContent({
           )
         })()}
         {leaf.chartKind === 'line' && (() => {
-          const chart = lineChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues })
+          const chart = lineChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues, showLegend: leaf.showLegend })
           return (
             <>
               {legend(chart.legend, fontSize)}
@@ -617,7 +618,7 @@ function SceneLeafContent({
           )
         })()}
         {leaf.chartKind === 'radar' && (() => {
-          const chart = radarChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues })
+          const chart = radarChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues, showLegend: leaf.showLegend })
           return (
             <>
               {legend(chart.legend, fontSize)}
@@ -664,7 +665,7 @@ function SceneLeafContent({
           )
         })()}
         {leaf.chartKind === 'ring' && (() => {
-          const chart = ringChartGeometry(leaf.series, { showValues })
+          const chart = ringChartGeometry(leaf.series, { showValues, showLegend: leaf.showLegend })
           return (
             <>
               {chart.segments.length === 0

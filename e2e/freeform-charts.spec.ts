@@ -165,7 +165,7 @@ test('switches kinds and styles with one history entry each', async ({ page }) =
   await expect(chart.locator('circle')).toHaveCount(4)
 
   // Value labels turn on for the line, then undo restores the plain line.
-  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await page.getByTestId('chart-values-on').click()
   await expect(chart.getByText('4', { exact: true })).toHaveCount(1)
   await page.getByRole('button', { name: '撤销', exact: true }).click()
   await expect(chart.getByText('4', { exact: true })).toHaveCount(0)
@@ -218,6 +218,39 @@ test('adds a second series with grouped bars, a legend and nested rings', async 
   await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
 })
 
+test('switches the legend off and on through the inspector', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+
+  // 自动 is the default: a single unnamed series shows no legend at all.
+  await expect(page.getByTestId('chart-legend-auto')).toHaveClass(/on/)
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
+
+  // 显示 alone is not enough: even forced, the legend needs a named series.
+  await page.getByTestId('chart-legend-on').click()
+  await expect(page.getByTestId('chart-legend-on')).toHaveClass(/on/)
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
+
+  // Naming the series is what the forced legend was waiting for.
+  await page.getByTestId('chart-series-name').fill('今年')
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(1)
+
+  // A second named series earns a second item; 隐藏 takes the whole legend away.
+  await page.getByTestId('chart-series-add').click()
+  await page.getByTestId('chart-series-name').fill('去年')
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(2)
+  await page.getByTestId('chart-legend-off').click()
+  await expect(page.getByTestId('chart-legend-off')).toHaveClass(/on/)
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
+  await expect(chart.locator('rect:not(g [data-testid="freeform-chart-legend-item"] rect)')).toHaveCount(8)
+
+  // One history entry per seg click: undo brings the two-item legend back.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(2)
+  await expect(page.getByTestId('chart-legend-on')).toHaveClass(/on/)
+})
+
 test('stacks bars and normalises them to percentages with axis ticks', async ({ page }) => {
   await openFreeform(page)
   await insertChart(page)
@@ -231,7 +264,7 @@ test('stacks bars and normalises them to percentages with axis ticks', async ({ 
   // Stacked piles one column per category: same four columns, totalled on top.
   await page.getByTestId('chart-bar-mode-stacked').click()
   await expect(chart.locator('rect:not(g [data-testid="freeform-chart-legend-item"] rect)')).toHaveCount(4)
-  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await page.getByTestId('chart-values-on').click()
   await expect(chart.getByText('9', { exact: true })).toHaveCount(1)
   // Undo unwinds its own entries: first the labels, then the mode.
   await page.getByRole('button', { name: '撤销', exact: true }).click()
@@ -242,7 +275,7 @@ test('stacks bars and normalises them to percentages with axis ticks', async ({ 
 
   // Percent normalises each column to 100%: with the labels back on, the flat
   // sample reads 100% on every column and the axis ticks percentages.
-  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await page.getByTestId('chart-values-on').click()
   await page.getByTestId('chart-bar-mode-percent').click()
   // Four 100% segments and one 100% axis tick (its partner ticks 50%).
   await expect(chart.getByText('100%')).toHaveCount(5)
@@ -269,7 +302,7 @@ test('switches to a radar web with one polygon per series', async ({ page }) => 
   await expect(chart.getByText('四月', { exact: true })).toBeVisible()
   // Value labels ride the vertices when asked for.
   await expect(chart.getByText('4', { exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await page.getByTestId('chart-values-on').click()
   await expect(chart.getByText('4', { exact: true })).toHaveCount(1)
 
   // A second series draws a second polygon and names a legend.

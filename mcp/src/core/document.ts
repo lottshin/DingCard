@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v30 校验：需要 documentVersion=1–30 之一（旧版自动迁移为 v30）、非空 slides、'
+  '文档未通过自由画布 v31 校验：需要 documentVersion=1–31 之一（旧版自动迁移为 v31）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -60,6 +60,8 @@ export interface NodeSummary {
   series?: Array<{ name?: string; values: number[]; color: string }>
   /** How a bar chart stacks its series (v27). */
   barMode?: 'grouped' | 'stacked' | 'percent'
+  /** A chart's legend override (v31). */
+  showLegend?: boolean
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
@@ -160,6 +162,7 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       labels: node.labels,
       series: node.series,
       ...(node.barMode !== undefined ? { barMode: node.barMode } : {}),
+      ...(node.showLegend !== undefined ? { showLegend: node.showLegend } : {}),
     }
   }
   if (node.type === 'path') {

@@ -107,7 +107,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -366,6 +366,7 @@ const QRCODE_OPTIONAL_V25_KEYS = new Set([...QRCODE_OPTIONAL_V23_KEYS, 'logoSrc'
 const QRCODE_OPTIONAL_V30_KEYS = new Set([...QRCODE_OPTIONAL_V25_KEYS, 'quietZone'])
 const CHART_OPTIONAL_V24_KEYS = new Set(['showValues', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_OPTIONAL_V27_KEYS = new Set([...CHART_OPTIONAL_V24_KEYS, 'barMode'])
+const CHART_OPTIONAL_V31_KEYS = new Set([...CHART_OPTIONAL_V27_KEYS, 'showLegend'])
 const PATH_OPTIONAL_V15_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'join', 'fillRule',
 ])
@@ -419,7 +420,10 @@ function optionalKeysFor(
     if (inputVersion >= 30) return QRCODE_OPTIONAL_V30_KEYS
     return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
   }
-  if (type === 'chart') return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
+  if (type === 'chart') {
+    if (inputVersion >= 31) return CHART_OPTIONAL_V31_KEYS
+    return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
+  }
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
@@ -476,6 +480,7 @@ function hasStrictNodeKeys(
     return hasKeysWithOptionals(value, required, optionalKeysFor('chart', inputVersion))
       && (inputVersion >= 27 || !('barMode' in value))
       && (inputVersion >= 30 || value.chartKind !== 'radar')
+      && (inputVersion >= 31 || !('showLegend' in value))
   }
   return false
 }
@@ -820,6 +825,10 @@ function normalizeStrictSceneNode(
       if ('barMode' in value) {
         if (inputVersion < 27 || !isValidChartBarMode(value.barMode)) return null
       }
+      // The legend switch is v31-only; older input versions reject it.
+      if ('showLegend' in value) {
+        if (inputVersion < 31 || typeof value.showLegend !== 'boolean') return null
+      }
       const chartAppearance = cloneStrictAppearance(value, inputVersion)
       if (!chartAppearance) return null
       return {
@@ -834,6 +843,7 @@ function normalizeStrictSceneNode(
         })),
         ...('showValues' in value ? { showValues: true } : {}),
         ...('barMode' in value ? { barMode: value.barMode as ChartBarMode } : {}),
+        ...('showLegend' in value ? { showLegend: value.showLegend as boolean } : {}),
         ...chartAppearance,
       }
     }
@@ -970,7 +980,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 30,
+    documentVersion: 31,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1114,6 +1124,11 @@ export function normalizeFreeformDocumentV29(value: unknown): FreeformDocument |
 /** Strictly validates an already-v30 document (v30 adds the radar chart). */
 export function normalizeFreeformDocumentV30(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 30)
+}
+
+/** Strictly validates an already-v31 document (v31 adds the chart legend switch). */
+export function normalizeFreeformDocumentV31(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 31)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1383,6 +1398,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 31) return normalizeFreeformDocumentV31(value)
   if (value.documentVersion === 30) return normalizeFreeformDocumentV30(value)
   if (value.documentVersion === 29) return normalizeFreeformDocumentV29(value)
   if (value.documentVersion === 28) return normalizeFreeformDocumentV28(value)
@@ -1452,7 +1468,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 30,
+    documentVersion: 31,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1485,7 +1501,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 30,
+    documentVersion: 31,
     activeSlideId: document.activeSlideId,
     slides,
   }

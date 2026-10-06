@@ -14,6 +14,7 @@ import {
   isValidChartSeries,
   isValidChartSeriesList,
   isValidChartSeriesName,
+  legendVisible,
   lineChartGeometry,
   radarChartGeometry,
   ringChartGeometry,
@@ -264,6 +265,39 @@ describe('chart geometry', () => {
   })
 })
 
+describe('chart legend switch', () => {
+  it('honours the switch across every kind (v31)', () => {
+    // One named series stays legend-free by default; `true` names it.
+    const single = [{ name: '今年', values: [2, 4], color: '#1d4ed8' }]
+    expect(barChartGeometry(400, 300, ['一', '二'], single, { showValues: false }).legend).toEqual([])
+    const forced = barChartGeometry(400, 300, ['一', '二'], single, { showValues: false, showLegend: true })
+    expect(forced.legend.map((item) => item.text)).toEqual(['今年'])
+    expect(lineChartGeometry(400, 300, ['一', '二'], single, { showValues: false, showLegend: true })
+      .legend.map((item) => item.text)).toEqual(['今年'])
+    expect(radarChartGeometry(400, 320, ['一', '二'], single, { showValues: false, showLegend: true })
+      .legend.map((item) => item.text)).toEqual(['今年'])
+    expect(ringChartGeometry(single, { showValues: false, showLegend: true })
+      .legend.map((item) => item.text)).toEqual(['今年'])
+    // `false` hides a legend two named series would otherwise earn, and the
+    // plot takes the freed room back.
+    const pair = [
+      { name: '去年', values: [1, 1], color: '#1d4ed8' },
+      { name: '今年', values: [3, 1], color: '#e11d48' },
+    ]
+    const auto = barChartGeometry(400, 300, ['一', '二'], pair, { showValues: false })
+    const hidden = barChartGeometry(400, 300, ['一', '二'], pair, { showValues: false, showLegend: false })
+    expect(auto.legend).toHaveLength(2)
+    expect(hidden.legend).toEqual([])
+    expect(hidden.bars[0].y).toBeLessThan(auto.bars[0].y)
+    expect(ringChartGeometry(pair, { showValues: false, showLegend: false }).legend).toEqual([])
+    // The switch itself stays readable: false never shows, absent needs two.
+    expect(legendVisible(undefined, 2)).toBe(true)
+    expect(legendVisible(undefined, 1)).toBe(false)
+    expect(legendVisible(true, 1)).toBe(true)
+    expect(legendVisible(false, 2)).toBe(false)
+  })
+})
+
 describe('radar chart geometry', () => {
   it('webs the dimensions and polygons every series against a shared ceiling', () => {
     const chart = radarChartGeometry(400, 320, ['速度', '力量', '技巧', '心态'], [
@@ -308,7 +342,7 @@ describe('chart element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 30, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 31, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred bar chart with one sample series', () => {
     const element = createChartElement(slide)
@@ -424,7 +458,7 @@ describe('chart element in the document', () => {
   it('carries the radar kind at v30 and rejects it at v29', () => {
     const radared: FreeformChartElement = { ...createChartElement(slide), chartKind: 'radar' }
     const radarSlide = { ...slide, nodes: [radared as unknown as FreeformSceneNode] }
-    const v30 = normalizeFreeformDocument({ documentVersion: 30, activeSlideId: slide.id, slides: [radarSlide] })
+    const v30 = normalizeFreeformDocument({ documentVersion: 31, activeSlideId: slide.id, slides: [radarSlide] })
     expect(v30).not.toBeNull()
     expect((v30!.slides[0].nodes[0] as FreeformChartElement).chartKind).toBe('radar')
     const v29 = normalizeFreeformDocument({ documentVersion: 29, activeSlideId: slide.id, slides: [radarSlide] })
@@ -442,7 +476,7 @@ describe('chart element in the document', () => {
     // The style patch switches modes; null restores grouped by removal.
     const base = createChartElement(slide)
     const withMode = freeformReducer(
-      { documentVersion: 30, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 31, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { barMode: 'stacked' } }] },
     )
     expect((withMode.slides[0].nodes[0] as FreeformChartElement).barMode).toBe('stacked')
@@ -452,6 +486,42 @@ describe('chart element in the document', () => {
       updates: [{ path: [base.id], patch: { barMode: null } }],
     })
     expect('barMode' in (grouped.slides[0].nodes[0] as FreeformChartElement)).toBe(false)
+  })
+
+  it('carries the legend switch at v31 and rejects it at v30', () => {
+    const switched: FreeformChartElement = { ...createChartElement(slide), showLegend: false }
+    const switchedSlide = { ...slide, nodes: [switched as unknown as FreeformSceneNode] }
+    const v31 = normalizeFreeformDocument({ documentVersion: 31, activeSlideId: slide.id, slides: [switchedSlide] })
+    expect(v31).not.toBeNull()
+    expect((v31!.slides[0].nodes[0] as FreeformChartElement).showLegend).toBe(false)
+    const v30 = normalizeFreeformDocument({ documentVersion: 30, activeSlideId: slide.id, slides: [switchedSlide] })
+    expect(v30).toBeNull()
+    // The style patch sets all three states; null restores the automatic rule.
+    const base = createChartElement(slide)
+    const hidden = freeformReducer(
+      { documentVersion: 31, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { showLegend: false } }] },
+    )
+    expect((hidden.slides[0].nodes[0] as FreeformChartElement).showLegend).toBe(false)
+    const shown = freeformReducer(hidden, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { showLegend: true } }],
+    })
+    expect((shown.slides[0].nodes[0] as FreeformChartElement).showLegend).toBe(true)
+    const automatic = freeformReducer(shown, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { showLegend: null } }],
+    })
+    expect('showLegend' in (automatic.slides[0].nodes[0] as FreeformChartElement)).toBe(false)
+    // A non-boolean value rejects the patch.
+    const bad = freeformReducer(automatic, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { showLegend: 'no' as unknown as boolean } }],
+    })
+    expect(bad).toBe(automatic)
   })
 
   it('migrates a v24 chart onto one series and takes three at v26', () => {

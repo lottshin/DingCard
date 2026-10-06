@@ -204,15 +204,27 @@ interface LegendLayout {
   height: number
 }
 
-/** The legend row across the top: one chip and name per named series. It only
- *  appears once two series or more carry names worth telling apart. */
+/** The legend rule (v31): `false` never shows one, `true` shows it from the
+ *  first named series, absent keeps the automatic behaviour — a legend once
+ *  two series or more carry names worth telling apart. */
+export function legendVisible(
+  showLegend: boolean | undefined,
+  namedCount: number,
+): boolean {
+  if (showLegend === false) return false
+  if (showLegend === true) return namedCount >= 1
+  return namedCount >= 2
+}
+
+/** The legend row across the top: one chip and name per named series. */
 function legendLayout(
   width: number,
   height: number,
   series: readonly ChartSeriesInput[],
+  showLegend?: boolean,
 ): LegendLayout {
   const named = series.filter((entry) => (entry.name ?? '').trim().length > 0)
-  if (named.length < 2) return { items: [], height: 0 }
+  if (!legendVisible(showLegend, named.length)) return { items: [], height: 0 }
   const texts = named.map((entry) => entry.name!.trim())
   // Fit the widest row: each item is a chip plus its text, in one line.
   const fontSize = Math.max(8, Math.min(
@@ -257,10 +269,10 @@ export function barChartGeometry(
   height: number,
   labels: readonly string[],
   series: readonly ChartSeriesInput[],
-  options: { showValues: boolean; mode?: ChartBarMode },
+  options: { showValues: boolean; mode?: ChartBarMode; showLegend?: boolean },
 ): ChartBarGeometry {
   const mode = options.mode ?? 'grouped'
-  const legend = legendLayout(width, height, series)
+  const legend = legendLayout(width, height, series, options.showLegend)
   const topPad = height * 0.1 + legend.height
   const bottomPad = height * 0.16
   const plotHeight = Math.max(1, height - topPad - bottomPad)
@@ -382,9 +394,9 @@ export function lineChartGeometry(
   height: number,
   labels: readonly string[],
   series: readonly ChartSeriesInput[],
-  options: { showValues: boolean },
+  options: { showValues: boolean; showLegend?: boolean },
 ): ChartLineGeometry {
-  const legend = legendLayout(width, height, series)
+  const legend = legendLayout(width, height, series, options.showLegend)
   const topPad = height * 0.12 + legend.height
   const bottomPad = height * 0.16
   const plotHeight = Math.max(1, height - topPad - bottomPad)
@@ -467,9 +479,9 @@ export function radarChartGeometry(
   height: number,
   labels: readonly string[],
   series: readonly ChartSeriesInput[],
-  options: { showValues: boolean },
+  options: { showValues: boolean; showLegend?: boolean },
 ): ChartRadarGeometry {
-  const legend = legendLayout(width, height, series)
+  const legend = legendLayout(width, height, series, options.showLegend)
   const count = Math.max(3, labels.length)
   const fontSize = chartLabelFont(height)
   const center = { x: width / 2, y: height * 0.46 + legend.height / 2 }
@@ -534,7 +546,7 @@ export interface ChartRingGeometry {
  *  another ring, the first on the outside. */
 export function ringChartGeometry(
   series: readonly ChartSeriesInput[],
-  options: { showValues: boolean },
+  options: { showValues: boolean; showLegend?: boolean },
 ): ChartRingGeometry {
   const colors = series.map((entry) => entry.color)
   const track = tintTowardWhite(colors[0], 0.82)
@@ -580,13 +592,16 @@ export function ringChartGeometry(
       segments.push({ d, color: pointColors[pointIndex], label })
     })
   })
-  return { segments, track, legend: ringLegendLayout(series).items }
+  return { segments, track, legend: ringLegendLayout(series, options.showLegend).items }
 }
 
 /** The ring's legend sits under the rings, in the same 100-box units. */
-function ringLegendLayout(series: readonly ChartSeriesInput[]): { items: ChartLegendItem[] } {
+function ringLegendLayout(
+  series: readonly ChartSeriesInput[],
+  showLegend?: boolean,
+): { items: ChartLegendItem[] } {
   const named = series.filter((entry) => (entry.name ?? '').trim().length > 0)
-  if (named.length < 2) return { items: [] }
+  if (!legendVisible(showLegend, named.length)) return { items: [] }
   const texts = named.map((entry) => entry.name!.trim())
   const fontSize = 6.5
   const chip = 4.2

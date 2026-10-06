@@ -151,7 +151,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 30,
+    documentVersion: 31,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -524,6 +524,7 @@ const STYLE_KEYS = new Set([
   'chartKind',
   'accent',
   'showValues',
+  'showLegend',
   'barMode',
   'opacity',
   'shadow',
@@ -555,7 +556,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
 const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZone', 'opacity', 'shadow', 'filter', 'blendMode'])
-const CHART_APPEARANCE_KEYS = new Set(['showValues', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
+const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
 ])
@@ -603,6 +604,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isHexColor(value)) return false
     } else if (key === 'showValues') {
       if (value !== null && value !== true) return false
+    } else if (key === 'showLegend') {
+      if (value !== null && typeof value !== 'boolean') return false
     } else if (key === 'barMode') {
       if (value !== null && !isValidChartBarMode(value)) return false
     } else if (key === 'filter') {
@@ -1074,7 +1077,7 @@ function applyStylePatch(
   if (node.type === 'chart') {
     if (
       keys.some((key) => key !== 'chartKind' && key !== 'accent' && key !== 'showValues'
-        && key !== 'barMode'
+        && key !== 'barMode' && key !== 'showLegend'
         && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
     ) {
       return { ok: false, node }

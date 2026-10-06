@@ -943,6 +943,10 @@ const chartSeriesColorInUse = (colors: readonly string[]) =>
   CHART_SERIES_COLORS.find((color) => !colors.includes(color)) ?? CHART_SERIES_COLORS[0]
 const CHART_KIND_LABELS = { bar: '柱状图', ring: '环形图', line: '折线图', radar: '雷达图' } as const
 
+/** Legend rules (v31): automatic from two named series, always on, never. */
+const CHART_LEGEND_MODES = ['auto', 'on', 'off'] as const
+const CHART_LEGEND_MODE_LABELS = { auto: '自动', on: '显示', off: '隐藏' } as const
+
 function isImageElement(element: FreeformElement | undefined): element is FreeformImageElement {
   return element?.type === 'image'
 }
@@ -8574,10 +8578,27 @@ export function FreeformWorkspace({
                           type="button"
                           className={selectedElement.showValues === true ? 'seg-btn on' : 'seg-btn'}
                           aria-pressed={selectedElement.showValues === true}
+                          data-testid="chart-values-on"
                           onClick={() => updateSelectedStyle({ showValues: selectedElement.showValues === true ? null : true })}
                         >
                           {t('显示')}
                         </button>
+                      </div>
+                      <div className="field-label with-gap">{t('图例')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('图例')}>
+                        {CHART_LEGEND_MODES.map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            className={(selectedElement.showLegend === undefined
+                              ? 'auto'
+                              : selectedElement.showLegend ? 'on' : 'off') === mode ? 'seg-btn on' : 'seg-btn'}
+                            data-testid={`chart-legend-${mode}`}
+                            onClick={() => updateSelectedStyle({ showLegend: mode === 'auto' ? null : mode === 'on' })}
+                          >
+                            {t(CHART_LEGEND_MODE_LABELS[mode])}
+                          </button>
+                        ))}
                       </div>
                     </InspectorSection>
                   )}

@@ -128,7 +128,7 @@ describe('draft migration', () => {
 
     expect(migrated?.mode).toBe('freeform-slide')
     if (migrated?.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(migrated.document.documentVersion).toBe(30)
+    expect(migrated.document.documentVersion).toBe(31)
     expect(migrated.document.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
     expect(migrated.document.slides[0].nodes).toEqual([])
   })
@@ -174,7 +174,7 @@ describe('draft migration', () => {
 
     expect(draft?.mode).toBe('freeform-slide')
     if (draft?.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(draft.document.documentVersion).toBe(30)
+    expect(draft.document.documentVersion).toBe(31)
     expect(draft.document.slides[0].nodes[0]).toMatchObject({
       type: 'text',
       name: '文本',
@@ -246,7 +246,7 @@ describe('draft migration', () => {
       to: '#f97316',
       angle: 46,
     })
-    expect(draft.document.documentVersion).toBe(30)
+    expect(draft.document.documentVersion).toBe(31)
     expect(draft.document.slides[0].nodes[0]).toMatchObject({
       type: 'shape',
       fill: { type: 'linear-gradient', from: '#fed7aa', to: '#f97316', angle: 90 },
@@ -313,7 +313,7 @@ describe('draft migration', () => {
 
     expect(normalized?.mode).toBe('freeform-slide')
     if (normalized?.mode !== 'freeform-slide') throw new Error('Expected freeform draft')
-    expect(normalized.document).toEqual({ ...document, documentVersion: 30 })
+    expect(normalized.document).toEqual({ ...document, documentVersion: 31 })
   })
 
   it('preserves owned non-default v4 framing and rejects malformed v4 writes', () => {

@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 30,
+    documentVersion: 31,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(30)
+    expect(result.document.documentVersion).toBe(31)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -565,6 +565,40 @@ describe('applyActions', () => {
     expect(styledChart && styledChart.type === 'chart'
       ? styledChart.series.every((entry) => entry.color === '#dc2626')
       : false).toBe(true)
+
+    // The v31 legend switch stamps and clears, and rides in the summary.
+    const legendful = applyActions(styled.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { showLegend: false } }],
+      },
+    ])
+    expect(legendful.ok).toBe(true)
+    if (!legendful.ok) return
+    const legendChart = legendful.document.slides[0].nodes.find((node) => node.id === 'chart-1')
+    expect(legendChart && legendChart.type === 'chart' ? legendChart.showLegend : undefined).toBe(false)
+    const summary = inspectDocument(legendful.document)
+    if (!summary.ok) throw new Error(summary.error)
+    expect(summary.slides[0].nodes.find((node) => node.id === 'chart-1'))
+      .toMatchObject({ type: 'chart', showLegend: false })
+    const automatic = applyActions(legendful.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { showLegend: null } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { showLegend: 'no' } }],
+      },
+    ])
+    expect(automatic.ok).toBe(true)
+    if (!automatic.ok) return
+    expect(automatic.changes).toEqual([true, false])
+    const clearedChart = automatic.document.slides[0].nodes.find((node) => node.id === 'chart-1')
+    expect(clearedChart && clearedChart.type === 'chart' ? 'showLegend' in clearedChart : true).toBe(false)
 
     const edited = applyActions(styled.document, [
       {

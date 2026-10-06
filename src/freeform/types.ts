@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 30
+  documentVersion: 31
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -365,6 +365,12 @@ export interface FreeformChartElement extends FreeformElementBase {
    *  column to 100%.
    */
   barMode?: 'grouped' | 'stacked' | 'percent'
+  /**
+   *  Override the legend rule (v31): absent keeps the automatic behaviour
+   *  (a legend once two or more series are named), `true` shows it as soon
+   *  as one series is named, `false` hides it altogether.
+   */
+  showLegend?: boolean
 }
 
 export type FreeformElement =
@@ -499,6 +505,8 @@ export interface FreeformNodeStylePatch {
   showValues?: true | null
   /** Bar stacking (v27); `null` restores grouped. */
   barMode?: 'grouped' | 'stacked' | 'percent' | null
+  /** Legend override (v31); `null` restores the automatic rule. */
+  showLegend?: boolean | null
 }
 
 export interface FreeformNodeGeometryPatch {
