@@ -947,6 +947,14 @@ const CHART_KIND_LABELS = { bar: '柱状图', ring: '环形图', line: '折线�
 const CHART_LEGEND_MODES = ['auto', 'on', 'off'] as const
 const CHART_LEGEND_MODE_LABELS = { auto: '自动', on: '显示', off: '隐藏' } as const
 
+/** One-tap series colour sets: each series takes the next colour in order. */
+const CHART_PALETTES = [
+  { id: 'business', label: '商务蓝', colors: ['#1d4ed8', '#0ea5e9', '#94a3b8'] },
+  { id: 'sunset', label: '暖阳', colors: ['#b45309', '#dc2626', '#f59e0b'] },
+  { id: 'grove', label: '森林', colors: ['#15803d', '#65a30d', '#0f766e'] },
+  { id: 'candy', label: '糖果', colors: ['#db2777', '#7c3aed', '#f59e0b'] },
+] as const
+
 function isImageElement(element: FreeformElement | undefined): element is FreeformImageElement {
   return element?.type === 'image'
 }
@@ -8394,6 +8402,25 @@ export function FreeformWorkspace({
                           </div>
                         </>
                       )}
+                      <div className="field-label with-gap">{t('配色')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('配色')}>
+                        {CHART_PALETTES.map((palette) => (
+                          <button
+                            key={palette.id}
+                            type="button"
+                            className="seg-btn"
+                            data-testid={`chart-palette-${palette.id}`}
+                            title={t(palette.label)}
+                            onClick={() => updateSelectedContent({
+                              series: selectedElement.series.map((entry, index) => (
+                                { ...entry, color: palette.colors[index] ?? entry.color }
+                              )),
+                            })}
+                          >
+                            {t(palette.label)}
+                          </button>
+                        ))}
+                      </div>
                       <div className="field-label with-gap">{t('系列')}</div>
                       <div className="seg stretch" role="group" aria-label={t('系列')}>
                         {selectedElement.series.map((entry, index) => (

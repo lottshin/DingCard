@@ -218,6 +218,35 @@ test('adds a second series with grouped bars, a legend and nested rings', async 
   await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
 })
 
+test('recolors every series at once with one-tap palettes', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+  const bars = chart.locator('rect:not(g [data-testid="freeform-chart-legend-item"] rect)')
+  const barFills = () => bars.evaluateAll((rects) =>
+    Array.from(new Set(rects.map((rect) => rect.getAttribute('fill')))))
+
+  // Two unnamed series start on the default pair of colours.
+  await page.getByTestId('chart-series-add').click()
+  expect(await barFills()).toEqual(['#1d4ed8', '#e11d48'])
+
+  // One tap recolours both series in order, taking the set's first two colours.
+  await page.getByTestId('chart-palette-sunset').click()
+  expect(await barFills()).toEqual(['#b45309', '#dc2626'])
+
+  // A third series takes the set's third colour; undo walks the sets back.
+  await page.getByTestId('chart-series-add').click()
+  await page.getByTestId('chart-palette-grove').click()
+  expect(await barFills()).toEqual(['#15803d', '#65a30d', '#0f766e'])
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  // The added series keeps the first colour the sunset set left free.
+  expect(await barFills()).toEqual(['#b45309', '#dc2626', '#1d4ed8'])
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  expect(await barFills()).toEqual(['#b45309', '#dc2626'])
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  expect(await barFills()).toEqual(['#1d4ed8', '#e11d48'])
+})
+
 test('switches the legend off and on through the inspector', async ({ page }) => {
   await openFreeform(page)
   await insertChart(page)
