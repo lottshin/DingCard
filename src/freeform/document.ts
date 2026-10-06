@@ -72,7 +72,7 @@ import {
   shadowPaintEquals,
 } from './appearance'
 import { isValidPathData } from './pathData'
-import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
+import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
 import { CHART_ACCENT_DEFAULT, isValidChartKind, isValidChartSeries } from './charts'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
@@ -151,7 +151,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 24,
+    documentVersion: 25,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -520,6 +520,7 @@ const STYLE_KEYS = new Set([
   'light',
   'ecl',
   'moduleStyle',
+  'logoSrc',
   'chartKind',
   'accent',
   'showValues',
@@ -551,7 +552,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
   'stroke', 'strokeWidth', 'effect',
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
-const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'opacity', 'shadow', 'filter', 'blendMode'])
+const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
@@ -591,6 +592,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidQrEcl(value)) return false
     } else if (key === 'moduleStyle') {
       if (value !== null && !isValidQrModuleStyle(value)) return false
+    } else if (key === 'logoSrc') {
+      if (value !== null && !isValidQrLogoSrc(value)) return false
     } else if (key === 'chartKind') {
       if (!isValidChartKind(value)) return false
     } else if (key === 'accent') {
@@ -1082,7 +1085,7 @@ function applyStylePatch(
   if (node.type === 'qrcode') {
     if (
       keys.some((key) => key !== 'dark' && key !== 'light' && key !== 'ecl'
-        && key !== 'moduleStyle'
+        && key !== 'moduleStyle' && key !== 'logoSrc'
         && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
     ) {
       return { ok: false, node }
@@ -1102,6 +1105,7 @@ function applyStylePatch(
     const light = 'light' in patch
       ? (patch.light === null ? QR_LIGHT_DEFAULT : patch.light as string)
       : node.light
+    // A logo is optional: `withAppearancePatch` removes it on `null`.
     const next = withAppearancePatch({ ...node, dark, light }, patch, QRCODE_APPEARANCE_KEYS)
     const same = keys.every((key) =>
       QRCODE_APPEARANCE_KEYS.has(key)

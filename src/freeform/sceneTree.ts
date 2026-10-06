@@ -34,7 +34,7 @@ import {
   isTextVerticalAlign,
   isValidParagraphSpacing,
 } from './appearance'
-import { isValidQrEcl, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
+import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
 import { isValidChartKind, isValidChartSeries } from './charts'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
@@ -1001,6 +1001,7 @@ const CHART_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 const QRCODE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   ecl: (record) => isValidQrEcl(record.ecl),
   moduleStyle: (record) => isValidQrModuleStyle(record.moduleStyle),
+  logoSrc: (record) => isValidQrLogoSrc(record.logoSrc),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,

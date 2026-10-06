@@ -111,7 +111,7 @@ describe('chart element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 24, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 25, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred bar chart with sample data', () => {
     const element = createChartElement(slide)

@@ -10,6 +10,7 @@ function imageSource(leaf: FreeformSceneLeaf): string | undefined {
   if (leaf.type === 'image') return leaf.src
   if (leaf.type === 'shape' && leaf.fill.type === 'image') return leaf.fill.src
   if (leaf.type === 'path' && leaf.fill.type === 'image') return leaf.fill.src
+  if (leaf.type === 'qrcode' && leaf.logoSrc !== undefined) return leaf.logoSrc
   return undefined
 }
 
@@ -17,6 +18,7 @@ function cloneLeafWithSource(
   leaf: FreeformSceneLeaf,
   source: string | undefined,
 ): FreeformSceneLeaf {
+  if (leaf.type === 'qrcode') return { ...leaf, logoSrc: source ?? leaf.logoSrc }
   if (leaf.type === 'image') return { ...leaf, src: source ?? leaf.src }
   if (leaf.type === 'shape' && leaf.fill.type === 'image') {
     return { ...leaf, fill: { ...leaf.fill, src: source ?? leaf.fill.src } }

@@ -3098,6 +3098,14 @@ html.theme-anim * {
   padding: 0 8px;
 }
 
+/* The QR logo hint: one quiet line under the upload buttons. */
+.freeform-inspector .qr-logo-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
 .freeform-inspector .qr-payload-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-weak);

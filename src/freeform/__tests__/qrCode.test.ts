@@ -92,7 +92,7 @@ describe('qrcode element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 24, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 25, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred square with the defaults', () => {
     const element = createQrCodeElement(slide)
@@ -187,7 +187,7 @@ describe('qrcode element in the document', () => {
     // The style patch round-trips through the reducer, and null restores square.
     const base = createQrCodeElement(slide)
     const patched = freeformReducer(
-      { documentVersion: 24, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 25, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { moduleStyle: 'rounded' } }] },
     )
     const next = patched.slides[0].nodes[0] as FreeformQrCodeElement
@@ -198,6 +198,35 @@ describe('qrcode element in the document', () => {
       updates: [{ path: [base.id], patch: { moduleStyle: null } }],
     })
     expect('moduleStyle' in (restored.slides[0].nodes[0] as FreeformQrCodeElement)).toBe(false)
+  })
+
+  it('carries a centre logo at v25 and rejects it at v24', () => {
+    const marked: FreeformQrCodeElement = { ...createQrCodeElement(slide), logoSrc: 'img:logo1' }
+    const qrSlide = { ...slide, nodes: [marked] }
+    const v25 = normalizeFreeformDocument({ documentVersion: 25, activeSlideId: slide.id, slides: [qrSlide] })
+    expect(v25).not.toBeNull()
+    expect((v25!.slides[0].nodes[0] as FreeformQrCodeElement).logoSrc).toBe('img:logo1')
+    const v24 = normalizeFreeformDocument({ documentVersion: 24, activeSlideId: slide.id, slides: [qrSlide] })
+    expect(v24).toBeNull()
+    // The style patch stamps and removes the logo; a blank one rejects.
+    const base = createQrCodeElement(slide)
+    const stamped = freeformReducer(
+      { documentVersion: 25, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { logoSrc: '/templates/mark.svg' } }] },
+    )
+    expect((stamped.slides[0].nodes[0] as FreeformQrCodeElement).logoSrc).toBe('/templates/mark.svg')
+    const removed = freeformReducer(stamped, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { logoSrc: null } }],
+    })
+    expect('logoSrc' in (removed.slides[0].nodes[0] as FreeformQrCodeElement)).toBe(false)
+    const blank = freeformReducer(stamped, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { logoSrc: '   ' } }],
+    })
+    expect(blank).toBe(stamped)
   })
 
   it('keeps a v22 document without any qrcode valid', () => {

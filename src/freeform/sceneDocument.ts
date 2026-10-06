@@ -82,7 +82,7 @@ import {
   isValidParagraphSpacing,
 } from './appearance'
 import { isValidPathData } from './pathData'
-import { isValidQrEcl, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
+import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
 import { isValidChartKind, isValidChartSeries } from './charts'
 
 type UnknownRecord = Record<string, unknown>
@@ -98,7 +98,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -346,6 +346,7 @@ const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
 const LINE_OPTIONAL_V14_KEYS = new Set([...LINE_OPTIONAL_V13_KEYS, 'points'])
 const QRCODE_OPTIONAL_V23_KEYS = new Set(['ecl', 'moduleStyle', 'opacity', 'shadow', 'filter', 'blendMode'])
+const QRCODE_OPTIONAL_V25_KEYS = new Set([...QRCODE_OPTIONAL_V23_KEYS, 'logoSrc'])
 const CHART_OPTIONAL_V24_KEYS = new Set(['showValues', 'opacity', 'shadow', 'filter', 'blendMode'])
 const PATH_OPTIONAL_V15_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'join', 'fillRule',
@@ -396,7 +397,7 @@ function optionalKeysFor(
     return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
   }
   if (type === 'shape') return inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
-  if (type === 'qrcode') return QRCODE_OPTIONAL_V23_KEYS
+  if (type === 'qrcode') return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
   if (type === 'chart') return CHART_OPTIONAL_V24_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
@@ -439,6 +440,7 @@ function hasStrictNodeKeys(
     return inputVersion >= 22
       && hasKeysWithOptionals(value, QRCODE_NODE_KEYS, optionalKeysFor('qrcode', inputVersion))
       && (inputVersion >= 23 || !('moduleStyle' in value))
+      && (inputVersion >= 25 || !('logoSrc' in value))
   }
   // Chart nodes are v24-only; older input versions reject them.
   if (value.type === 'chart') {
@@ -795,6 +797,10 @@ function normalizeStrictSceneNode(
     if ('moduleStyle' in value) {
       if (inputVersion < 23 || !isValidQrModuleStyle(value.moduleStyle)) return null
     }
+    // A centred logo is v25-only; older input versions reject it.
+    if ('logoSrc' in value) {
+      if (inputVersion < 25 || !isValidQrLogoSrc(value.logoSrc)) return null
+    }
     const qrAppearance = cloneStrictAppearance(value, inputVersion)
     if (!qrAppearance) return null
     return {
@@ -805,6 +811,7 @@ function normalizeStrictSceneNode(
       light: value.light,
       ...('ecl' in value ? { ecl: value.ecl as QrErrorCorrectionLevel } : {}),
       ...('moduleStyle' in value ? { moduleStyle: value.moduleStyle as QrModuleStyle } : {}),
+      ...('logoSrc' in value ? { logoSrc: value.logoSrc as string } : {}),
       ...qrAppearance,
     }
   }
@@ -887,7 +894,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 24,
+    documentVersion: 25,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1001,6 +1008,11 @@ export function normalizeFreeformDocumentV23(value: unknown): FreeformDocument |
 /** Strictly validates an already-v24 document (v24 adds the chart element). */
 export function normalizeFreeformDocumentV24(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 24)
+}
+
+/** Strictly validates an already-v25 document (v25 adds QR code logos). */
+export function normalizeFreeformDocumentV25(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 25)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1270,6 +1282,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 25) return normalizeFreeformDocumentV25(value)
   if (value.documentVersion === 24) return normalizeFreeformDocumentV24(value)
   if (value.documentVersion === 23) return normalizeFreeformDocumentV23(value)
   if (value.documentVersion === 22) return normalizeFreeformDocumentV22(value)
@@ -1333,7 +1346,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 24,
+    documentVersion: 25,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1366,7 +1379,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 24,
+    documentVersion: 25,
     activeSlideId: document.activeSlideId,
     slides,
   }

@@ -567,9 +567,19 @@ function SceneLeafContent({
     // scales to the node box and stays square (meet) inside it.
     const quiet = 2
     const style = leaf.moduleStyle ?? 'square'
-    const matrix = qrMatrix(leaf.payload, leaf.ecl ?? QR_ECL_DEFAULT)
+    // A logo covers the centre, so its code is generated at the highest
+    // error correction no matter what the stored level says.
+    const hasLogo = leaf.logoSrc !== undefined && leaf.logoSrc !== ''
+    const matrix = qrMatrix(leaf.payload, hasLogo ? 'H' : leaf.ecl ?? QR_ECL_DEFAULT)
     const total = (matrix ? matrix.size : 21) + quiet * 2
     const paths = matrix ? qrModulePaths(matrix, quiet, style) : null
+    const logoSrc = leaf.logoSrc !== undefined && leaf.logoSrc !== ''
+      ? store.images.resolve(leaf.logoSrc)
+      : ''
+    // The logo sits on a light plate at a quarter of the code's edge: big
+    // enough to read, small enough for H to recover what it covers.
+    const logoSize = total * 0.25
+    const logoCorner = (total - logoSize) / 2
     return (
       <svg
         className={presentationOnly ? 'freeform-preview-qrcode' : 'freeform-qrcode'}
@@ -594,6 +604,28 @@ function SceneLeafContent({
               />
             </>
           ))}
+        {logoSrc && (
+          <>
+            <rect
+              data-testid="freeform-qrcode-logo-plate"
+              x={logoCorner - 0.5}
+              y={logoCorner - 0.5}
+              width={logoSize + 1}
+              height={logoSize + 1}
+              rx={1.5}
+              fill={leaf.light}
+            />
+            <image
+              data-testid="freeform-qrcode-logo"
+              href={logoSrc}
+              x={logoCorner}
+              y={logoCorner}
+              width={logoSize}
+              height={logoSize}
+              preserveAspectRatio="xMidYMid meet"
+            />
+          </>
+        )}
       </svg>
     )
   }

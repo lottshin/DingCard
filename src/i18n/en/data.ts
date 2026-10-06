@@ -179,6 +179,13 @@ export const data: Record<string, Translation> = {
   '内容': 'Content',
   '二维码内容': 'QR code content',
   '纠错级别': 'Error correction',
+  '品牌 logo': 'Brand logo',
+  '上传 logo': 'Upload logo',
+  '更换 logo': 'Replace logo',
+  '移除 logo': 'Remove logo',
+  'logo 盖在码中央，会自动按最高纠错级别 H 生成，扫码不受影响':
+    "The logo sits over the code's centre; the code is generated at the top error correction (H), so it still scans",
+  'logo 上传失败，请稍后重试': 'The logo upload failed. Please try again',
   '码点颜色': 'Module colour',
   '背景颜色': 'Background colour',
   '模块样式': 'Module shape',

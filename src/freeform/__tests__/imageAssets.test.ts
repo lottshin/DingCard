@@ -74,7 +74,7 @@ function slide(id: string, nodes: FreeformElement[]): FreeformSlide {
 }
 
 function document(...slides: FreeformSlide[]): FreeformDocument {
-  return { documentVersion: 24, activeSlideId: slides[0].id, slides }
+  return { documentVersion: 25, activeSlideId: slides[0].id, slides }
 }
 
 function sceneImage(id: string, src: string): FreeformSceneLeaf {
@@ -112,7 +112,7 @@ function sceneGroup(
 
 function sceneDocument(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 24,
+    documentVersion: 25,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -137,6 +137,39 @@ describe('freeform image assets', () => {
       '/uploads/shape.png',
       'https://cdn.example/fill.png',
     ])
+  })
+
+  it('collects, maps and materializes a QR code logo like any picture', () => {
+    const logoLeaf: FreeformSceneLeaf = {
+      ...image('qr-1', 'img:unused'),
+      type: 'qrcode',
+      id: 'qr-1',
+      name: '二维码',
+      locked: false,
+      hidden: false,
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 240,
+      rotation: 0,
+      scale: 1,
+      payload: 'https://dingcard.app',
+      dark: '#18181b',
+      light: '#ffffff',
+      logoSrc: 'img:logo',
+    } as unknown as FreeformSceneLeaf
+    const input = document(slide('page-1', [logoLeaf]))
+
+    expect(collectFreeformImageSources(input)).toEqual(['img:logo'])
+
+    const output = materializeLocalFreeformImages(input, {
+      isRef: (src) => src.startsWith('img:'),
+      resolve: (src) => (src === 'img:logo' ? 'data:image/svg+xml;base64,bG9nbw' : ''),
+    })
+    const outputQr = output.slides[0].nodes[0]
+    if (outputQr.type !== 'qrcode') throw new Error('Expected a qrcode leaf')
+    expect(outputQr.logoSrc).toBe('data:image/svg+xml;base64,bG9nbw')
+    expect((input.slides[0].nodes[0] as { logoSrc?: string }).logoSrc).toBe('img:logo')
   })
 
   it('materializes local img refs in a clone without mutating the source document', () => {

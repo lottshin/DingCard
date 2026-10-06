@@ -24,3 +24,14 @@ export function isValidQrEcl(value: unknown): value is QrErrorCorrectionLevel {
 export function isValidQrModuleStyle(value: unknown): value is QrModuleStyle {
   return value === 'square' || value === 'rounded' || value === 'dot'
 }
+
+/**
+ * A logo is drawn over the code's centre: an image reference (`img:<id>`), a
+ * public path or a URL. Renders force error correction H so the covered
+ * modules stay recoverable.
+ */
+export const QR_LOGO_SRC_MAX_LENGTH = 100_000
+
+export function isValidQrLogoSrc(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= QR_LOGO_SRC_MAX_LENGTH
+}

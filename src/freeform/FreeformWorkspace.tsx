@@ -1466,6 +1466,7 @@ export function FreeformWorkspace({
   const importedFonts = useImportedFonts()
   const shapeFillInputRef = useRef<HTMLInputElement>(null)
   const pageBackgroundInputRef = useRef<HTMLInputElement>(null)
+  const qrLogoInputRef = useRef<HTMLInputElement>(null)
   const [pageBackgroundPending, setPageBackgroundPending] = useState(false)
   const shapeFillOperationTokensRef = useRef(new Map<string, symbol>())
   // Starts unknown, so an editor opened with a known owner reopens their last project.
@@ -3609,6 +3610,24 @@ export function FreeformWorkspace({
       showOperationError(error, t('图片填充失败，请稍后重试'))
     } finally {
       if (shapeFillInputRef.current) shapeFillInputRef.current.value = ''
+    }
+  }
+
+  /** A logo from disk is stamped into the middle of the selected QR code. */
+  async function setQrLogoFromFile(file: File) {
+    if (!selectedPath || !isQrCodeElement(selectedElement)) return
+    try {
+      const images = ownerStore
+      if (images.remote) await retainImagesNow()
+      const raw = await readFileAsDataUrl(file)
+      // A logo is a small mark; a tight cap keeps the stored copy light.
+      const downscaled = await downscaleDataUrl(raw, 600)
+      const src = await images.images.put(downscaled)
+      updateSelectedStyle({ logoSrc: src })
+    } catch (error) {
+      showOperationError(error, t('logo 上传失败，请稍后重试'))
+    } finally {
+      if (qrLogoInputRef.current) qrLogoInputRef.current.value = ''
     }
   }
 
@@ -8468,6 +8487,40 @@ export function FreeformWorkspace({
                           onChange={(light) => updateSelectedStyle({ light })}
                         />
                       </div>
+                      <div className="field-label with-gap">{t('品牌 logo')}</div>
+                      <div className="paint-row" data-testid="qr-logo-row">
+                        <button
+                          className="ghost"
+                          type="button"
+                          data-testid="qr-logo-upload"
+                          onClick={() => qrLogoInputRef.current?.click()}
+                        >
+                          {selectedElement.logoSrc ? t('更换 logo') : t('上传 logo')}
+                        </button>
+                        {selectedElement.logoSrc && (
+                          <button
+                            className="ghost"
+                            type="button"
+                            data-testid="qr-logo-remove"
+                            onClick={() => updateSelectedStyle({ logoSrc: null })}
+                          >
+                            {t('移除 logo')}
+                          </button>
+                        )}
+                      </div>
+                      <p className="qr-logo-hint" data-testid="qr-logo-hint">
+                        {t('logo 盖在码中央，会自动按最高纠错级别 H 生成，扫码不受影响')}
+                      </p>
+                      <input
+                        ref={qrLogoInputRef}
+                        className="freeform-file"
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0]
+                          if (file) void setQrLogoFromFile(file)
+                        }}
+                      />
                       <div className="field-label with-gap">{t('预设')}</div>
                       <div className="seg stretch" role="group" aria-label={t('预设')}>
                         {QR_PRESETS.map((preset) => (

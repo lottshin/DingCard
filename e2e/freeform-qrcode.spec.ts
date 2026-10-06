@@ -10,6 +10,7 @@ import {
   startWithSettingsPanelOpen,
 } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
+import { TEST_PNG, signUpToSave } from './freeformTools'
 
 test.beforeEach(async ({ context, page }) => {
   await installOfflineFontRoutes(context)
@@ -168,6 +169,61 @@ test('keeps the QR code editable alongside other elements', async ({ page }) => 
   // Re-selecting the QR brings its inspector section back.
   await clickQrCode(page)
   await expect(page.getByLabel('二维码内容', { exact: true })).toBeVisible()
+})
+
+test('stamps a centre logo and regenerates the code at H', async ({ page }) => {
+  await openFreeform(page)
+  await insertQrCode(page)
+  await clickQrCode(page)
+
+  const code = page.getByTestId('freeform-qrcode')
+  // The default payload at M is a version-2 code: 29 units with the quiet zone.
+  await expect(code).toHaveAttribute('viewBox', '0 0 29 29')
+
+  // Upload a logo through the inspector; the hidden file input takes it.
+  await page.locator('.freeform-inspector input.freeform-file').setInputFiles({
+    name: 'logo.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  // The logo renders on its light plate, over the code's centre.
+  await expect(code.getByTestId('freeform-qrcode-logo')).toHaveAttribute('href', /^data:image\//)
+  await expect(code.getByTestId('freeform-qrcode-logo-plate')).toBeVisible()
+  await expect(page.getByTestId('qr-logo-hint')).toContainText('H')
+  // The same payload at H needs a version-3 code to carry the extra codewords.
+  await expect(code).toHaveAttribute('viewBox', '0 0 33 33')
+
+  // One history entry: undo takes the logo off and the code back to M.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(code.getByTestId('freeform-qrcode-logo')).toHaveCount(0)
+  await expect(code).toHaveAttribute('viewBox', '0 0 29 29')
+
+  // The remove button clears it too, after a fresh upload.
+  await page.locator('.freeform-inspector input.freeform-file').setInputFiles({
+    name: 'logo.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expect(code.getByTestId('freeform-qrcode-logo')).toHaveAttribute('href', /^data:image\//)
+  await expect(page.getByTestId('qr-logo-upload')).toHaveText('更换 logo')
+  await page.getByTestId('qr-logo-remove').click()
+  await expect(code.getByTestId('freeform-qrcode-logo')).toHaveCount(0)
+  await expect(page.getByTestId('qr-logo-upload')).toHaveText('上传 logo')
+
+  // A saved logo survives the reload with its picture, still on the code.
+  await page.locator('.freeform-inspector input.freeform-file').setInputFiles({
+    name: 'logo.png',
+    mimeType: 'image/png',
+    buffer: TEST_PNG,
+  })
+  await expect(code.getByTestId('freeform-qrcode-logo')).toHaveAttribute('href', /^data:image\//)
+  await signUpToSave(page, `qr-logo-${Date.now().toString(36)}`)
+  await page.reload()
+  await expect(page.getByTestId('editor-save-state')).toHaveText('已保存')
+  // Scoped to the canvas: the page thumbnail renders the same code with its logo.
+  const reloadedCode = page.getByTestId('freeform-qrcode')
+  await expect(reloadedCode.getByTestId('freeform-qrcode-logo')).toHaveAttribute('href', /^data:image\//)
+  await expect(reloadedCode).toHaveAttribute('viewBox', '0 0 33 33')
 })
 
 test('round-trips a saved v22 QR code and rejects it at v21', async ({ page }) => {

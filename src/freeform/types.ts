@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 24
+  documentVersion: 25
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -320,6 +320,12 @@ export interface FreeformQrCodeElement extends FreeformElementBase {
   /** Module shape (v23); absent means square. The finder patterns stay
    *  square in every style so the code keeps scanning. */
   moduleStyle?: QrModuleStyle
+  /**
+   *  A logo drawn over the code's centre (v25): an image reference, a public
+   *  path or a URL. Rendering forces error correction H so the covered
+   *  modules stay recoverable.
+   */
+  logoSrc?: string
 }
 
 export interface FreeformChartElement extends FreeformElementBase {
@@ -452,6 +458,8 @@ export interface FreeformNodeStylePatch {
   ecl?: QrErrorCorrectionLevel | null
   /** QR module shape (v23); `null` restores square. */
   moduleStyle?: QrModuleStyle | null
+  /** QR centre logo (v25); `null` removes it. */
+  logoSrc?: string | null
   /** Which chart is drawn (v24); like the shape switcher on shapes. */
   chartKind?: 'bar' | 'ring' | 'line'
   /** Chart colour (#RRGGBB, v24); `null` restores the default blue. */
