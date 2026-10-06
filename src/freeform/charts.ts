@@ -42,6 +42,39 @@ export function isValidChartSeriesName(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= CHART_SERIES_NAME_MAX_LENGTH
 }
 
+/** The size category labels render at; mirrors the view's label font. */
+export function chartLabelFont(height: number): number {
+  return Math.max(9, Math.min(height * 0.062, 15))
+}
+
+/** A label's rough width: CJK glyphs a full em, the rest a bit over half. */
+function chartLabelWidth(text: string, fontSize: number): number {
+  let units = 0
+  for (const char of text) units += char.charCodeAt(0) > 0x2e7f ? 1 : 0.56
+  return units * fontSize
+}
+
+/**
+ * Split a category label that is wider than its slot into two lines, at a
+ * word boundary near the middle when one exists, otherwise in half. Labels
+ * that already fit stay on one line.
+ */
+export function chartLabelLines(text: string, maxWidth: number, fontSize: number): string[] {
+  if (!text || chartLabelWidth(text, fontSize) <= maxWidth) return [text]
+  const middle = Math.ceil(text.length / 2)
+  const boundaries = new Set([' ', '·', '・', '，', '、', '：', ':', '—', '-'])
+  let split = middle
+  for (let distance = 0; distance < middle; distance += 1) {
+    const before = middle - distance
+    const after = middle + distance
+    if (before > 0 && boundaries.has(text[before - 1])) { split = before; break }
+    if (after > 0 && after < text.length && boundaries.has(text[after - 1])) { split = after; break }
+  }
+  const first = text.slice(0, split).trim()
+  const rest = text.slice(split).trim()
+  return first && rest ? [first, rest] : [text]
+}
+
 export function isValidChartSeries(labels: unknown, values: unknown): boolean {
   if (!Array.isArray(labels) || !Array.isArray(values)) return false
   if (labels.length === 0 || labels.length > CHART_POINTS_MAX) return false
@@ -175,8 +208,8 @@ export interface ChartBarGeometry {
   bars: Array<{ x: number; y: number; width: number; height: number; color: string }>
   /** The zero line under the bars. */
   baseline: { y: number }
-  /** Category labels centred under each group. */
-  labels: Array<{ x: number; y: number; text: string }>
+  /** Category labels centred under each group, wrapped when too wide. */
+  labels: Array<{ x: number; y: number; lines: string[] }>
   /** Value labels: above each bar or column total (only when asked for). */
   values: Array<{ x: number; y: number; text: string }>
   /** Percentage labels inside stacked segments (percent mode, only when asked for). */
@@ -285,7 +318,7 @@ export function barChartGeometry(
     labels: labels.map((text, index) => ({
       x: axis.leftPad + slot * index + slot / 2,
       y: baselineY + labelFontSize * 1.4,
-      text,
+      lines: chartLabelLines(text, slot * 0.94, chartLabelFont(height)),
     })),
     values,
     percents,
@@ -305,7 +338,7 @@ export interface ChartLineSeriesGeometry {
 
 export interface ChartLineGeometry {
   lines: ChartLineSeriesGeometry[]
-  labels: Array<{ x: number; y: number; text: string }>
+  labels: Array<{ x: number; y: number; lines: string[] }>
   baseline: { y: number }
   /** The y-axis grid lines and ticks, sharing the bars' layout. */
   axis: ChartAxis
@@ -357,7 +390,7 @@ export function lineChartGeometry(
     labels: labels.map((text, index) => ({
       x: xAt(index),
       y: height - bottomPad + fontSize * 1.4,
-      text,
+      lines: chartLabelLines(text, (count > 1 ? slot : plotWidth) * 0.94, chartLabelFont(height)),
     })),
     baseline: { y: height - bottomPad },
     axis,

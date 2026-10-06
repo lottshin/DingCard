@@ -85,6 +85,31 @@ test('edits the series through the data rows', async ({ page }) => {
   await expect(page.locator('[data-testid^="chart-data-remove"]')).toHaveCount(0)
 })
 
+test('wraps a long category label onto two lines', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+
+  // The sample labels are short: one line each.
+  const january = chart.locator('text').filter({ hasText: '一月' })
+  await expect(january).toHaveCount(1)
+  await expect(january.locator('tspan')).toHaveCount(1)
+
+  // An eight-character label no longer fits its slot; it folds in the middle.
+  const firstLabel = page.getByLabel('第 1 项标签', { exact: true })
+  await firstLabel.fill('第一季度营收小结')
+  const wrapped = chart.locator('text').filter({ hasText: '第一季度营收小结' })
+  await expect(wrapped).toHaveCount(1)
+  await expect(wrapped.locator('tspan')).toHaveCount(2)
+  await expect(wrapped.locator('tspan').nth(0)).toHaveText(/^第一季/)
+  await expect(wrapped.locator('tspan').nth(1)).toHaveText(/营收小结$/)
+
+  // Undo folds it back to the sample label.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(chart.locator('text').filter({ hasText: '第一季度营收小结' })).toHaveCount(0)
+  await expect(chart.getByText('一月', { exact: true })).toBeVisible()
+})
+
 test('switches kinds and styles with one history entry each', async ({ page }) => {
   await openFreeform(page)
   await insertChart(page)

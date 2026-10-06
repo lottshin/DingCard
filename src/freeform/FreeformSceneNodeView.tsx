@@ -558,7 +558,11 @@ function SceneLeafContent({
               ))}
               <line x1={chart.axis ? chart.axis.leftPad - 2 : 0} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
               {chart.labels.map((label, index) => (
-                <text key={index} x={label.x} y={label.y} {...commonText}>{label.text}</text>
+                <text key={index} x={label.x} y={label.y} {...commonText}>
+                  {label.lines.map((line, lineIndex) => (
+                    <tspan key={lineIndex} x={label.x} dy={lineIndex === 0 ? 0 : fontSize * 1.2}>{line}</tspan>
+                  ))}
+                </text>
               ))}
               {chart.values.map((value, index) => (
                 <text key={index} x={value.x} y={value.y} {...commonText} fontWeight={600}>{value.text}</text>
@@ -598,7 +602,11 @@ function SceneLeafContent({
               ))}
               <line x1={chart.axis.leftPad - 2} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
               {chart.labels.map((label, index) => (
-                <text key={index} x={label.x} y={label.y} {...commonText}>{label.text}</text>
+                <text key={index} x={label.x} y={label.y} {...commonText}>
+                  {label.lines.map((line, lineIndex) => (
+                    <tspan key={lineIndex} x={label.x} dy={lineIndex === 0 ? 0 : fontSize * 1.2}>{line}</tspan>
+                  ))}
+                </text>
               ))}
             </>
           )

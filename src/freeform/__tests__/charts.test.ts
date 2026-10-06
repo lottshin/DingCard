@@ -5,6 +5,8 @@ import {
   CHART_POINTS_MAX,
   CHART_SERIES_MAX,
   barChartGeometry,
+  chartLabelFont,
+  chartLabelLines,
   chartPointColors,
   formatChartValue,
   isValidChartKind,
@@ -74,6 +76,21 @@ describe('chart colours', () => {
 })
 
 describe('chart geometry', () => {
+  it('wraps a category label that outgrows its slot into two lines', () => {
+    const font = chartLabelFont(300)
+    // A label that fits stays whole.
+    expect(chartLabelLines('一月', 100, font)).toEqual(['一月'])
+    // A wide CJK label splits in half near the middle.
+    expect(chartLabelLines('第一季度营收小结', 100, font)).toHaveLength(2)
+    const [first, second] = chartLabelLines('第一季度营收小结', 100, font)
+    expect(first + second).toBe('第一季度营收小结')
+    expect(Math.abs(first.length - second.length)).toBeLessThanOrEqual(1)
+    // A separator near the middle wins over the exact half.
+    expect(chartLabelLines('华东 · 华南大区', 60, font)).toEqual(['华东 ·', '华南大区'])
+    // Two lines is the limit: a very long label never becomes three.
+    expect(chartLabelLines('这是一个特别特别特别特别长的类目名称', 40, font)).toHaveLength(2)
+  })
+
   it('bars rise from the baseline and label under and above', () => {
     const chart = barChartGeometry(400, 300, ['一', '二'], [{ values: [2, 4], color: '#1d4ed8' }], { showValues: true })
     expect(chart.bars).toHaveLength(2)
@@ -86,7 +103,9 @@ describe('chart geometry', () => {
       expect(bar.x + bar.width).toBeLessThanOrEqual(400)
       expect(bar.y).toBeGreaterThanOrEqual(0)
     }
-    expect(chart.labels.map((label) => label.text)).toEqual(['一', '二'])
+    expect(chart.labels.map((label) => label.lines.join(''))).toEqual(['一', '二'])
+    // Short labels stay on one line.
+    expect(chart.labels.every((label) => label.lines.length === 1)).toBe(true)
     expect(chart.values.map((value) => value.text)).toEqual(['2', '4'])
     // Values are off unless asked for.
     expect(barChartGeometry(400, 300, ['一'], [{ values: [2], color: '#1d4ed8' }], { showValues: false }).values).toEqual([])
