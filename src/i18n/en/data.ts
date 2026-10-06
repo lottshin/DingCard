@@ -211,6 +211,7 @@ export const data: Record<string, Translation> = {
   '添加系列': 'Add series',
   '环形图': 'Ring chart',
   '折线图': 'Line chart',
+  '雷达图': 'Radar chart',
   '数据': 'Data',
   '数值标签': 'Value labels',
   '显示': 'Show',

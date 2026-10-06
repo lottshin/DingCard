@@ -146,7 +146,7 @@ test('the templates panel shows first pages; a deck opens to its pages, the gall
   await expect(templatesTool).toHaveAttribute('aria-expanded', 'true')
   const panel = page.getByTestId('freeform-templates-drawer')
   const tiles = panel.locator('.freeform-template-tile')
-  await expect(tiles).toHaveCount(32)
+  await expect(tiles).toHaveCount(33)
   await expect(tiles.first().locator('.freeform-slide-preview-artboard')).toHaveCount(1)
 
   const second = tiles.nth(1)
@@ -154,7 +154,7 @@ test('the templates panel shows first pages; a deck opens to its pages, the gall
   await second.click()
   await expect(panel.getByTestId('freeform-template-pages').getByRole('heading')).toHaveText(title)
   await panel.getByTestId('freeform-template-back').click()
-  await expect(tiles).toHaveCount(32)
+  await expect(tiles).toHaveCount(33)
 
   await panel.getByTestId('freeform-templates-browse').click()
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })

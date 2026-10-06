@@ -43,6 +43,7 @@ export type FreeformPosterSeriesId =
   | 'polaroid-wall'
   | 'picks'
   | 'mono-travel'
+  | 'skill-radar'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

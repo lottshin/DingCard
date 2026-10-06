@@ -573,6 +573,15 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     image: { node: '主图' },
   },
+  'skill-radar': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, () => undefined, (n) => `词条${n}`, (n) => [`词条底板${n}`]),
+    body: { text: '正文' },
+    brand: { text: '品牌' },
+    chart: { node: '图表' },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

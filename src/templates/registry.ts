@@ -1760,6 +1760,44 @@ function createDataRoundupDocument(): FreeformDocument {
   ])
 }
 
+function createSkillRadarDocument(): FreeformDocument {
+  const night = '#171b3a'
+  const cream = '#eef0fb'
+  const indigo = '#6366f1'
+  const muted = '#8f96c9'
+  const chip = (index: number, word: string) => {
+    const x = 80 + index * 300
+    const n = NUMBERED[index]
+    return [
+      shapeNode('rect', x, 1508, 260, 88, solid('#232a55'), { name: `词条底板${n}`, cornerRadius: 44 }),
+      textNode(word, x, 1526, 260, 56, { name: `词条${n}`, fontSize: 36, textFill: solid('#c7d2fe'), fontWeight: 'bold', align: 'center', letterSpacing: 4 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('能力雷达', solid(night), [
+      shapeNode('hexagon', 904, 128, 80, 80, solid('#818cf8'), { name: '六边形', opacity: 0.9 }),
+      lineNode(80, 1452, 920, '#2a3161', 2, { name: '分隔线', cap: 'butt' }),
+      shapeNode('rect', 80, 560, 920, 780, solid('#ffffff'), { name: '图表卡', cornerRadius: 48, shadow: { color: '#0a0d24', blur: 40, offsetX: 0, offsetY: 18 } }),
+      textNode('SKILL RADAR', 80, 104, 400, 60, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: indigo, amount: 44, radius: 8 },
+      }),
+      textNode('我的能力雷达', 80, 204, 920, 160, { name: '标题', fontSize: 92, textFill: solid(cream), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('六个维度，看这一年的成长', 80, 436, 920, 64, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      textNode('SIX DIMENSIONS', 140, 616, 800, 40, { name: '图表标注', fontSize: 26, fontFamily: UI, textFill: solid('#a8a29e'), letterSpacing: 8 }),
+      chartNode('radar', ['设计', '写作', '摄影', '剪辑', '运营', '表达'], [
+        { name: '去年', values: [5, 6, 4, 3, 6, 5], color: '#94a3b8' },
+        { name: '今年', values: [8, 7, 6, 9, 7, 8], color: indigo },
+      ], 140, 684, 800, 600, { name: '图表' }),
+      ...chip(0, '设计深耕'),
+      ...chip(1, '表达突破'),
+      ...chip(2, '剪辑起步'),
+      textNode('下一站：把剪辑练成新的长板', 80, 1652, 920, 60, { name: '正文', fontSize: 36, textFill: solid(muted) }),
+      textNode('@叮卡成长记录', 80, 1796, 920, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),
+    ], STORY),
+  ])
+}
+
 function createFollowCardDocument(): FreeformDocument {
   const blush = '#fdf2f5'
   const rose = '#e11d48'
@@ -1975,6 +2013,7 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'polaroid-wall': poster('拍立得墙', '三张带白框的拍立得照片斜着排开，配手记小字，适合探店、旅行和日常记录。', ['拼贴', '手记'], 'xhs'),
   'picks': poster('好物安利', '两张圆角大图配回购理由，适合小红书好物清单和开箱分享。', ['好物', '清单'], 'xhs'),
   'mono-travel': poster('黑白旅拍', '深色底上一张黑白滤镜的圆角大图配竖排标题，适合街拍、展览和城市记录。', ['黑白', '旅拍'], 'story'),
+  'skill-radar': poster('能力雷达', '大标题配一张六维能力雷达图和三枚成长关键词，适合个人年度总结、技能盘点和自我介绍。', ['盘点', '成长'], 'story'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -2005,6 +2044,7 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   timetable: createTimetableDocument,
   'contact-card': createContactCardDocument,
   'data-roundup': createDataRoundupDocument,
+  'skill-radar': createSkillRadarDocument,
   'follow-card': createFollowCardDocument,
   'trend-compare': createTrendCompareDocument,
   'polaroid-wall': createPolaroidWallDocument,
@@ -2051,6 +2091,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'polaroid-wall',
   'picks',
   'mono-travel',
+  'skill-radar',
 ]
 
 function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {

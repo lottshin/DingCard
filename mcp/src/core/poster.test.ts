@@ -86,6 +86,39 @@ describe('composePoster', () => {
     expect(unused.summary.unused).toContain('chart')
   })
 
+  test('fills the radar chart and its keyword chips on the skill poster', () => {
+    const result = compose('skill-radar-freeform', {
+      title: '产品能力雷达',
+      chart: {
+        labels: ['洞察', '方案', '落地', '沟通', '数据', '复盘'],
+        series: [
+          { name: '入职', values: [4, 5, 3, 6, 4, 5] },
+          { name: '现在', values: [8, 7, 9, 7, 8, 6] },
+        ],
+      },
+      details: ['洞察用户', '推动落地', '数据说话'],
+      body: '下一站：把复盘变成团队的习惯',
+    })
+    const chart = result.document.slides[0].nodes.find((node) => node.type === 'chart')
+    if (!chart || chart.type !== 'chart') throw new Error('Expected a chart')
+    expect(chart.chartKind).toBe('radar')
+    expect(chart.labels).toEqual(['洞察', '方案', '落地', '沟通', '数据', '复盘'])
+    expect(chart.series.map((entry) => entry.name)).toEqual(['入职', '现在'])
+    // The template's own series colours carry over in order.
+    expect(chart.series.map((entry) => entry.color)).toEqual(['#94a3b8', '#6366f1'])
+    // The keyword chips fill with their boards still behind them.
+    expect(named(result, '词条一')?.type).toBe('text')
+    expect(named(result, '词条底板一')?.type).toBe('shape')
+    expect((named(result, '词条一') as FreeformTextElement | undefined)?.text).toBe('洞察用户')
+
+    // Without details the chips go with their boards, and the radar stays as drawn.
+    const bare = compose('skill-radar-freeform', { title: '能力雷达' })
+    expect(named(bare, '词条一')).toBeUndefined()
+    expect(named(bare, '词条底板一')).toBeUndefined()
+    const keptChart = bare.document.slides[0].nodes.find((node) => node.type === 'chart')
+    expect(keptChart && keptChart.type === 'chart' ? keptChart.labels : []).toEqual(['设计', '写作', '摄影', '剪辑', '运营', '表达'])
+  })
+
   test('puts the picture in the picture slot, or a colour block in a photo frame and nothing where an illustration was', () => {
     const photo = compose('talk-poster-freeform', { ...TALK, image: 'https://example.com/hall.jpg' })
     const frame = named(photo, '主图') as FreeformShapeElement
