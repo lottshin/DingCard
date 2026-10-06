@@ -1071,6 +1071,7 @@ function qrCodeNode(
     light?: string
     ecl?: QrErrorCorrectionLevel
     moduleStyle?: QrModuleStyle
+    logoSrc?: string
     rotation?: number
     opacity?: number
     shadow?: ShadowPaint
@@ -1093,6 +1094,7 @@ function qrCodeNode(
     light: options.light ?? '#ffffff',
     ...(options.ecl ? { ecl: options.ecl } : {}),
     ...(options.moduleStyle ? { moduleStyle: options.moduleStyle } : {}),
+    ...(options.logoSrc ? { logoSrc: options.logoSrc } : {}),
     ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
     ...(options.shadow ? { shadow: { ...options.shadow } } : {}),
   }
@@ -1672,7 +1674,7 @@ function createContactCardDocument(): FreeformDocument {
       ...contact(0, '电话', '138 0000 1234'),
       ...contact(1, '邮箱', 'lin@dingcard.app'),
       ...contact(2, '微信', 'dingcard-lin'),
-      qrCodeNode('https://dingcard.app/u/linxiaoman', 690, 590, 280, { name: '二维码', dark: ink, moduleStyle: 'rounded' }),
+      qrCodeNode('https://dingcard.app/u/linxiaoman', 690, 590, 280, { name: '二维码', dark: ink, moduleStyle: 'rounded', logoSrc: '/templates/ding-mark.svg' }),
       textNode('扫码存下我的联系方式', 660, 930, 340, 48, { name: '正文', fontSize: 26, fontFamily: UI, textFill: solid(muted), align: 'center' }),
       textNode('@叮卡设计工作室', 96, 940, 500, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),
     ], SQUARE),
@@ -1705,7 +1707,10 @@ function createDataRoundupDocument(): FreeformDocument {
       textNode('这一年，做了多少事', 80, 204, 920, 160, { name: '标题', fontSize: 92, textFill: solid(cream), fontWeight: 'bold', letterSpacing: 2 }),
       textNode('叮卡工作室 · 2026 年度盘点', 80, 436, 920, 64, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
       textNode('MONTHLY WORKS', 140, 616, 800, 40, { name: '图表标注', fontSize: 26, fontFamily: UI, textFill: solid('#a8a29e'), letterSpacing: 8 }),
-      chartNode('bar', ['一月', '二月', '三月', '四月', '五月', '六月'], [{ values: [12, 18, 15, 24, 20, 28], color: amberInk }], 140, 684, 800, 600, { name: '图表', showValues: true }),
+      chartNode('bar', ['一月', '二月', '三月', '四月', '五月', '六月'], [
+        { name: '去年', values: [8, 12, 10, 15, 13, 17], color: '#94a3b8' },
+        { name: '今年', values: [12, 18, 15, 24, 20, 28], color: amberInk },
+      ], 140, 684, 800, 600, { name: '图表', showValues: true }),
       ...stat(0, '发布作品', '128 件'),
       ...stat(1, '累计读者', '5.2 万'),
       ...stat(2, '去过的城市', '12 座'),
@@ -1795,8 +1800,8 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   certificate: poster('证书', '金色双框、居中大字和奖章，适合荣誉证书、获奖证书和结业证书。', ['证书', '印刷'], 'a4-landscape'),
   'moments-grid': poster('朋友圈九宫格', '一整张插画配横跨中间一排的大标题，导出时切成九张，发朋友圈拼成一张大图。', ['朋友圈', '节日'], 'moments-grid'),
   timetable: poster('课程表', '表格按科目自动配色，适合学校课程表、培训排课和每周计划。', ['课程表', '学校'], 'a4-landscape'),
-  'contact-card': poster('联系卡', '姓名配联系方式和一张二维码，扫一下就能存下名片，适合个人名片和工作室联系页。', ['名片', '联系'], 'square'),
-  'data-roundup': poster('数据盘点', '大标题配一张柱状图和三个大数字，适合年度盘点、月度总结和数据海报。', ['盘点', '数据'], 'story'),
+  'contact-card': poster('联系卡', '姓名配联系方式和一张带 logo 的圆角二维码，扫一下就能存下名片，适合个人名片和工作室联系页。', ['名片', '联系'], 'square'),
+  'data-roundup': poster('数据盘点', '大标题配一张双系列对比柱状图和三个大数字，适合年度盘点、月度总结和数据海报。', ['盘点', '数据'], 'story'),
   'follow-card': poster('关注引导', '圆点二维码配爱心和关注按钮，适合涨粉海报、主页引导和活动招募。', ['涨粉', '关注'], 'square'),
 }
 
