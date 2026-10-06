@@ -36,6 +36,9 @@ export type FreeformPosterSeriesId =
   | 'certificate'
   | 'moments-grid'
   | 'timetable'
+  | 'contact-card'
+  | 'data-roundup'
+  | 'follow-card'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

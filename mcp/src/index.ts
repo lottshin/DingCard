@@ -337,7 +337,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_poster_from_content',
-    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色。超出模板行数的信息、画不下的表格格子列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。',
+    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单、联系卡、数据盘点、关注引导），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色。超出模板行数的信息、画不下的表格格子列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。',
     {
       templateId: z.string().describe('list_templates 里 kind 为 poster 的模板 id，如 "talk-poster-freeform"'),
       content: z.object({

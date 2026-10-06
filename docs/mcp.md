@@ -105,7 +105,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 
 ## 生成海报
 
-`create_poster_from_content` 把内容填进单页模板（小红书封面的干货笔记和图片拼贴、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单；内容位置写在 `src/templates/slots.ts` 的 `FREEFORM_POSTER_SLOTS`）：
+`create_poster_from_content` 把内容填进单页模板（小红书封面的干货笔记和图片拼贴、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单、联系卡、数据盘点、关注引导；内容位置写在 `src/templates/slots.ts` 的 `FREEFORM_POSTER_SLOTS`）：
 
 - `title` 必填，其余可选：`subtitle` 副标题，`body` 一段正文，`details` 信息行（`"时间：10 月 18 日 14:00"`，冒号前放进这一行的标签，没写冒号就整句放进内容、标签去掉），`cta` 按钮文字，`tag` 角标（活动类型、价格、期数），`brand` 主办或落款，`image` 主图（本机路径、http(s) URL 或 data URL，本机路径读进来嵌成 data URL）。
 - 模板里每一块示例文字都会换成内容，没给的连同它的底板、按钮一起删掉；没给 `image` 时，照片位变成一块和版面相配的色块，插画位直接删掉（朋友圈九宫格的插画是版面本身，留着）。

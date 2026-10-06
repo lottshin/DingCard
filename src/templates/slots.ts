@@ -515,6 +515,28 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     image: { node: '主图' },
     remove: [{ text: '页脚' }],
   },
+  'contact-card': {
+    title: '姓名',
+    subtitle: { text: '职位' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    body: { text: '正文' },
+    brand: { text: '品牌' },
+  },
+  'data-roundup': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+  },
+  'follow-card': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

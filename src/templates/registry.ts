@@ -3,13 +3,17 @@ import { normalizeFreeformDocumentV24 } from '../freeform/sceneDocument'
 import type {
   BlendMode,
   ColorPaint,
+  FreeformChartElement,
   FreeformDocument,
+  FreeformQrCodeElement,
   FreeformSceneNode,
   FreeformSlide,
   FreeformShapeElement,
   FreeformTextElement,
   LineEndpointCap,
   PathFill,
+  QrErrorCorrectionLevel,
+  QrModuleStyle,
   SceneFilter,
   ShadowPaint,
   ShapeFill,
@@ -1056,6 +1060,81 @@ function illustrationNode(name: string, src: string, alt: string, x: number, y: 
   }
 }
 
+function qrCodeNode(
+  payload: string,
+  x: number,
+  y: number,
+  size: number,
+  options: {
+    name?: string
+    dark?: string
+    light?: string
+    ecl?: QrErrorCorrectionLevel
+    moduleStyle?: QrModuleStyle
+    rotation?: number
+    opacity?: number
+    shadow?: ShadowPaint
+  } = {},
+): FreeformQrCodeElement {
+  return {
+    id: uuid(),
+    name: options.name ?? '二维码',
+    locked: false,
+    hidden: false,
+    type: 'qrcode',
+    x,
+    y,
+    width: size,
+    height: size,
+    rotation: options.rotation ?? 0,
+    scale: 1,
+    payload,
+    dark: options.dark ?? '#18181b',
+    light: options.light ?? '#ffffff',
+    ...(options.ecl ? { ecl: options.ecl } : {}),
+    ...(options.moduleStyle ? { moduleStyle: options.moduleStyle } : {}),
+    ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
+    ...(options.shadow ? { shadow: { ...options.shadow } } : {}),
+  }
+}
+
+function chartNode(
+  chartKind: FreeformChartElement['chartKind'],
+  labels: readonly string[],
+  values: readonly number[],
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: {
+    name?: string
+    accent?: string
+    showValues?: boolean
+    rotation?: number
+    opacity?: number
+  } = {},
+): FreeformChartElement {
+  return {
+    id: uuid(),
+    name: options.name ?? '图表',
+    locked: false,
+    hidden: false,
+    type: 'chart',
+    x,
+    y,
+    width,
+    height,
+    rotation: options.rotation ?? 0,
+    scale: 1,
+    chartKind,
+    labels: [...labels],
+    values: [...values],
+    accent: options.accent ?? '#1d4ed8',
+    ...(options.showValues ? { showValues: true } : {}),
+    ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
+  }
+}
+
 function createTalkPosterDocument(): FreeformDocument {
   const paper = '#f2efe8'
   const ink = '#141414'
@@ -1564,6 +1643,101 @@ function createTimetableDocument(): FreeformDocument {
   ])
 }
 
+function createContactCardDocument(): FreeformDocument {
+  const paper = '#f7f5f0'
+  const ink = '#23272f'
+  const blue = '#1d4ed8'
+  const muted = '#767b85'
+  const contact = (index: number, label: string, value: string) => {
+    const y = 520 + index * 120
+    const n = NUMBERED[index]
+    return [
+      textNode(label, 96, y, 300, 44, { name: `标签${n}`, fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 4 }),
+      textNode(value, 96, y + 52, 560, 64, { name: `信息${n}`, fontSize: 40, textFill: solid(ink), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('联系卡', solid(paper), [
+      shapeNode('bubble', 872, 116, 112, 92, solid(blue), { name: '气泡', opacity: 0.14 }),
+      lineNode(96, 452, 560, '#ddd8cc', 2, { name: '分隔线', cap: 'butt' }),
+      shapeNode('rect', 660, 560, 340, 340, solid('#ffffff'), { name: '二维码卡', cornerRadius: 40, shadow: { color: '#d9d4c8', blur: 32, offsetX: 0, offsetY: 14 } }),
+      textNode('CONTACT CARD', 96, 96, 400, 60, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: blue, amount: 44, radius: 8 },
+      }),
+      textNode('林小满', 90, 186, 560, 150, { name: '姓名', fontSize: 116, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('独立品牌设计师 · 咖啡爱好者', 96, 356, 600, 56, { name: '职位', fontSize: 38, textFill: solid(muted) }),
+      ...contact(0, '电话', '138 0000 1234'),
+      ...contact(1, '邮箱', 'lin@dingcard.app'),
+      ...contact(2, '微信', 'dingcard-lin'),
+      qrCodeNode('https://dingcard.app/u/linxiaoman', 690, 590, 280, { name: '二维码', dark: ink, moduleStyle: 'rounded' }),
+      textNode('扫码存下我的联系方式', 660, 930, 340, 48, { name: '正文', fontSize: 26, fontFamily: UI, textFill: solid(muted), align: 'center' }),
+      textNode('@叮卡设计工作室', 96, 940, 500, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),
+    ], SQUARE),
+  ])
+}
+
+function createDataRoundupDocument(): FreeformDocument {
+  const night = '#101828'
+  const cream = '#f5f1e6'
+  const amber = '#f59e0b'
+  const amberInk = '#b45309'
+  const muted = '#98a2b3'
+  const stat = (index: number, label: string, value: string) => {
+    const x = 80 + index * 300
+    const n = NUMBERED[index]
+    return [
+      textNode(label, x, 1508, 280, 44, { name: `标签${n}`, fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 4 }),
+      textNode(value, x, 1556, 280, 100, { name: `信息${n}`, fontSize: 64, fontFamily: UI, textFill: solid(amber), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('数据盘点', solid(night), [
+      shapeNode('star', 896, 128, 96, 96, solid(amber), { name: '星星', opacity: 0.9 }),
+      lineNode(80, 1452, 920, '#2a3547', 2, { name: '分隔线', cap: 'butt' }),
+      shapeNode('rect', 80, 560, 920, 780, solid('#ffffff'), { name: '图表卡', cornerRadius: 48, shadow: { color: '#000000', blur: 40, offsetX: 0, offsetY: 18 } }),
+      textNode('DATA REVIEW', 80, 104, 400, 60, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid(night), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: amber, amount: 44, radius: 8 },
+      }),
+      textNode('这一年，做了多少事', 80, 204, 920, 160, { name: '标题', fontSize: 92, textFill: solid(cream), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('叮卡工作室 · 2026 年度盘点', 80, 436, 920, 64, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      textNode('MONTHLY WORKS', 140, 616, 800, 40, { name: '图表标注', fontSize: 26, fontFamily: UI, textFill: solid('#a8a29e'), letterSpacing: 8 }),
+      chartNode('bar', ['一月', '二月', '三月', '四月', '五月', '六月'], [12, 18, 15, 24, 20, 28], 140, 684, 800, 600, { name: '图表', accent: amberInk, showValues: true }),
+      ...stat(0, '发布作品', '128 件'),
+      ...stat(1, '累计读者', '5.2 万'),
+      ...stat(2, '去过的城市', '12 座'),
+      textNode('@叮卡工作室', 80, 1796, 920, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),
+    ], STORY),
+  ])
+}
+
+function createFollowCardDocument(): FreeformDocument {
+  const blush = '#fdf2f5'
+  const rose = '#e11d48'
+  const ink = '#452c38'
+  const muted = '#9a7386'
+  return documentFromSlides([
+    slide('关注引导', solid(blush), [
+      shapeNode('heart', 244, 468, 96, 88, solid(rose), { name: '爱心一' }),
+      shapeNode('heart', 762, 648, 72, 66, solid(rose), { name: '爱心二', opacity: 0.75 }),
+      shapeNode('bubble', 818, 372, 84, 70, solid(rose), { name: '气泡', opacity: 0.3 }),
+      lineNode(440, 376, 200, '#f3d4dd', 4, { name: '分隔线', cap: 'round' }),
+      shapeNode('rect', 368, 420, 344, 344, solid('#ffffff'), { name: '二维码卡', cornerRadius: 48, shadow: { color: '#f0cfda', blur: 36, offsetX: 0, offsetY: 16 } }),
+      shapeNode('rect', 300, 828, 480, 104, solid(rose), { name: '按钮底板', cornerRadius: 52 }),
+      textNode('FOLLOW ME', 96, 88, 400, 60, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: rose, amount: 44, radius: 8 },
+      }),
+      textNode('扫码关注我', 80, 170, 920, 150, { name: '标题', fontSize: 104, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 8 }),
+      textNode('每周更新模板和排版灵感', 80, 312, 920, 56, { name: '副标题', fontSize: 38, textFill: solid(muted), align: 'center' }),
+      qrCodeNode('https://dingcard.app/follow', 392, 444, 296, { name: '二维码', dark: ink, moduleStyle: 'dot' }),
+      textNode('点个关注不迷路', 300, 852, 480, 64, { name: '按钮文字', fontSize: 40, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 6 }),
+      textNode('@叮卡小助手', 80, 976, 920, 44, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), align: 'center', letterSpacing: 2 }),
+    ], SQUARE),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -1619,6 +1793,9 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   certificate: poster('证书', '金色双框、居中大字和奖章，适合荣誉证书、获奖证书和结业证书。', ['证书', '印刷'], 'a4-landscape'),
   'moments-grid': poster('朋友圈九宫格', '一整张插画配横跨中间一排的大标题，导出时切成九张，发朋友圈拼成一张大图。', ['朋友圈', '节日'], 'moments-grid'),
   timetable: poster('课程表', '表格按科目自动配色，适合学校课程表、培训排课和每周计划。', ['课程表', '学校'], 'a4-landscape'),
+  'contact-card': poster('联系卡', '姓名配联系方式和一张二维码，扫一下就能存下名片，适合个人名片和工作室联系页。', ['名片', '联系'], 'square'),
+  'data-roundup': poster('数据盘点', '大标题配一张柱状图和三个大数字，适合年度盘点、月度总结和数据海报。', ['盘点', '数据'], 'story'),
+  'follow-card': poster('关注引导', '圆点二维码配爱心和关注按钮，适合涨粉海报、主页引导和活动招募。', ['涨粉', '关注'], 'square'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -1647,6 +1824,9 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   certificate: createCertificateDocument,
   'moments-grid': createMomentsGridDocument,
   timetable: createTimetableDocument,
+  'contact-card': createContactCardDocument,
+  'data-roundup': createDataRoundupDocument,
+  'follow-card': createFollowCardDocument,
 }
 
 const markdownSeriesIds: MarkdownTemplateSeriesId[] = [
@@ -1681,6 +1861,9 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'video-cover',
   'article-cover',
   'flyer',
+  'contact-card',
+  'data-roundup',
+  'follow-card',
 ]
 
 function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {
