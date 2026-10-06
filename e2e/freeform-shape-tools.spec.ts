@@ -91,6 +91,20 @@ test('drags the rect corner handle to round it as one history step', async ({ pa
   await expect(handle).toBeVisible()
   await expect(handle).toHaveAttribute('aria-label', '调整圆角')
 
+  // The dot itself stays a 12 px marker on screen no matter the canvas zoom:
+  // its box carries the inverse scale, so the visible ::before must not
+  // scale again (a second compensation once ballooned it to 12/zoom px).
+  const dot = await handle.evaluate((el) => {
+    const style = getComputedStyle(el)
+    const before = getComputedStyle(el, '::before')
+    const zoom = el.getBoundingClientRect().width / parseFloat(style.width)
+    return { screen: parseFloat(before.width) * zoom, background: before.backgroundColor }
+  })
+  expect(dot.screen).toBeGreaterThanOrEqual(11)
+  expect(dot.screen).toBeLessThanOrEqual(13)
+  // The selection-chrome theme in freeform.css paints every handle dot white.
+  expect(dot.background).toBe('rgb(255, 255, 255)')
+
   // The handle sits on the corner-radius arc; dragging it away deepens the round.
   const box = await handle.boundingBox()
   expect(box).toBeTruthy()

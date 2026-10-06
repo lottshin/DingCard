@@ -1693,16 +1693,12 @@ html.theme-anim * {
   pointer-events: auto;
 }
 
-/* Shape parameter handles reuse the vertex handle look with a warm accent. */
+/* Shape parameter handles reuse the vertex handle look. */
 /* Param handles stay clear of the corner resize handles: a smaller target
    parked at the resize clearance (see cornerHandlePosition in shapeGeometry). */
 .freeform-param-handle {
   width: calc(20px * var(--freeform-inverse-scale, 1));
   height: calc(20px * var(--freeform-inverse-scale, 1));
-}
-
-.freeform-param-handle::before {
-  background: #f59e0b;
 }
 
 .freeform-vertex-handle::before {
@@ -1717,7 +1713,9 @@ html.theme-anim * {
   background: var(--surface);
   border: 2px solid var(--accent);
   box-shadow: var(--shadow-sm);
-  transform: translate(-50%, -50%) scale(var(--freeform-inverse-scale, 1));
+  /* The box already carries the inverse scale; scaling again would blow the
+     dot up by 1/zoom on screen (a giant bubble at fit-to-screen zoom). */
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
