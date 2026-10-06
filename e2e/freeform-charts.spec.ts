@@ -57,14 +57,14 @@ test('edits the series through the data rows', async ({ page }) => {
   await insertChart(page)
   const before = await barHeights(page)
 
-  // Raise the second value: it becomes the tallest, and the others rescale
-  // to the new maximum.
+  // Raise the second value: it becomes the tallest, the others rescale down
+  // as the axis rounds its top up (9 -> 10 becomes 12 -> 20).
   const secondValue = page.getByLabel('第 2 项数值', { exact: true })
   await secondValue.fill('12')
   const after = await barHeights(page)
   expect(after[1]).toBeGreaterThan(after[0])
-  expect(after[1]).toBeGreaterThan(before[1])
   expect(after[0]).toBeLessThan(before[0])
+  await expect(page.getByTestId('freeform-chart').getByText('20', { exact: true })).toHaveCount(1)
 
   // Rename a label.
   const secondLabel = page.getByLabel('第 2 项标签', { exact: true })
@@ -154,6 +154,42 @@ test('adds a second series with grouped bars, a legend and nested rings', async 
   await page.getByTestId('chart-series-remove').click()
   await expect(chart.locator('[data-testid="freeform-chart-segment"]')).toHaveCount(4)
   await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
+})
+
+test('stacks bars and normalises them to percentages with axis ticks', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+
+  // Grouped bars draw y-axis ticks: the sample tops out at 9, the axis rounds to 10.
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(2)
+  await expect(chart.getByText('10', { exact: true })).toHaveCount(1)
+  await expect(chart.getByText('5', { exact: true })).toHaveCount(1)
+
+  // Stacked piles one column per category: same four columns, totalled on top.
+  await page.getByTestId('chart-bar-mode-stacked').click()
+  await expect(chart.locator('rect:not(g [data-testid="freeform-chart-legend-item"] rect)')).toHaveCount(4)
+  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await expect(chart.getByText('9', { exact: true })).toHaveCount(1)
+  // Undo unwinds its own entries: first the labels, then the mode.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(chart.getByText('9', { exact: true })).toHaveCount(0)
+  await expect(chart.locator('rect:not(g [data-testid="freeform-chart-legend-item"] rect)')).toHaveCount(4)
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(page.getByTestId('chart-bar-mode-stacked')).not.toHaveClass(/on/)
+
+  // Percent normalises each column to 100%: with the labels back on, the flat
+  // sample reads 100% on every column and the axis ticks percentages.
+  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await page.getByTestId('chart-bar-mode-percent').click()
+  // Four 100% segments and one 100% axis tick (its partner ticks 50%).
+  await expect(chart.getByText('100%')).toHaveCount(5)
+  await expect(chart.getByText('50%', { exact: true })).toHaveCount(1)
+
+  // Ring keeps the modes to itself: the seg hides, no axis is drawn.
+  await page.getByTestId('chart-kind-ring').click()
+  await expect(page.getByTestId('chart-bar-mode-stacked')).toHaveCount(0)
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(0)
 })
 
 test('round-trips a saved v24 chart and rejects it at v23', async ({ page }) => {

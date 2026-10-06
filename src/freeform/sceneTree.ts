@@ -35,7 +35,7 @@ import {
   isValidParagraphSpacing,
 } from './appearance'
 import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
-import { CHART_POINTS_MAX, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
+import { CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -992,6 +992,7 @@ const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 
 const CHART_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   showValues: (record) => record.showValues === true,
+  barMode: (record) => isValidChartBarMode(record.barMode),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,

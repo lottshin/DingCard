@@ -116,20 +116,60 @@ describe('chart geometry', () => {
     expect(single.legend).toEqual([])
   })
 
-  it('a line spans the width with a filled area beneath', () => {
+  it('a line spans the plot with a filled area beneath and axis ticks', () => {
     const chart = lineChartGeometry(400, 300, ['一', '二', '三'], [{ values: [1, 3, 2], color: '#1d4ed8' }], { showValues: true })
     expect(chart.lines).toHaveLength(1)
     const line = chart.lines[0]
     expect(line.points).toHaveLength(3)
-    expect(line.points[0].x).toBeCloseTo(0, 3)
+    // The tick labels take the left edge: the slope starts after them and
+    // still ends at the right edge.
+    expect(line.points[0].x).toBeGreaterThan(0)
+    expect(line.points[0].x).toBeLessThan(400 * 0.2)
     expect(line.points[2].x).toBeCloseTo(400, 3)
-    expect(line.area).toMatch(/^M0 252 L0 180 /)
+    expect(line.area).toMatch(new RegExp(`^M${chart.axis.leftPad} 252 L${chart.axis.leftPad} 198 `))
     expect(line.dots).toHaveLength(3)
     expect(line.values.map((value) => value.text)).toEqual(['1', '3', '2'])
-    // A single point has no line or area, just a centred dot.
+    // The axis rounds the top to a nice ceiling (3 -> 4) and ticks half way.
+    expect(chart.axis.max).toBe(4)
+    expect(chart.axis.ticks.map((tick) => tick.text)).toEqual(['4', '2'])
+    // A single point has no line or area, just a centred dot in the plot.
     const single = lineChartGeometry(400, 300, ['一'], [{ values: [2], color: '#1d4ed8' }], { showValues: false })
     expect(single.lines[0].area).toBe('')
-    expect(single.lines[0].dots[0].x).toBeCloseTo(200, 3)
+    expect(single.lines[0].dots[0].x).toBeGreaterThan(single.axis.leftPad)
+    expect(single.lines[0].dots[0].x).toBeLessThan(400)
+  })
+
+  it('stacked bars pile one column per category and total it', () => {
+    const chart = barChartGeometry(400, 300, ['一', '二'], [
+      { name: '甲', values: [2, 1], color: '#1d4ed8' },
+      { name: '乙', values: [1, 3], color: '#e11d48' },
+    ], { showValues: true, mode: 'stacked' })
+    // Bars come column by column: the first two segments share one column.
+    expect(chart.bars).toHaveLength(4)
+    expect(chart.bars[0].x).toBeCloseTo(chart.bars[1].x, 3)
+    expect(chart.bars[2].x).toBeCloseTo(chart.bars[3].x, 3)
+    expect(chart.bars[2].x).toBeGreaterThan(chart.bars[0].x)
+    // The first segment sits on the baseline; the second stacks on its top.
+    expect(chart.bars[0].y + chart.bars[0].height).toBeCloseTo(chart.baseline.y, 5)
+    expect(chart.bars[1].y + chart.bars[1].height).toBeCloseTo(chart.bars[0].y, 5)
+    // The totals label each column: 3 and 4, against a nice ceiling of 4.
+    expect(chart.values.map((value) => value.text)).toEqual(['3', '4'])
+    expect(chart.axis!.max).toBe(4)
+  })
+
+  it('percent bars fill the plot and label big shares', () => {
+    const chart = barChartGeometry(400, 300, ['一'], [
+      { name: '甲', values: [3], color: '#1d4ed8' },
+      { name: '乙', values: [1], color: '#e11d48' },
+    ], { showValues: true, mode: 'percent' })
+    // Two segments, one column at full plot height.
+    expect(chart.bars).toHaveLength(2)
+    expect(chart.bars[0].y + chart.bars[0].height).toBeCloseTo(chart.baseline.y, 5)
+    expect(chart.bars[0].height).toBeCloseTo(chart.bars[1].height * 3, 3)
+    expect(chart.percents.map((percent) => percent.text)).toEqual(['75%', '25%'])
+    // The axis ticks in percentages; totals stay unlabelled.
+    expect(chart.axis!.ticks.map((tick) => tick.text)).toEqual(['100%', '50%'])
+    expect(chart.values).toEqual([])
   })
 
   it('every series keeps its own slope and legend entry', () => {
@@ -186,7 +226,7 @@ describe('chart element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 26, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 27, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred bar chart with one sample series', () => {
     const element = createChartElement(slide)
@@ -297,6 +337,29 @@ describe('chart element in the document', () => {
     expect((v24!.slides[0].nodes[0] as FreeformChartElement).labels).toHaveLength(4)
     const v23 = normalizeFreeformDocument({ documentVersion: 23, activeSlideId: slide.id, slides: [chartSlide] })
     expect(v23).toBeNull()
+  })
+
+  it('carries bar stacking at v27 and rejects it at v26', () => {
+    const stacked: FreeformChartElement = { ...createChartElement(slide), barMode: 'percent' }
+    const stackedSlide = { ...slide, nodes: [stacked as unknown as FreeformSceneNode] }
+    const v27 = normalizeFreeformDocument({ documentVersion: 27, activeSlideId: slide.id, slides: [stackedSlide] })
+    expect(v27).not.toBeNull()
+    expect((v27!.slides[0].nodes[0] as FreeformChartElement).barMode).toBe('percent')
+    const v26 = normalizeFreeformDocument({ documentVersion: 26, activeSlideId: slide.id, slides: [stackedSlide] })
+    expect(v26).toBeNull()
+    // The style patch switches modes; null restores grouped by removal.
+    const base = createChartElement(slide)
+    const withMode = freeformReducer(
+      { documentVersion: 27, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { barMode: 'stacked' } }] },
+    )
+    expect((withMode.slides[0].nodes[0] as FreeformChartElement).barMode).toBe('stacked')
+    const grouped = freeformReducer(withMode, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { barMode: null } }],
+    })
+    expect('barMode' in (grouped.slides[0].nodes[0] as FreeformChartElement)).toBe(false)
   })
 
   it('migrates a v24 chart onto one series and takes three at v26', () => {

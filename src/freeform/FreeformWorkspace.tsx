@@ -916,6 +916,12 @@ function isChartElement(element: FreeformElement | undefined): element is Freefo
 
 /** Chart kinds in the inspector segment order. */
 const CHART_KINDS = ['bar', 'ring', 'line'] as const
+const CHART_BAR_MODES = ['grouped', 'stacked', 'percent'] as const
+const CHART_BAR_MODE_LABELS: Record<(typeof CHART_BAR_MODES)[number], string> = {
+  grouped: '分组',
+  stacked: '堆叠',
+  percent: '百分比',
+}
 const CHART_SERIES_COLORS = ['#1d4ed8', '#e11d48', '#f59e0b'] as const
 const chartSeriesColorInUse = (colors: readonly string[]) =>
   CHART_SERIES_COLORS.find((color) => !colors.includes(color)) ?? CHART_SERIES_COLORS[0]
@@ -8350,6 +8356,24 @@ export function FreeformWorkspace({
                           </button>
                         ))}
                       </div>
+                      {selectedElement.chartKind === 'bar' && (
+                        <>
+                          <div className="field-label with-gap">{t('堆叠方式')}</div>
+                          <div className="seg stretch" role="group" aria-label={t('堆叠方式')}>
+                            {CHART_BAR_MODES.map((mode) => (
+                              <button
+                                key={mode}
+                                type="button"
+                                className={(selectedElement.barMode ?? 'grouped') === mode ? 'seg-btn on' : 'seg-btn'}
+                                data-testid={`chart-bar-mode-${mode}`}
+                                onClick={() => updateSelectedStyle({ barMode: mode === 'grouped' ? null : mode })}
+                              >
+                                {t(CHART_BAR_MODE_LABELS[mode])}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                       <div className="field-label with-gap">{t('系列')}</div>
                       <div className="seg stretch" role="group" aria-label={t('系列')}>
                         {selectedElement.series.map((entry, index) => (

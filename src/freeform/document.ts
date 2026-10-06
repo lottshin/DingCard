@@ -73,7 +73,7 @@ import {
 } from './appearance'
 import { isValidPathData } from './pathData'
 import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
-import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
+import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {  FreeformChartSeries,
@@ -151,7 +151,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 26,
+    documentVersion: 27,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -523,6 +523,7 @@ const STYLE_KEYS = new Set([
   'chartKind',
   'accent',
   'showValues',
+  'barMode',
   'opacity',
   'shadow',
   'filter',
@@ -552,7 +553,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'opacity', 'shadow', 'filter', 'blendMode'])
-const CHART_APPEARANCE_KEYS = new Set(['showValues', 'opacity', 'shadow', 'filter', 'blendMode'])
+const CHART_APPEARANCE_KEYS = new Set(['showValues', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
@@ -599,6 +600,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isHexColor(value)) return false
     } else if (key === 'showValues') {
       if (value !== null && value !== true) return false
+    } else if (key === 'barMode') {
+      if (value !== null && !isValidChartBarMode(value)) return false
     } else if (key === 'filter') {
       if (value !== null && !cloneSceneFilter(value, true)) return false
     } else if (key === 'blendMode') {
@@ -1075,6 +1078,7 @@ function applyStylePatch(
   if (node.type === 'chart') {
     if (
       keys.some((key) => key !== 'chartKind' && key !== 'accent' && key !== 'showValues'
+        && key !== 'barMode'
         && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
     ) {
       return { ok: false, node }

@@ -16,6 +16,13 @@ export const CHART_ACCENT_DEFAULT = '#1d4ed8'
 export const CHART_SERIES_MAX = 3
 export const CHART_SERIES_NAME_MAX_LENGTH = 12
 
+/** How a bar chart stacks its series (v27); absent means grouped. */
+export type ChartBarMode = NonNullable<FreeformChartElement['barMode']>
+
+export function isValidChartBarMode(value: unknown): value is ChartBarMode {
+  return value === 'grouped' || value === 'stacked' || value === 'percent'
+}
+
 export function isValidChartKind(value: unknown): value is ChartKind {
   return value === 'bar' || value === 'ring' || value === 'line'
 }
@@ -75,6 +82,47 @@ export function chartPointColors(kind: ChartKind, count: number, color: string):
   return Array.from({ length: count }, (_, index) => tintTowardWhite(color, index * (0.78 / Math.max(1, count - 1))))
 }
 
+/** The smallest round ceiling at least `max`: 1, 2, 4, 5 or 8 × 10^k. */
+export function niceChartCeiling(max: number): number {
+  if (!(max > 0)) return 1
+  const power = 10 ** Math.floor(Math.log(max) / Math.LN10)
+  for (const step of [1, 2, 4, 5, 8, 10]) {
+    if (step * power >= max - 1e-9) return step * power
+  }
+  return 10 * power
+}
+
+/** The y-axis a bar or line chart draws against: a round ceiling, grid lines
+ *  at 0, half and the top, each with its tick text. */
+export interface ChartAxis {
+  /** The value at the top grid line. */
+  max: number
+  /** Grid line positions with their tick labels (the 0 line is the baseline). */
+  ticks: Array<{ y: number; text: string }>
+  /** The room the tick labels take off the plot's left edge. */
+  leftPad: number
+}
+
+function chartAxis(
+  height: number,
+  topPad: number,
+  bottomPad: number,
+  max: number,
+): ChartAxis {
+  const ceiling = niceChartCeiling(max)
+  const plotHeight = Math.max(1, height - topPad - bottomPad)
+  const tickFont = Math.min(height * 0.055, 12)
+  const yAt = (value: number) => height - bottomPad - (value / ceiling) * plotHeight
+  return {
+    max: ceiling,
+    ticks: [ceiling, ceiling / 2].map((value) => ({
+      y: yAt(value),
+      text: formatChartValue(value),
+    })),
+    leftPad: Math.ceil(tickFont * 2.6),
+  }
+}
+
 /** One legend entry: a colour chip beside its series' name. */
 export interface ChartLegendItem {
   x: number
@@ -123,66 +171,125 @@ function legendLayout(
 }
 
 export interface ChartBarGeometry {
-  /** Bar rectangles, in view-box px; grouped side by side per category. */
+  /** Bar rectangles, in view-box px; grouped side by side, or stacked into one column. */
   bars: Array<{ x: number; y: number; width: number; height: number; color: string }>
   /** The zero line under the bars. */
   baseline: { y: number }
   /** Category labels centred under each group. */
   labels: Array<{ x: number; y: number; text: string }>
-  /** Value labels above each bar (only when asked for). */
+  /** Value labels: above each bar or column total (only when asked for). */
   values: Array<{ x: number; y: number; text: string }>
+  /** Percentage labels inside stacked segments (percent mode, only when asked for). */
+  percents: Array<{ x: number; y: number; text: string }>
+  /** The y-axis grid lines and ticks (bar and line charts draw them). */
+  axis: ChartAxis | null
   legend: ChartLegendItem[]
 }
 
-/** A bar chart: grouped bars rise from a baseline, labels sit under, values on top. */
+/** A bar chart: bars rise from a baseline — grouped side by side per category,
+ *  stacked into one column per category, or stacked as shares of 100%. */
 export function barChartGeometry(
   width: number,
   height: number,
   labels: readonly string[],
   series: readonly ChartSeriesInput[],
-  options: { showValues: boolean },
+  options: { showValues: boolean; mode?: ChartBarMode },
 ): ChartBarGeometry {
+  const mode = options.mode ?? 'grouped'
   const legend = legendLayout(width, height, series)
   const topPad = height * 0.1 + legend.height
   const bottomPad = height * 0.16
   const plotHeight = Math.max(1, height - topPad - bottomPad)
-  const max = Math.max(...series.flatMap((entry) => entry.values), 0)
-  const scale = max > 0 ? plotHeight / max : 0
-  const slot = width / labels.length
-  const barWidth = (slot * 0.82) / series.length
-  const baselineY = height - bottomPad
   const labelFontSize = Math.min(height * 0.07, width / (labels.length * 4), 16)
+  const totals = labels.map((_, index) => series.reduce((sum, entry) => sum + (entry.values[index] ?? 0), 0))
+  const max = mode === 'percent'
+    ? 1
+    : mode === 'stacked'
+      ? Math.max(...totals, 0)
+      : Math.max(...series.flatMap((entry) => entry.values), 0)
+  const axis = mode === 'percent'
+    ? {
+      ...chartAxis(height, topPad, bottomPad, 0),
+      ticks: chartAxis(height, topPad, bottomPad, 0).ticks.map((tick, index) => (
+        { ...tick, text: index === 0 ? '100%' : '50%' }
+      )),
+    }
+    : chartAxis(height, topPad, bottomPad, max)
+  const ceiling = mode === 'percent' ? 1 : axis.max
+  const scale = ceiling > 0 ? plotHeight / ceiling : 0
+  const baselineY = height - bottomPad
+  const plotWidth = width - axis.leftPad
+  const slot = plotWidth / labels.length
   const bars: ChartBarGeometry['bars'] = []
   const values: ChartBarGeometry['values'] = []
-  series.forEach((entry, seriesIndex) => {
-    entry.values.forEach((value, pointIndex) => {
-      const barHeight = value * scale
-      const x = slot * pointIndex + (slot - barWidth * series.length) / 2 + barWidth * seriesIndex
-      bars.push({
-        x,
-        y: baselineY - barHeight,
-        width: barWidth,
-        height: Math.max(0, barHeight),
-        color: entry.color,
+  const percents: ChartBarGeometry['percents'] = []
+
+  if (mode === 'grouped') {
+    const barWidth = (slot * 0.82) / series.length
+    series.forEach((entry, seriesIndex) => {
+      entry.values.forEach((value, pointIndex) => {
+        const barHeight = value * scale
+        const x = axis.leftPad + slot * pointIndex + (slot - barWidth * series.length) / 2 + barWidth * seriesIndex
+        bars.push({
+          x,
+          y: baselineY - barHeight,
+          width: barWidth,
+          height: Math.max(0, barHeight),
+          color: entry.color,
+        })
+        if (options.showValues) {
+          values.push({
+            x: x + barWidth / 2,
+            y: baselineY - barHeight - labelFontSize * 0.45,
+            text: formatChartValue(value),
+          })
+        }
       })
-      if (options.showValues) {
+    })
+  } else {
+    // Stacked and percent share one column per category; percent normalises it.
+    const barWidth = slot * 0.62
+    labels.forEach((_, pointIndex) => {
+      const total = totals[pointIndex]
+      const columnScale = mode === 'percent' ? plotHeight : scale
+      let top = baselineY
+      series.forEach((entry) => {
+        const value = entry.values[pointIndex] ?? 0
+        const share = total > 0 ? value / total : 0
+        const barHeight = mode === 'percent' ? share * columnScale : value * columnScale
+        const y = top - Math.max(0, barHeight)
+        const x = axis.leftPad + slot * pointIndex + (slot - barWidth) / 2
+        bars.push({ x, y, width: barWidth, height: Math.max(0, barHeight), color: entry.color })
+        top = y
+        if (options.showValues && mode === 'percent' && share >= 0.1) {
+          percents.push({
+            x: x + barWidth / 2,
+            y: y + barHeight / 2 + labelFontSize * 0.35,
+            text: `${Math.round(share * 100)}%`,
+          })
+        }
+      })
+      if (options.showValues && mode === 'stacked') {
         values.push({
-          x: x + barWidth / 2,
-          y: baselineY - barHeight - labelFontSize * 0.45,
-          text: formatChartValue(value),
+          x: axis.leftPad + slot * pointIndex + slot / 2,
+          y: top - labelFontSize * 0.45,
+          text: formatChartValue(total),
         })
       }
     })
-  })
+  }
+
   return {
     bars,
     baseline: { y: baselineY },
     labels: labels.map((text, index) => ({
-      x: slot * index + slot / 2,
+      x: axis.leftPad + slot * index + slot / 2,
       y: baselineY + labelFontSize * 1.4,
       text,
     })),
     values,
+    percents,
+    axis,
     legend: legend.items,
   }
 }
@@ -200,6 +307,8 @@ export interface ChartLineGeometry {
   lines: ChartLineSeriesGeometry[]
   labels: Array<{ x: number; y: number; text: string }>
   baseline: { y: number }
+  /** The y-axis grid lines and ticks, sharing the bars' layout. */
+  axis: ChartAxis
   legend: ChartLegendItem[]
 }
 
@@ -216,10 +325,12 @@ export function lineChartGeometry(
   const bottomPad = height * 0.16
   const plotHeight = Math.max(1, height - topPad - bottomPad)
   const max = Math.max(...series.flatMap((entry) => entry.values), 0)
-  const scale = max > 0 ? plotHeight / max : 0
+  const axis = chartAxis(height, topPad, bottomPad, max)
+  const scale = axis.max > 0 ? plotHeight / axis.max : 0
   const count = labels.length
-  const slot = count > 1 ? width / (count - 1) : 0
-  const xAt = (index: number) => (count > 1 ? slot * index : width / 2)
+  const plotWidth = width - axis.leftPad
+  const slot = count > 1 ? plotWidth / (count - 1) : 0
+  const xAt = (index: number) => (count > 1 ? axis.leftPad + slot * index : axis.leftPad + plotWidth / 2)
   const yAt = (value: number) => height - bottomPad - value * scale
   const fontSize = Math.min(height * 0.07, width / (count * 4), 16)
   const lines = series.map((entry) => {
@@ -249,6 +360,7 @@ export function lineChartGeometry(
       text,
     })),
     baseline: { y: height - bottomPad },
+    axis,
     legend: legend.items,
   }
 }

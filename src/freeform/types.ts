@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 26
+  documentVersion: 27
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -348,6 +348,12 @@ export interface FreeformChartElement extends FreeformElementBase {
   series: FreeformChartSeries[]
   /** Draw the value on each point (v24); absent means off. */
   showValues?: true
+  /**
+   *  How a bar chart stacks its series (v27); absent means grouped side by
+   *  side. Stacked piles one column per category; percent normalises each
+   *  column to 100%.
+   */
+  barMode?: 'grouped' | 'stacked' | 'percent'
 }
 
 export type FreeformElement =
@@ -478,6 +484,8 @@ export interface FreeformNodeStylePatch {
   accent?: string | null
   /** Draw the value on each chart point (v24); `null` turns it off. */
   showValues?: true | null
+  /** Bar stacking (v27); `null` restores grouped. */
+  barMode?: 'grouped' | 'stacked' | 'percent' | null
 }
 
 export interface FreeformNodeGeometryPatch {

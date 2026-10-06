@@ -469,6 +469,37 @@ function SceneLeafContent({
       fontSize,
       fill: fontColor,
     }
+    const tickFont = Math.max(8, Math.min(leaf.height * 0.055, 12))
+    const axisMarks = (axis: { ticks: Array<{ y: number; text: string }>; leftPad: number } | null) => (
+      axis ? (
+        <>
+          {axis.ticks.map((tick, index) => (
+            <g key={index} data-testid="freeform-chart-axis">
+              <line
+                x1={axis.leftPad - 2}
+                y1={tick.y}
+                x2={leaf.width}
+                y2={tick.y}
+                stroke={fontColor}
+                strokeWidth={1}
+                opacity={0.2}
+              />
+              <text
+                x={axis.leftPad - 5}
+                y={tick.y + tickFont * 0.35}
+                textAnchor="end"
+                fontFamily="inherit"
+                fontSize={tickFont}
+                fill={fontColor}
+                opacity={0.8}
+              >
+                {tick.text}
+              </text>
+            </g>
+          ))}
+        </>
+      ) : null
+    )
     const legend = (items: ChartLegendItem[], scale: number) => items.map((item, index) => (
       <g key={index} data-testid="freeform-chart-legend-item">
         <rect
@@ -500,10 +531,14 @@ function SceneLeafContent({
         style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
       >
         {leaf.chartKind === 'bar' && (() => {
-          const chart = barChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues })
+          const chart = barChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, {
+            showValues,
+            mode: leaf.barMode ?? 'grouped',
+          })
           return (
             <>
               {legend(chart.legend, fontSize)}
+              {axisMarks(chart.axis)}
               {chart.bars.map((bar, index) => (
                 <rect
                   key={index}
@@ -515,12 +550,15 @@ function SceneLeafContent({
                   fill={bar.color}
                 />
               ))}
-              <line x1={0} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
+              <line x1={chart.axis ? chart.axis.leftPad - 2 : 0} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
               {chart.labels.map((label, index) => (
                 <text key={index} x={label.x} y={label.y} {...commonText}>{label.text}</text>
               ))}
               {chart.values.map((value, index) => (
                 <text key={index} x={value.x} y={value.y} {...commonText} fontWeight={600}>{value.text}</text>
+              ))}
+              {chart.percents.map((percent, index) => (
+                <text key={index} x={percent.x} y={percent.y} {...commonText} fontWeight={600} fill="#ffffff">{percent.text}</text>
               ))}
             </>
           )
@@ -530,6 +568,7 @@ function SceneLeafContent({
           return (
             <>
               {legend(chart.legend, fontSize)}
+              {axisMarks(chart.axis)}
               {chart.lines.map((line, lineIndex) => (
                 <g key={lineIndex}>
                   {line.area && <path d={line.area} fill={line.color} opacity={0.14} />}
@@ -551,7 +590,7 @@ function SceneLeafContent({
                   ))}
                 </g>
               ))}
-              <line x1={0} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
+              <line x1={chart.axis.leftPad - 2} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
               {chart.labels.map((label, index) => (
                 <text key={index} x={label.x} y={label.y} {...commonText}>{label.text}</text>
               ))}
