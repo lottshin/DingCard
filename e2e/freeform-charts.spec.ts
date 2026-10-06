@@ -110,6 +110,43 @@ test('wraps a long category label onto two lines', async ({ page }) => {
   await expect(chart.getByText('一月', { exact: true })).toBeVisible()
 })
 
+test('pastes a block of rows into the chart data', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  const chart = page.getByTestId('freeform-chart')
+
+  // A spreadsheet-style block replaces the sample rows in one step.
+  await page.evaluate(() => navigator.clipboard.writeText('一月 10\n二月 24\n三季度 18\n四季度 32'))
+  await page.getByTestId('chart-paste-data').click()
+  await expect(chart.getByText('三季度', { exact: true })).toBeVisible()
+  const heights = await barHeights(page)
+  expect(heights).toHaveLength(4)
+  expect(heights[3]).toBeGreaterThan(heights[0])
+
+  // Two columns fill two series; one paste is one undo step. The legend
+  // needs both series named.
+  await page.getByTestId('chart-series-add').click()
+  await page.getByLabel('系列名称', { exact: true }).fill('今年')
+  await page.getByTestId('chart-series-0').click()
+  await page.getByLabel('系列名称', { exact: true }).fill('去年')
+  await page.evaluate(() => navigator.clipboard.writeText('一季度\t10\t30\n二季度\t24\t12'))
+  await page.getByTestId('chart-paste-data').click()
+  // The legend draws swatch rects too; only the bars count here.
+  await expect(chart.locator('rect:not([data-testid="freeform-chart-legend-item"] rect)')).toHaveCount(4)
+  await expect(chart.getByTestId('freeform-chart-legend-item')).toHaveCount(2)
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  // One undo lands back on the first paste's rows, not the sample.
+  await expect(chart.getByText('一季度', { exact: true })).toHaveCount(0)
+  await expect(chart.getByText('四季度', { exact: true })).toBeVisible()
+
+  // Unparsable text explains itself and leaves the data alone.
+  await page.evaluate(() => navigator.clipboard.writeText('随便写的，不是数据'))
+  await page.getByTestId('chart-paste-data').click()
+  await expect(page.getByText('粘贴内容读不出数据')).toBeVisible()
+  await expect(chart.getByText('四季度', { exact: true })).toBeVisible()
+})
+
 test('switches kinds and styles with one history entry each', async ({ page }) => {
   await openFreeform(page)
   await insertChart(page)

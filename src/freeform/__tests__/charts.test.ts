@@ -7,6 +7,7 @@ import {
   barChartGeometry,
   chartLabelFont,
   chartLabelLines,
+  parseChartPaste,
   chartPointColors,
   formatChartValue,
   isValidChartKind,
@@ -76,6 +77,32 @@ describe('chart colours', () => {
 })
 
 describe('chart geometry', () => {
+  it('reads pasted rows into labels and per-series values', () => {
+    // Space-separated lines, one series.
+    expect(parseChartPaste('一月 10\n二月 24\n\n三季度 6\n', 1)).toEqual({
+      labels: ['一月', '二月', '三季度'],
+      series: [[10, 24, 6]],
+    })
+    // A spreadsheet copy arrives tab-separated with a column per series.
+    expect(parseChartPaste('一月\t10\t30\n二月\t24\t12', 2)).toEqual({
+      labels: ['一月', '二月'],
+      series: [[10, 24], [30, 12]],
+    })
+    // Commas (half and full width) and semicolons separate too, a short
+    // line pads with zero, and rows past twelve drop.
+    const thirteen = Array.from({ length: 13 }, (_, index) => `第${index + 1}项 1`).join('\n')
+    expect(parseChartPaste(thirteen, 1)!.labels).toHaveLength(12)
+    expect(parseChartPaste('一季度 3，2', 2)).toEqual({ labels: ['一季度'], series: [[3], [2]] })
+    expect(parseChartPaste('一季度 3', 2)).toEqual({ labels: ['一季度'], series: [[3], [0]] })
+    // Numeric labels are legitimate category names.
+    expect(parseChartPaste('2023 5\n2024 8', 1)).toEqual({ labels: ['2023', '2024'], series: [[5, 8]] })
+    // A missing number, a negative one, or words reject the paste.
+    expect(parseChartPaste('一月', 1)).toBeNull()
+    expect(parseChartPaste('一月 -3', 1)).toBeNull()
+    expect(parseChartPaste('一月 abc', 1)).toBeNull()
+    expect(parseChartPaste('   \n', 1)).toBeNull()
+  })
+
   it('wraps a category label that outgrows its slot into two lines', () => {
     const font = chartLabelFont(300)
     // A label that fits stays whole.

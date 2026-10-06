@@ -75,6 +75,37 @@ export function chartLabelLines(text: string, maxWidth: number, fontSize: number
   return first && rest ? [first, rest] : [text]
 }
 
+/**
+ * Read pasted rows as chart data: every non-empty line is a label followed
+ * by one number per series, separated by tabs, commas, semicolons, or spaces
+ * (a spreadsheet copy arrives tab-separated). Rows past twelve are dropped;
+ * a short line pads its missing numbers with zero. A blank label or an
+ * unparsable (or negative) number rejects the whole paste.
+ */
+export function parseChartPaste(
+  text: string,
+  seriesCount: number,
+): { labels: string[]; series: number[][] } | null {
+  const count = Math.max(1, Math.min(seriesCount, CHART_SERIES_MAX))
+  const rows: Array<{ label: string; values: number[] }> = []
+  for (const line of text.replace(/\r\n?/g, '\n').split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (rows.length >= CHART_POINTS_MAX) break
+    const cells = trimmed.split(/[\t,，;；]+|\s+/).filter((cell) => cell.length > 0)
+    const label = cells[0] ?? ''
+    const values = cells.slice(1, 1 + count).map(Number)
+    if (!isValidChartLabel(label) || values.length === 0) return null
+    if (values.some((value) => !isValidChartValue(value))) return null
+    rows.push({ label, values: Array.from({ length: count }, (_, index) => values[index] ?? 0) })
+  }
+  if (rows.length === 0) return null
+  return {
+    labels: rows.map((row) => row.label),
+    series: Array.from({ length: count }, (_, seriesIndex) => rows.map((row) => row.values[seriesIndex])),
+  }
+}
+
 export function isValidChartSeries(labels: unknown, values: unknown): boolean {
   if (!Array.isArray(labels) || !Array.isArray(values)) return false
   if (labels.length === 0 || labels.length > CHART_POINTS_MAX) return false

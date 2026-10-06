@@ -3032,6 +3032,19 @@ html.theme-anim * {
   gap: 6px;
 }
 
+/* The paste affordance rides the data section's bottom edge. */
+.freeform-inspector .chart-data-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.freeform-inspector .chart-data-head .field-label {
+  margin: 0;
+}
+
 .freeform-inspector .chart-data-row {
   display: flex;
   align-items: center;

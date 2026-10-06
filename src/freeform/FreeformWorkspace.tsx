@@ -61,7 +61,7 @@ import {
   freeformReducer,
 } from './document'
 import { QR_PAYLOAD_MAX_LENGTH } from './qrCode'
-import { CHART_POINTS_MAX, CHART_SERIES_MAX, isValidChartSeries } from './charts'
+import { CHART_POINTS_MAX, CHART_SERIES_MAX, isValidChartSeries, parseChartPaste } from './charts'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
 import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
@@ -8526,6 +8526,40 @@ export function FreeformWorkspace({
                           {t('添加一项')}
                         </button>
                       )}
+                      <div className="chart-data-head">
+                        <span className="field-label">{t('粘贴数据')}</span>
+                        <button
+                          type="button"
+                          className="ghost"
+                          data-testid="chart-paste-data"
+                          title={t('每行「标签 数值…」，数值用空格、逗号或制表符分隔')}
+                          onClick={() => {
+                            void (async () => {
+                              let text: string
+                              try {
+                                text = await navigator.clipboard.readText()
+                              } catch {
+                                setOperationNotice(t('读取剪贴板失败，请重试'))
+                                return
+                              }
+                              const parsed = parseChartPaste(text, selectedElement.series.length)
+                              if (!parsed) {
+                                setOperationNotice(t('粘贴内容读不出数据：每行需要「标签 数值…」，数值为非负数字'))
+                                return
+                              }
+                              setOperationNotice(null)
+                              updateSelectedContent({
+                                labels: parsed.labels,
+                                series: selectedElement.series.map((entry, index) => (
+                                  { ...entry, values: parsed.series[index] ?? entry.values }
+                                )),
+                              })
+                            })()
+                          }}
+                        >
+                          {t('从剪贴板粘贴')}
+                        </button>
+                      </div>
                       <div className="field-label with-gap">{t('数值标签')}</div>
                       <div className="seg stretch" role="group" aria-label={t('数值标签')}>
                         <button
