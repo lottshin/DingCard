@@ -42,6 +42,8 @@ export interface PosterCapacity {
   image: boolean
   /** A table it draws at the content's size, up to this many rows and columns. */
   table?: { maxRows: number; maxColumns: number }
+  /** A chart it fills from `chart` content (labels and series). */
+  chart: boolean
 }
 
 export interface TemplateSummary {
@@ -96,6 +98,7 @@ function posterCapacityOf(series: string): PosterCapacity | undefined {
     brand: Boolean(slots.brand),
     image: Boolean(slots.image),
     ...(slots.table ? { table: { maxRows: slots.table.layout.maxRows, maxColumns: slots.table.layout.maxColumns } } : {}),
+    chart: Boolean(slots.chart),
   }
 }
 

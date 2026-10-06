@@ -195,7 +195,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）。按内容和尺寸挑模板。先用它拿到 templateId。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
+    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）。按内容和尺寸挑模板。先用它拿到 templateId。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
     {},
     async () => jsonResult({ templates: listTemplates() }),
   )
@@ -337,7 +337,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_poster_from_content',
-    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单、联系卡、数据盘点、关注引导），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色。超出模板行数的信息、画不下的表格格子列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。',
+    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单、联系卡、数据盘点、关注引导），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色；数据盘点放 chart（{ labels?: 类目数组, series: [{ name?, values: 数值数组, color? }] }，替换模板图表的类目和系列，颜色缺省沿用模板的，类型和堆叠方式跟模板走）。超出模板行数的信息、画不下的表格格子列在 summary.unplaced，模板没有位置的内容列在 summary.unused，缩小的文字在 summary.shrunk，缩到 72% 还放不下的在 summary.overflowing。给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。',
     {
       templateId: z.string().describe('list_templates 里 kind 为 poster 的模板 id，如 "talk-poster-freeform"'),
       content: z.object({

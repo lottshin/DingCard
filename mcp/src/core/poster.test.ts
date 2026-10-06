@@ -50,6 +50,42 @@ describe('composePoster', () => {
     }
   })
 
+  test('fills the chart slot with labels and series, keeping the template colours', () => {
+    const result = compose('data-roundup-freeform', {
+      title: '季度渠道盘点',
+      chart: {
+        labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+        series: [
+          { name: '图文', values: [12, 18, 15, 24] },
+          { name: '视频', values: [8, 14, 20, 30], color: '#e11d48' },
+        ],
+      },
+    })
+    const chart = result.document.slides[0].nodes.find((node) => node.type === 'chart')
+    if (!chart || chart.type !== 'chart') throw new Error('Expected a chart')
+    expect(chart.labels).toEqual(['Q1', 'Q2', 'Q3', 'Q4'])
+    expect(chart.series.map((entry) => entry.name)).toEqual(['图文', '视频'])
+    expect(chart.series[0].values).toEqual([12, 18, 15, 24])
+    // The colour the content leaves out keeps the template's; the given one lands.
+    expect(chart.series[0].color).toBe('#94a3b8')
+    expect(chart.series[1].color).toBe('#e11d48')
+    // The template's stacking and kind stay as drawn.
+    expect(chart.chartKind).toBe('bar')
+    expect('barMode' in chart).toBe(false)
+
+    // A ragged series rejects the whole poster with a reason.
+    const ragged = composePoster('data-roundup-freeform', {
+      title: '季度盘点',
+      chart: { series: [{ name: '图文', values: [1, 2] }] },
+    })
+    expect(ragged.ok).toBe(false)
+    if (!ragged.ok) expect(ragged.error).toContain('6 个数值')
+
+    // A template with no chart slot reports chart as unused.
+    const unused = compose('quote-card-freeform', { title: '一句', chart: { series: [{ values: [1] }] } })
+    expect(unused.summary.unused).toContain('chart')
+  })
+
   test('puts the picture in the picture slot, or a colour block in a photo frame and nothing where an illustration was', () => {
     const photo = compose('talk-poster-freeform', { ...TALK, image: 'https://example.com/hall.jpg' })
     const frame = named(photo, '主图') as FreeformShapeElement

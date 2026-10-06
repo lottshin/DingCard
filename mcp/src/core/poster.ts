@@ -28,6 +28,14 @@ export interface PosterContent {
   brand?: string
   /** The picture: an http(s) URL, a data URL, or a file path (embedded before the poster is kept). */
   image?: string
+  /** The chart's data: category labels and one to three series with their values. */
+  chart?: PosterChartContent
+}
+
+/** A chart as poster content: labels name the categories, each series one value per label. */
+export interface PosterChartContent {
+  labels?: string[]
+  series: Array<{ name?: string; values: number[]; color?: string }>
 }
 
 export interface PosterSuccess {
@@ -60,6 +68,45 @@ function clean(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim() : ''
 }
 
+/** Check chart content: 1–12 labels, 1–3 series, each series one non-negative value per label. */
+function normalizeChartContent(value: unknown): PosterChartContent | string {
+  if (typeof value !== 'object' || value === null) return 'content.chart 需要是对象：{ labels?: string[], series: [{ name?, values: number[], color? }] }'
+  const record = value as Record<string, unknown>
+  const labels = record.labels === undefined ? undefined : record.labels as unknown
+  if (labels !== undefined && (!Array.isArray(labels) || !labels.every((label) => typeof label === 'string'))) {
+    return 'content.chart.labels 需要是字符串数组'
+  }
+  if (Array.isArray(labels) && (labels.length === 0 || labels.length > 12 || labels.some((label) => !String(label).trim()))) {
+    return 'content.chart.labels 需要 1–12 个非空类目'
+  }
+  if (!Array.isArray(record.series) || record.series.length === 0 || record.series.length > 3) {
+    return 'content.chart.series 需要 1–3 个系列：[{ name?, values: number[], color? }]'
+  }
+  const series: PosterChartContent['series'] = []
+  for (const entry of record.series as Array<Record<string, unknown>>) {
+    if (typeof entry !== 'object' || entry === null) return 'content.chart.series 的每个系列需要是对象'
+    const name = entry.name === undefined ? undefined : String(entry.name)
+    if (name !== undefined && (name.trim().length === 0 || name.length > 12)) {
+      return 'content.chart.series 的名称需要 1–12 个字符'
+    }
+    const values = entry.values
+    if (!Array.isArray(values) || values.length === 0 || values.length > 12
+      || !values.every((item) => typeof item === 'number' && Number.isFinite(item) && item >= 0)) {
+      return 'content.chart.series 的每个系列需要 1–12 个非负数值'
+    }
+    const color = entry.color === undefined ? undefined : String(entry.color)
+    if (color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(color)) {
+      return 'content.chart.series 的颜色需要是 #RRGGBB'
+    }
+    series.push({
+      ...(name !== undefined ? { name } : {}),
+      values: values as number[],
+      ...(color !== undefined ? { color } : {}),
+    })
+  }
+  return { ...(Array.isArray(labels) ? { labels: labels.map(String) } : {}), series }
+}
+
 /** Check and tidy poster content from a client: trimmed strings, no empty lines. */
 export function normalizePosterContent(value: unknown): PosterContent | string {
   if (typeof value !== 'object' || value === null) return 'content 需要是对象'
@@ -81,6 +128,11 @@ export function normalizePosterContent(value: unknown): PosterContent | string {
   }
   if (details.length > 0) content.details = details
   if (table.length > 0) content.table = table
+  if (record.chart !== undefined) {
+    const chart = normalizeChartContent(record.chart)
+    if (typeof chart === 'string') return chart
+    content.chart = chart
+  }
   return content
 }
 
@@ -217,6 +269,44 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     unused.push('image')
   }
 
+  // The chart is filled from its own content: the template's labels set the
+  // point count unless the content brings its own.
+  const charted = new Map<string, FreeformSceneNode>()
+  if (slots.chart) {
+    const node = slide.nodes.find((candidate) => candidate.name === slots.chart!.node)
+    if (node?.type === 'chart') {
+      if (content.chart) {
+        const labels = content.chart.labels ?? node.labels
+        const labelCount = labels.length
+        const ragged = content.chart.series.find((entry) => entry.values.length !== labelCount)
+        if (ragged !== undefined) {
+          return {
+            ok: false,
+            error: `content.chart 的每个系列需要 ${labelCount} 个数值（和类目数一致）${
+              ragged.name ? `：系列「${ragged.name}」给了 ${ragged.values.length} 个` : `，有系列给了 ${ragged.values.length} 个`
+            }`,
+          }
+        }
+        // Colours the content leaves out keep the template's, in series order.
+        const templateColors = node.series.map((entry) => entry.color)
+        charted.set(node.name, {
+          ...node,
+          labels: [...labels],
+          series: content.chart.series.map((entry, index) => ({
+            ...(entry.name !== undefined ? { name: entry.name } : {}),
+            values: [...entry.values],
+            color: entry.color ?? templateColors[index] ?? '#1d4ed8',
+          })),
+        })
+      }
+      // Without chart content the template's chart stays, like a kept illustration.
+    } else if (content.chart) {
+      unused.push('chart')
+    }
+  } else if (content.chart) {
+    unused.push('chart')
+  }
+
   const shrunk: PosterSuccess['summary']['shrunk'] = []
   const overflowing: PosterSuccess['summary']['overflowing'] = []
   const unplaced = lines.slice(rows.length)
@@ -254,6 +344,8 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     if (remove.has(node.name)) return []
     const picture = pictured.get(node.name)
     if (picture) return [picture]
+    const chart = charted.get(node.name)
+    if (chart) return [chart]
     if (node.type !== 'text') return [node]
     const text = texts.get(node.name)
     if (text === undefined) return [node]

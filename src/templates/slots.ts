@@ -336,6 +336,9 @@ export interface PosterSlots {
   table?: PosterTable
   /** The call to action, with the button drawn behind it. */
   cta?: SlotItem
+  /** The chart: filled with `chart` content (labels and series); without it
+   *  the template's own stays, like a kept illustration. */
+  chart?: { node: string }
   /** A short label: a corner badge, a price, an episode number. */
   tag?: SlotItem
   /** Who it is from: the organiser, brand or sign-off. */
@@ -529,6 +532,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     tag: { text: '角标' },
     details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
     brand: { text: '品牌' },
+    chart: { node: '图表' },
   },
   'follow-card': {
     title: '标题',
@@ -550,6 +554,7 @@ export function posterSlotNames(slots: PosterSlots): string[] {
   for (const detail of slots.details ?? []) names.push(...(detail.label ? [detail.label] : []), detail.value, ...(detail.extras ?? []))
   names.push(...(slots.detailsExtras ?? []))
   if (slots.image) names.push(slots.image.node, ...(slots.image.extras ?? []))
+  if (slots.chart) names.push(slots.chart.node)
   if (slots.table) {
     const cells = tableCellNames(slots.table.layout, slots.table.sample)
     names.push(...cells.blocks, ...cells.texts)
