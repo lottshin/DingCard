@@ -107,7 +107,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -353,6 +353,7 @@ const TEXT_OPTIONAL_V9_KEYS = new Set([
   'blendMode', 'stroke', 'strokeWidth',
 ])
 const IMAGE_OPTIONAL_V28_KEYS = new Set([...BASE_OPTIONAL_V9_KEYS, 'cornerRadius'])
+const IMAGE_OPTIONAL_V29_KEYS = new Set([...IMAGE_OPTIONAL_V28_KEYS, 'stroke', 'strokeWidth'])
 const TEXT_OPTIONAL_V17_KEYS = new Set([...TEXT_OPTIONAL_V9_KEYS, 'effect'])
 const TEXT_OPTIONAL_V20_KEYS = new Set([...TEXT_OPTIONAL_V17_KEYS, 'verticalAlign', 'paragraphSpacing', 'list'])
 const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
@@ -420,7 +421,10 @@ function optionalKeysFor(
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
     return LINE_OPTIONAL_V9_KEYS
   }
-  if (type === 'image') return inputVersion >= 28 ? IMAGE_OPTIONAL_V28_KEYS : BASE_OPTIONAL_V9_KEYS
+  if (type === 'image') {
+    if (inputVersion >= 29) return IMAGE_OPTIONAL_V29_KEYS
+    return inputVersion >= 28 ? IMAGE_OPTIONAL_V28_KEYS : BASE_OPTIONAL_V9_KEYS
+  }
   if (type === 'path') return PATH_OPTIONAL_V15_KEYS
   return null
 }
@@ -440,6 +444,7 @@ function hasStrictNodeKeys(
       optionalKeysFor('image', inputVersion),
     )
       && (inputVersion >= 28 || !('cornerRadius' in value))
+      && (inputVersion >= 29 || !('stroke' in value || 'strokeWidth' in value))
   }
   if (value.type === 'shape') {
     return hasKeysWithOptionals(value, SHAPE_NODE_KEYS, optionalKeysFor('shape', inputVersion))
@@ -661,6 +666,11 @@ function normalizeStrictSceneNode(
     if (inputVersion >= 28 && 'cornerRadius' in value && !isValidCornerRadius(value.cornerRadius)) {
       return null
     }
+    // The image frame (stroke colour + width) is v29-only.
+    if (inputVersion >= 29) {
+      if ('stroke' in value && !isHexColor(value.stroke)) return null
+      if ('strokeWidth' in value && !isValidTextStrokeWidth(value.strokeWidth)) return null
+    }
     const imageAppearance = cloneStrictAppearance(value, inputVersion)
     if (!imageAppearance) return null
     return {
@@ -673,6 +683,8 @@ function normalizeStrictSceneNode(
         ? cloneImageFraming(value.framing as ImageFraming)
         : createDefaultImageFraming(),
       ...('cornerRadius' in value ? { cornerRadius: value.cornerRadius as number } : {}),
+      ...('stroke' in value ? { stroke: value.stroke as string } : {}),
+      ...('strokeWidth' in value ? { strokeWidth: value.strokeWidth as number } : {}),
       ...imageAppearance,
     }
   }
@@ -945,7 +957,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 28,
+    documentVersion: 29,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1079,6 +1091,11 @@ export function normalizeFreeformDocumentV27(value: unknown): FreeformDocument |
 /** Strictly validates an already-v28 document (v28 adds image corner radius). */
 export function normalizeFreeformDocumentV28(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 28)
+}
+
+/** Strictly validates an already-v29 document (v29 adds the image frame). */
+export function normalizeFreeformDocumentV29(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 29)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1348,6 +1365,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 29) return normalizeFreeformDocumentV29(value)
   if (value.documentVersion === 28) return normalizeFreeformDocumentV28(value)
   if (value.documentVersion === 27) return normalizeFreeformDocumentV27(value)
   if (value.documentVersion === 26) return normalizeFreeformDocumentV26(value)
@@ -1415,7 +1433,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 28,
+    documentVersion: 29,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1448,7 +1466,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 28,
+    documentVersion: 29,
     activeSlideId: document.activeSlideId,
     slides,
   }

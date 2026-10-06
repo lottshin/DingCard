@@ -977,6 +977,8 @@ const BASE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 const IMAGE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   ...BASE_OPTIONAL_FIELD_CHECKS,
   cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
+  stroke: (record) => isHexColor(record.stroke),
+  strokeWidth: (record) => isValidTextStrokeWidth(record.strokeWidth),
 }
 
 const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {

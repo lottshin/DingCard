@@ -81,12 +81,16 @@ test('inspector hierarchy shows only context-relevant sections in contract order
   await page.getByTestId('insert-image').click()
   const fileChooser = await fileChooserPromise
   await fileChooser.setFiles('public/favicon.svg')
-  await expectSections(['geometry', 'fill', 'appearance', 'arrange', 'danger'])
+  await expectSections(['geometry', 'fill', 'image-frame', 'appearance', 'arrange', 'danger'])
   const imageFill = page.getByTestId('inspector-fill')
   await expect(imageFill.getByRole('button', { name: '填满', exact: true })).toBeVisible()
   await expect(imageFill.getByRole('button', { name: '适应', exact: true })).toBeVisible()
   await expect(imageFill.getByTestId('freeform-paint-field')).toHaveCount(0)
   await expect(page.getByTestId('inspector-stroke')).toHaveCount(0)
+  // The picture frame section carries its own colour and width fields.
+  const imageFrame = page.getByTestId('inspector-image-frame')
+  await expect(imageFrame.getByTestId('image-stroke-color')).toBeVisible()
+  await expect(imageFrame.getByLabel('描边宽', { exact: true })).toBeVisible()
 
   await page.getByTestId('freeform-canvas').click({ position: { x: 10, y: 10 } })
   await expect(selectedFreeformElements(page)).toHaveCount(0)

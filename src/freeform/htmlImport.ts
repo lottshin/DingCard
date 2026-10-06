@@ -2476,7 +2476,7 @@ export async function importHtmlDocument(doc: Document, prepared: PreparedHtml, 
   for (const { element, message } of prepared.notes) addNote(pageOf(element), describe(element), message, element)
   for (const family of prepared.replacedFonts) addNote(0, family, `没有 ${family} 这款字体，换成了相近的内置字体`)
   return {
-    document: { documentVersion: 28, slides, activeSlideId: slides[0].id },
+    document: { documentVersion: 29, slides, activeSlideId: slides[0].id },
     notes: Array.from(notes.values(), ({ targets, ...note }) => (targets.size > 1 ? { ...note, message: `${note.message}（${targets.size} 处）` } : note)),
   }
 }

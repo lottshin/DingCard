@@ -84,3 +84,45 @@ test('rounds a pasted picture from the inspector and undo squares it', async ({ 
   await page.keyboard.press('ControlOrMeta+Alt+V')
   await expect(pastedLayer).toHaveCSS('border-radius', '60px')
 })
+
+test('one-tap corner presets and a photo frame style the picture', async ({ page }) => {
+  await openFreeform(page)
+  await pastePicture(page, 9)
+  const picture = page.getByTestId('freeform-element').filter({ has: page.locator('.freeform-image') })
+  await expect(picture).toHaveCount(1)
+  await picture.click()
+  const layer = picture.locator('.freeform-image-content-layer')
+
+  // The preset row rounds the picture in one tap; capsule lands on half the
+  // short side, and 直角 squares it again.
+  const presets = page.getByTestId('image-radius-presets')
+  await presets.getByRole('button', { name: '小圆', exact: true }).click()
+  await expect(layer).toHaveCSS('border-radius', '12px')
+  await presets.getByRole('button', { name: '胶囊', exact: true }).click()
+  const capsule = await layer.evaluate((node) => {
+    const box = node as HTMLElement
+    return Math.min(box.offsetWidth, box.offsetHeight) / 2
+  })
+  await expect(layer).toHaveCSS('border-radius', `${Math.min(2000, Math.round(capsule))}px`)
+  await presets.getByRole('button', { name: '直角', exact: true }).click()
+  await expect(layer).toHaveCSS('border-radius', '0px')
+
+  // Typing a frame width paints a default white border around the picture.
+  const frameWidth = page.getByLabel('描边宽', { exact: true })
+  await frameWidth.fill('14')
+  await frameWidth.press('Enter')
+  await expect(layer).toHaveCSS('border-top-width', '14px')
+  await expect(layer).toHaveCSS('border-top-color', 'rgb(255, 255, 255)')
+
+  // The frame follows the corner radius; undo takes it back off.
+  await presets.getByRole('button', { name: '大圆', exact: true }).click()
+  await expect(layer).toHaveCSS('border-radius', '28px')
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(layer).toHaveCSS('border-radius', '0px')
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(layer).toHaveCSS('border-top-width', '0px')
+
+  // A photo look rides the shared filter presets the same as shapes.
+  await page.getByTestId('filter-preset-mono').click()
+  await expect(layer).toHaveCSS('filter', /grayscale\(1\)/)
+})

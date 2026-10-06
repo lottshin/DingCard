@@ -217,6 +217,11 @@ function SceneLeafContent({
           ...(leaf.cornerRadius !== undefined
             ? { borderRadius: `${leaf.cornerRadius}px`, overflow: 'hidden' }
             : {}),
+          // The frame shows when both colour and width are set; it follows the radius.
+          ...(leaf.stroke !== undefined && leaf.strokeWidth !== undefined
+            ? { border: `${leaf.strokeWidth}px solid ${leaf.stroke}` }
+            : {}),
+          ...(leaf.filter ? { filter: sceneFilterCss(leaf.filter) } : {}),
         }}
       >
         <FramedImage

@@ -188,6 +188,13 @@ export const app: Record<string, Translation> = {
   '搜索模板': 'Search templates',
   '搜索：名称、说明或标签': 'Search: name, description or tag',
   '没有找到相关模板，换个关键词或尺寸试试。': 'No templates matched. Try another keyword or size.',
+  '相框': 'Photo frame',
+  '图片描边颜色': 'Picture frame colour',
+  '直角': 'Square',
+  '小圆': 'Slightly rounded',
+  '大圆': 'Rounded',
+  '胶囊': 'Capsule',
+  '无': 'None',
   'Markdown 长文排版': 'Markdown long-form layout',
   '自由画布轻设计': 'Freeform canvas design',
   '{n} 页示例已经排好，正文、主题和字体都可以改。': plural(

@@ -364,6 +364,14 @@ const FITS: Array<{ id: 'cover' | 'contain'; label: string }> = [
   { id: 'contain', label: '适应' },
 ]
 
+/** One-tap corner presets for pictures; 胶囊 lands on half the short side. */
+const IMAGE_RADIUS_PRESETS: Array<{ id: string; label: string; radius: number | 'capsule' }> = [
+  { id: 'square', label: '直角', radius: 0 },
+  { id: 'small', label: '小圆', radius: 12 },
+  { id: 'large', label: '大圆', radius: 28 },
+  { id: 'capsule', label: '胶囊', radius: 'capsule' },
+]
+
 type ImageCropAspectId = 'original' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
 
 const IMAGE_CROP_ASPECTS: Array<{ id: ImageCropAspectId; label: string }> = [
@@ -8807,6 +8815,45 @@ export function FreeformWorkspace({
                     </InspectorSection>
                   )}
 
+                  {isImageElement(selectedElement) && (
+                    <InspectorSection title={t('相框')} testId="inspector-image-frame">
+                      <div className="field-grid with-gap">
+                        <div className="stroke-color-field" data-testid="image-stroke-color">
+                          <span className="stroke-color-label">{t('颜色')}</span>
+                          <div className="color-field">
+                            <span className="color-field-value">
+                              {selectedElement.stroke === undefined ? t('无') : selectedElement.stroke.toUpperCase()}
+                            </span>
+                            <ColorPickerButton
+                              label={t('图片描边颜色')}
+                              color={selectedElement.stroke ?? '#ffffff'}
+                              onChange={(stroke) => updateSelectedStyle(
+                                selectedElement.strokeWidth === undefined
+                                  ? { stroke, strokeWidth: 12 }
+                                  : { stroke })}
+                            />
+                          </div>
+                        </div>
+                        <label title={t('描边宽')}>
+                          <InspectorGlyph name="stroke" />
+                          <InspectorNumberInput
+                            ariaLabel={t('描边宽')}
+                            min={0}
+                            max={100}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedElement.strokeWidth ?? 0}
+                            onCommit={(value) => updateSelectedStyle(
+                              value === 0
+                                ? { strokeWidth: null }
+                                : selectedElement.stroke === undefined
+                                  ? { stroke: '#ffffff', strokeWidth: value }
+                                  : { strokeWidth: value })}
+                          />
+                        </label>
+                      </div>
+                    </InspectorSection>
+                  )}
+
                   {(isShapeElement(selectedElement) || isLineElement(selectedElement) || isPathElement(selectedElement)) && (
                     <InspectorSection title={t('描边')} testId="inspector-stroke">
                       {isLineElement(selectedElement) && (
@@ -9007,6 +9054,33 @@ export function FreeformWorkspace({
 
                   {selectedElement && (
                   <InspectorSection title={t('外观')} testId="inspector-appearance">
+                    {isImageElement(selectedElement) && (
+                      <>
+                        <div className="field-label">{t('圆角')}</div>
+                        <div className="seg stretch" data-testid="image-radius-presets">
+                          {IMAGE_RADIUS_PRESETS.map((preset) => {
+                            const presetRadius = preset.radius === 'capsule'
+                              ? Math.min(2000, Math.round(Math.min(selectedElement.width, selectedElement.height) / 2))
+                              : preset.radius
+                            const active = preset.radius === 'capsule'
+                              ? (selectedElement.cornerRadius ?? 0) >= presetRadius - 0.5
+                              : (selectedElement.cornerRadius ?? 0) === presetRadius
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                className={active ? 'seg-btn on' : 'seg-btn'}
+                                data-testid={`image-radius-${preset.id}`}
+                                aria-pressed={active}
+                                onClick={() => updateSelectedStyle({ cornerRadius: presetRadius })}
+                              >
+                                {t(preset.label)}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )}
                     <div className="field-grid with-gap">
                       <label title={t('不透明度 %')}>
                         <InspectorGlyph name="opacity" />

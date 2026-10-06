@@ -30,7 +30,7 @@ const LINE_STYLE_KEYS = ['stroke', 'strokeWidth', 'dash', 'cap'] as const
 const PATH_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'dash', 'cap', 'join', 'fillRule'] as const
 const QRCODE_STYLE_KEYS = ['dark', 'light', 'ecl', 'moduleStyle'] as const
 const CHART_STYLE_KEYS = ['accent', 'showValues'] as const
-const IMAGE_STYLE_KEYS = ['fit', 'cornerRadius'] as const
+const IMAGE_STYLE_KEYS = ['fit', 'cornerRadius', 'stroke', 'strokeWidth'] as const
 
 export function styleKeysForNodeType(type: FreeformSceneNode['type']): readonly string[] {
   switch (type) {

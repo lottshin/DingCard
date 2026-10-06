@@ -73,7 +73,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(28)
+    expect(doc.documentVersion).toBe(29)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -834,6 +834,37 @@ describe('v6 appearance patches', () => {
     expect((v28!.slides[0].nodes[0] as FreeformImageElement).cornerRadius).toBe(36)
     const v27 = normalizeFreeformDocument({ documentVersion: 27, activeSlideId: slide.id, slides: [imageSlide] })
     expect(v27).toBeNull()
+  })
+
+  it('frames a picture with a stroke and carries it at v29 only', () => {
+    const slide = createSlide()
+    const framed: FreeformImageElement = {
+      ...createImageElement(slide, 'img:photo'),
+      stroke: '#ffffff',
+      strokeWidth: 12,
+    }
+    const imageSlide = { ...slide, nodes: [framed as unknown as FreeformSceneNode] }
+    const v29 = normalizeFreeformDocument({ documentVersion: 29, activeSlideId: slide.id, slides: [imageSlide] })
+    expect(v29).not.toBeNull()
+    const stored = v29!.slides[0].nodes[0] as FreeformImageElement
+    expect(stored.stroke).toBe('#ffffff')
+    expect(stored.strokeWidth).toBe(12)
+    const v28 = normalizeFreeformDocument({ documentVersion: 28, activeSlideId: slide.id, slides: [imageSlide] })
+    expect(v28).toBeNull()
+
+    // The style patch paints the frame; null takes it back off.
+    const document = documentWith([framed])
+    const patched = stylePatch(document, [framed.id], { stroke: '#0f766e' })
+    expect((patched.slides[0].nodes[0] as FreeformImageElement).stroke).toBe('#0f766e')
+    const cleared = stylePatch(patched, [framed.id], { stroke: null, strokeWidth: null })
+    const clearedNode = cleared.slides[0].nodes[0] as FreeformImageElement
+    expect('stroke' in clearedNode).toBe(false)
+    expect('strokeWidth' in clearedNode).toBe(false)
+
+    // A bad colour or an out-of-range width rejects the whole patch.
+    expect(stylePatch(cleared, [framed.id], { stroke: 'white' })).toBe(cleared)
+    expect(stylePatch(cleared, [framed.id], { strokeWidth: 0.2 })).toBe(cleared)
+    expect(stylePatch(cleared, [framed.id], { strokeWidth: 101 })).toBe(cleared)
   })
 })
 

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 28
+  documentVersion: 29
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -222,6 +222,10 @@ export interface FreeformImageElement extends FreeformElementBase {
   framing: ImageFraming
   /** Corner radius in px; undefined keeps the picture square (v28). */
   cornerRadius?: number
+  /** Frame colour drawn around the picture (v29). */
+  stroke?: string
+  /** Frame thickness in px; the frame shows when both colour and width are set (v29). */
+  strokeWidth?: number
 }
 
 export interface FreeformShapeElement extends FreeformElementBase {
