@@ -1,6 +1,6 @@
 {
   "name": "dingcard-mcp",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "private": true,
   "type": "module",
   "description": "叮卡 MCP 服务器 — AI 客户端自动化操作自由画布文档与无头渲染",
