@@ -35,6 +35,7 @@ import {
   isValidParagraphSpacing,
 } from './appearance'
 import { isValidQrEcl, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
+import { isValidChartKind, isValidChartSeries } from './charts'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -904,6 +905,10 @@ const QRCODE_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'payload', 'dark', 'light',
 ])
+const CHART_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'chartKind', 'labels', 'values', 'accent',
+])
 
 function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
   const actualKeys = Object.keys(value)
@@ -983,6 +988,14 @@ const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
     record.width as number,
     record.height as number,
   ) !== null,
+}
+
+const CHART_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  showValues: (record) => record.showValues === true,
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
 }
 
 const QRCODE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
@@ -1114,6 +1127,14 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
       isValidQrPayload(node.payload) &&
       isHexColor(node.dark) &&
       isHexColor(node.light)
+    )
+  }
+  if (node.type === 'chart') {
+    return (
+      hasValidOptionalFields(record, CHART_NODE_KEYS, CHART_OPTIONAL_FIELD_CHECKS) &&
+      isValidChartKind(node.chartKind) &&
+      isValidChartSeries(node.labels, node.values) &&
+      isHexColor(node.accent)
     )
   }
   return false

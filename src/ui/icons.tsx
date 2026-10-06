@@ -428,6 +428,11 @@ export function ShapePreviewIcon({ shape, ...props }: IconProps & { shape: strin
     qrcode: (
       <path d="M5 5h8v8H5zM19 5h8v8h-8zM5 19h8v8H5zM18 18h3v3h-3zM23 18h4v4h-4zM18 23h3v4h-3zM23 24h4v4h-4z" />
     ),
+    chart: (
+      <g fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+        <path d="M7 27V17M16 27V5M25 27v-8" />
+      </g>
+    ),
     line: <path d="M5 27 27 5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />,
     arrow: (
       <g fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

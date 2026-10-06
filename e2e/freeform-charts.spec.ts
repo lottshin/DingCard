@@ -1,0 +1,182 @@
+// The chart element (v24): insert, edit the series, switch kinds and colours,
+// and round-trip documents that carry one.
+
+import { expect, test } from '@playwright/test'
+import {
+  openFreeform,
+  openStoredDrafts,
+  registerUser,
+  startWithSettingsPanelOpen,
+} from './freeformTools'
+import { installOfflineFontRoutes } from './offlineFonts'
+
+test.beforeEach(async ({ context, page }) => {
+  await installOfflineFontRoutes(context)
+  // The settings panel opens on demand; these tests work in it, so it starts open
+  // (e2e/freeform-layout.spec.ts covers the closed default).
+  await startWithSettingsPanelOpen(page)
+})
+
+async function insertChart(page: import('@playwright/test').Page) {
+  await page.getByTestId('freeform-elements-tool').click()
+  await page.getByTestId('insert-chart').click()
+  await page.getByTestId('freeform-elements-tool').click()
+  await expect(page.getByTestId('freeform-chart')).toBeVisible()
+}
+
+/** The rendered bar heights, in the chart's view-box pixels. */
+async function barHeights(page: import('@playwright/test').Page) {
+  return page.getByTestId('freeform-chart').locator('rect').evaluateAll((bars) =>
+    bars.map((bar) => Math.round(Number((bar as SVGRectElement).getAttribute('height')))))
+}
+
+test('inserts a bar chart with its sample series', async ({ page }) => {
+  await openFreeform(page)
+
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+  // Four sample bars rise from the baseline; the categories sit under them.
+  await expect(chart.locator('rect')).toHaveCount(4)
+  const heights = await barHeights(page)
+  expect(heights).toHaveLength(4)
+  expect(heights.every((height) => height > 0)).toBe(true)
+  await expect(chart.locator('text')).toContainText(['一月', '二月', '三月', '四月'])
+
+  // The layer list and the context toolbar name it.
+  await expect(page.getByTestId('freeform-context-toolbar').getByText('柱状图')).toBeVisible()
+
+  // Value labels are off by default.
+  await expect(chart.getByText('4', { exact: true })).toHaveCount(0)
+})
+
+test('edits the series through the data rows', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const before = await barHeights(page)
+
+  // Raise the second value: it becomes the tallest, and the others rescale
+  // to the new maximum.
+  const secondValue = page.getByLabel('第 2 项数值', { exact: true })
+  await secondValue.fill('12')
+  const after = await barHeights(page)
+  expect(after[1]).toBeGreaterThan(after[0])
+  expect(after[1]).toBeGreaterThan(before[1])
+  expect(after[0]).toBeLessThan(before[0])
+
+  // Rename a label.
+  const secondLabel = page.getByLabel('第 2 项标签', { exact: true })
+  await secondLabel.fill('二月二')
+  await expect(page.getByTestId('freeform-chart').getByText('二月二')).toHaveCount(1)
+
+  // Add a point, then remove it: back to four bars.
+  await page.getByTestId('chart-data-add').click()
+  await expect(page.getByTestId('freeform-chart').locator('rect')).toHaveCount(5)
+  await page.getByTestId('chart-data-remove-4').click()
+  await expect(page.getByTestId('freeform-chart').locator('rect')).toHaveCount(4)
+
+  // The remove floor: down to one point, the remove buttons disappear too.
+  for (let index = 3; index >= 1; index -= 1) {
+    await page.getByTestId(`chart-data-remove-${index}`).click()
+  }
+  await expect(page.getByTestId('freeform-chart').locator('rect')).toHaveCount(1)
+  await expect(page.locator('[data-testid^="chart-data-remove"]')).toHaveCount(0)
+})
+
+test('switches kinds and styles with one history entry each', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+
+  // Ring: three sample segments with the 50%-largest labelled only when asked.
+  await page.getByTestId('chart-kind-ring').click()
+  await expect(chart.locator('rect')).toHaveCount(0)
+  const segments = chart.locator('[data-testid="freeform-chart-segment"]')
+  await expect(segments).toHaveCount(4)
+  await expect(chart.getByText('%')).toHaveCount(0)
+
+  // Line: a polyline with a dot per point.
+  await page.getByTestId('chart-kind-line').click()
+  await expect(chart.locator('polyline')).toHaveCount(1)
+  await expect(chart.locator('circle')).toHaveCount(4)
+
+  // Value labels turn on for the line, then undo restores the plain line.
+  await page.getByRole('button', { name: '显示', exact: true }).click()
+  await expect(chart.getByText('4', { exact: true })).toHaveCount(1)
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(chart.getByText('4', { exact: true })).toHaveCount(0)
+  await expect(chart.locator('polyline')).toHaveCount(1)
+
+  // The accent recolours the line; one undo lands back on the default blue.
+  await page.getByRole('button', { name: '图表颜色', exact: true }).click()
+  const hex = page.getByLabel('图表颜色 自定义 HEX', { exact: true })
+  await hex.fill('#dc2626')
+  await hex.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(chart.locator('polyline')).toHaveAttribute('stroke', '#dc2626')
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(chart.locator('polyline')).toHaveAttribute('stroke', '#1d4ed8')
+})
+
+test('round-trips a saved v24 chart and rejects it at v23', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByTestId('account-login').click()
+  await registerUser(page, `chart-roundtrip-${Date.now()}`)
+  await expect(page.getByTestId('account-menu')).toBeVisible()
+
+  const slide = {
+    id: 'chart-slide',
+    name: 'Chart slide',
+    width: 1080,
+    height: 1440,
+    background: { type: 'solid', color: '#ffffff' },
+    nodes: [{
+      id: 'chart-1',
+      name: '图表',
+      locked: false,
+      hidden: false,
+      type: 'chart',
+      x: 300,
+      y: 600,
+      width: 480,
+      height: 320,
+      rotation: 0,
+      scale: 1,
+      chartKind: 'ring',
+      labels: ['住', '行', '吃'],
+      values: [3, 2, 5],
+      accent: '#dc2626',
+      showValues: true,
+    }],
+  }
+  await openStoredDrafts(page, [{
+    id: 'chart-draft',
+    title: 'Chart draft',
+    schemaVersion: 2,
+    mode: 'freeform-slide',
+    updatedAt: Date.now(),
+    document: { documentVersion: 24, activeSlideId: slide.id, slides: [slide] },
+  }])
+
+  const chart = page.getByTestId('freeform-chart')
+  await expect(chart).toBeVisible()
+  await expect(chart.locator('[data-testid="freeform-chart-segment"]')).toHaveCount(3)
+  await expect(chart.getByText('50%')).toHaveCount(1)
+
+  // The same node at v23 never loads: the draft is rejected whole.
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByTestId('account-login').click()
+  await registerUser(page, `chart-v23-${Date.now()}`)
+  await expect(page.getByTestId('account-menu')).toBeVisible()
+  await openStoredDrafts(page, [{
+    id: 'chart-v23-draft',
+    title: 'Chart v23 draft',
+    schemaVersion: 2,
+    mode: 'freeform-slide',
+    updatedAt: Date.now(),
+    document: { documentVersion: 23, activeSlideId: slide.id, slides: [slide] },
+  }]).catch(() => {})
+  await expect(page.getByText('没有找到这个项目，它可能已经被删除了')).toBeVisible()
+})

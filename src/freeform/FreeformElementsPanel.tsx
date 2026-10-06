@@ -19,6 +19,7 @@ export type ElementPick =
   | { kind: 'shape'; id: FreeformShapeElement['shape'] }
   | { kind: 'line'; id: FreeformLineElement['lineKind']; bothEnds?: boolean }
   | { kind: 'qrcode' }
+  | { kind: 'chart' }
   | { kind: 'collage'; id: string }
   | { kind: 'decoration'; id: string }
   | { kind: 'icon'; id: string }
@@ -54,8 +55,9 @@ export function carriesElement(dataTransfer: DataTransfer): boolean {
 export function droppedElement(dataTransfer: DataTransfer): ElementPick | null {
   try {
     const value = JSON.parse(dataTransfer.getData(ELEMENT_DRAG_TYPE)) as Record<string, unknown>
-    // The QR pick is the only id-less pick: one insert, nothing to choose.
+    // The QR and chart picks are id-less: one insert, nothing to choose.
     if (value.kind === 'qrcode') return { kind: 'qrcode' }
+    if (value.kind === 'chart') return { kind: 'chart' }
     if (typeof value.id !== 'string') return null
     const id = value.id
     if (value.kind === 'shape' && SHAPES.some((shape) => shape.id === id)) {
@@ -128,9 +130,12 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
   const collages = useMemo(() => COLLAGE_LAYOUTS.filter((layout) => !searching || matchesLabel(layout.label, query)), [query, searching, lang])
   const decorations = useMemo(() => searchDecorations(query), [query])
   const icons = useMemo(() => searchIcons(query), [query])
-  const utilities = useMemo(() => !searching || matchesLabel('二维码', query), [query, searching, lang])
+  const utilities = useMemo(() => [
+    { id: 'qrcode', label: '二维码' },
+    { id: 'chart', label: '图表' },
+  ].filter((utility) => !searching || matchesLabel(utility.label, query)), [query, searching, lang])
   const previews = useMemo(() => new Map(DECORATIONS.map((decoration) => [decoration.id, previewSlide(decoration, language)])), [language])
-  const nothing = shapes.length + lines.length + collages.length + decorations.length + icons.length === 0 && !utilities
+  const nothing = shapes.length + lines.length + collages.length + decorations.length + icons.length + utilities.length === 0
 
   return (
     <>
@@ -185,20 +190,23 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
           </div>
         </>
       )}
-      {utilities && (
+      {utilities.length > 0 && (
         <>
           <div className="freeform-drawer-section">{t('实用')}</div>
           <div className="freeform-element-tiles" role="group" aria-label={t('实用')}>
-            <button
-              type="button"
-              className="freeform-element-tile"
-              data-testid="insert-qrcode"
-              {...dragProps({ kind: 'qrcode' })}
-              onClick={() => onPick({ kind: 'qrcode' })}
-            >
-              <ShapePreviewIcon shape="qrcode" />
-              <span>{t('二维码')}</span>
-            </button>
+            {utilities.map((utility) => (
+              <button
+                key={utility.id}
+                type="button"
+                className="freeform-element-tile"
+                data-testid={`insert-${utility.id}`}
+                {...dragProps(utility.id === 'qrcode' ? { kind: 'qrcode' } : { kind: 'chart' })}
+                onClick={() => onPick(utility.id === 'qrcode' ? { kind: 'qrcode' } : { kind: 'chart' })}
+              >
+                <ShapePreviewIcon shape={utility.id === 'qrcode' ? 'qrcode' : 'chart'} />
+                <span>{t(utility.label)}</span>
+              </button>
+            ))}
           </div>
         </>
       )}

@@ -3027,6 +3027,64 @@ html.theme-anim * {
   flex: 1 1 auto;
 }
 
+/* The chart data editor: one row per point, label then value. */
+.freeform-inspector .chart-data-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.freeform-inspector .chart-data-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.freeform-inspector .chart-data-row input {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.freeform-inspector .chart-data-row input[type='text'] {
+  flex: 1 1 auto;
+}
+
+.freeform-inspector .chart-data-row input[type='number'] {
+  width: 76px;
+  flex: 0 0 auto;
+}
+
+.freeform-inspector .chart-data-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+  outline: none;
+}
+
+.freeform-inspector .chart-data-remove {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.freeform-inspector .chart-data-add {
+  width: 100%;
+  height: 32px;
+  border: 1px dashed var(--line-2);
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
 /* The QR payload field: one full-width text line in the inspector. */
 .freeform-inspector .qr-payload-input {
   width: 100%;

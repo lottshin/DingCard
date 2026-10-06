@@ -7,6 +7,7 @@ import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './r
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { bubbleClipPath, starClipPath } from './shapeGeometry'
 import { QR_ECL_DEFAULT } from './qrCode'
+import { barChartGeometry, lineChartGeometry, ringChartGeometry } from './charts'
 import { qrMatrix, qrModulePaths } from './qrMatrix'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
@@ -452,6 +453,111 @@ function SceneLeafContent({
           </defs>
         )}
         {strokePath}
+      </svg>
+    )
+  }
+
+  if (leaf.type === 'chart') {
+    // One labelled series drawn as bars, a ring, or a line. The view box is
+    // the node box in px, so labels size with the element.
+    const showValues = leaf.showValues === true
+    const fontSize = Math.max(9, Math.min(leaf.height * 0.062, 15))
+    const fontColor = '#3f3f46'
+    const commonText = {
+      textAnchor: 'middle' as const,
+      fontFamily: 'inherit',
+      fontSize,
+      fill: fontColor,
+    }
+    return (
+      <svg
+        className={presentationOnly ? 'freeform-preview-chart' : 'freeform-chart'}
+        data-testid={presentationOnly ? undefined : 'freeform-chart'}
+        viewBox={`0 0 ${Math.max(1, leaf.width)} ${Math.max(1, leaf.height)}`}
+        aria-hidden="true"
+        style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
+      >
+        {leaf.chartKind === 'bar' && (() => {
+          const chart = barChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.values, leaf.accent, { showValues })
+          return (
+            <>
+              {chart.bars.map((bar, index) => (
+                <rect
+                  key={index}
+                  x={bar.x}
+                  y={bar.y}
+                  width={bar.width}
+                  height={bar.height}
+                  rx={Math.min(bar.width / 4, 6)}
+                  fill={bar.color}
+                />
+              ))}
+              <line x1={0} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
+              {chart.labels.map((label, index) => (
+                <text key={index} x={label.x} y={label.y} {...commonText}>{label.text}</text>
+              ))}
+              {chart.values.map((value, index) => (
+                <text key={index} x={value.x} y={value.y} {...commonText} fontWeight={600}>{value.text}</text>
+              ))}
+            </>
+          )
+        })()}
+        {leaf.chartKind === 'line' && (() => {
+          const chart = lineChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.values, leaf.accent, { showValues })
+          return (
+            <>
+              {chart.area && <path d={chart.area} fill={leaf.accent} opacity={0.14} />}
+              {chart.points.length > 1 && (
+                <polyline
+                  points={chart.points.map((point) => `${point.x},${point.y}`).join(' ')}
+                  fill="none"
+                  stroke={leaf.accent}
+                  strokeWidth={Math.max(2, leaf.height * 0.012)}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {chart.dots.map((dot, index) => (
+                <circle key={index} cx={dot.x} cy={dot.y} r={Math.max(3, leaf.height * 0.014)} fill={dot.color} />
+              ))}
+              <line x1={0} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
+              {chart.labels.map((label, index) => (
+                <text key={index} x={label.x} y={label.y} {...commonText}>{label.text}</text>
+              ))}
+              {chart.values.map((value, index) => (
+                <text key={index} x={value.x} y={value.y} {...commonText} fontWeight={600}>{value.text}</text>
+              ))}
+            </>
+          )
+        })()}
+        {leaf.chartKind === 'ring' && (() => {
+          const chart = ringChartGeometry(leaf.values, leaf.accent, { showValues })
+          return (
+            <>
+              {chart.segments.length === 0
+                ? <circle cx={50} cy={50} r={34} fill="none" stroke={chart.track} strokeWidth={17} />
+                : chart.segments.map((segment, index) => (
+                  <path key={index} d={segment.d} fill={segment.color} data-testid="freeform-chart-segment" />
+                ))}
+              {chart.segments.map((segment, index) => (
+                segment.label && (
+                  <text
+                    key={index}
+                    x={segment.label.x}
+                    y={segment.label.y}
+                    textAnchor="middle"
+                    fontFamily="inherit"
+                    fontSize={7}
+                    fontWeight={600}
+                    fill="#ffffff"
+                  >
+                    {segment.label.text}
+                  </text>
+                )
+              ))}
+            </>
+          )
+        })()}
       </svg>
     )
   }

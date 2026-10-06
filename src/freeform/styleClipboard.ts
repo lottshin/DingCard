@@ -29,6 +29,7 @@ const SHAPE_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'cornerRadius', 'star
 const LINE_STYLE_KEYS = ['stroke', 'strokeWidth', 'dash', 'cap'] as const
 const PATH_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'dash', 'cap', 'join', 'fillRule'] as const
 const QRCODE_STYLE_KEYS = ['dark', 'light', 'ecl', 'moduleStyle'] as const
+const CHART_STYLE_KEYS = ['accent', 'showValues'] as const
 const IMAGE_STYLE_KEYS = ['fit'] as const
 
 export function styleKeysForNodeType(type: FreeformSceneNode['type']): readonly string[] {
@@ -39,6 +40,7 @@ export function styleKeysForNodeType(type: FreeformSceneNode['type']): readonly 
     case 'path': return [...PATH_STYLE_KEYS, ...SHARED_STYLE_KEYS]
     case 'image': return [...IMAGE_STYLE_KEYS, ...SHARED_STYLE_KEYS]
     case 'qrcode': return [...QRCODE_STYLE_KEYS, ...SHARED_STYLE_KEYS]
+    case 'chart': return [...CHART_STYLE_KEYS, ...SHARED_STYLE_KEYS]
     default: return []
   }
 }

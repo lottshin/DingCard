@@ -45,7 +45,7 @@ function deferred<T>() {
 
 function freeformDocument() {
   return {
-    documentVersion: 23 as const,
+    documentVersion: 24 as const,
     activeSlideId: 'page-1',
     slides: [
       {
@@ -102,7 +102,7 @@ function freeformDocument() {
 
 function nestedFreeformDocument(): FreeformDocument {
   return {
-    documentVersion: 23,
+    documentVersion: 24,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -632,7 +632,7 @@ describe('RemoteStore draft normalization and image retention', () => {
       ['legacy-markdown', 'markdown-card', 2],
       ['freeform-v1', 'freeform-slide', 2],
     ])
-    expect(drafts[1].mode === 'freeform-slide' && drafts[1].document.documentVersion).toBe(23)
+    expect(drafts[1].mode === 'freeform-slide' && drafts[1].document.documentVersion).toBe(24)
     if (drafts[1].mode !== 'freeform-slide') throw new Error('Expected freeform draft')
     expect(drafts[1].document.slides[0].nodes).toEqual([])
   })
@@ -782,7 +782,7 @@ describe('RemoteStore draft normalization and image retention', () => {
       document: legacy,
     } as unknown as SaveDraftInput)
 
-    expect(submitted?.document).toMatchObject({ documentVersion: 23 })
+    expect(submitted?.document).toMatchObject({ documentVersion: 24 })
     expect(JSON.stringify(submitted?.document)).not.toContain('"elements"')
     expect(saved.mode).toBe('freeform-slide')
     if (saved.mode !== 'freeform-slide') throw new Error('Expected freeform draft')

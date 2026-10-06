@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 23
+  documentVersion: 24
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -108,7 +108,7 @@ export type BlendMode =
   | 'luminosity'
 
 export interface FreeformElementBase extends SceneNodeState {
-  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart'
   x: number
   y: number
   width: number
@@ -322,6 +322,20 @@ export interface FreeformQrCodeElement extends FreeformElementBase {
   moduleStyle?: QrModuleStyle
 }
 
+export interface FreeformChartElement extends FreeformElementBase {
+  type: 'chart'
+  /** Which chart is drawn (v24). */
+  chartKind: 'bar' | 'ring' | 'line'
+  /** One category label per point, 1–24 characters (v24). */
+  labels: string[]
+  /** One non-negative value per point (v24). */
+  values: number[]
+  /** The chart colour (#RRGGBB, v24); rings tint a ramp from it. */
+  accent: string
+  /** Draw the value on each point (v24); absent means off. */
+  showValues?: true
+}
+
 export type FreeformElement =
   | FreeformTextElement
   | FreeformImageElement
@@ -329,6 +343,7 @@ export type FreeformElement =
   | FreeformLineElement
   | FreeformPathElement
   | FreeformQrCodeElement
+  | FreeformChartElement
 
 /**
  * A scene path contains node IDs from a slide root to one node. The empty
@@ -362,6 +377,10 @@ export interface FreeformNodeContentPatch {
   viewBox?: PathViewBox
   /** A QR code's text or URL (v22). */
   payload?: string
+  /** A chart's category labels (v24), replaced wholesale. */
+  labels?: string[]
+  /** A chart's values (v24), replaced wholesale. */
+  values?: number[]
 }
 
 export interface FreeformNodeStylePatch {
@@ -433,6 +452,12 @@ export interface FreeformNodeStylePatch {
   ecl?: QrErrorCorrectionLevel | null
   /** QR module shape (v23); `null` restores square. */
   moduleStyle?: QrModuleStyle | null
+  /** Which chart is drawn (v24); like the shape switcher on shapes. */
+  chartKind?: 'bar' | 'ring' | 'line'
+  /** Chart colour (#RRGGBB, v24); `null` restores the default blue. */
+  accent?: string | null
+  /** Draw the value on each chart point (v24); `null` turns it off. */
+  showValues?: true | null
 }
 
 export interface FreeformNodeGeometryPatch {

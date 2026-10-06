@@ -73,6 +73,7 @@ import {
 } from './appearance'
 import { isValidPathData } from './pathData'
 import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
+import { CHART_ACCENT_DEFAULT, isValidChartKind, isValidChartSeries } from './charts'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {
@@ -88,6 +89,7 @@ import type {
   FreeformNodeStylePatch,
   FreeformPathElement,
   FreeformQrCodeElement,
+  FreeformChartElement,
   FreeformSceneLeaf,
   FreeformSceneNode,
   FreeformShapeElement,
@@ -149,7 +151,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 23,
+    documentVersion: 24,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -273,6 +275,23 @@ export function createPathElement(slide: FreeformSlide, input: CreatePathInput):
     fill: input.fill ?? { type: 'transparent' },
     stroke: input.stroke ?? '#18181b',
     strokeWidth: input.strokeWidth ?? 2,
+  }
+}
+
+export function createChartElement(slide: FreeformSlide): FreeformChartElement {
+  return {
+    id: randomId(),
+    name: '图表',
+    locked: false,
+    hidden: false,
+    type: 'chart',
+    ...centerBox(slide, 480, 320),
+    rotation: 0,
+    scale: 1,
+    chartKind: 'bar',
+    labels: ['一月', '二月', '三月', '四月'],
+    values: [4, 7, 5, 9],
+    accent: CHART_ACCENT_DEFAULT,
   }
 }
 
@@ -478,7 +497,7 @@ interface NodePatchResult {
   node: FreeformSceneNode
 }
 
-const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload'])
+const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'values'])
 const STYLE_KEYS = new Set([
   'effect',
   'fontSize',
@@ -501,6 +520,9 @@ const STYLE_KEYS = new Set([
   'light',
   'ecl',
   'moduleStyle',
+  'chartKind',
+  'accent',
+  'showValues',
   'opacity',
   'shadow',
   'filter',
@@ -530,6 +552,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'opacity', 'shadow', 'filter', 'blendMode'])
+const CHART_APPEARANCE_KEYS = new Set(['showValues', 'opacity', 'shadow', 'filter', 'blendMode'])
 const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
@@ -568,6 +591,12 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidQrEcl(value)) return false
     } else if (key === 'moduleStyle') {
       if (value !== null && !isValidQrModuleStyle(value)) return false
+    } else if (key === 'chartKind') {
+      if (!isValidChartKind(value)) return false
+    } else if (key === 'accent') {
+      if (value !== null && !isHexColor(value)) return false
+    } else if (key === 'showValues') {
+      if (value !== null && value !== true) return false
     } else if (key === 'filter') {
       if (value !== null && !cloneSceneFilter(value, true)) return false
     } else if (key === 'blendMode') {
@@ -706,6 +735,15 @@ function applyContentPatch(
             framing: sourceChanged ? createDefaultImageFraming() : node.framing,
           },
     }
+  }
+  if (node.type === 'chart') {
+    if (!isValidChartSeries(record.labels, record.values)) return { ok: false, node }
+    const labels = record.labels as string[]
+    const values = record.values as number[]
+    const same = labels.length === node.labels.length
+      && labels.every((label, index) => label === node.labels[index])
+      && values.every((value, index) => value === node.values[index])
+    return { ok: true, node: same ? node : { ...node, labels: [...labels], values: [...values] } }
   }
   if (node.type === 'qrcode') {
     if (Object.keys(record).some((key) => key !== 'payload') || !isValidQrPayload(record.payload)) {
@@ -1010,6 +1048,37 @@ function applyStylePatch(
     ) && appearanceKeysSame(node, next, patch, LINE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
+  if (node.type === 'chart') {
+    if (
+      keys.some((key) => key !== 'chartKind' && key !== 'accent' && key !== 'showValues'
+        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
+    ) {
+      return { ok: false, node }
+    }
+    if (
+      ('chartKind' in patch && !isValidChartKind(patch.chartKind))
+      || ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent))
+      || !validAppearancePatch(patch, CHART_APPEARANCE_KEYS)
+    ) {
+      return { ok: false, node }
+    }
+    // accent is a required field: `null` restores the default blue.
+    const accent = 'accent' in patch
+      ? (patch.accent === null ? CHART_ACCENT_DEFAULT : patch.accent as string)
+      : node.accent
+    const base = {
+      ...node,
+      accent,
+      ...('chartKind' in patch ? { chartKind: patch.chartKind as typeof node.chartKind } : {}),
+    }
+    const next = withAppearancePatch(base, patch, CHART_APPEARANCE_KEYS)
+    const same = keys.every((key) =>
+      CHART_APPEARANCE_KEYS.has(key)
+        ? true
+        : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+    ) && appearanceKeysSame(node, next, patch, CHART_APPEARANCE_KEYS)
+    return { ok: true, node: same ? node : next }
+  }
   if (node.type === 'qrcode') {
     if (
       keys.some((key) => key !== 'dark' && key !== 'light' && key !== 'ecl'
@@ -1272,6 +1341,7 @@ function defaultSceneNodeName(element: FreeformElement): string {
   if (element.type === 'shape') return '形状'
   if (element.type === 'path') return '图形'
   if (element.type === 'qrcode') return '二维码'
+  if (element.type === 'chart') return '图表'
   return element.lineKind === 'arrow' ? '箭头' : '直线'
 }
 
@@ -1391,6 +1461,7 @@ function applyLegacyElementPatch(
     line: new Set(['x', 'y', 'width', 'height', 'rotation', 'lineKind', 'stroke', 'strokeWidth']),
     path: new Set(['x', 'y', 'width', 'height', 'rotation']),
     qrcode: new Set(['x', 'y', 'width', 'height', 'rotation']),
+    chart: new Set(['x', 'y', 'width', 'height', 'rotation']),
   }
   if (!hasOnlyKeys(patch, allowedByType[node.type])) return { ok: false, node }
   if (Object.keys(patch).length === 0) return { ok: true, node }

@@ -83,6 +83,7 @@ function defaultNodeName(node: FreeformSceneNode): string {
   if (node.type === 'group') return t('组合')
   if (node.type === 'path') return t('图形')
   if (node.type === 'qrcode') return t('二维码')
+  if (node.type === 'chart') return node.chartKind === 'ring' ? t('环形图') : node.chartKind === 'line' ? t('折线图') : t('柱状图')
   return t('形状')
 }
 
@@ -162,6 +163,13 @@ function typeIcon(node: FreeformSceneNode) {
     return (
       <svg viewBox="0 0 20 20" aria-hidden="true" className="freeform-layer-icon">
         <path d="M3.5 3.5h5v5h-5zM11.5 3.5h5v5h-5zM3.5 11.5h5v5h-5zM11 11h2.4v2.4H11zM14.1 14.1h2.4v2.4h-2.4zM11 14.1h2.4v2.4H11zM14.1 11h2.4v2.4h-2.4z" />
+      </svg>
+    )
+  }
+  if (node.type === 'chart') {
+    return (
+      <svg viewBox="0 0 20 20" aria-hidden="true" className="freeform-layer-icon">
+        <path d="M4 16V10M10 16V4M16 16V7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
       </svg>
     )
   }

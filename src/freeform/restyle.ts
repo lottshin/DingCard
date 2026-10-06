@@ -240,6 +240,8 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
       return patched(node, { shadow: recolorShadow(node.shadow, recolor) })
     case 'qrcode':
       return patched(node, { dark: recolor(node.dark), shadow: recolorShadow(node.shadow, recolor) })
+    case 'chart':
+      return patched(node, { accent: recolor(node.accent), shadow: recolorShadow(node.shadow, recolor) })
   }
 }
 
@@ -511,7 +513,8 @@ function keepWordsReadable(document: FreeformDocument): FreeformDocument {
         if ((under.opacity ?? 1) < 0.7) continue
         background = under.type === 'image'
           ? null
-          : under.type === 'qrcode' ? under.light : solidOf(under.fill)
+          : under.type === 'qrcode' ? under.light
+          : under.type === 'chart' ? null : solidOf(under.fill)
         break
       }
       const needed = contrastNeeded(node) + CONTRAST_MARGIN

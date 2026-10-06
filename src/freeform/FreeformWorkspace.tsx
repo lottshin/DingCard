@@ -53,6 +53,7 @@ import {
   createSlide,
   createImageElement,
   createLineElement,
+  createChartElement,
   createQrCodeElement,
   createPathElement,
   createShapeElement,
@@ -60,6 +61,7 @@ import {
   freeformReducer,
 } from './document'
 import { QR_PAYLOAD_MAX_LENGTH } from './qrCode'
+import { CHART_POINTS_MAX, isValidChartSeries } from './charts'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
 import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
@@ -236,6 +238,7 @@ import type {
   ImageFraming,
   FreeformLineElement,
   FreeformQrCodeElement,
+  FreeformChartElement,
   FreeformSceneNode,
   FreeformNodeContentPatch,
   FreeformNodeGeometryPatch,
@@ -906,6 +909,14 @@ const QR_PRESETS = [
 function isQrCodeElement(element: FreeformElement | undefined): element is FreeformQrCodeElement {
   return element?.type === 'qrcode'
 }
+
+function isChartElement(element: FreeformElement | undefined): element is FreeformChartElement {
+  return element?.type === 'chart'
+}
+
+/** Chart kinds in the inspector segment order. */
+const CHART_KINDS = ['bar', 'ring', 'line'] as const
+const CHART_KIND_LABELS = { bar: '柱状图', ring: '环形图', line: '折线图' } as const
 
 function isImageElement(element: FreeformElement | undefined): element is FreeformImageElement {
   return element?.type === 'image'
@@ -3204,6 +3215,11 @@ export function FreeformWorkspace({
     insertNewElement(createQrCodeElement(activeSlide), placeAt)
   }
 
+  /** A one-series chart over a few labelled numbers. */
+  function addChart(placeAt?: { x: number; y: number }) {
+    insertNewElement(createChartElement(activeSlide), placeAt)
+  }
+
   function addLine(
     pick: { id: FreeformLineElement['lineKind']; bothEnds?: boolean },
     placeAt?: { x: number; y: number },
@@ -3253,6 +3269,7 @@ export function FreeformWorkspace({
     if (pick.kind === 'shape') addShape(pick.id, placeAt)
     else if (pick.kind === 'line') addLine(pick, placeAt)
     else if (pick.kind === 'qrcode') addQrCode(placeAt)
+    else if (pick.kind === 'chart') addChart(placeAt)
     else if (pick.kind === 'collage') {
       const layout = collageById(pick.id)
       if (layout) addCollage(layout, placeAt)
@@ -6362,6 +6379,9 @@ export function FreeformWorkspace({
     if (selectedElement.type === 'qrcode') {
       return { kind: 'qrcode', node: selectedElement }
     }
+    if (selectedElement.type === 'chart') {
+      return { kind: 'chart', node: selectedElement }
+    }
     return {
       kind: 'image',
       node: selectedElement,
@@ -8279,6 +8299,104 @@ export function FreeformWorkspace({
                           ))}
                         </ul>
                       )}
+                    </InspectorSection>
+                  )}
+
+                  {isChartElement(selectedElement) && (
+                    <InspectorSection title={t('图表')} testId="inspector-chart">
+                      <div className="field-label">{t('类型')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('图表类型')}>
+                        {CHART_KINDS.map((kind) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            className={selectedElement.chartKind === kind ? 'seg-btn on' : 'seg-btn'}
+                            data-testid={`chart-kind-${kind}`}
+                            onClick={() => updateSelectedStyle({ chartKind: kind })}
+                          >
+                            {t(CHART_KIND_LABELS[kind])}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="field-label with-gap">{t('数据')}</div>
+                      <div className="chart-data-rows" data-testid="chart-data-rows">
+                        {selectedElement.labels.map((label, index) => (
+                          <div className="chart-data-row" key={index}>
+                            <input
+                              type="text"
+                              maxLength={24}
+                              value={label}
+                              aria-label={t('第 {n} 项标签', { n: index + 1 })}
+                              onChange={(event) => {
+                                const labels = [...selectedElement.labels]
+                                labels[index] = event.currentTarget.value
+                                if (!isValidChartSeries(labels, selectedElement.values)) return
+                                updateSelectedContent({ labels, values: selectedElement.values })
+                              }}
+                            />
+                            <input
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={String(selectedElement.values[index])}
+                              aria-label={t('第 {n} 项数值', { n: index + 1 })}
+                              onChange={(event) => {
+                                const value = Number(event.currentTarget.value)
+                                if (!Number.isFinite(value) || value < 0) return
+                                const values = [...selectedElement.values]
+                                values[index] = value
+                                updateSelectedContent({ labels: selectedElement.labels, values })
+                              }}
+                            />
+                            {selectedElement.labels.length > 1 && (
+                              <button
+                                type="button"
+                                className="ghost chart-data-remove"
+                                aria-label={t('删除第 {n} 项', { n: index + 1 })}
+                                data-testid={`chart-data-remove-${index}`}
+                                onClick={() => updateSelectedContent({
+                                  labels: selectedElement.labels.filter((_, at) => at !== index),
+                                  values: selectedElement.values.filter((_, at) => at !== index),
+                                })}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {selectedElement.labels.length < CHART_POINTS_MAX && (
+                        <button
+                          type="button"
+                          className="ghost chart-data-add"
+                          data-testid="chart-data-add"
+                          onClick={() => updateSelectedContent({
+                            labels: [...selectedElement.labels, t('新增')],
+                            values: [...selectedElement.values, 0],
+                          })}
+                        >
+                          {t('添加一项')}
+                        </button>
+                      )}
+                      <div className="field-label with-gap">{t('数值标签')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('数值标签')}>
+                        <button
+                          type="button"
+                          className={selectedElement.showValues === true ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.showValues === true}
+                          onClick={() => updateSelectedStyle({ showValues: selectedElement.showValues === true ? null : true })}
+                        >
+                          {t('显示')}
+                        </button>
+                      </div>
+                      <div className="field-label with-gap">{t('颜色')}</div>
+                      <div className="paint-row" data-testid="chart-colors">
+                        <ColorPickerButton
+                          label={t('图表颜色')}
+                          color={selectedElement.accent}
+                          onChange={(accent) => updateSelectedStyle({ accent })}
+                        />
+                      </div>
                     </InspectorSection>
                   )}
 

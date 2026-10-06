@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 23,
+    documentVersion: 24,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(23)
+    expect(result.document.documentVersion).toBe(24)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -522,6 +522,68 @@ describe('applyActions', () => {
     expect(result.document.slides[0].nodes).toHaveLength(3)
     const clone = result.document.slides[0].nodes[2]
     expect(clone.id).not.toBe('title-1')
+  })
+
+  test('applies the v24 chart patches through node actions', () => {
+    const withChart = seedDocument()
+    withChart.slides[0].nodes.push({
+      id: 'chart-1',
+      name: '图表',
+      locked: false,
+      hidden: false,
+      type: 'chart',
+      x: 120,
+      y: 900,
+      width: 480,
+      height: 320,
+      rotation: 0,
+      scale: 1,
+      chartKind: 'bar',
+      labels: ['一', '二', '三'],
+      values: [2, 4, 6],
+      accent: '#1d4ed8',
+    })
+    const valid = validateDocument(withChart)
+    expect(valid.ok).toBe(true)
+    if (!valid.ok) return
+
+    const styled = applyActions(valid.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { chartKind: 'ring', accent: '#dc2626', showValues: true } }],
+      },
+    ])
+    expect(styled.ok).toBe(true)
+    if (!styled.ok) return
+    const styledChart = styled.document.slides[0].nodes.find((node) => node.id === 'chart-1')
+    expect(styledChart && styledChart.type === 'chart' ? styledChart.chartKind : '').toBe('ring')
+    expect(styledChart && styledChart.type === 'chart' ? styledChart.showValues : undefined).toBe(true)
+
+    const edited = applyActions(styled.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { labels: ['住', '行', '吃'], values: [3, 2, 5] } }],
+      },
+    ])
+    expect(edited.ok).toBe(true)
+    if (!edited.ok) return
+    const editedChart = edited.document.slides[0].nodes.find((node) => node.id === 'chart-1')
+    expect(editedChart && editedChart.type === 'chart' ? editedChart.labels : []).toEqual(['住', '行', '吃'])
+
+    // A ragged series rejects the content patch and keeps the element as-is.
+    const rejected = applyActions(edited.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { labels: ['住'], values: [3, 2] } }],
+      },
+    ])
+    expect(rejected.ok).toBe(true)
+    if (!rejected.ok) return
+    const keptChart = rejected.document.slides[0].nodes.find((node) => node.id === 'chart-1')
+    expect(keptChart && keptChart.type === 'chart' ? keptChart.labels : []).toEqual(['住', '行', '吃'])
   })
 
   test('rejects invalid input documents and non-array actions', () => {
