@@ -151,7 +151,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 27,
+    documentVersion: 28,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -552,9 +552,9 @@ const TEXT_APPEARANCE_KEYS = new Set([
   'stroke', 'strokeWidth', 'effect',
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
+const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
-const BASE_APPEARANCE_KEYS = new Set(['opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
 ])
@@ -931,20 +931,13 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'image') {
-    if (
-      keys.some((key) => key !== 'fit'
-        && key !== 'framing'
-        && key !== 'opacity'
-        && key !== 'shadow'
-        && key !== 'filter'
-        && key !== 'blendMode')
-    ) {
+    if (!keys.every((key) => key === 'fit' || key === 'framing' || IMAGE_APPEARANCE_KEYS.has(key))) {
       return { ok: false, node }
     }
     if (
       ('fit' in patch && patch.fit !== 'cover' && patch.fit !== 'contain')
       || ('framing' in patch && !isValidImageFraming(patch.framing))
-      || !validAppearancePatch(patch, BASE_APPEARANCE_KEYS)
+      || !validAppearancePatch(patch, IMAGE_APPEARANCE_KEYS)
     ) {
       return { ok: false, node }
     }
@@ -956,11 +949,11 @@ function applyStylePatch(
       ...node,
       fit,
       framing: 'framing' in patch ? cloneImageFraming(framing) : node.framing,
-    }, patch, BASE_APPEARANCE_KEYS)
+    }, patch, IMAGE_APPEARANCE_KEYS)
     if (
       fit === node.fit
       && imageFramingEquals(framing, node.framing)
-      && appearanceKeysSame(node, next, patch, BASE_APPEARANCE_KEYS)
+      && appearanceKeysSame(node, next, patch, IMAGE_APPEARANCE_KEYS)
     ) {
       return { ok: true, node }
     }

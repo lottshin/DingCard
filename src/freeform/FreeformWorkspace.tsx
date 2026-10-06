@@ -9034,6 +9034,19 @@ export function FreeformWorkspace({
                           />
                         </label>
                       )}
+                      {isImageElement(selectedElement) && (
+                        <label title={t('圆角')}>
+                          <InspectorGlyph name="radius" />
+                          <InspectorNumberInput
+                            ariaLabel={t('圆角')}
+                            min={0}
+                            max={2000}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedElement.cornerRadius ?? 0}
+                            onCommit={(value) => updateSelectedStyle({ cornerRadius: value })}
+                          />
+                        </label>
+                      )}
                     </div>
                     <div className="field-label with-gap">{t('阴影')}</div>
                     <ShadowField

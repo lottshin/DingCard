@@ -13,6 +13,7 @@ import {
   validatePageSize,
 } from '../document'
 import { SCENE_EPSILON, sceneNodesBoundsInParent } from '../sceneTransform'
+import { normalizeFreeformDocument } from '../sceneDocument'
 import type {
   FreeformAction,
   FreeformDocument,
@@ -72,7 +73,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(27)
+    expect(doc.documentVersion).toBe(28)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -780,10 +781,15 @@ describe('v6 appearance patches', () => {
     expect(shapeNode.opacity).toBe(0.6)
     expect(shapeNode.shadow).toEqual(shadow)
 
-    const image = stylePatch(document, ['image-1'], { opacity: 0.9, shadow })
+    const image = stylePatch(document, ['image-1'], { cornerRadius: 48, opacity: 0.9, shadow })
     const imageNode = image.slides[0].nodes[1] as FreeformImageElement
+    expect(imageNode.cornerRadius).toBe(48)
     expect(imageNode.opacity).toBe(0.9)
     expect(imageNode.shadow).toEqual(shadow)
+
+    // Null clears the radius back to square corners.
+    const squared = stylePatch(image, ['image-1'], { cornerRadius: null })
+    expect((squared.slides[0].nodes[1] as FreeformImageElement).cornerRadius).toBeUndefined()
 
     const line = stylePatch(document, ['line-1'], { opacity: 0.75, shadow })
     const lineNode = line.slides[0].nodes[2]
@@ -798,6 +804,7 @@ describe('v6 appearance patches', () => {
     const document = documentWith([
       { ...createTextElement(createSlide()), id: 'text-1' },
       { ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' },
+      { ...createImageElement(createSlide(), 'img:photo'), id: 'image-1' },
     ])
 
     const invalid: Array<[string[], Record<string, unknown>]> = [
@@ -810,10 +817,23 @@ describe('v6 appearance patches', () => {
       [['text-1'], { cornerRadius: 8 }],
       [['shape-1'], { cornerRadius: -1 }],
       [['shape-1'], { lineHeight: 1.5 }],
+      [['image-1'], { cornerRadius: -1 }],
+      [['image-1'], { cornerRadius: 2001 }],
     ]
     for (const [path, patch] of invalid) {
       expect(stylePatch(document, path, patch)).toBe(document)
     }
+  })
+
+  it('carries image corner radius at v28 and rejects it at v27', () => {
+    const slide = createSlide()
+    const rounded: FreeformImageElement = { ...createImageElement(slide, 'img:photo'), cornerRadius: 36 }
+    const imageSlide = { ...slide, nodes: [rounded as unknown as FreeformSceneNode] }
+    const v28 = normalizeFreeformDocument({ documentVersion: 28, activeSlideId: slide.id, slides: [imageSlide] })
+    expect(v28).not.toBeNull()
+    expect((v28!.slides[0].nodes[0] as FreeformImageElement).cornerRadius).toBe(36)
+    const v27 = normalizeFreeformDocument({ documentVersion: 27, activeSlideId: slide.id, slides: [imageSlide] })
+    expect(v27).toBeNull()
   })
 })
 

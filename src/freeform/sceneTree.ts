@@ -974,6 +974,11 @@ const BASE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   blendMode: BLEND_FIELD_CHECK,
 }
 
+const IMAGE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  ...BASE_OPTIONAL_FIELD_CHECKS,
+  cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
+}
+
 const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
@@ -1089,7 +1094,7 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
   }
   if (node.type === 'image') {
     return (
-      hasValidOptionalFields(record, IMAGE_NODE_KEYS, BASE_OPTIONAL_FIELD_CHECKS) &&
+      hasValidOptionalFields(record, IMAGE_NODE_KEYS, IMAGE_OPTIONAL_FIELD_CHECKS) &&
       typeof node.src === 'string' &&
       typeof node.alt === 'string' &&
       (node.fit === 'cover' || node.fit === 'contain') &&

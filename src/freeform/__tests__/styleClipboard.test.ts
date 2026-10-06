@@ -51,6 +51,7 @@ describe('style clipboard', () => {
     expect(styleKeysForNodeType('line')).toContain('dash')
     expect(styleKeysForNodeType('line')).toContain('cap')
     expect(styleKeysForNodeType('image')).toContain('fit')
+    expect(styleKeysForNodeType('image')).toContain('cornerRadius')
     expect(styleKeysForNodeType('group')).toEqual([])
   })
 
@@ -83,7 +84,11 @@ describe('style clipboard', () => {
 
   it('rejects groups and leaves without any style fields', () => {
     expect(copyStylePatch({ ...base, type: 'group', children: [] } as FreeformSceneNode)).toBeNull()
-    expect(copyStylePatch({ ...base, type: 'image', src: '', alt: '', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } as FreeformSceneNode)).not.toBeNull()
+    const bareImage = { ...base, type: 'image', src: '', alt: '', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } as FreeformSceneNode
+    expect(copyStylePatch(bareImage)).not.toBeNull()
+    // A rounded picture carries its radius to the next one.
+    const roundedImage = { ...bareImage, cornerRadius: 40 } as FreeformSceneNode
+    expect(copyStylePatch(roundedImage)).toMatchObject({ fit: 'cover', cornerRadius: 40 })
   })
 
   it('narrows a copied patch to the keys the target type accepts', () => {

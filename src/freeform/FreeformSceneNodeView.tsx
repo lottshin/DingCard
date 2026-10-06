@@ -211,7 +211,13 @@ function SceneLeafContent({
       <div
         className="freeform-image-content-layer"
         data-image-crop-hidden={imageContentIsHidden ? 'true' : undefined}
-        style={leaf.shadow ? { boxShadow: shadowCss(leaf.shadow) } : undefined}
+        style={{
+          ...(leaf.shadow ? { boxShadow: shadowCss(leaf.shadow) } : {}),
+          // Rounded corners clip the picture; the shadow follows the same radius.
+          ...(leaf.cornerRadius !== undefined
+            ? { borderRadius: `${leaf.cornerRadius}px`, overflow: 'hidden' }
+            : {}),
+        }}
       >
         <FramedImage
           logicalSrc={leaf.src}

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 27
+  documentVersion: 28
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -220,6 +220,8 @@ export interface FreeformImageElement extends FreeformElementBase {
   alt: string
   fit: 'cover' | 'contain'
   framing: ImageFraming
+  /** Corner radius in px; undefined keeps the picture square (v28). */
+  cornerRadius?: number
 }
 
 export interface FreeformShapeElement extends FreeformElementBase {
