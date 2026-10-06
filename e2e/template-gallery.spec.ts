@@ -127,8 +127,8 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(29)
-  await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(30)
+  await expect(dialog.locator('.template-tile')).toHaveCount(32)
+  await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(33)
   await expect(dialog.locator('.template-freeform-artboard .freeform-preview-element').first()).toBeVisible()
 
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
@@ -177,14 +177,15 @@ test('gallery search narrows the list by keyword and combines with the size filt
   await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(29)
+  await expect(dialog.locator('.template-tile')).toHaveCount(32)
 
   const search = dialog.getByTestId('template-search')
 
-  // A tag keyword leaves the templates that carry it.
+  // A keyword leaves the templates whose tags, titles, or descriptions
+  // carry it (the picks template mentions 小红书 in its description).
   await search.fill('小红书')
-  await expect(dialog.locator('.template-tile')).toHaveCount(2)
-  await expect(dialog.locator('.template-tile h3')).toContainText(['干货笔记', '图片拼贴'])
+  await expect(dialog.locator('.template-tile')).toHaveCount(3)
+  await expect(dialog.locator('.template-tile h3')).toContainText(['干货笔记', '图片拼贴', '好物安利'])
 
   // Words from the description count too.
   await search.fill('柱状图')
@@ -202,7 +203,7 @@ test('gallery search narrows the list by keyword and combines with the size filt
   await search.click()
   await page.keyboard.press('Escape')
   await expect(search).toHaveValue('')
-  await expect(dialog.locator('.template-tile')).toHaveCount(8)
+  await expect(dialog.locator('.template-tile')).toHaveCount(9)
 
   // A second Escape closes the gallery.
   await page.keyboard.press('Escape')
@@ -330,7 +331,7 @@ test('templates come from the repository only; the editors offer no way to save 
   await insertFreeformText(page)
   await openFreeformTemplateGallery(page)
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(gallery.locator('.template-tile')).toHaveCount(29)
+  await expect(gallery.locator('.template-tile')).toHaveCount(32)
   await expect(gallery.getByText('我的模板')).toHaveCount(0)
   await expect(gallery.getByRole('button', { name: '删除此模板' })).toHaveCount(0)
   await gallery.getByRole('button', { name: '使用这套模板', exact: true }).click()

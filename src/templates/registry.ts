@@ -1060,6 +1060,45 @@ function illustrationNode(name: string, src: string, alt: string, x: number, y: 
   }
 }
 
+/** A photo as its own image element: cover fit with the v28/v29 refinements
+ *  (corner radius, frame stroke, photo filter) the inspector offers. */
+function photoNode(
+  name: string,
+  src: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: {
+    alt?: string
+    rotation?: number
+    cornerRadius?: number
+    frame?: { color: string; width: number }
+    filter?: SceneFilter
+  } = {},
+): FreeformSceneNode {
+  return {
+    id: uuid(),
+    name,
+    locked: false,
+    hidden: false,
+    type: 'image',
+    x,
+    y,
+    width,
+    height,
+    rotation: options.rotation ?? 0,
+    scale: 1,
+    src,
+    alt: options.alt ?? '',
+    fit: 'cover' as const,
+    framing: createDefaultImageFraming(),
+    ...(options.cornerRadius !== undefined ? { cornerRadius: options.cornerRadius } : {}),
+    ...(options.frame ? { stroke: options.frame.color, strokeWidth: options.frame.width } : {}),
+    ...(options.filter ? { filter: options.filter } : {}),
+  }
+}
+
 function qrCodeNode(
   payload: string,
   x: number,
@@ -1747,6 +1786,95 @@ function createFollowCardDocument(): FreeformDocument {
   ])
 }
 
+function createPolaroidWallDocument(): FreeformDocument {
+  const paper = '#f2ede3'
+  const ink = '#2b241c'
+  const muted = '#7a6f61'
+  const caption = (index: number, text: string): FreeformSceneNode => {
+    const n = NUMBERED[index]
+    return textNode(text, 96 + index * 6, 1428 + index * 4, 640, 56, {
+      name: `手记${n}`, fontSize: 34, textFill: solid(muted), lineHeight: 1.3,
+    }) as FreeformSceneNode
+  }
+  return documentFromSlides([
+    slide('拍立得墙', solid(paper), [
+      photoNode('主图', '/templates/editorial-building.webp', 96, 168, 560, 660, {
+        alt: '一栋街角老房子的照片', rotation: -3, cornerRadius: 6,
+        frame: { color: '#ffffff', width: 18 },
+        filter: { sepia: 0.15, brightness: 1.04 },
+      }),
+      decorationNode('tape', 84, 148, 220, { rotation: -36 }),
+      decorationNode('tape', 660, 196, 200, { rotation: 30, color: '#b9d3ea' }),
+      photoNode('副图一', '/templates/poster-coffee.svg', 648, 216, 360, 440, {
+        alt: '一杯拿铁的插画', rotation: 4, cornerRadius: 6,
+        frame: { color: '#ffffff', width: 14 },
+      }),
+      photoNode('副图二', '/templates/poster-pottery.svg', 604, 700, 420, 500, {
+        alt: '三件手作陶器的插画', rotation: -5, cornerRadius: 6,
+        frame: { color: '#ffffff', width: 14 },
+      }),
+      caption(0, '巷口的老房子，下午四点'),
+      caption(1, '咖啡到手，先拍一张'),
+      caption(2, '陶器店的架子，看了一个下午'),
+      textNode('周末观察手记', 90, 1612, 920, 150, { name: '标题', fontSize: 96, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('拍立得模式的 city walk，三个瞬间', 96, 1752, 900, 56, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      textNode('VOL.03', 96, 88, 300, 60, { name: '角标', fontSize: 32, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 6, effect: { type: 'background', color: '#c96f4a', amount: 52, radius: 10 } }),
+      lineNode(96, 1788, 500, '#d8cfbd', 2, { name: '分隔线', cap: 'round' }),
+      textNode('@叮卡手记', 96, 1836, 600, 52, { name: '品牌', fontSize: 30, textFill: solid(muted), fontWeight: 'bold' }),
+    ]),
+  ])
+}
+
+function createPicksDocument(): FreeformDocument {
+  const paper = '#f7f5f0'
+  const ink = '#26211a'
+  const clay = '#b4552d'
+  const muted = '#7c7265'
+  return documentFromSlides([
+    slide('好物安利', solid(paper), [
+      textNode('本月好物', 90, 96, 900, 130, { name: '标题', fontSize: 88, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('用过才知道的两件小物', 96, 232, 880, 56, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      textNode('PICKS', 96, 88, 300, 56, { name: '角标', fontSize: 28, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 8, effect: { type: 'background', color: clay, amount: 44, radius: 8 } }),
+      photoNode('主图', '/templates/poster-bottle.svg', 96, 372, 420, 560, {
+        alt: '一瓶植物精华水的插画', cornerRadius: 28,
+      }),
+      photoNode('副图', '/templates/poster-coffee.svg', 564, 372, 420, 560, {
+        alt: '一杯拿铁的插画', cornerRadius: 28,
+        filter: { sepia: 0.2, brightness: 1.03 },
+      }),
+      textNode('植物精华水', 96, 984, 420, 64, { name: `标签一`, fontSize: 44, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode('回购第 3 瓶，湿敷不刺激', 96, 1056, 420, 120, { name: `信息一`, fontSize: 34, textFill: solid(muted), lineHeight: 1.4 }),
+      textNode('冷萃咖啡液', 564, 984, 420, 64, { name: `标签二`, fontSize: 44, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode('办公室常备，比店里便宜一半', 564, 1056, 420, 120, { name: `信息二`, fontSize: 34, textFill: solid(muted), lineHeight: 1.4 }),
+      lineNode(90, 1240, 900, '#e2dccd', 2, { name: '分隔线', cap: 'butt' }),
+      textNode('完整清单放在评论区', 90, 1288, 700, 64, { name: '按钮文字', fontSize: 40, textFill: solid(paper), fontWeight: 'bold', align: 'center' }),
+      shapeNode('rect', 90, 1276, 620, 92, solid(clay), { name: '按钮底板', cornerRadius: 46 }),
+      textNode('@叮卡选物', 96, 1408, 600, 52, { name: '品牌', fontSize: 30, textFill: solid(muted), fontWeight: 'bold' }),
+    ]),
+  ])
+}
+
+function createMonoTravelDocument(): FreeformDocument {
+  const night = '#191a20'
+  const cream = '#f2efe8'
+  const muted = '#8b8d98'
+  return documentFromSlides([
+    slide('黑白旅拍', solid(night), [
+      photoNode('主图', '/templates/editorial-building.webp', 330, 180, 660, 1180, {
+        alt: '黑白滤镜下的城市建筑照片', cornerRadius: 36,
+        frame: { color: '#ffffff', width: 12 },
+        filter: { grayscale: 1, contrast: 1.15 },
+      }),
+      textNode('城市速写', 90, 296, 220, 640, { name: '标题', fontSize: 108, textFill: solid(cream), fontWeight: 'bold', lineHeight: 1.18 }),
+      textNode('黑白滤镜下的周末漫步', 90, 1092, 220, 560, { name: '副标题', fontSize: 40, textFill: solid(muted), lineHeight: 1.5 }),
+      textNode('NO.07', 90, 188, 220, 56, { name: '角标', fontSize: 30, fontFamily: UI, textFill: solid(night), fontWeight: 'bold', letterSpacing: 4, effect: { type: 'background', color: cream, amount: 44, radius: 8 } }),
+      textNode('@叮卡街拍', 90, 1700, 220, 52, { name: '品牌', fontSize: 30, textFill: solid(muted), fontWeight: 'bold' }),
+      lineNode(90, 1660, 220, '#4a4c58', 2, { name: '落款线', cap: 'round' }),
+      shapeNode('ellipse', 116, 236, 12, 12, solid(cream), { name: '定位点', opacity: 0.9 }),
+    ], STORY),
+  ])
+}
+
 function createTrendCompareDocument(): FreeformDocument {
   const paper = '#faf7f2'
   const ink = '#1f2937'
@@ -1844,6 +1972,9 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'data-roundup': poster('数据盘点', '大标题配一张双系列对比柱状图和三个大数字，适合年度盘点、月度总结和数据海报。', ['盘点', '数据'], 'story'),
   'follow-card': poster('关注引导', '圆点二维码配爱心和关注按钮，适合涨粉海报、主页引导和活动招募。', ['涨粉', '关注'], 'square'),
   'trend-compare': poster('趋势对比', '百分比堆叠柱看占比变化，适合渠道结构、预算分配和人群构成对比。', ['占比', '趋势'], 'story'),
+  'polaroid-wall': poster('拍立得墙', '三张带白框的拍立得照片斜着排开，配手记小字，适合探店、旅行和日常记录。', ['拼贴', '手记'], 'xhs'),
+  'picks': poster('好物安利', '两张圆角大图配回购理由，适合小红书好物清单和开箱分享。', ['好物', '清单'], 'xhs'),
+  'mono-travel': poster('黑白旅拍', '深色底上一张黑白滤镜的圆角大图配竖排标题，适合街拍、展览和城市记录。', ['黑白', '旅拍'], 'story'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -1876,6 +2007,9 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'data-roundup': createDataRoundupDocument,
   'follow-card': createFollowCardDocument,
   'trend-compare': createTrendCompareDocument,
+  'polaroid-wall': createPolaroidWallDocument,
+  'picks': createPicksDocument,
+  'mono-travel': createMonoTravelDocument,
 }
 
 const markdownSeriesIds: MarkdownTemplateSeriesId[] = [
@@ -1914,6 +2048,9 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'data-roundup',
   'follow-card',
   'trend-compare',
+  'polaroid-wall',
+  'picks',
+  'mono-travel',
 ]
 
 function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {

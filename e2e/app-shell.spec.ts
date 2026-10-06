@@ -263,7 +263,7 @@ test('templates start a new project in the matching editor', async ({ page }) =>
   await page.getByRole('group', { name: '按系统筛选' }).getByRole('button', { name: /^自由编辑/ }).click()
   await expect(page).toHaveURL(/#\/templates\?system=canvas$/)
   // Eight decks and twenty-one posters.
-  await expect(page.getByTestId('template-card')).toHaveCount(29)
+  await expect(page.getByTestId('template-card')).toHaveCount(32)
 
   await page.getByRole('button', { name: '用「夜航」新建项目' }).click()
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()

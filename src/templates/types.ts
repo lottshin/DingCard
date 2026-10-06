@@ -40,6 +40,9 @@ export type FreeformPosterSeriesId =
   | 'data-roundup'
   | 'follow-card'
   | 'trend-compare'
+  | 'polaroid-wall'
+  | 'picks'
+  | 'mono-travel'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

@@ -20,7 +20,7 @@ test('the gallery filters templates by size, and a poster opens as one page at i
 
   await dialog.getByTestId('template-format-story').click()
   await expect(dialog.getByTestId('template-format-story')).toHaveAttribute('aria-pressed', 'true')
-  await expect(dialog.locator('.template-tile')).toHaveCount(8)
+  await expect(dialog.locator('.template-tile')).toHaveCount(9)
   await expect(dialog.locator('.template-detail-series')).toHaveText('价目表')
   // The preview keeps the 9:16 page's proportions.
   const preview = await dialog.locator('.template-tile').first().locator('.template-freeform-preview').boundingBox()

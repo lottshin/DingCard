@@ -42,7 +42,7 @@ export interface PosterSuccess {
   ok: true
   document: FreeformDocument
   summary: {
-    documentVersion: 27
+    documentVersion: number
     templateId: string
     width: number
     height: number
@@ -198,7 +198,8 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   const content = normalizePosterContent(value)
   if (typeof content === 'string') return { ok: false, error: content }
   const slots = FREEFORM_POSTER_SLOTS[template.series]
-  const slide = template.create().slides[0]
+  const made = template.create()
+  const slide = made.slides[0]
 
   const texts = new Map<string, string>()
   const remove = new Set<string>()
@@ -364,13 +365,13 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   })
 
   const placed = settle(nodes, slide.nodes, slots, lines.length)
-  const document = normalizeFreeformDocument({ documentVersion: 27, activeSlideId: slide.id, slides: [{ ...slide, nodes: placed }] })
+  const document = normalizeFreeformDocument({ documentVersion: made.documentVersion, activeSlideId: slide.id, slides: [{ ...slide, nodes: placed }] })
   if (!document) return { ok: false, error: '生成的海报没有通过 v20 校验。' }
   return {
     ok: true,
     document,
     summary: {
-      documentVersion: 27,
+      documentVersion: made.documentVersion,
       templateId,
       width: slide.width,
       height: slide.height,

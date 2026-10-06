@@ -549,6 +549,30 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     chart: { node: '图表' },
   },
+  'polaroid-wall': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, () => undefined, (n) => `手记${n}`),
+    brand: { text: '品牌' },
+    image: { node: '主图' },
+  },
+  'picks': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(2, (n) => `标签${n}`, (n) => `信息${n}`),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+    image: { node: '主图' },
+  },
+  'mono-travel': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+    image: { node: '主图' },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {
