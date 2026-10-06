@@ -5,8 +5,10 @@ import {
   QR_ECL_DEFAULT,
   QR_LIGHT_DEFAULT,
   QR_PAYLOAD_MAX_LENGTH,
+  QR_QUIET_ZONE_DEFAULT,
   isValidQrEcl,
   isValidQrPayload,
+  isValidQrQuietZone,
 } from '../qrCode'
 import { qrMatrix, qrModulePaths } from '../qrMatrix'
 import { createQrCodeElement, createFreeformDocument, freeformReducer } from '../document'
@@ -28,6 +30,16 @@ describe('qr payload validation', () => {
     for (const level of ['L', 'M', 'Q', 'H'] as const) expect(isValidQrEcl(level)).toBe(true)
     expect(isValidQrEcl('low')).toBe(false)
     expect(isValidQrEcl(undefined)).toBe(false)
+  })
+
+  it('accepts quiet zones of 0–4 modules and rejects everything else', () => {
+    expect(QR_QUIET_ZONE_DEFAULT).toBe(2)
+    for (const width of [0, 1, 2, 3, 4]) expect(isValidQrQuietZone(width)).toBe(true)
+    expect(isValidQrQuietZone(-0.5)).toBe(false)
+    expect(isValidQrQuietZone(4.5)).toBe(false)
+    expect(isValidQrQuietZone(Number.NaN)).toBe(false)
+    expect(isValidQrQuietZone('2')).toBe(false)
+    expect(isValidQrQuietZone(undefined)).toBe(false)
   })
 })
 
@@ -227,6 +239,36 @@ describe('qrcode element in the document', () => {
       updates: [{ path: [base.id], patch: { logoSrc: '   ' } }],
     })
     expect(blank).toBe(stamped)
+  })
+
+  it('carries a quiet zone at v30 and rejects it at v29', () => {
+    const spaced: FreeformQrCodeElement = { ...createQrCodeElement(slide), quietZone: 4 }
+    const qrSlide = { ...slide, nodes: [spaced] }
+    const v30 = normalizeFreeformDocument({ documentVersion: 30, activeSlideId: slide.id, slides: [qrSlide] })
+    expect(v30).not.toBeNull()
+    expect((v30!.slides[0].nodes[0] as FreeformQrCodeElement).quietZone).toBe(4)
+    const v29 = normalizeFreeformDocument({ documentVersion: 29, activeSlideId: slide.id, slides: [qrSlide] })
+    expect(v29).toBeNull()
+    // The style patch widens the margin and null restores the default 2 by
+    // removing the field; out-of-range widths reject.
+    const base = createQrCodeElement(slide)
+    const widened = freeformReducer(
+      { documentVersion: 30, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { quietZone: 4 } }] },
+    )
+    expect((widened.slides[0].nodes[0] as FreeformQrCodeElement).quietZone).toBe(4)
+    const restored = freeformReducer(widened, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { quietZone: null } }],
+    })
+    expect('quietZone' in (restored.slides[0].nodes[0] as FreeformQrCodeElement)).toBe(false)
+    const tooWide = freeformReducer(restored, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { quietZone: 5 } }],
+    })
+    expect(tooWide).toBe(restored)
   })
 
   it('keeps a v22 document without any qrcode valid', () => {

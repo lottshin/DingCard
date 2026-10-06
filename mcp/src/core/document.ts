@@ -52,6 +52,8 @@ export interface NodeSummary {
   payload?: string
   /** A QR code element's centre logo: an image source (v25). */
   logoSrc?: string
+  /** A QR code element's quiet zone in module units (v30). */
+  quietZone?: number
   /** A chart's category labels. */
   labels?: string[]
   /** A chart's series (v26): each carries its own values and colour. */
@@ -145,7 +147,12 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
     return { ...leaf, shape: node.shape }
   }
   if (node.type === 'qrcode') {
-    return { ...leaf, payload: node.payload, ...(node.logoSrc !== undefined ? { logoSrc: node.logoSrc } : {}) }
+    return {
+      ...leaf,
+      payload: node.payload,
+      ...(node.logoSrc !== undefined ? { logoSrc: node.logoSrc } : {}),
+      ...(node.quietZone !== undefined ? { quietZone: node.quietZone } : {}),
+    }
   }
   if (node.type === 'chart') {
     return {

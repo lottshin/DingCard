@@ -52,6 +52,7 @@ describe('style clipboard', () => {
     expect(styleKeysForNodeType('line')).toContain('cap')
     expect(styleKeysForNodeType('image')).toContain('fit')
     expect(styleKeysForNodeType('image')).toContain('cornerRadius')
+    expect(styleKeysForNodeType('qrcode')).toContain('quietZone')
     expect(styleKeysForNodeType('group')).toEqual([])
   })
 

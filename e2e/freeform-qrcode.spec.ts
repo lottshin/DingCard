@@ -171,6 +171,38 @@ test('keeps the QR code editable alongside other elements', async ({ page }) => 
   await expect(page.getByLabel('二维码内容', { exact: true })).toBeVisible()
 })
 
+test('tightens and widens the quiet zone around the code', async ({ page }) => {
+  await openFreeform(page)
+  await insertQrCode(page)
+  const code = page.getByTestId('freeform-qrcode')
+
+  // 标准 2 is the default: the version-2 code plus two modules per side is 29.
+  await expect(page.getByTestId('qr-quiet-2')).toHaveClass(/on/)
+  await expect(code).toHaveAttribute('viewBox', '0 0 29 29')
+
+  // 无 drops the margin to the code itself; 窄 leaves one module per side.
+  await page.getByTestId('qr-quiet-0').click()
+  await expect(page.getByTestId('qr-quiet-0')).toHaveClass(/on/)
+  await expect(code).toHaveAttribute('viewBox', '0 0 25 25')
+  await page.getByTestId('qr-quiet-1').click()
+  await expect(code).toHaveAttribute('viewBox', '0 0 27 27')
+  // 宽 gives the code four modules of background per side.
+  await page.getByTestId('qr-quiet-4').click()
+  await expect(code).toHaveAttribute('viewBox', '0 0 33 33')
+
+  // 标准 clears the field back to the default 2, same look as never touched.
+  await page.getByTestId('qr-quiet-2').click()
+  await expect(page.getByTestId('qr-quiet-2')).toHaveClass(/on/)
+  await expect(code).toHaveAttribute('viewBox', '0 0 29 29')
+
+  // One undo per chip: back through 4, 1 and 0 to the untouched default.
+  for (const size of ['33 33', '27 27', '25 25', '29 29']) {
+    await page.getByRole('button', { name: '撤销', exact: true }).click()
+    await expect(code).toHaveAttribute('viewBox', `0 0 ${size}`)
+  }
+  await expect(page.getByTestId('qr-quiet-2')).toHaveClass(/on/)
+})
+
 test('stamps a centre logo and regenerates the code at H', async ({ page }) => {
   await openFreeform(page)
   await insertQrCode(page)

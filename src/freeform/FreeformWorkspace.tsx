@@ -905,6 +905,14 @@ const QR_ECL_OPTIONS = ['L', 'M', 'Q', 'H'] as const
 const QR_MODULE_STYLES = ['square', 'rounded', 'dot'] as const
 const QR_MODULE_STYLE_LABELS = { square: '方块', rounded: '圆角', dot: '圆点' } as const
 
+/** Quiet-zone widths in module units; the spec's 2 is the default. */
+const QR_QUIET_ZONE_OPTIONS = [
+  { value: 0, label: '无' },
+  { value: 1, label: '窄' },
+  { value: 2, label: '标准' },
+  { value: 4, label: '宽' },
+] as const
+
 /** One-tap looks: colours plus a module shape, applied as one style patch. */
 const QR_PRESETS = [
   { id: 'classic', label: '经典', dark: '#18181b', light: '#ffffff', moduleStyle: 'square' },
@@ -8626,6 +8634,20 @@ export function FreeformWorkspace({
                             onClick={() => updateSelectedStyle({ moduleStyle: style === 'square' ? null : style })}
                           >
                             {t(QR_MODULE_STYLE_LABELS[style])}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="field-label with-gap">{t('码边距')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('码边距')}>
+                        {QR_QUIET_ZONE_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={(selectedElement.quietZone ?? 2) === option.value ? 'seg-btn on' : 'seg-btn'}
+                            data-testid={`qr-quiet-${option.value}`}
+                            onClick={() => updateSelectedStyle({ quietZone: option.value === 2 ? null : option.value })}
+                          >
+                            {t(option.label)}
                           </button>
                         ))}
                       </div>

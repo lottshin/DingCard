@@ -32,6 +32,14 @@ export function isValidQrModuleStyle(value: unknown): value is QrModuleStyle {
  */
 export const QR_LOGO_SRC_MAX_LENGTH = 100_000
 
+/** The blank margin around the code, in module units (v30). */
+export const QR_QUIET_ZONE_DEFAULT = 2
+export const QR_QUIET_ZONE_MAX = 4
+
+export function isValidQrQuietZone(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= QR_QUIET_ZONE_MAX
+}
+
 export function isValidQrLogoSrc(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= QR_LOGO_SRC_MAX_LENGTH
 }

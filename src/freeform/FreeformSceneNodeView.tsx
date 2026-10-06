@@ -6,7 +6,7 @@ import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
 import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './richText'
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { bubbleClipPath, starClipPath } from './shapeGeometry'
-import { QR_ECL_DEFAULT } from './qrCode'
+import { QR_ECL_DEFAULT, QR_QUIET_ZONE_DEFAULT } from './qrCode'
 import { barChartGeometry, lineChartGeometry, radarChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
 import { qrMatrix, qrModulePaths } from './qrMatrix'
 import { sceneFilterCss } from './appearance'
@@ -697,9 +697,10 @@ function SceneLeafContent({
   }
 
   if (leaf.type === 'qrcode') {
-    // The spec's quiet zone: 2 modules of background on every side. The SVG
-    // scales to the node box and stays square (meet) inside it.
-    const quiet = 2
+    // The spec's quiet zone: 2 modules of background on every side by
+    // default; the inspector can tighten it to 0 or widen it to 4 (v30). The
+    // SVG scales to the node box and stays square (meet) inside it.
+    const quiet = leaf.quietZone ?? QR_QUIET_ZONE_DEFAULT
     const style = leaf.moduleStyle ?? 'square'
     // A logo covers the centre, so its code is generated at the highest
     // error correction no matter what the stored level says.

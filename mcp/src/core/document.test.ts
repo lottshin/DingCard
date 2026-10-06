@@ -604,6 +604,67 @@ describe('applyActions', () => {
     expect(keptChart && keptChart.type === 'chart' ? keptChart.labels : []).toEqual(['住', '行', '吃'])
   })
 
+  test('applies the v30 quiet-zone patch and surfaces it in summaries', () => {
+    const withQr = seedDocument()
+    withQr.slides[0].nodes.push({
+      id: 'qr-1',
+      name: '二维码',
+      locked: false,
+      hidden: false,
+      type: 'qrcode',
+      x: 700,
+      y: 900,
+      width: 240,
+      height: 240,
+      rotation: 0,
+      scale: 1,
+      payload: 'https://dingcard.app',
+      dark: '#18181b',
+      light: '#ffffff',
+    })
+    const valid = validateDocument(withQr)
+    expect(valid.ok).toBe(true)
+    if (!valid.ok) return
+
+    const styled = applyActions(valid.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['qr-1'], patch: { quietZone: 4 } }],
+      },
+    ])
+    expect(styled.ok).toBe(true)
+    if (!styled.ok) return
+    const code = styled.document.slides[0].nodes.find((node) => node.id === 'qr-1')
+    expect(code && code.type === 'qrcode' ? code.quietZone : undefined).toBe(4)
+
+    // The widened margin rides along in the node summary for clients.
+    const summary = inspectDocument(styled.document)
+    if (!summary.ok) throw new Error(summary.error)
+    expect(summary.slides[0].nodes.find((node) => node.id === 'qr-1'))
+      .toMatchObject({ type: 'qrcode', quietZone: 4 })
+
+    // null restores the default by removing the field; an out-of-range width
+    // is silently ignored and flagged unchanged.
+    const restored = applyActions(styled.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['qr-1'], patch: { quietZone: null } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['qr-1'], patch: { quietZone: 5 } }],
+      },
+    ])
+    expect(restored.ok).toBe(true)
+    if (!restored.ok) return
+    expect(restored.changes).toEqual([true, false])
+    const cleared = restored.document.slides[0].nodes.find((node) => node.id === 'qr-1')
+    expect(cleared && cleared.type === 'qrcode' ? 'quietZone' in cleared : true).toBe(false)
+  })
+
   test('rejects invalid input documents and non-array actions', () => {
     expect(applyDocumentInvalid().ok).toBe(false)
     const result = applyActions(seedDocument(), 'nope')

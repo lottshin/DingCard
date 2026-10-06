@@ -332,6 +332,11 @@ export interface FreeformQrCodeElement extends FreeformElementBase {
    *  modules stay recoverable.
    */
   logoSrc?: string
+  /**
+   *  The blank margin around the code, in module units (v30): 0–4.
+   *  Absent keeps the default 2 the spec recommends.
+   */
+  quietZone?: number
 }
 
 /** One series of a chart (v26): its own colour and one value per category. */
@@ -480,6 +485,8 @@ export interface FreeformNodeStylePatch {
   moduleStyle?: QrModuleStyle | null
   /** QR centre logo (v25); `null` removes it. */
   logoSrc?: string | null
+  /** QR quiet zone in module units, 0–4 (v30); `null` restores 2. */
+  quietZone?: number | null
   /** Which chart is drawn (v24); like the shape switcher on shapes. */
   chartKind?: 'bar' | 'ring' | 'line' | 'radar'
   /**

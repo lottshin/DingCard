@@ -83,7 +83,7 @@ import {
   isValidParagraphSpacing,
 } from './appearance'
 import { isValidPathData } from './pathData'
-import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
+import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload, isValidQrQuietZone } from './qrCode'
 import {
   CHART_POINTS_MAX,
   isValidChartBarMode,
@@ -363,6 +363,7 @@ const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'e
 const LINE_OPTIONAL_V14_KEYS = new Set([...LINE_OPTIONAL_V13_KEYS, 'points'])
 const QRCODE_OPTIONAL_V23_KEYS = new Set(['ecl', 'moduleStyle', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_OPTIONAL_V25_KEYS = new Set([...QRCODE_OPTIONAL_V23_KEYS, 'logoSrc'])
+const QRCODE_OPTIONAL_V30_KEYS = new Set([...QRCODE_OPTIONAL_V25_KEYS, 'quietZone'])
 const CHART_OPTIONAL_V24_KEYS = new Set(['showValues', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_OPTIONAL_V27_KEYS = new Set([...CHART_OPTIONAL_V24_KEYS, 'barMode'])
 const PATH_OPTIONAL_V15_KEYS = new Set([
@@ -414,7 +415,10 @@ function optionalKeysFor(
     return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
   }
   if (type === 'shape') return inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
-  if (type === 'qrcode') return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
+  if (type === 'qrcode') {
+    if (inputVersion >= 30) return QRCODE_OPTIONAL_V30_KEYS
+    return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
+  }
   if (type === 'chart') return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
@@ -463,6 +467,7 @@ function hasStrictNodeKeys(
       && hasKeysWithOptionals(value, QRCODE_NODE_KEYS, optionalKeysFor('qrcode', inputVersion))
       && (inputVersion >= 23 || !('moduleStyle' in value))
       && (inputVersion >= 25 || !('logoSrc' in value))
+      && (inputVersion >= 30 || !('quietZone' in value))
   }
   // Chart nodes are v24-only; older input versions reject them.
   if (value.type === 'chart') {
@@ -867,6 +872,10 @@ function normalizeStrictSceneNode(
     if ('logoSrc' in value) {
       if (inputVersion < 25 || !isValidQrLogoSrc(value.logoSrc)) return null
     }
+    // The quiet zone is v30-only; older input versions reject it.
+    if ('quietZone' in value) {
+      if (inputVersion < 30 || !isValidQrQuietZone(value.quietZone)) return null
+    }
     const qrAppearance = cloneStrictAppearance(value, inputVersion)
     if (!qrAppearance) return null
     return {
@@ -878,6 +887,7 @@ function normalizeStrictSceneNode(
       ...('ecl' in value ? { ecl: value.ecl as QrErrorCorrectionLevel } : {}),
       ...('moduleStyle' in value ? { moduleStyle: value.moduleStyle as QrModuleStyle } : {}),
       ...('logoSrc' in value ? { logoSrc: value.logoSrc as string } : {}),
+      ...('quietZone' in value ? { quietZone: value.quietZone as number } : {}),
       ...qrAppearance,
     }
   }

@@ -72,7 +72,7 @@ import {
   shadowPaintEquals,
 } from './appearance'
 import { isValidPathData } from './pathData'
-import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload } from './qrCode'
+import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload, isValidQrQuietZone } from './qrCode'
 import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
@@ -520,6 +520,7 @@ const STYLE_KEYS = new Set([
   'ecl',
   'moduleStyle',
   'logoSrc',
+  'quietZone',
   'chartKind',
   'accent',
   'showValues',
@@ -553,7 +554,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
 ])
 const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
 const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode'])
-const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'opacity', 'shadow', 'filter', 'blendMode'])
+const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZone', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
@@ -594,6 +595,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidQrModuleStyle(value)) return false
     } else if (key === 'logoSrc') {
       if (value !== null && !isValidQrLogoSrc(value)) return false
+    } else if (key === 'quietZone') {
+      if (value !== null && !isValidQrQuietZone(value)) return false
     } else if (key === 'chartKind') {
       if (!isValidChartKind(value)) return false
     } else if (key === 'accent') {
@@ -1104,7 +1107,7 @@ function applyStylePatch(
   if (node.type === 'qrcode') {
     if (
       keys.some((key) => key !== 'dark' && key !== 'light' && key !== 'ecl'
-        && key !== 'moduleStyle' && key !== 'logoSrc'
+        && key !== 'moduleStyle' && key !== 'logoSrc' && key !== 'quietZone'
         && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
     ) {
       return { ok: false, node }
