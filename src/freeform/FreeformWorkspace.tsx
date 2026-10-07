@@ -73,6 +73,13 @@ import {
   parseTablePaste,
   tableColumnEdges,
 } from './tables'
+import {
+  TIMELINE_ITEMS_MAX,
+  TIMELINE_ITEMS_MIN,
+  TIMELINE_LABEL_MAX_CHARS,
+  TIMELINE_TEXT_MAX_CHARS,
+  isValidTimelineText,
+} from './timeline'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
 import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
@@ -256,6 +263,7 @@ import type {
   FreeformQrCodeElement,
   FreeformChartElement,
   FreeformTableElement,
+  FreeformTimelineElement,
   FreeformSceneNode,
   FreeformNodeContentPatch,
   FreeformNodeGeometryPatch,
@@ -949,6 +957,10 @@ function isChartElement(element: FreeformElement | undefined): element is Freefo
 
 function isTableElement(element: FreeformElement | undefined): element is FreeformTableElement {
   return element?.type === 'table'
+}
+
+function isTimelineElement(element: FreeformElement | undefined): element is FreeformTimelineElement {
+  return element?.type === 'timeline'
 }
 
 /** Chart kinds in the inspector segment order. */
@@ -9030,6 +9042,92 @@ export function FreeformWorkspace({
                         })()}
                       >
                         {t('从剪贴板粘贴')}
+                      </button>
+                    </InspectorSection>
+                  )}
+
+                  {isTimelineElement(selectedElement) && (
+                    <InspectorSection title={t('时间线')} testId="inspector-timeline">
+                      <div className="field-label">{t('主线颜色')}</div>
+                      <div className="paint-row" data-testid="timeline-colors">
+                        <ColorPickerButton
+                          label={t('主线颜色')}
+                          color={selectedElement.accent ?? '#1d4ed8'}
+                          testId="timeline-accent-color"
+                          onChange={(accent) => updateSelectedStyle({ accent })}
+                        />
+                        {selectedElement.accent !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="timeline-accent-reset"
+                            onClick={() => updateSelectedStyle({ accent: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                      </div>
+                      <div className="field-label with-gap">{t('条目')}</div>
+                      <div className="timeline-items" data-testid="timeline-items">
+                        {selectedElement.items.map((item, index) => (
+                          <div className="timeline-item" key={index}>
+                            <input
+                              type="text"
+                              maxLength={TIMELINE_LABEL_MAX_CHARS}
+                              value={item.label ?? ''}
+                              placeholder={t('时间')}
+                              aria-label={t('第 {n} 项时间', { n: index + 1 })}
+                              data-testid={`timeline-item-label-${index}`}
+                              onChange={(event) => {
+                                const label = event.currentTarget.value
+                                const items = selectedElement.items.map((entry, at) => (
+                                  at === index
+                                    ? { text: entry.text, ...(label.trim() !== '' ? { label } : {}) }
+                                    : { text: entry.text, ...('label' in entry ? { label: entry.label } : {}) }
+                                ))
+                                updateSelectedContent({ items })
+                              }}
+                            />
+                            <input
+                              type="text"
+                              maxLength={TIMELINE_TEXT_MAX_CHARS}
+                              value={item.text}
+                              aria-label={t('第 {n} 项内容', { n: index + 1 })}
+                              data-testid={`timeline-item-text-${index}`}
+                              onChange={(event) => {
+                                const text = event.currentTarget.value
+                                if (!isValidTimelineText(text)) return
+                                const items = selectedElement.items.map((entry, at) => (
+                                  at === index ? { ...entry, text } : entry
+                                ))
+                                updateSelectedContent({ items })
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="ghost timeline-item-remove"
+                              aria-label={t('删除第 {n} 项', { n: index + 1 })}
+                              data-testid={`timeline-item-remove-${index}`}
+                              disabled={selectedElement.items.length <= TIMELINE_ITEMS_MIN}
+                              onClick={() => updateSelectedContent({
+                                items: selectedElement.items.filter((_, at) => at !== index),
+                              })}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="ghost timeline-item-add"
+                        data-testid="timeline-item-add"
+                        disabled={selectedElement.items.length >= TIMELINE_ITEMS_MAX}
+                        onClick={() => updateSelectedContent({
+                          items: [...selectedElement.items, { label: t('今天'), text: t('新的一步') }],
+                        })}
+                      >
+                        {t('加一条')}
                       </button>
                     </InspectorSection>
                   )}

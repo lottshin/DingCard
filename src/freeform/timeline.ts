@@ -4,6 +4,7 @@
 
 import { wrapCellLines } from './tables'
 
+export const TIMELINE_ITEMS_MIN = 2
 export const TIMELINE_ITEMS_MAX = 8
 export const TIMELINE_LABEL_MAX_CHARS = 12
 export const TIMELINE_TEXT_MAX_CHARS = 48

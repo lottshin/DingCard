@@ -55,3 +55,45 @@ test('inserts a timeline that renders its spine, dots, and entries and saves', a
   await expect(page.getByTestId('freeform-timeline')).toBeVisible()
   await expect(page.getByTestId('freeform-timeline').locator('[data-testid="freeform-timeline-dot"]')).toHaveCount(4)
 })
+
+test('edits entries and recolors the spine in the inspector', async ({ page }) => {
+  await openFreeform(page)
+  await insertTimeline(page)
+  const timeline = page.getByTestId('freeform-timeline')
+
+  // The inspector mirrors the fresh sample: four entries, no accent override.
+  await expect(page.getByTestId('inspector-timeline')).toBeVisible()
+  await expect(page.getByTestId('timeline-items').locator('.timeline-item')).toHaveCount(4)
+  await expect(page.getByTestId('timeline-accent-reset')).toHaveCount(0)
+
+  // Editing an entry's time and text rewrites the canvas in place.
+  await page.getByTestId('timeline-item-label-0').fill('一月')
+  await expect(timeline.getByText('一月', { exact: true })).toBeVisible()
+  await expect(timeline.getByText('3 月', { exact: true })).toHaveCount(0)
+  await page.getByTestId('timeline-item-text-0').fill('发出第一条视频')
+  await expect(timeline.getByText('发出第一条视频')).toBeVisible()
+  // Clearing the time removes the label; the text stays.
+  await page.getByTestId('timeline-item-label-0').fill('')
+  await expect(timeline.locator('[data-testid="freeform-timeline-label"]')).toHaveCount(3)
+
+  // Removing and adding entries keeps the two-entry floor and the eight-entry ceiling.
+  await page.getByTestId('timeline-item-remove-0').click()
+  await page.getByTestId('timeline-item-remove-0').click()
+  await expect(page.getByTestId('timeline-items').locator('.timeline-item')).toHaveCount(2)
+  await expect(page.getByTestId('timeline-item-remove-0')).toBeDisabled()
+  await expect(timeline.locator('[data-testid="freeform-timeline-dot"]')).toHaveCount(2)
+  for (let i = 0; i < 6; i += 1) await page.getByTestId('timeline-item-add').click()
+  await expect(page.getByTestId('timeline-item-add')).toBeDisabled()
+  await expect(timeline.locator('[data-testid="freeform-timeline-dot"]')).toHaveCount(8)
+
+  // The accent recolors the spine and the dots; 恢复默认 returns to blue.
+  await page.getByRole('button', { name: '主线颜色', exact: true }).click()
+  const hex = page.getByLabel('主线颜色 自定义 HEX', { exact: true })
+  await hex.fill('#0f766e')
+  await hex.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(timeline.locator('[data-testid="freeform-timeline-spine"]')).toHaveAttribute('stroke', '#0f766e')
+  await expect(timeline.locator('[data-testid="freeform-timeline-dot"]').first()).toHaveAttribute('fill', '#0f766e')
+  await page.getByTestId('timeline-accent-reset').click()
+  await expect(timeline.locator('[data-testid="freeform-timeline-spine"]')).toHaveAttribute('stroke', '#1d4ed8')
+})
