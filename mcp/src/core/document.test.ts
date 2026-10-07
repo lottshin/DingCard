@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 32,
+    documentVersion: 33,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(32)
+    expect(result.document.documentVersion).toBe(33)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -642,6 +642,40 @@ describe('applyActions', () => {
     expect(automatic.changes).toEqual([true, false])
     const clearedChart = automatic.document.slides[0].nodes.find((node) => node.id === 'chart-1')
     expect(clearedChart && clearedChart.type === 'chart' ? 'showLegend' in clearedChart : true).toBe(false)
+
+    // The v33 axis-tick switch hides the y-axis and rides in the summary.
+    const tickless = applyActions(styled.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { showTicks: false } }],
+      },
+    ])
+    expect(tickless.ok).toBe(true)
+    if (!tickless.ok) return
+    const tickChart = tickless.document.slides[0].nodes.find((node) => node.id === 'chart-1')
+    expect(tickChart && tickChart.type === 'chart' ? tickChart.showTicks : undefined).toBe(false)
+    const tickSummary = inspectDocument(tickless.document)
+    if (!tickSummary.ok) throw new Error(tickSummary.error)
+    expect(tickSummary.slides[0].nodes.find((node) => node.id === 'chart-1'))
+      .toMatchObject({ type: 'chart', showTicks: false })
+    const tickCleared = applyActions(tickless.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { showTicks: null } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['chart-1'], patch: { showTicks: 'no' } }],
+      },
+    ])
+    expect(tickCleared.ok).toBe(true)
+    if (!tickCleared.ok) return
+    expect(tickCleared.changes).toEqual([true, false])
+    const tickClearedChart = tickCleared.document.slides[0].nodes.find((node) => node.id === 'chart-1')
+    expect(tickClearedChart && tickClearedChart.type === 'chart' ? 'showTicks' in tickClearedChart : true).toBe(false)
 
     const edited = applyActions(styled.document, [
       {

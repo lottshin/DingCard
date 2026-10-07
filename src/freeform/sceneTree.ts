@@ -1000,6 +1000,7 @@ const LINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 const CHART_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   showValues: (record) => record.showValues === true,
   showLegend: (record) => typeof record.showLegend === 'boolean',
+  showTicks: (record) => typeof record.showTicks === 'boolean',
   barMode: (record) => isValidChartBarMode(record.barMode),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,

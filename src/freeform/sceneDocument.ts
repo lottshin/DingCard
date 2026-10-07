@@ -109,7 +109,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -390,6 +390,7 @@ const QRCODE_OPTIONAL_V30_KEYS = new Set([...QRCODE_OPTIONAL_V25_KEYS, 'quietZon
 const CHART_OPTIONAL_V24_KEYS = new Set(['showValues', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_OPTIONAL_V27_KEYS = new Set([...CHART_OPTIONAL_V24_KEYS, 'barMode'])
 const CHART_OPTIONAL_V31_KEYS = new Set([...CHART_OPTIONAL_V27_KEYS, 'showLegend'])
+const CHART_OPTIONAL_V33_KEYS = new Set([...CHART_OPTIONAL_V31_KEYS, 'showTicks'])
 const PATH_OPTIONAL_V15_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'join', 'fillRule',
 ])
@@ -444,6 +445,7 @@ function optionalKeysFor(
     return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
   }
   if (type === 'chart') {
+    if (inputVersion >= 33) return CHART_OPTIONAL_V33_KEYS
     if (inputVersion >= 31) return CHART_OPTIONAL_V31_KEYS
     return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
   }
@@ -504,6 +506,7 @@ function hasStrictNodeKeys(
       && (inputVersion >= 27 || !('barMode' in value))
       && (inputVersion >= 30 || value.chartKind !== 'radar')
       && (inputVersion >= 31 || !('showLegend' in value))
+      && (inputVersion >= 33 || !('showTicks' in value))
   }
   return false
 }
@@ -852,6 +855,10 @@ function normalizeStrictSceneNode(
       if ('showLegend' in value) {
         if (inputVersion < 31 || typeof value.showLegend !== 'boolean') return null
       }
+      // The axis-tick switch is v33-only; older input versions reject it.
+      if ('showTicks' in value) {
+        if (inputVersion < 33 || typeof value.showTicks !== 'boolean') return null
+      }
       const chartAppearance = cloneStrictAppearance(value, inputVersion)
       if (!chartAppearance) return null
       return {
@@ -867,6 +874,7 @@ function normalizeStrictSceneNode(
         ...('showValues' in value ? { showValues: true } : {}),
         ...('barMode' in value ? { barMode: value.barMode as ChartBarMode } : {}),
         ...('showLegend' in value ? { showLegend: value.showLegend as boolean } : {}),
+        ...('showTicks' in value ? { showTicks: value.showTicks as boolean } : {}),
         ...chartAppearance,
       }
     }
@@ -1003,7 +1011,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 32,
+    documentVersion: 33,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1157,6 +1165,11 @@ export function normalizeFreeformDocumentV31(value: unknown): FreeformDocument |
 /** Strictly validates an already-v32 document (v32 adds the patterned page). */
 export function normalizeFreeformDocumentV32(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 32)
+}
+
+/** Strictly validates an already-v33 document (v33 adds the axis-tick switch). */
+export function normalizeFreeformDocumentV33(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 33)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1426,6 +1439,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 33) return normalizeFreeformDocumentV33(value)
   if (value.documentVersion === 32) return normalizeFreeformDocumentV32(value)
   if (value.documentVersion === 31) return normalizeFreeformDocumentV31(value)
   if (value.documentVersion === 30) return normalizeFreeformDocumentV30(value)
@@ -1506,7 +1520,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 32,
+    documentVersion: 33,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1539,7 +1553,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 32,
+    documentVersion: 33,
     activeSlideId: document.activeSlideId,
     slides,
   }

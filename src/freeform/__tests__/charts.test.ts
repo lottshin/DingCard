@@ -18,6 +18,7 @@ import {
   lineChartGeometry,
   radarChartGeometry,
   ringChartGeometry,
+  ticksVisible,
   tintTowardWhite,
 } from '../charts'
 import { createChartElement, freeformReducer } from '../document'
@@ -342,7 +343,7 @@ describe('chart element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 32, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 33, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred bar chart with one sample series', () => {
     const element = createChartElement(slide)
@@ -476,7 +477,7 @@ describe('chart element in the document', () => {
     // The style patch switches modes; null restores grouped by removal.
     const base = createChartElement(slide)
     const withMode = freeformReducer(
-      { documentVersion: 32, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 33, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { barMode: 'stacked' } }] },
     )
     expect((withMode.slides[0].nodes[0] as FreeformChartElement).barMode).toBe('stacked')
@@ -499,7 +500,7 @@ describe('chart element in the document', () => {
     // The style patch sets all three states; null restores the automatic rule.
     const base = createChartElement(slide)
     const hidden = freeformReducer(
-      { documentVersion: 32, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 33, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { showLegend: false } }] },
     )
     expect((hidden.slides[0].nodes[0] as FreeformChartElement).showLegend).toBe(false)
@@ -522,6 +523,61 @@ describe('chart element in the document', () => {
       updates: [{ path: [base.id], patch: { showLegend: 'no' as unknown as boolean } }],
     })
     expect(bad).toBe(automatic)
+  })
+
+  it('hides the y-axis ticks at v33 and rejects the switch at v32', () => {
+    // Ticks stay drawn unless explicitly turned off; the plot then runs to
+    // the left edge with no grid lines or tick labels.
+    expect(ticksVisible(undefined)).toBe(true)
+    expect(ticksVisible(true)).toBe(true)
+    expect(ticksVisible(false)).toBe(false)
+
+    const series = [{ name: '今年', values: [2, 4], color: '#1d4ed8' }]
+    const drawn = barChartGeometry(400, 300, ['一', '二'], series, { showValues: false })
+    expect(drawn.axis).not.toBeNull()
+    expect(drawn.axis!.ticks).toHaveLength(2)
+    expect(drawn.axis!.leftPad).toBeGreaterThan(0)
+    const cleared = barChartGeometry(400, 300, ['一', '二'], series, { showValues: false, showTicks: false })
+    expect(cleared.axis!.ticks).toEqual([])
+    expect(cleared.axis!.leftPad).toBe(0)
+    expect(cleared.bars).toHaveLength(2)
+    const lineCleared = lineChartGeometry(400, 300, ['一', '二'], series, { showValues: false, showTicks: false })
+    expect(lineCleared.axis.ticks).toEqual([])
+    expect(lineCleared.axis.leftPad).toBe(0)
+    // Percent bars tick percentages; the switch clears those too.
+    const percentCleared = barChartGeometry(400, 300, ['一', '二'], series, {
+      showValues: false, mode: 'percent', showTicks: false,
+    })
+    expect(percentCleared.axis!.ticks).toEqual([])
+
+    const switched: FreeformChartElement = { ...createChartElement(slide), showTicks: false }
+    const switchedSlide = { ...slide, nodes: [switched as unknown as FreeformSceneNode] }
+    const v33 = normalizeFreeformDocument({ documentVersion: 33, activeSlideId: slide.id, slides: [switchedSlide] })
+    expect(v33).not.toBeNull()
+    expect((v33!.slides[0].nodes[0] as FreeformChartElement).showTicks).toBe(false)
+    const v32 = normalizeFreeformDocument({ documentVersion: 32, activeSlideId: slide.id, slides: [switchedSlide] })
+    expect(v32).toBeNull()
+
+    // The style patch hides and restores; null removes the override again.
+    const base = createChartElement(slide)
+    const hidden = freeformReducer(
+      { documentVersion: 33, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { showTicks: false } }] },
+    )
+    expect((hidden.slides[0].nodes[0] as FreeformChartElement).showTicks).toBe(false)
+    const restored = freeformReducer(hidden, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { showTicks: null } }],
+    })
+    expect('showTicks' in (restored.slides[0].nodes[0] as FreeformChartElement)).toBe(false)
+    // A non-boolean value rejects the patch.
+    const bad = freeformReducer(restored, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { showTicks: 'no' as unknown as boolean } }],
+    })
+    expect(bad).toBe(restored)
   })
 
   it('migrates a v24 chart onto one series and takes three at v26', () => {

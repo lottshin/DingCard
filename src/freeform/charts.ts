@@ -172,8 +172,14 @@ function chartAxis(
   topPad: number,
   bottomPad: number,
   max: number,
+  showTicks?: boolean,
 ): ChartAxis {
   const ceiling = niceChartCeiling(max)
+  // Ticks off (v33) still needs the ceiling for scaling, but the plot then
+  // runs to the left edge: no grid lines, no tick labels, no left pad.
+  if (!ticksVisible(showTicks)) {
+    return { max: ceiling, ticks: [], leftPad: 0 }
+  }
   const plotHeight = Math.max(1, height - topPad - bottomPad)
   const tickFont = Math.min(height * 0.055, 12)
   const yAt = (value: number) => height - bottomPad - (value / ceiling) * plotHeight
@@ -214,6 +220,12 @@ export function legendVisible(
   if (showLegend === false) return false
   if (showLegend === true) return namedCount >= 1
   return namedCount >= 2
+}
+
+/** The axis-tick rule (v33): ticks stay drawn unless explicitly turned off —
+ *  absent and `true` both keep the grid lines and tick labels. */
+export function ticksVisible(showTicks: boolean | undefined): boolean {
+  return showTicks !== false
 }
 
 /** The legend row across the top: one chip and name per named series. */
@@ -269,7 +281,7 @@ export function barChartGeometry(
   height: number,
   labels: readonly string[],
   series: readonly ChartSeriesInput[],
-  options: { showValues: boolean; mode?: ChartBarMode; showLegend?: boolean },
+  options: { showValues: boolean; mode?: ChartBarMode; showLegend?: boolean; showTicks?: boolean },
 ): ChartBarGeometry {
   const mode = options.mode ?? 'grouped'
   const legend = legendLayout(width, height, series, options.showLegend)
@@ -285,12 +297,12 @@ export function barChartGeometry(
       : Math.max(...series.flatMap((entry) => entry.values), 0)
   const axis = mode === 'percent'
     ? {
-      ...chartAxis(height, topPad, bottomPad, 0),
-      ticks: chartAxis(height, topPad, bottomPad, 0).ticks.map((tick, index) => (
+      ...chartAxis(height, topPad, bottomPad, 0, options.showTicks),
+      ticks: chartAxis(height, topPad, bottomPad, 0, options.showTicks).ticks.map((tick, index) => (
         { ...tick, text: index === 0 ? '100%' : '50%' }
       )),
     }
-    : chartAxis(height, topPad, bottomPad, max)
+    : chartAxis(height, topPad, bottomPad, max, options.showTicks)
   const ceiling = mode === 'percent' ? 1 : axis.max
   const scale = ceiling > 0 ? plotHeight / ceiling : 0
   const baselineY = height - bottomPad
@@ -394,14 +406,14 @@ export function lineChartGeometry(
   height: number,
   labels: readonly string[],
   series: readonly ChartSeriesInput[],
-  options: { showValues: boolean; showLegend?: boolean },
+  options: { showValues: boolean; showLegend?: boolean; showTicks?: boolean },
 ): ChartLineGeometry {
   const legend = legendLayout(width, height, series, options.showLegend)
   const topPad = height * 0.12 + legend.height
   const bottomPad = height * 0.16
   const plotHeight = Math.max(1, height - topPad - bottomPad)
   const max = Math.max(...series.flatMap((entry) => entry.values), 0)
-  const axis = chartAxis(height, topPad, bottomPad, max)
+  const axis = chartAxis(height, topPad, bottomPad, max, options.showTicks)
   const scale = axis.max > 0 ? plotHeight / axis.max : 0
   const count = labels.length
   const plotWidth = width - axis.leftPad

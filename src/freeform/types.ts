@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 32
+  documentVersion: 33
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -386,6 +386,11 @@ export interface FreeformChartElement extends FreeformElementBase {
    *  as one series is named, `false` hides it altogether.
    */
   showLegend?: boolean
+  /**
+   *  Hide the y-axis grid lines and tick labels (v33): absent keeps them
+   *  drawn; `false` removes them and lets the plot run to the left edge.
+   */
+  showTicks?: boolean
 }
 
 export type FreeformElement =
@@ -522,6 +527,8 @@ export interface FreeformNodeStylePatch {
   barMode?: 'grouped' | 'stacked' | 'percent' | null
   /** Legend override (v31); `null` restores the automatic rule. */
   showLegend?: boolean | null
+  /** Axis-tick override (v33); `null` restores the drawn ticks. */
+  showTicks?: boolean | null
 }
 
 export interface FreeformNodeGeometryPatch {

@@ -546,6 +546,7 @@ function SceneLeafContent({
             showValues,
             mode: leaf.barMode ?? 'grouped',
             showLegend: leaf.showLegend,
+            showTicks: leaf.showTicks,
           })
           return (
             <>
@@ -562,7 +563,7 @@ function SceneLeafContent({
                   fill={bar.color}
                 />
               ))}
-              <line x1={chart.axis ? chart.axis.leftPad - 2 : 0} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
+              <line x1={chart.axis ? Math.max(0, chart.axis.leftPad - 2) : 0} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
               {chart.labels.map((label, index) => (
                 <text key={index} x={label.x} y={label.y} {...commonText}>
                   {label.lines.map((line, lineIndex) => (
@@ -580,7 +581,7 @@ function SceneLeafContent({
           )
         })()}
         {leaf.chartKind === 'line' && (() => {
-          const chart = lineChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues, showLegend: leaf.showLegend })
+          const chart = lineChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues, showLegend: leaf.showLegend, showTicks: leaf.showTicks })
           return (
             <>
               {legend(chart.legend, fontSize)}
@@ -606,7 +607,7 @@ function SceneLeafContent({
                   ))}
                 </g>
               ))}
-              <line x1={chart.axis.leftPad - 2} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
+              <line x1={Math.max(0, chart.axis.leftPad - 2)} y1={chart.baseline.y} x2={leaf.width} y2={chart.baseline.y} stroke={fontColor} strokeWidth={1} opacity={0.35} />
               {chart.labels.map((label, index) => (
                 <text key={index} x={label.x} y={label.y} {...commonText}>
                   {label.lines.map((line, lineIndex) => (

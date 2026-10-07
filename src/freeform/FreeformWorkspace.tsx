@@ -8697,6 +8697,31 @@ export function FreeformWorkspace({
                           </button>
                         ))}
                       </div>
+                      {(selectedElement.chartKind === 'bar' || selectedElement.chartKind === 'line') && (
+                        <>
+                          <div className="field-label with-gap">{t('轴刻度')}</div>
+                          <div className="seg stretch" role="group" aria-label={t('轴刻度')}>
+                            <button
+                              type="button"
+                              className={selectedElement.showTicks !== false ? 'seg-btn on' : 'seg-btn'}
+                              aria-pressed={selectedElement.showTicks !== false}
+                              data-testid="chart-ticks-on"
+                              onClick={() => updateSelectedStyle({ showTicks: selectedElement.showTicks === false ? null : false })}
+                            >
+                              {t('显示')}
+                            </button>
+                            <button
+                              type="button"
+                              className={selectedElement.showTicks === false ? 'seg-btn on' : 'seg-btn'}
+                              aria-pressed={selectedElement.showTicks === false}
+                              data-testid="chart-ticks-off"
+                              onClick={() => updateSelectedStyle({ showTicks: false })}
+                            >
+                              {t('隐藏')}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </InspectorSection>
                   )}
 

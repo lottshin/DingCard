@@ -280,6 +280,40 @@ test('switches the legend off and on through the inspector', async ({ page }) =>
   await expect(page.getByTestId('chart-legend-on')).toHaveClass(/on/)
 })
 
+test('switches the y-axis ticks off and on through the inspector', async ({ page }) => {
+  await openFreeform(page)
+  await insertChart(page)
+  const chart = page.getByTestId('freeform-chart')
+
+  // Drawn by default: the sample tops out at 9, the axis rounds to 10.
+  await expect(page.getByTestId('chart-ticks-on')).toHaveClass(/on/)
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(2)
+  await expect(chart.getByText('10', { exact: true })).toHaveCount(1)
+
+  // 隐藏 clears the grid lines and tick labels; the bars themselves stay.
+  await page.getByTestId('chart-ticks-off').click()
+  await expect(page.getByTestId('chart-ticks-off')).toHaveClass(/on/)
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(0)
+  await expect(chart.getByText('10', { exact: true })).toHaveCount(0)
+  await expect(chart.locator('rect:not(g [data-testid="freeform-chart-legend-item"] rect)')).toHaveCount(4)
+
+  // 显示 restores them; undo walks back to the hidden state in one step.
+  await page.getByTestId('chart-ticks-on').click()
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(2)
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(0)
+
+  // Line charts draw the same y-axis, so the switch stays; ring has none.
+  await page.getByTestId('chart-kind-line').click()
+  await expect(page.getByTestId('chart-ticks-on')).toHaveCount(1)
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(0)
+  await page.getByTestId('chart-ticks-on').click()
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(2)
+  await page.getByTestId('chart-kind-ring').click()
+  await expect(page.getByTestId('chart-ticks-on')).toHaveCount(0)
+  await expect(chart.locator('[data-testid="freeform-chart-axis"]')).toHaveCount(0)
+})
+
 test('stacks bars and normalises them to percentages with axis ticks', async ({ page }) => {
   await openFreeform(page)
   await insertChart(page)
