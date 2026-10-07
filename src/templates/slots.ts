@@ -590,6 +590,13 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     chart: { node: '图表' },
   },
+  'birthday-card': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    body: { text: '正文' },
+    recipient: { text: '名字' },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

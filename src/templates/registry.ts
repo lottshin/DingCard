@@ -17,6 +17,7 @@ import type {
   SceneFilter,
   ShadowPaint,
   ShapeFill,
+  SlideBackground,
 } from '../freeform/types'
 import { createDecorationNode, decorationById } from '../freeform/decorations'
 import { createDefaultImageFraming } from '../freeform/imageFraming'
@@ -239,7 +240,7 @@ function pathNode(
 
 function slide(
   name: string,
-  background: ColorPaint,
+  background: SlideBackground,
   nodes: FreeformSceneNode[],
   size: { width: number; height: number } = { width: 1080, height: 1440 },
 ): FreeformSlide {
@@ -1834,6 +1835,44 @@ function createTimeSplitDocument(): FreeformDocument {
   ])
 }
 
+function createBirthdayCardDocument(): FreeformDocument {
+  const ink = '#472a3a'
+  const rose = '#b06a8a'
+  const pink = '#ec4899'
+  const candle = (index: number, x: number, color: string) => {
+    const n = NUMBERED[index]
+    return [
+      shapeNode('rect', x, 748, 8, 40, solid(color), { name: `蜡烛${n}` }),
+      shapeNode('ellipse', x - 2, 728, 12, 18, solid('#fbbf24'), { name: `火苗${n}` }),
+    ] as FreeformSceneNode[]
+  }
+  return documentFromSlides([
+    slide('生日贺卡', {
+      type: 'pattern',
+      color: '#fdf2f8',
+      patternColor: '#fbcfe8',
+      pattern: 'dots',
+      size: 24,
+    }, [
+      shapeNode('rect', 140, 396, 800, 316, solid('#ffffff'), { name: '祝福卡', cornerRadius: 48, shadow: { color: '#f5d0e3', blur: 36, offsetX: 0, offsetY: 16 } }),
+      shapeNode('rect', 420, 848, 240, 112, solid('#f9a8d4'), { name: '蛋糕底', cornerRadius: 20 }),
+      shapeNode('rect', 452, 792, 176, 64, solid('#fbcfe8'), { name: '蛋糕顶', cornerRadius: 14 }),
+      ...candle(0, 492, pink),
+      ...candle(1, 536, '#f59e0b'),
+      ...candle(2, 580, '#8b5cf6'),
+      lineNode(440, 376, 200, '#f9a8d4', 4, { name: '分隔线', cap: 'round' }),
+      textNode('HAPPY BIRTHDAY', 80, 84, 400, 56, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: pink, amount: 44, radius: 8 },
+      }),
+      textNode('生日快乐', 80, 156, 920, 116, { name: '标题', fontSize: 96, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 8, align: 'center' }),
+      textNode('愿新的一岁，事事顺遂', 80, 292, 920, 52, { name: '副标题', fontSize: 36, textFill: solid(rose), align: 'center' }),
+      textNode('又长大一岁啦！愿你保持好奇，睡饱吃好，把日子过成自己喜欢的样子。', 196, 448, 688, 224, { name: '正文', fontSize: 40, textFill: solid(ink), lineHeight: 1.7, align: 'center' }),
+      textNode('—— 给小叮', 80, 996, 920, 48, { name: '名字', fontSize: 32, textFill: solid(rose), align: 'right' }),
+    ], SQUARE),
+  ])
+}
+
 function createFollowCardDocument(): FreeformDocument {
   const blush = '#fdf2f5'
   const rose = '#e11d48'
@@ -2051,6 +2090,7 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'mono-travel': poster('黑白旅拍', '深色底上一张黑白滤镜的圆角大图配竖排标题，适合街拍、展览和城市记录。', ['黑白', '旅拍'], 'story'),
   'skill-radar': poster('能力雷达', '大标题配一张六维能力雷达图和三枚成长关键词，适合个人年度总结、技能盘点和自我介绍。', ['盘点', '成长'], 'story'),
   'time-split': poster('时间分配', '浅色方图：一张环形图把一天的 24 小时切成几块，配三组关键数字，适合作息盘点、时间管理和习惯打卡。', ['时间', '作息'], 'square'),
+  'birthday-card': poster('生日贺卡', '粉色圆点图案底上一句大字祝福、一张手写卡和小蛋糕，适合生日祝福、节日问候和好友卡片。', ['生日', '祝福'], 'square'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -2083,6 +2123,7 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'data-roundup': createDataRoundupDocument,
   'skill-radar': createSkillRadarDocument,
   'time-split': createTimeSplitDocument,
+  'birthday-card': createBirthdayCardDocument,
   'follow-card': createFollowCardDocument,
   'trend-compare': createTrendCompareDocument,
   'polaroid-wall': createPolaroidWallDocument,
@@ -2131,6 +2172,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'mono-travel',
   'skill-radar',
   'time-split',
+  'birthday-card',
 ]
 
 function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {

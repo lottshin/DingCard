@@ -35,7 +35,7 @@ describe('listTemplates', () => {
 
   test('freeform template ids cover the eight decks, poster ids the twenty-one posters', () => {
     expect(freeformTemplateIds()).toHaveLength(8)
-    expect(posterTemplateIds()).toHaveLength(26)
+    expect(posterTemplateIds()).toHaveLength(27)
   })
 
   test('says what each template makes and the size it is drawn at, and what a poster has room for', () => {

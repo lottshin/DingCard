@@ -148,6 +148,25 @@ describe('composePoster', () => {
     expect(named(bare, '信息一')).toBeUndefined()
   })
 
+  test('fills the birthday card and keeps its patterned page', () => {
+    const result = compose('birthday-card-freeform', {
+      title: '生日快乐',
+      subtitle: '愿新的一岁，事事顺遂',
+      body: '愿你保持好奇，睡饱吃好，把日子过成自己喜欢的样子。',
+      recipient: '小叮',
+    })
+    expect((named(result, '正文') as FreeformTextElement | undefined)?.text).toContain('把日子过成自己喜欢的样子')
+    expect((named(result, '名字') as FreeformTextElement | undefined)?.text).toBe('小叮')
+    // The patterned page (v32) survives the fill untouched.
+    expect(result.document.slides[0].background).toEqual({
+      type: 'pattern', color: '#fdf2f8', patternColor: '#fbcfe8', pattern: 'dots', size: 24,
+    })
+    // Without a recipient the name line goes with its slot.
+    const bare = compose('birthday-card-freeform', { title: '生日快乐' })
+    expect(named(bare, '名字')).toBeUndefined()
+    expect(named(bare, '正文')).toBeUndefined()
+  })
+
   test('puts the picture in the picture slot, or a colour block in a photo frame and nothing where an illustration was', () => {
     const photo = compose('talk-poster-freeform', { ...TALK, image: 'https://example.com/hall.jpg' })
     const frame = named(photo, '主图') as FreeformShapeElement

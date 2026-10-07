@@ -45,6 +45,7 @@ export type FreeformPosterSeriesId =
   | 'mono-travel'
   | 'skill-radar'
   | 'time-split'
+  | 'birthday-card'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId
