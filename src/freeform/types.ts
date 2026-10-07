@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 33
+  documentVersion: 34
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -123,7 +123,7 @@ export type BlendMode =
   | 'luminosity'
 
 export interface FreeformElementBase extends SceneNodeState {
-  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table'
   x: number
   y: number
   width: number
@@ -393,6 +393,27 @@ export interface FreeformChartElement extends FreeformElementBase {
   showTicks?: boolean
 }
 
+/**
+ *  A table (v34): rows × cols of short text cells, an optional bold header
+ *  row and optional zebra stripes, laid out on an even grid.
+ */
+export interface FreeformTableElement extends FreeformElementBase {
+  type: 'table'
+  /** Body + header rows altogether, 2–12 (v34). */
+  rows: number
+  /** Columns, 1–6 (v34). */
+  cols: number
+  /** Cell texts row-major, exactly rows × cols of them (v34). */
+  cells: string[]
+  /**
+   *  Draw the first row as a bold header (v34): absent keeps it drawn;
+   *  `false` turns every row into a plain body row.
+   */
+  headerRow?: boolean
+  /** Shade alternating body rows (v34); absent keeps them plain. */
+  striped?: boolean
+}
+
 export type FreeformElement =
   | FreeformTextElement
   | FreeformImageElement
@@ -401,6 +422,7 @@ export type FreeformElement =
   | FreeformPathElement
   | FreeformQrCodeElement
   | FreeformChartElement
+  | FreeformTableElement
 
 /**
  * A scene path contains node IDs from a slide root to one node. The empty
@@ -438,6 +460,12 @@ export interface FreeformNodeContentPatch {
   labels?: string[]
   /** A chart's series (v26), replaced wholesale with their values and colours. */
   series?: FreeformChartSeries[]
+  /** A table's row count (v34), resized with its cells. */
+  rows?: number
+  /** A table's column count (v34), resized with its cells. */
+  cols?: number
+  /** A table's cell texts (v34), row-major, replaced wholesale. */
+  cells?: string[]
 }
 
 export interface FreeformNodeStylePatch {
@@ -529,6 +557,10 @@ export interface FreeformNodeStylePatch {
   showLegend?: boolean | null
   /** Axis-tick override (v33); `null` restores the drawn ticks. */
   showTicks?: boolean | null
+  /** Table header row (v34); `null` restores the drawn header. */
+  headerRow?: boolean | null
+  /** Table zebra stripes (v34); `null` restores the plain body. */
+  striped?: boolean | null
 }
 
 export interface FreeformNodeGeometryPatch {

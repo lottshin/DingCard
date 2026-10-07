@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v33 校验：需要 documentVersion=1–33 之一（旧版自动迁移为 v33）、非空 slides、'
+  '文档未通过自由画布 v34 校验：需要 documentVersion=1–34 之一（旧版自动迁移为 v34）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -36,7 +36,7 @@ export function validateDocument(value: unknown): ValidateResult {
 export interface NodeSummary {
   id: string
   name: string
-  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'group'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table' | 'group'
   x: number
   y: number
   rotation: number
@@ -65,6 +65,18 @@ export interface NodeSummary {
   /** A chart's axis-tick override (v33): `false` hides the y-axis grid lines
    *  and tick labels; absent keeps them drawn. */
   showTicks?: boolean
+  /** A table's row count (v34), 2–12 including the header row. */
+  rows?: number
+  /** A table's column count (v34), 1–6. */
+  cols?: number
+  /** A table's cell texts (v34), row-major, exactly rows × cols of them,
+   *  each up to 24 characters. */
+  cells?: string[]
+  /** A table's header row override (v34): `false` removes the bold first
+   *  row; absent keeps it drawn. */
+  headerRow?: boolean
+  /** A table's zebra stripes (v34): `true` shades alternating body rows. */
+  striped?: boolean
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
@@ -170,6 +182,16 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       ...(node.barMode !== undefined ? { barMode: node.barMode } : {}),
       ...(node.showLegend !== undefined ? { showLegend: node.showLegend } : {}),
       ...(node.showTicks !== undefined ? { showTicks: node.showTicks } : {}),
+    }
+  }
+  if (node.type === 'table') {
+    return {
+      ...leaf,
+      rows: node.rows,
+      cols: node.cols,
+      cells: node.cells,
+      ...(node.headerRow !== undefined ? { headerRow: node.headerRow } : {}),
+      ...(node.striped !== undefined ? { striped: node.striped } : {}),
     }
   }
   if (node.type === 'path') {

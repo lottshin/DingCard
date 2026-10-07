@@ -252,6 +252,9 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
         series: node.series.map((entry) => ({ ...entry, color: recolor(entry.color) })),
         shadow: recolorShadow(node.shadow, recolor),
       })
+    // A table carries no recolourable paints: its ink is fixed.
+    case 'table':
+      return patched(node, { shadow: recolorShadow(node.shadow, recolor) })
   }
 }
 
@@ -525,7 +528,7 @@ function keepWordsReadable(document: FreeformDocument): FreeformDocument {
         background = under.type === 'image'
           ? null
           : under.type === 'qrcode' ? under.light
-          : under.type === 'chart' ? null : solidOf(under.fill)
+          : under.type === 'chart' || under.type === 'table' ? null : solidOf(under.fill)
         break
       }
       const needed = contrastNeeded(node) + CONTRAST_MARGIN

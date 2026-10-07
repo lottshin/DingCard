@@ -95,6 +95,7 @@ import {
   isValidChartSeriesList,
   type ChartBarMode,
 } from './charts'
+import { isValidTableCellText, isValidTableCols, isValidTableRows } from './tables'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -109,7 +110,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -158,6 +159,10 @@ const CHART_NODE_KEYS = new Set([
 const CHART_NODE_KEYS_V26 = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'chartKind', 'labels', 'series',
+])
+const TABLE_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'rows', 'cols', 'cells',
 ])
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -391,6 +396,7 @@ const CHART_OPTIONAL_V24_KEYS = new Set(['showValues', 'opacity', 'shadow', 'fil
 const CHART_OPTIONAL_V27_KEYS = new Set([...CHART_OPTIONAL_V24_KEYS, 'barMode'])
 const CHART_OPTIONAL_V31_KEYS = new Set([...CHART_OPTIONAL_V27_KEYS, 'showLegend'])
 const CHART_OPTIONAL_V33_KEYS = new Set([...CHART_OPTIONAL_V31_KEYS, 'showTicks'])
+const TABLE_OPTIONAL_V34_KEYS = new Set(['headerRow', 'striped', 'opacity', 'shadow', 'filter', 'blendMode'])
 const PATH_OPTIONAL_V15_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'join', 'fillRule',
 ])
@@ -449,6 +455,7 @@ function optionalKeysFor(
     if (inputVersion >= 31) return CHART_OPTIONAL_V31_KEYS
     return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
   }
+  if (type === 'table') return TABLE_OPTIONAL_V34_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
@@ -507,6 +514,11 @@ function hasStrictNodeKeys(
       && (inputVersion >= 30 || value.chartKind !== 'radar')
       && (inputVersion >= 31 || !('showLegend' in value))
       && (inputVersion >= 33 || !('showTicks' in value))
+  }
+  // Table nodes are v34-only; older input versions reject them.
+  if (value.type === 'table') {
+    if (inputVersion < 34) return false
+    return hasKeysWithOptionals(value, TABLE_NODE_KEYS, optionalKeysFor('table', inputVersion))
   }
   return false
 }
@@ -933,6 +945,29 @@ function normalizeStrictSceneNode(
     }
   }
 
+  // Table nodes are v34-only: rows × cols of short cell texts, an optional
+  // bold header row and optional zebra stripes.
+  if (value.type === 'table') {
+    if (inputVersion < 34) return null
+    if (!isValidTableRows(value.rows) || !isValidTableCols(value.cols)) return null
+    if (!Array.isArray(value.cells) || !value.cells.every(isValidTableCellText)) return null
+    if (value.cells.length !== value.rows * value.cols) return null
+    if ('headerRow' in value && typeof value.headerRow !== 'boolean') return null
+    if ('striped' in value && typeof value.striped !== 'boolean') return null
+    const tableAppearance = cloneStrictAppearance(value, inputVersion)
+    if (!tableAppearance) return null
+    return {
+      ...geometry,
+      type: 'table',
+      rows: value.rows,
+      cols: value.cols,
+      cells: (value.cells as string[]).map((cell) => cell),
+      ...('headerRow' in value ? { headerRow: value.headerRow as boolean } : {}),
+      ...('striped' in value ? { striped: value.striped as boolean } : {}),
+      ...tableAppearance,
+    }
+  }
+
   return null
 }
 
@@ -1011,7 +1046,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 33,
+    documentVersion: 34,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1170,6 +1205,11 @@ export function normalizeFreeformDocumentV32(value: unknown): FreeformDocument |
 /** Strictly validates an already-v33 document (v33 adds the axis-tick switch). */
 export function normalizeFreeformDocumentV33(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 33)
+}
+
+/** Strictly validates an already-v34 document (v34 adds the table element). */
+export function normalizeFreeformDocumentV34(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 34)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1439,6 +1479,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 34) return normalizeFreeformDocumentV34(value)
   if (value.documentVersion === 33) return normalizeFreeformDocumentV33(value)
   if (value.documentVersion === 32) return normalizeFreeformDocumentV32(value)
   if (value.documentVersion === 31) return normalizeFreeformDocumentV31(value)
@@ -1520,7 +1561,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 33,
+    documentVersion: 34,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1553,7 +1594,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 33,
+    documentVersion: 34,
     activeSlideId: document.activeSlideId,
     slides,
   }

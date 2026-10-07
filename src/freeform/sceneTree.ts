@@ -36,6 +36,7 @@ import {
 } from './appearance'
 import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload, isValidQrQuietZone } from './qrCode'
 import { CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
+import { isValidTableCells, isValidTableCols, isValidTableRows } from './tables'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -909,6 +910,10 @@ const CHART_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'chartKind', 'labels', 'series',
 ])
+const TABLE_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'rows', 'cols', 'cells',
+])
 
 function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
   const actualKeys = Object.keys(value)
@@ -1002,6 +1007,15 @@ const CHART_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   showLegend: (record) => typeof record.showLegend === 'boolean',
   showTicks: (record) => typeof record.showTicks === 'boolean',
   barMode: (record) => isValidChartBarMode(record.barMode),
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
+}
+
+const TABLE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  headerRow: (record) => typeof record.headerRow === 'boolean',
+  striped: (record) => typeof record.striped === 'boolean',
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,
@@ -1149,6 +1163,14 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
       node.labels.length <= CHART_POINTS_MAX &&
       node.labels.every(isValidChartLabel) &&
       isValidChartSeriesList(node.series, node.labels.length)
+    )
+  }
+  if (node.type === 'table') {
+    return (
+      hasValidOptionalFields(record, TABLE_NODE_KEYS, TABLE_OPTIONAL_FIELD_CHECKS) &&
+      isValidTableRows(node.rows) &&
+      isValidTableCols(node.cols) &&
+      isValidTableCells(node.cells, node.rows, node.cols)
     )
   }
   return false

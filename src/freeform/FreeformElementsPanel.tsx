@@ -20,6 +20,7 @@ export type ElementPick =
   | { kind: 'line'; id: FreeformLineElement['lineKind']; bothEnds?: boolean }
   | { kind: 'qrcode' }
   | { kind: 'chart' }
+  | { kind: 'table' }
   | { kind: 'collage'; id: string }
   | { kind: 'decoration'; id: string }
   | { kind: 'icon'; id: string }
@@ -133,6 +134,7 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
   const utilities = useMemo(() => [
     { id: 'qrcode', label: '二维码' },
     { id: 'chart', label: '图表' },
+    { id: 'table', label: '表格' },
   ].filter((utility) => !searching || matchesLabel(utility.label, query)), [query, searching, lang])
   const previews = useMemo(() => new Map(DECORATIONS.map((decoration) => [decoration.id, previewSlide(decoration, language)])), [language])
   const nothing = shapes.length + lines.length + collages.length + decorations.length + icons.length + utilities.length === 0
@@ -200,10 +202,14 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
                 type="button"
                 className="freeform-element-tile"
                 data-testid={`insert-${utility.id}`}
-                {...dragProps(utility.id === 'qrcode' ? { kind: 'qrcode' } : { kind: 'chart' })}
-                onClick={() => onPick(utility.id === 'qrcode' ? { kind: 'qrcode' } : { kind: 'chart' })}
+                {...dragProps(utility.id === 'qrcode' || utility.id === 'chart' || utility.id === 'table'
+                  ? { kind: utility.id }
+                  : { kind: 'chart' })}
+                onClick={() => onPick(utility.id === 'qrcode' || utility.id === 'chart' || utility.id === 'table'
+                  ? { kind: utility.id }
+                  : { kind: 'chart' })}
               >
-                <ShapePreviewIcon shape={utility.id === 'qrcode' ? 'qrcode' : 'chart'} />
+                <ShapePreviewIcon shape={utility.id} />
                 <span>{t(utility.label)}</span>
               </button>
             ))}

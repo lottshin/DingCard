@@ -56,6 +56,7 @@ import {
   createLineElement,
   createChartElement,
   createQrCodeElement,
+  createTableElement,
   createPathElement,
   createShapeElement,
   createTextElement,
@@ -3324,6 +3325,7 @@ export function FreeformWorkspace({
     else if (pick.kind === 'line') addLine(pick, placeAt)
     else if (pick.kind === 'qrcode') addQrCode(placeAt)
     else if (pick.kind === 'chart') addChart(placeAt)
+    else if (pick.kind === 'table') insertNewElement(createTableElement(activeSlide), placeAt)
     else if (pick.kind === 'collage') {
       const layout = collageById(pick.id)
       if (layout) addCollage(layout, placeAt)
@@ -6453,6 +6455,9 @@ export function FreeformWorkspace({
     }
     if (selectedElement.type === 'chart') {
       return { kind: 'chart', node: selectedElement }
+    }
+    if (selectedElement.type === 'table') {
+      return { kind: 'table', node: selectedElement }
     }
     return {
       kind: 'image',

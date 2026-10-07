@@ -433,6 +433,12 @@ export function ShapePreviewIcon({ shape, ...props }: IconProps & { shape: strin
         <path d="M7 27V17M16 27V5M25 27v-8" />
       </g>
     ),
+    table: (
+      <g fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round">
+        <rect x="4" y="6" width="24" height="20" rx="2" />
+        <path d="M4 12.7h24M4 19.3h24M12 6v20M20 6v20" />
+      </g>
+    ),
     line: <path d="M5 27 27 5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />,
     arrow: (
       <g fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

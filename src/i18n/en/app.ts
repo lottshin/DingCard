@@ -418,6 +418,7 @@ export const app: Record<string, Translation> = {
   'images': 'images',
   '在线图库': 'Stock photos',
   '轴刻度': 'Axis ticks',
+  '表格': 'Table',
   '在线图库需要服务端': 'Stock photos need the server',
   '部署服务端并登录账户后，可以在这里搜索、插入可商用的在线图片；未配置密钥时自动使用 Openverse。': 'Deploy the server and sign in to search and insert commercially usable photos here; without API keys it falls back to Openverse.',
   '搜索在线图片': 'Search stock photos',

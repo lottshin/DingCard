@@ -30,6 +30,7 @@ import type {
   FreeformPathElement,
   FreeformQrCodeElement,
   FreeformChartElement,
+  FreeformTableElement,
   FreeformShapeElement,
   FreeformTextElement,
   ShapeFill,
@@ -43,6 +44,7 @@ export type ContextToolbarSubject =
   | { kind: 'image'; node: FreeformImageElement; canCrop: boolean; cropDisabledReason: string | null }
   | { kind: 'qrcode'; node: FreeformQrCodeElement }
   | { kind: 'chart'; node: FreeformChartElement }
+  | { kind: 'table'; node: FreeformTableElement }
   | { kind: 'line'; node: FreeformLineElement; strokeWidth: number }
   | { kind: 'path'; node: FreeformPathElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'group'; name: string }
@@ -514,6 +516,13 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
         {subject.kind === 'chart' && (
           <>
             <SubjectChip icon={<PathIcon d="M4 16V9M10 16V4M16 16v-4" />} label={subject.node.chartKind === 'ring' ? t('环形图') : subject.node.chartKind === 'line' ? t('折线图') : t('柱状图')} />
+            <Divider />
+          </>
+        )}
+
+        {subject.kind === 'table' && (
+          <>
+            <SubjectChip icon={<PathIcon d="M3 4h18v16H3zM3 9.3h18M3 14.6h18M9 4v16M15 4v16" />} label={t('表格')} />
             <Divider />
           </>
         )}

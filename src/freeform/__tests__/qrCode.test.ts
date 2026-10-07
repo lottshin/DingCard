@@ -104,7 +104,7 @@ describe('qrcode element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 33, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 34, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred square with the defaults', () => {
     const element = createQrCodeElement(slide)
@@ -199,7 +199,7 @@ describe('qrcode element in the document', () => {
     // The style patch round-trips through the reducer, and null restores square.
     const base = createQrCodeElement(slide)
     const patched = freeformReducer(
-      { documentVersion: 33, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 34, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { moduleStyle: 'rounded' } }] },
     )
     const next = patched.slides[0].nodes[0] as FreeformQrCodeElement
@@ -223,7 +223,7 @@ describe('qrcode element in the document', () => {
     // The style patch stamps and removes the logo; a blank one rejects.
     const base = createQrCodeElement(slide)
     const stamped = freeformReducer(
-      { documentVersion: 33, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 34, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { logoSrc: '/templates/mark.svg' } }] },
     )
     expect((stamped.slides[0].nodes[0] as FreeformQrCodeElement).logoSrc).toBe('/templates/mark.svg')
@@ -253,7 +253,7 @@ describe('qrcode element in the document', () => {
     // removing the field; out-of-range widths reject.
     const base = createQrCodeElement(slide)
     const widened = freeformReducer(
-      { documentVersion: 33, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 34, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { quietZone: 4 } }] },
     )
     expect((widened.slides[0].nodes[0] as FreeformQrCodeElement).quietZone).toBe(4)

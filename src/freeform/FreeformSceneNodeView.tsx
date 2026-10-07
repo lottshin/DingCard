@@ -8,6 +8,7 @@ import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } 
 import { bubbleClipPath, starClipPath } from './shapeGeometry'
 import { QR_ECL_DEFAULT, QR_QUIET_ZONE_DEFAULT } from './qrCode'
 import { barChartGeometry, lineChartGeometry, radarChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
+import { tableGeometry } from './tables'
 import { qrMatrix, qrModulePaths } from './qrMatrix'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
@@ -694,6 +695,54 @@ function SceneLeafContent({
             </>
           )
         })()}
+      </svg>
+    )
+  }
+
+  if (leaf.type === 'table') {
+    // The table draws in fixed ink like the charts' axis text.
+    const inkColor = '#3f3f46'
+    const table = tableGeometry(leaf.width, leaf.height, leaf.rows, leaf.cols, leaf.cells, {
+      headerRow: leaf.headerRow,
+      striped: leaf.striped,
+    })
+    const cellFontSize = Math.max(7, Math.min(leaf.height / leaf.rows * 0.42, 14))
+    return (
+      <svg
+        className={presentationOnly ? 'freeform-preview-table' : 'freeform-table'}
+        data-testid={presentationOnly ? undefined : 'freeform-table'}
+        viewBox={`0 0 ${Math.max(1, leaf.width)} ${Math.max(1, leaf.height)}`}
+        aria-hidden="true"
+        style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
+      >
+        {table.header && (
+          <rect data-testid="freeform-table-header" x={table.header.x} y={table.header.y} width={table.header.width} height={table.header.height} fill={inkColor} opacity={0.08} />
+        )}
+        {table.stripes.map((stripe, index) => (
+          <rect key={index} data-testid="freeform-table-stripe" x={stripe.x} y={stripe.y} width={stripe.width} height={stripe.height} fill={inkColor} opacity={0.045} />
+        ))}
+        {table.lines.map((line, index) => (
+          <line key={index} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={inkColor} strokeWidth={1} opacity={0.28} />
+        ))}
+        {table.cells.map((cell, index) =>
+          cell.lines.length > 0 ? (
+            <text
+              key={index}
+              x={cell.x}
+              y={cell.y}
+              textAnchor="middle"
+              fontFamily="inherit"
+              fontSize={cellFontSize}
+              fontWeight={cell.bold ? 600 : 400}
+              fill={inkColor}
+              data-testid="freeform-table-cell"
+            >
+              {cell.lines.map((line, lineIndex) => (
+                <tspan key={lineIndex} x={cell.x} dy={lineIndex === 0 ? 0 : cellFontSize * 1.22}>{line}</tspan>
+              ))}
+            </text>
+          ) : null,
+        )}
       </svg>
     )
   }
