@@ -47,6 +47,7 @@ export type FreeformPosterSeriesId =
   | 'skill-radar'
   | 'time-split'
   | 'birthday-card'
+  | 'growth-timeline'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

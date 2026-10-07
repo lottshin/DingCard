@@ -11,6 +11,7 @@ import type {
   FreeformSlide,
   FreeformShapeElement,
   FreeformTextElement,
+  FreeformTimelineElement,
   LineEndpointCap,
   PathFill,
   QrErrorCorrectionLevel,
@@ -1231,6 +1232,37 @@ function tableNode(
   }
 }
 
+function timelineNode(
+  items: ReadonlyArray<{ label?: string; text: string }>,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: {
+    name?: string
+    accent?: string
+    rotation?: number
+    opacity?: number
+  } = {},
+): FreeformTimelineElement {
+  return {
+    id: uuid(),
+    name: options.name ?? '时间线',
+    locked: false,
+    hidden: false,
+    type: 'timeline',
+    x,
+    y,
+    width,
+    height,
+    rotation: options.rotation ?? 0,
+    scale: 1,
+    items: items.map((item) => ({ ...(item.label !== undefined ? { label: item.label } : {}), text: item.text })),
+    ...(options.accent !== undefined ? { accent: options.accent } : {}),
+    ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
+  }
+}
+
 function createTalkPosterDocument(): FreeformDocument {
   const paper = '#f2efe8'
   const ink = '#141414'
@@ -1842,6 +1874,34 @@ function createCompareTableDocument(): FreeformDocument {
   ])
 }
 
+function createGrowthTimelineDocument(): FreeformDocument {
+  const paper = '#f7f5ef'
+  const ink = '#26251f'
+  const green = '#0f766e'
+  const muted = '#7c766a'
+  return documentFromSlides([
+    slide('成长记录', solid(paper), [
+      shapeNode('rect', 80, 560, 920, 900, solid('#ffffff'), { name: '时间线卡', cornerRadius: 48, shadow: { color: '#ddd6c6', blur: 40, offsetX: 0, offsetY: 18 } }),
+      textNode('GROWING LOG', 80, 104, 400, 60, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: green, amount: 44, radius: 8 },
+      }),
+      textNode('这一年，慢慢长大', 80, 204, 920, 160, { name: '标题', fontSize: 92, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('五个节点，把一年的变化串起来', 80, 436, 920, 64, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      timelineNode([
+        { label: '1 月', text: '立了个 flag：每周写一篇笔记' },
+        { label: '3 月', text: '第一篇破千赞，涨了 500 粉' },
+        { label: '6 月', text: '接到第一单商单合作' },
+        { label: '9 月', text: '粉丝破万，开始做系列内容' },
+        { label: '12 月', text: '工作室成立，全职做内容' },
+      ], 140, 640, 800, 740, { name: '时间线', accent: green }),
+      lineNode(80, 1488, 920, '#e5dfce', 2, { name: '分隔线', cap: 'butt' }),
+      textNode('明年，把画画捡回来', 80, 1516, 920, 60, { name: '结论', fontSize: 40, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode('@叮卡成长记录', 80, 1796, 920, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),
+    ], STORY),
+  ])
+}
+
 function createSkillRadarDocument(): FreeformDocument {
   const night = '#171b3a'
   const cream = '#eef0fb'
@@ -2173,6 +2233,7 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'skill-radar': poster('能力雷达', '大标题配一张六维能力雷达图和三枚成长关键词，适合个人年度总结、技能盘点和自我介绍。', ['盘点', '成长'], 'story'),
   'time-split': poster('时间分配', '浅色方图：一张环形图把一天的 24 小时切成几块，配三组关键数字，适合作息盘点、时间管理和习惯打卡。', ['时间', '作息'], 'square'),
   'birthday-card': poster('生日贺卡', '粉色圆点图案底上一句大字祝福、一张手写卡和小蛋糕，适合生日祝福、节日问候和好友卡片。', ['生日', '祝福'], 'square'),
+  'growth-timeline': poster('成长记录', '大标题配一条成长时间线，一个节点一件事，适合年度总结、成长复盘和里程碑打卡。', ['成长', '复盘'], 'story'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -2207,6 +2268,7 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'skill-radar': createSkillRadarDocument,
   'time-split': createTimeSplitDocument,
   'birthday-card': createBirthdayCardDocument,
+  'growth-timeline': createGrowthTimelineDocument,
   'follow-card': createFollowCardDocument,
   'trend-compare': createTrendCompareDocument,
   'polaroid-wall': createPolaroidWallDocument,
@@ -2257,6 +2319,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'skill-radar',
   'time-split',
   'birthday-card',
+  'growth-timeline',
 ]
 
 function createMarkdownTemplate(series: MarkdownTemplateSeriesId): TemplateDefinition {

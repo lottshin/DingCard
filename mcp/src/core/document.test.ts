@@ -888,6 +888,100 @@ describe('applyActions', () => {
     expect(remappedTable && remappedTable.type === 'table' ? remappedTable.colWidths : undefined).toEqual([2, 1, 1, 1])
   })
 
+  test('applies the v36 timeline patches through node actions', () => {
+    const withTimeline = seedDocument()
+    withTimeline.slides[0].nodes.push({
+      id: 'timeline-1',
+      name: '时间线',
+      locked: false,
+      hidden: false,
+      type: 'timeline',
+      x: 120,
+      y: 900,
+      width: 480,
+      height: 420,
+      rotation: 0,
+      scale: 1,
+      items: [
+        { label: '3 月', text: '开始学设计' },
+        { label: '6 月', text: '接到第一单' },
+      ],
+    })
+    const valid = validateDocument(withTimeline)
+    expect(valid.ok).toBe(true)
+    if (!valid.ok) return
+
+    // The accent stamp rides in the summary and clears on null.
+    const styled = applyActions(valid.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['timeline-1'], patch: { accent: '#0f766e' } }],
+      },
+    ])
+    expect(styled.ok).toBe(true)
+    if (!styled.ok) return
+    const styledTimeline = styled.document.slides[0].nodes.find((node) => node.id === 'timeline-1')
+    expect(styledTimeline && styledTimeline.type === 'timeline' ? styledTimeline.accent : undefined).toBe('#0f766e')
+    const summary = inspectDocument(styled.document)
+    if (!summary.ok) throw new Error(summary.error)
+    expect(summary.slides[0].nodes.find((node) => node.id === 'timeline-1'))
+      .toMatchObject({ type: 'timeline', accent: '#0f766e', items: [{ label: '3 月', text: '开始学设计' }, { label: '6 月', text: '接到第一单' }] })
+    const restored = applyActions(styled.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['timeline-1'], patch: { accent: null } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['timeline-1'], patch: { accent: 'teal' } }],
+      },
+    ])
+    expect(restored.ok).toBe(true)
+    if (!restored.ok) return
+    expect(restored.changes).toEqual([true, false])
+    const clearedTimeline = restored.document.slides[0].nodes.find((node) => node.id === 'timeline-1')
+    expect(clearedTimeline && clearedTimeline.type === 'timeline' ? 'accent' in clearedTimeline : true).toBe(false)
+
+    // Items replace wholesale; a single-entry list rejects the patch.
+    const replaced = applyActions(valid.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{
+          path: ['timeline-1'],
+          patch: {
+            items: [
+              { label: '周一', text: '写方案' },
+              { text: '没有标签的一步' },
+              { label: '周五', text: '交方案' },
+            ],
+          },
+        }],
+      },
+    ])
+    expect(replaced.ok).toBe(true)
+    if (!replaced.ok) return
+    const replacedTimeline = replaced.document.slides[0].nodes.find((node) => node.id === 'timeline-1')
+    expect(replacedTimeline && replacedTimeline.type === 'timeline' ? replacedTimeline.items : []).toEqual([
+      { label: '周一', text: '写方案' },
+      { text: '没有标签的一步' },
+      { label: '周五', text: '交方案' },
+    ])
+    const rejected = applyActions(replaced.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['timeline-1'], patch: { items: [{ text: '只有一项' }] } }],
+      },
+    ])
+    expect(rejected.ok).toBe(true)
+    if (!rejected.ok) return
+    expect(rejected.changes).toEqual([false])
+  })
+
   test('applies the v30 quiet-zone patch and surfaces it in summaries', () => {
     const withQr = seedDocument()
     withQr.slides[0].nodes.push({

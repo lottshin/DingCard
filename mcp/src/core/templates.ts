@@ -14,6 +14,7 @@ import type {
   TemplateWorkspace,
 } from '../../../src/templates/types'
 import type { FreeformDocument, FreeformSlide } from '../../../src/freeform/types'
+import { TIMELINE_ITEMS_MAX } from '../../../src/freeform/timeline'
 
 /** How much content a freeform template's pages hold before it spills over. */
 export interface TemplateCapacity {
@@ -34,7 +35,7 @@ export interface PosterCapacity {
   body: boolean
   /** A name to put on it (a certificate's recipient). */
   recipient: boolean
-  /** Information lines ("时间：…", a menu's "拿铁：28"). */
+  /** Information lines ("时间：…", a menu's "拿铁：28"); a timeline takes them as its entries. */
   details: number
   cta: boolean
   tag: boolean
@@ -44,6 +45,8 @@ export interface PosterCapacity {
   table?: { maxRows: number; maxColumns: number }
   /** A chart it fills from `chart` content (labels and series). */
   chart: boolean
+  /** A timeline it fills with `details` lines (the part before the colon the time label). */
+  timeline: boolean
 }
 
 export interface TemplateSummary {
@@ -92,7 +95,7 @@ function posterCapacityOf(series: string): PosterCapacity | undefined {
     subtitle: Boolean(slots.subtitle),
     body: Boolean(slots.body),
     recipient: Boolean(slots.recipient),
-    details: slots.details?.length ?? 0,
+    details: slots.details?.length ?? (slots.timeline ? TIMELINE_ITEMS_MAX : 0),
     cta: Boolean(slots.cta),
     tag: Boolean(slots.tag),
     brand: Boolean(slots.brand),
@@ -100,6 +103,7 @@ function posterCapacityOf(series: string): PosterCapacity | undefined {
     ...(slots.table ? { table: { maxRows: slots.table.layout.maxRows, maxColumns: slots.table.layout.maxColumns } } : {}),
     ...(slots.tableElement ? { table: { maxRows: 12, maxColumns: 6 } } : {}),
     chart: Boolean(slots.chart),
+    timeline: Boolean(slots.timeline),
   }
 }
 

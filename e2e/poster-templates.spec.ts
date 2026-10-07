@@ -20,7 +20,7 @@ test('the gallery filters templates by size, and a poster opens as one page at i
 
   await dialog.getByTestId('template-format-story').click()
   await expect(dialog.getByTestId('template-format-story')).toHaveAttribute('aria-pressed', 'true')
-  await expect(dialog.locator('.template-tile')).toHaveCount(11)
+  await expect(dialog.locator('.template-tile')).toHaveCount(12)
   await expect(dialog.locator('.template-detail-series')).toHaveText('价目表')
   // The preview keeps the 9:16 page's proportions.
   const preview = await dialog.locator('.template-tile').first().locator('.template-freeform-preview').boundingBox()
@@ -90,6 +90,7 @@ for (const [templateId, size, words] of [
   ['menu-freeform', 'A4 · 1240×1754px', ['今日菜单', '燕麦拿铁']],
   ['note-cover-freeform', '3:4 · 1080×1440px', ['干货分享']],
   ['compare-table-freeform', '9:16 · 1080×1920px', ['怎么选，看这张表', '12 元/月']],
+  ['growth-timeline-freeform', '9:16 · 1080×1920px', ['这一年，慢慢长大', '接到第一单商单合作']],
 ] as const) {
   test(`${templateId} opens at its size with its words`, async ({ page }) => {
     await page.goto(`/#/edit/canvas/template/${templateId}`)
@@ -118,4 +119,20 @@ test('compare-table opens with its colored, weighted columns', async ({ page }) 
   )
   expect(edges[0]).toBeCloseTo((800 * 1.4) / 3.4, 0)
   expect(edges[1]).toBeCloseTo(800 - (800 * 1) / 3.4, 0)
+})
+
+test('growth-timeline opens with its green timeline, one dot an entry', async ({ page }) => {
+  await page.goto('/#/edit/canvas/template/growth-timeline-freeform')
+  const timeline = page.getByTestId('freeform-timeline')
+  await expect(timeline).toBeVisible()
+
+  // Five entries: five dots and five time labels on one spine, all in the template's green.
+  await expect(timeline.locator('[data-testid="freeform-timeline-spine"]')).toHaveCount(1)
+  await expect(timeline.locator('[data-testid="freeform-timeline-dot"]')).toHaveCount(5)
+  await expect(timeline.locator('[data-testid="freeform-timeline-label"]')).toHaveCount(5)
+  await expect(timeline.locator('[data-testid="freeform-timeline-text"]')).toHaveCount(5)
+  await expect(timeline.locator('[data-testid="freeform-timeline-dot"]').first()).toHaveAttribute('fill', '#0f766e')
+  await expect(timeline.locator('[data-testid="freeform-timeline-label"]').first()).toHaveAttribute('fill', '#0f766e')
+  await expect(timeline).toContainText('1 月')
+  await expect(timeline).toContainText('工作室成立，全职做内容')
 })

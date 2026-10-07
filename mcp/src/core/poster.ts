@@ -7,6 +7,12 @@
 import { createDefaultImageFraming } from '../../../src/freeform/imageFraming'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { TABLE_CELL_MAX_CHARS, TABLE_COLS_MAX, TABLE_ROWS_MAX } from '../../../src/freeform/tables'
+import {
+  TIMELINE_ITEMS_MAX,
+  TIMELINE_ITEMS_MIN,
+  TIMELINE_LABEL_MAX_CHARS,
+  TIMELINE_TEXT_MAX_CHARS,
+} from '../../../src/freeform/timeline'
 import type { FreeformDocument, FreeformSceneNode, FreeformTextElement } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_POSTER_SLOTS, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
@@ -51,7 +57,7 @@ export interface PosterSuccess {
     shrunk: Array<{ node: string; from: number; to: number }>
     /** Copy that still doesn't fit at the smallest size: shorten it. */
     overflowing: Array<{ node: string; text: string }>
-    /** Information lines beyond the rows the template has, and table cells beyond the rows and columns it can draw. */
+    /** Information lines beyond the rows the template has, timeline entries beyond eight, and table cells beyond the rows and columns it can draw. */
     unplaced: string[]
     /** Content the template has no place for. */
     unused: Array<keyof PosterContent>
@@ -247,7 +253,25 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       texts.set(row.value, line)
     }
   })
-  if (lines.length > 0 && rows.length === 0) unused.push('details')
+  // A timeline takes the detail lines as its entries when the template draws
+  // no detail rows: the part before the colon becomes the time label.
+  const timelined = new Map<string, FreeformSceneNode>()
+  if (slots.timeline && rows.length === 0 && lines.length >= TIMELINE_ITEMS_MIN) {
+    const node = slide.nodes.find((candidate) => candidate.name === slots.timeline!.node)
+    if (node?.type === 'timeline') {
+      timelined.set(node.name, {
+        ...node,
+        items: lines.slice(0, TIMELINE_ITEMS_MAX).map((line) => {
+          const match = LABEL_SEPARATOR.exec(line)
+          const hasLabel = match !== null && match.index > 0 && match.index + match[0].length < line.length
+          const label = hasLabel ? line.slice(0, match.index).slice(0, TIMELINE_LABEL_MAX_CHARS) : undefined
+          const text = (hasLabel ? line.slice(match.index + match[0].length) : line).slice(0, TIMELINE_TEXT_MAX_CHARS)
+          return { ...(label !== undefined ? { label } : {}), text }
+        }),
+      })
+    }
+  }
+  if (lines.length > 0 && rows.length === 0 && timelined.size === 0) unused.push('details')
   if (lines.length === 0) slots.detailsExtras?.forEach((name) => remove.add(name))
   slots.remove?.forEach(dropItem)
 
@@ -312,7 +336,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
 
   const shrunk: PosterSuccess['summary']['shrunk'] = []
   const overflowing: PosterSuccess['summary']['overflowing'] = []
-  const unplaced = lines.slice(rows.length)
+  const unplaced = lines.slice(timelined.size > 0 ? Math.min(lines.length, TIMELINE_ITEMS_MAX) : rows.length)
 
   // A table is drawn again at the content's own size: as many rows and columns as given, filling the same space.
   let tableAt = -1
@@ -385,6 +409,8 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     if (chart) return [chart]
     const table = tabled.get(node.name)
     if (table) return [table]
+    const timeline = timelined.get(node.name)
+    if (timeline) return [timeline]
     if (node.type !== 'text') return [node]
     const text = texts.get(node.name)
     if (text === undefined) return [node]

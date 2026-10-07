@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { FreeformImageElement, FreeformShapeElement, FreeformTableElement, FreeformTextElement } from '../../../src/freeform/types'
+import type { FreeformImageElement, FreeformShapeElement, FreeformTableElement, FreeformTextElement, FreeformTimelineElement } from '../../../src/freeform/types'
 import { composePoster, normalizePosterContent } from './poster'
 import { templateMarks } from './layoutIssues'
 import { posterTemplateIds } from './templates'
@@ -291,6 +291,54 @@ describe('composePoster', () => {
     const kept = compose('compare-table-freeform', { title: '怎么选，看这张表' })
     const keptElement = named(kept, '对比表') as FreeformTableElement
     expect(keptElement.cells).toContain('12 元/月')
+  })
+
+  test('fills the growth poster\'s timeline from details lines, label before the colon', () => {
+    const result = compose('growth-timeline-freeform', {
+      title: '这一年，慢慢长大',
+      subtitle: '五个节点，把一年的变化串起来',
+      tag: 'GROWING LOG',
+      body: '明年，把画画捡回来',
+      brand: '@叮卡成长记录',
+      details: ['3 月：注册账号，发出第一篇笔记', '6 月：接到第一单商单合作', '9 月：粉丝破万，开始做系列内容'],
+    })
+    const element = named(result, '时间线') as FreeformTimelineElement
+    // Whole-set replacement: the template's five sample entries give way to the three lines.
+    expect(element.items).toEqual([
+      { label: '3 月', text: '注册账号，发出第一篇笔记' },
+      { label: '6 月', text: '接到第一单商单合作' },
+      { label: '9 月', text: '粉丝破万，开始做系列内容' },
+    ])
+    // The template's accent rides along, and nothing goes unused or unplaced.
+    expect(element.accent).toBe('#0f766e')
+    expect(result.summary.unused).toEqual([])
+    expect(result.summary.unplaced).toEqual([])
+
+    // A line without a colon is its own text, label omitted.
+    const bare = compose('growth-timeline-freeform', { title: '成长', details: ['注册账号，发出第一篇笔记', '接到第一单商单合作'] })
+    expect((named(bare, '时间线') as FreeformTimelineElement).items).toEqual([
+      { text: '注册账号，发出第一篇笔记' },
+      { text: '接到第一单商单合作' },
+    ])
+
+    // Entries past eight land in unplaced.
+    const over = compose('growth-timeline-freeform', {
+      title: '成长',
+      details: Array.from({ length: 10 }, (_, index) => `第${index + 1} 月：第 ${index + 1} 件事`),
+    })
+    const overElement = named(over, '时间线') as FreeformTimelineElement
+    expect(overElement.items).toHaveLength(8)
+    expect(over.summary.unplaced).toEqual(['第9 月：第 9 件事', '第10 月：第 10 件事'])
+
+    // A single line cannot feed a timeline: the template's entries stay and the line goes unused.
+    const lone = compose('growth-timeline-freeform', { title: '成长', details: ['只有一条'] })
+    const loneElement = named(lone, '时间线') as FreeformTimelineElement
+    expect(loneElement.items.some((item) => item.label === '1 月')).toBe(true)
+    expect(lone.summary.unused).toEqual(['details'])
+
+    // Without details the template's own entries stay, like a kept illustration.
+    const kept = compose('growth-timeline-freeform', { title: '这一年，慢慢长大' })
+    expect((named(kept, '时间线') as FreeformTimelineElement).items).toHaveLength(5)
   })
 
   test('keeps the list card only with lines on it, and an illustration that is the design itself', () => {
