@@ -3096,6 +3096,53 @@ html.theme-anim * {
   font-size: 13px;
 }
 
+/* The table editor: row/col sizing on one line, then the cell grid. */
+.freeform-inspector .table-size-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.freeform-inspector .table-size-row .ghost {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.freeform-inspector .table-cell-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.freeform-inspector .table-cell-row {
+  display: flex;
+  gap: 4px;
+}
+
+.freeform-inspector .table-cell-row input {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.freeform-inspector .table-cell-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+  outline: none;
+}
+
+.freeform-inspector .table-paste {
+  width: 100%;
+  height: 32px;
+  margin-top: 10px;
+}
+
 /* The QR payload field: one full-width text line in the inspector. */
 .freeform-inspector .qr-payload-input {
   width: 100%;

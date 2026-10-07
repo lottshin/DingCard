@@ -64,6 +64,13 @@ import {
 } from './document'
 import { QR_PAYLOAD_MAX_LENGTH } from './qrCode'
 import { CHART_POINTS_MAX, CHART_SERIES_MAX, isValidChartSeries, parseChartPaste } from './charts'
+import {
+  TABLE_CELL_MAX_CHARS,
+  TABLE_COLS_MAX,
+  TABLE_ROWS_MAX,
+  isValidTableCellText,
+  parseTablePaste,
+} from './tables'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
 import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
@@ -246,6 +253,7 @@ import type {
   FreeformLineElement,
   FreeformQrCodeElement,
   FreeformChartElement,
+  FreeformTableElement,
   FreeformSceneNode,
   FreeformNodeContentPatch,
   FreeformNodeGeometryPatch,
@@ -935,6 +943,10 @@ function isQrCodeElement(element: FreeformElement | undefined): element is Freef
 
 function isChartElement(element: FreeformElement | undefined): element is FreeformChartElement {
   return element?.type === 'chart'
+}
+
+function isTableElement(element: FreeformElement | undefined): element is FreeformTableElement {
+  return element?.type === 'table'
 }
 
 /** Chart kinds in the inspector segment order. */
@@ -8727,6 +8739,150 @@ export function FreeformWorkspace({
                           </div>
                         </>
                       )}
+                    </InspectorSection>
+                  )}
+
+                  {isTableElement(selectedElement) && (
+                    <InspectorSection title={t('表格')} testId="inspector-table">
+                      <div className="field-label">{t('表头')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('表头')}>
+                        <button
+                          type="button"
+                          className={selectedElement.headerRow !== false ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.headerRow !== false}
+                          data-testid="table-header-on"
+                          onClick={() => updateSelectedStyle({ headerRow: selectedElement.headerRow === false ? null : false })}
+                        >
+                          {t('显示')}
+                        </button>
+                        <button
+                          type="button"
+                          className={selectedElement.headerRow === false ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.headerRow === false}
+                          data-testid="table-header-off"
+                          onClick={() => updateSelectedStyle({ headerRow: false })}
+                        >
+                          {t('隐藏')}
+                        </button>
+                      </div>
+                      <div className="field-label with-gap">{t('斑马纹')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('斑马纹')}>
+                        <button
+                          type="button"
+                          className={selectedElement.striped === true ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.striped === true}
+                          data-testid="table-striped-on"
+                          onClick={() => updateSelectedStyle({ striped: selectedElement.striped === true ? null : true })}
+                        >
+                          {t('显示')}
+                        </button>
+                        <button
+                          type="button"
+                          className={selectedElement.striped !== true ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.striped !== true}
+                          data-testid="table-striped-off"
+                          onClick={() => updateSelectedStyle({ striped: null })}
+                        >
+                          {t('隐藏')}
+                        </button>
+                      </div>
+                      <div className="field-label with-gap">{t('行列')}</div>
+                      <div className="table-size-row" role="group" aria-label={t('行列')}>
+                        <button
+                          type="button"
+                          className="ghost"
+                          data-testid="table-row-add"
+                          disabled={selectedElement.rows >= TABLE_ROWS_MAX}
+                          onClick={() => updateSelectedContent({ rows: selectedElement.rows + 1 })}
+                        >
+                          {t('加一行')}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          data-testid="table-row-remove"
+                          disabled={selectedElement.rows <= 2}
+                          onClick={() => updateSelectedContent({ rows: selectedElement.rows - 1 })}
+                        >
+                          {t('减一行')}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          data-testid="table-col-add"
+                          disabled={selectedElement.cols >= TABLE_COLS_MAX}
+                          onClick={() => updateSelectedContent({ cols: selectedElement.cols + 1 })}
+                        >
+                          {t('加一列')}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          data-testid="table-col-remove"
+                          disabled={selectedElement.cols <= 1}
+                          onClick={() => updateSelectedContent({ cols: selectedElement.cols - 1 })}
+                        >
+                          {t('减一列')}
+                        </button>
+                      </div>
+                      <div className="field-label with-gap">{t('单元格')}</div>
+                      <div className="table-cell-rows" data-testid="table-cell-rows">
+                        {Array.from({ length: selectedElement.rows }, (_, row) => (
+                          <div className="table-cell-row" key={row}>
+                            {Array.from({ length: selectedElement.cols }, (_, col) => {
+                              const index = row * selectedElement.cols + col
+                              return (
+                                <input
+                                  type="text"
+                                  maxLength={TABLE_CELL_MAX_CHARS}
+                                  key={index}
+                                  data-testid={`table-cell-${index}`}
+                                  value={selectedElement.cells[index] ?? ''}
+                                  aria-label={t('第 {n} 行第 {m} 列', { n: row + 1, m: col + 1 })}
+                                  onChange={(event) => {
+                                    const value = event.currentTarget.value
+                                    if (!isValidTableCellText(value)) return
+                                    const cells = [...selectedElement.cells]
+                                    cells[index] = value
+                                    updateSelectedContent({ cells })
+                                  }}
+                                />
+                              )
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="ghost table-paste"
+                        data-testid="table-paste-data"
+                        onClick={() => void (async () => {
+                          let text: string
+                          try {
+                            text = await navigator.clipboard.readText()
+                          } catch {
+                            setOperationNotice(t('读取剪贴板失败，请重试'))
+                            return
+                          }
+                          const parsed = parseTablePaste(text)
+                          if (!parsed) {
+                            setOperationNotice(t('粘贴内容读不出表格：每行需要用制表符、逗号或空格分隔的单元格'))
+                            return
+                          }
+                          const cols = Math.min(TABLE_COLS_MAX, Math.max(...parsed.rows.map((row) => row.length)))
+                          const rows = parsed.rows.slice(0, TABLE_ROWS_MAX)
+                          // A pasted single row is padded to the two-row minimum the document keeps.
+                          while (rows.length < 2) rows.push([])
+                          const cells: string[] = []
+                          for (const row of rows) {
+                            for (let col = 0; col < cols; col += 1) cells.push(row[col] ?? '')
+                          }
+                          setOperationNotice(null)
+                          updateSelectedContent({ rows: rows.length, cols, cells })
+                        })()}
+                      >
+                        {t('从剪贴板粘贴')}
+                      </button>
                     </InspectorSection>
                   )}
 
