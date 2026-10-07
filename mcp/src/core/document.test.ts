@@ -980,6 +980,40 @@ describe('applyActions', () => {
     expect(rejected.ok).toBe(true)
     if (!rejected.ok) return
     expect(rejected.changes).toEqual([false])
+
+    // The v37 layout and ink ride node/update-style; false restores the vertical spine.
+    const polished = applyActions(valid.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['timeline-1'], patch: { horizontal: true, ink: '#1f2937' } }],
+      },
+    ])
+    expect(polished.ok).toBe(true)
+    if (!polished.ok) return
+    const polishedTimeline = polished.document.slides[0].nodes.find((node) => node.id === 'timeline-1')
+    expect(polishedTimeline).toMatchObject({ type: 'timeline', horizontal: true, ink: '#1f2937' })
+    const polishedSummary = inspectDocument(polished.document)
+    if (!polishedSummary.ok) throw new Error(polishedSummary.error)
+    expect(polishedSummary.slides[0].nodes.find((node) => node.id === 'timeline-1'))
+      .toMatchObject({ type: 'timeline', horizontal: true, ink: '#1f2937' })
+    const restoredLayout = applyActions(polished.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['timeline-1'], patch: { horizontal: false, ink: null } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['timeline-1'], patch: { horizontal: 'yes' } }],
+      },
+    ])
+    expect(restoredLayout.ok).toBe(true)
+    if (!restoredLayout.ok) return
+    expect(restoredLayout.changes).toEqual([true, false])
+    const restoredTimeline = restoredLayout.document.slides[0].nodes.find((node) => node.id === 'timeline-1')
+    expect(restoredTimeline && restoredTimeline.type === 'timeline' ? 'horizontal' in restoredTimeline || 'ink' in restoredTimeline : true).toBe(false)
   })
 
   test('applies the v30 quiet-zone patch and surfaces it in summaries', () => {
