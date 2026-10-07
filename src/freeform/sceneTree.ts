@@ -1038,6 +1038,8 @@ const TABLE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 
 const TIMELINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   accent: (record) => isHexColor(record.accent),
+  horizontal: (record) => record.horizontal === true,
+  ink: (record) => isHexColor(record.ink),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,

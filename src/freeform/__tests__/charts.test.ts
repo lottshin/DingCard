@@ -343,7 +343,7 @@ describe('chart element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 36, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 37, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred bar chart with one sample series', () => {
     const element = createChartElement(slide)
@@ -477,7 +477,7 @@ describe('chart element in the document', () => {
     // The style patch switches modes; null restores grouped by removal.
     const base = createChartElement(slide)
     const withMode = freeformReducer(
-      { documentVersion: 36, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 37, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { barMode: 'stacked' } }] },
     )
     expect((withMode.slides[0].nodes[0] as FreeformChartElement).barMode).toBe('stacked')
@@ -500,7 +500,7 @@ describe('chart element in the document', () => {
     // The style patch sets all three states; null restores the automatic rule.
     const base = createChartElement(slide)
     const hidden = freeformReducer(
-      { documentVersion: 36, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 37, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { showLegend: false } }] },
     )
     expect((hidden.slides[0].nodes[0] as FreeformChartElement).showLegend).toBe(false)
@@ -561,7 +561,7 @@ describe('chart element in the document', () => {
     // The style patch hides and restores; null removes the override again.
     const base = createChartElement(slide)
     const hidden = freeformReducer(
-      { documentVersion: 36, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 37, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { showTicks: false } }] },
     )
     expect((hidden.slides[0].nodes[0] as FreeformChartElement).showTicks).toBe(false)

@@ -158,7 +158,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 36,
+    documentVersion: 37,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -597,6 +597,7 @@ const STYLE_KEYS = new Set([
   'ink',
   'headerFill',
   'stripeFill',
+  'horizontal',
   'barMode',
   'opacity',
   'shadow',
@@ -630,7 +631,7 @@ const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'stroke', 'strokeWidth', 
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZone', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'showTicks', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
 const TABLE_APPEARANCE_KEYS = new Set(['headerRow', 'striped', 'ink', 'headerFill', 'stripeFill', 'opacity', 'shadow', 'filter', 'blendMode'])
-const TIMELINE_APPEARANCE_KEYS = new Set(['accent', 'opacity', 'shadow', 'filter', 'blendMode'])
+const TIMELINE_APPEARANCE_KEYS = new Set(['accent', 'horizontal', 'ink', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
 ])
@@ -684,6 +685,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && typeof value !== 'boolean') return false
     } else if (key === 'headerRow' || key === 'striped') {
       if (value !== null && typeof value !== 'boolean') return false
+    } else if (key === 'horizontal') {
+      if (value !== null && typeof value !== 'boolean') return false
     } else if (key === 'ink' || key === 'headerFill' || key === 'stripeFill') {
       if (value !== null && !isHexColor(value)) return false
     } else if (key === 'barMode') {
@@ -726,7 +729,7 @@ function withAppearancePatch<T extends object>(
   for (const key of fields) {
     if (!(key in patch)) continue
     const value = patch[key]
-    if (value === null || ((key === 'italic' || key === 'vertical') && value === false)) {
+    if (value === null || ((key === 'italic' || key === 'vertical' || key === 'horizontal') && value === false)) {
       const { [key]: _removed, ...rest } = next
       next = rest
       continue
@@ -1279,7 +1282,7 @@ function applyStylePatch(
   }
   if (node.type === 'timeline') {
     if (
-      keys.some((key) => key !== 'accent'
+      keys.some((key) => key !== 'accent' && key !== 'horizontal' && key !== 'ink'
         && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
     ) {
       return { ok: false, node }

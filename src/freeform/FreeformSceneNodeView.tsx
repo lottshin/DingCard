@@ -753,8 +753,10 @@ function SceneLeafContent({
   if (leaf.type === 'timeline') {
     // The timeline draws its spine and dots in one accent, its words in ink.
     const accentColor = leaf.accent ?? '#1d4ed8'
-    const inkColor = '#3f3f46'
-    const timeline = timelineGeometry(leaf.width, leaf.height, leaf.items)
+    const inkColor = leaf.ink ?? '#3f3f46'
+    const timeline = timelineGeometry(leaf.width, leaf.height, leaf.items, {
+      ...(leaf.horizontal ? { horizontal: true } : {}),
+    })
     const labelSize = Math.max(8, Math.round(timeline.fontSize * 0.78))
     return (
       <svg
@@ -766,9 +768,9 @@ function SceneLeafContent({
       >
         <line
           data-testid="freeform-timeline-spine"
-          x1={timeline.spine.x}
+          x1={timeline.spine.x1}
           y1={timeline.spine.y1}
-          x2={timeline.spine.x}
+          x2={timeline.spine.x2}
           y2={timeline.spine.y2}
           stroke={accentColor}
           strokeWidth={2}
@@ -776,12 +778,13 @@ function SceneLeafContent({
         />
         {timeline.entries.map((entry, index) => (
           <g key={index}>
-            <circle data-testid="freeform-timeline-dot" cx={timeline.spine.x} cy={entry.dotY} r={5} fill={accentColor} />
+            <circle data-testid="freeform-timeline-dot" cx={entry.dot.x} cy={entry.dot.y} r={5} fill={accentColor} />
             {entry.label && (
               <text
                 data-testid="freeform-timeline-label"
                 x={entry.label.x}
                 y={entry.label.y}
+                textAnchor={entry.label.anchor}
                 fontFamily="inherit"
                 fontSize={labelSize}
                 fontWeight={600}
@@ -796,6 +799,7 @@ function SceneLeafContent({
                 data-testid="freeform-timeline-text"
                 x={line.x}
                 y={line.y}
+                textAnchor={line.anchor}
                 fontFamily="inherit"
                 fontSize={timeline.fontSize}
                 fill={inkColor}

@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v36 校验：需要 documentVersion=1–36 之一（旧版自动迁移为 v36）、非空 slides、'
+  '文档未通过自由画布 v37 校验：需要 documentVersion=1–37 之一（旧版自动迁移为 v37）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -89,6 +89,10 @@ export interface NodeSummary {
   items?: Array<{ label?: string; text: string }>
   /** A timeline's spine and dot colour (v36); absent keeps the blue accent. */
   accent?: string
+  /** The timeline's entries side by side (v37); absent runs them down the left spine. */
+  horizontal?: boolean
+  /** A timeline's text colour (v37); absent keeps the dark grey ink. */
+  ink?: string
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
@@ -218,6 +222,8 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
         ...('label' in item ? { label: item.label } : {}),
       })),
       ...(node.accent !== undefined ? { accent: node.accent } : {}),
+      ...(node.horizontal !== undefined ? { horizontal: node.horizontal } : {}),
+      ...(node.ink !== undefined ? { ink: node.ink } : {}),
     }
   }
   if (node.type === 'path') {

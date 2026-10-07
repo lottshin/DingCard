@@ -111,7 +111,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -172,6 +172,7 @@ const TIMELINE_NODE_KEYS = new Set([
   'scale', 'items',
 ])
 const TIMELINE_OPTIONAL_V36_KEYS = new Set(['accent', 'opacity', 'shadow', 'filter', 'blendMode'])
+const TIMELINE_OPTIONAL_V37_KEYS = new Set(['accent', 'horizontal', 'ink', 'opacity', 'shadow', 'filter', 'blendMode'])
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -465,7 +466,7 @@ function optionalKeysFor(
     return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
   }
   if (type === 'table') return inputVersion >= 35 ? TABLE_OPTIONAL_V35_KEYS : TABLE_OPTIONAL_V34_KEYS
-  if (type === 'timeline') return TIMELINE_OPTIONAL_V36_KEYS
+  if (type === 'timeline') return inputVersion >= 37 ? TIMELINE_OPTIONAL_V37_KEYS : TIMELINE_OPTIONAL_V36_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
@@ -993,12 +994,16 @@ function normalizeStrictSceneNode(
     }
   }
 
-  // Timeline nodes are v36-only: 2–8 labelled entries down a spine, with an
-  // optional accent colour.
+  // Timeline nodes are v36-only: 2–8 labelled entries on a spine, with an
+  // optional accent colour; v37 adds the horizontal layout and the text ink.
   if (value.type === 'timeline') {
     if (inputVersion < 36) return null
     if (!isValidTimelineItems(value.items)) return null
     if ('accent' in value && !isHexColor(value.accent)) return null
+    if (inputVersion >= 37) {
+      if ('horizontal' in value && typeof value.horizontal !== 'boolean') return null
+      if ('ink' in value && !isHexColor(value.ink)) return null
+    }
     const timelineAppearance = cloneStrictAppearance(value, inputVersion)
     if (!timelineAppearance) return null
     return {
@@ -1009,6 +1014,8 @@ function normalizeStrictSceneNode(
         ...('label' in item ? { label: item.label } : {}),
       })),
       ...('accent' in value ? { accent: value.accent as string } : {}),
+      ...(inputVersion >= 37 && 'horizontal' in value ? { horizontal: value.horizontal as boolean } : {}),
+      ...(inputVersion >= 37 && 'ink' in value ? { ink: value.ink as string } : {}),
       ...timelineAppearance,
     }
   }
@@ -1091,7 +1098,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 36,
+    documentVersion: 37,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1253,16 +1260,23 @@ export function normalizeFreeformDocumentV33(value: unknown): FreeformDocument |
 }
 
 /** Strictly validates an already-v34 document (v34 adds the table element). */
-export function normalizeFreeformDocumentV36(value: unknown): FreeformDocument | null {
-  return normalizeStrictDocument(value, 36)
+export function normalizeFreeformDocumentV34(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 34)
 }
 
+/** Strictly validates an already-v35 document (v35 adds the table colours and column widths). */
 export function normalizeFreeformDocumentV35(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 35)
 }
 
-export function normalizeFreeformDocumentV34(value: unknown): FreeformDocument | null {
-  return normalizeStrictDocument(value, 34)
+/** Strictly validates an already-v36 document (v36 adds the timeline element). */
+export function normalizeFreeformDocumentV36(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 36)
+}
+
+/** Strictly validates an already-v37 document (v37 adds the horizontal timeline and its ink). */
+export function normalizeFreeformDocumentV37(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 37)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1532,6 +1546,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 37) return normalizeFreeformDocumentV37(value)
   if (value.documentVersion === 36) return normalizeFreeformDocumentV36(value)
   if (value.documentVersion === 35) return normalizeFreeformDocumentV35(value)
   if (value.documentVersion === 34) return normalizeFreeformDocumentV34(value)
@@ -1616,7 +1631,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 36,
+    documentVersion: 37,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1649,7 +1664,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 36,
+    documentVersion: 37,
     activeSlideId: document.activeSlideId,
     slides,
   }

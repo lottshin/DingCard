@@ -260,10 +260,11 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
         ...(node.stripeFill !== undefined ? { stripeFill: recolor(node.stripeFill) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
-    // A timeline's accent is optional: absent keeps the default blue.
+    // A timeline's accent and ink are optional: absent keeps the blue and the grey.
     case 'timeline':
       return patched(node, {
         ...(node.accent !== undefined ? { accent: recolor(node.accent) } : {}),
+        ...(node.ink !== undefined ? { ink: recolor(node.ink) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
   }

@@ -72,7 +72,7 @@ function drawing(id: string, overrides: Partial<FreeformPathElement> = {}): Free
 
 function deck(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 36,
+    documentVersion: 37,
     activeSlideId: 'page',
     slides: [{ id: 'page', name: '第 1 页', width: 1080, height: 1440, background: { type: 'solid', color: '#ffffff' }, nodes }],
   }

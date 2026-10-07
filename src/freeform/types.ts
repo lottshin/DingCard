@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 36
+  documentVersion: 37
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -434,6 +434,10 @@ export interface FreeformTimelineElement extends FreeformElementBase {
   items: FreeformTimelineItem[]
   /** The spine's and dots' colour (v36); absent keeps the blue accent. */
   accent?: string
+  /** Entries side by side under a top spine instead of down a left one (v37). */
+  horizontal?: boolean
+  /** The entries' text colour (v37); absent keeps the dark grey ink. */
+  ink?: string
 }
 
 export type FreeformElement =
@@ -594,6 +598,8 @@ export interface FreeformNodeStylePatch {
   headerFill?: string | null
   /** Table stripe fill (v35); `null` restores the ink tint. */
   stripeFill?: string | null
+  /** Timeline entries side by side (v37); `null`/`false` restores the vertical spine. */
+  horizontal?: boolean | null
 }
 
 export interface FreeformNodeGeometryPatch {
