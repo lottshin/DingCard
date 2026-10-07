@@ -35,6 +35,30 @@ export function tableStriped(striped: boolean | undefined): boolean {
   return striped === true
 }
 
+/** Column weights (v35): one positive weight per column, relative to their sum. */
+export function isValidTableColWidths(value: unknown, cols: number): value is number[] {
+  return Array.isArray(value)
+    && value.length === cols
+    && value.every((weight) => typeof weight === 'number' && Number.isFinite(weight) && weight > 0)
+}
+
+/** Where each column starts, in the table's own pixels: `cols + 1` edges from 0 to width. */
+export function tableColumnEdges(
+  width: number,
+  cols: number,
+  colWidths: readonly number[] | undefined,
+): number[] {
+  const weights = colWidths && colWidths.length === cols ? colWidths : Array.from({ length: cols }, () => 1)
+  const total = weights.reduce((sum, weight) => sum + weight, 0)
+  const edges = [0]
+  let used = 0
+  for (let col = 0; col < cols; col += 1) {
+    used += weights[col]
+    edges.push(total > 0 ? (width * used) / total : 0)
+  }
+  return edges
+}
+
 export interface TableGeometry {
   /** The bold first row's fill area, or null with the header off. */
   header: { x: number; y: number; width: number; height: number } | null
@@ -74,11 +98,11 @@ export function tableGeometry(
   rows: number,
   cols: number,
   cells: readonly string[],
-  options: { headerRow?: boolean; striped?: boolean } = {},
+  options: { headerRow?: boolean; striped?: boolean; colWidths?: number[] } = {},
 ): TableGeometry {
   const header = tableHeaderVisible(options.headerRow)
   const striped = tableStriped(options.striped)
-  const colWidth = width / cols
+  const edges = tableColumnEdges(width, cols, options.colWidths)
   const rowHeight = height / rows
   const fontSize = Math.max(7, Math.min(rowHeight * 0.42, 14))
   const lineHeight = fontSize * 1.22
@@ -92,7 +116,7 @@ export function tableGeometry(
   lines.push({ x1: 0, y1: 0, x2: 0, y2: height })
   lines.push({ x1: width, y1: 0, x2: width, y2: height })
   for (let col = 1; col < cols; col += 1) {
-    lines.push({ x1: col * colWidth, y1: 0, x2: col * colWidth, y2: height })
+    lines.push({ x1: edges[col], y1: 0, x2: edges[col], y2: height })
   }
   for (let row = 1; row < rows; row += 1) {
     lines.push({ x1: 0, y1: row * rowHeight, x2: width, y2: row * rowHeight })
@@ -112,6 +136,7 @@ export function tableGeometry(
   const maxLines = Math.max(1, Math.floor((rowHeight - padding) / lineHeight))
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
+      const colWidth = edges[col + 1] - edges[col]
       const wrapped = wrapCellLines(cells[row * cols + col] ?? '', fontSize, colWidth - padding * 2)
       const linesShown = wrapped.length > maxLines
         ? [...wrapped.slice(0, maxLines - 1), `${wrapped[maxLines - 1].slice(0, -1)}…`]
@@ -119,7 +144,7 @@ export function tableGeometry(
       const blockHeight = linesShown.length * lineHeight
       const centerY = row * rowHeight + rowHeight / 2
       cellTexts.push({
-        x: col * colWidth + colWidth / 2,
+        x: edges[col] + colWidth / 2,
         y: centerY - blockHeight / 2 + fontSize * 0.88,
         lines: linesShown,
         bold: header && row === 0,

@@ -36,7 +36,7 @@ import {
 } from './appearance'
 import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload, isValidQrQuietZone } from './qrCode'
 import { CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
-import { isValidTableCells, isValidTableCols, isValidTableRows } from './tables'
+import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -914,6 +914,7 @@ const TABLE_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'rows', 'cols', 'cells',
 ])
+// Column weights ride in TABLE_OPTIONAL_FIELD_CHECKS (v35).
 
 function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
   const actualKeys = Object.keys(value)
@@ -1019,6 +1020,8 @@ const TABLE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   ink: (record) => isHexColor(record.ink),
   headerFill: (record) => isHexColor(record.headerFill),
   stripeFill: (record) => isHexColor(record.stripeFill),
+  colWidths: (record) => Array.isArray(record.colWidths)
+    && record.colWidths.every((weight) => typeof weight === 'number' && Number.isFinite(weight) && weight > 0),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,
@@ -1173,7 +1176,8 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
       hasValidOptionalFields(record, TABLE_NODE_KEYS, TABLE_OPTIONAL_FIELD_CHECKS) &&
       isValidTableRows(node.rows) &&
       isValidTableCols(node.cols) &&
-      isValidTableCells(node.cells, node.rows, node.cols)
+      isValidTableCells(node.cells, node.rows, node.cols) &&
+      (node.colWidths === undefined || isValidTableColWidths(node.colWidths, node.cols))
     )
   }
   return false

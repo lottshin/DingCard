@@ -180,3 +180,43 @@ test('recolors the ink, header, and stripes through the pickers', async ({ page 
   await page.getByRole('button', { name: '撤销', exact: true }).click()
   await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('fill', '#ccfbf1')
 })
+
+test('drags a column border to rebalance the columns', async ({ page }) => {
+  await openFreeform(page)
+  await insertTable(page)
+  const table = page.getByTestId('freeform-table')
+
+  // A selected 3-column table shows a handle on each of its two inner borders.
+  await expect(page.getByTestId('freeform-table-col-handle-0')).toBeVisible()
+  await expect(page.getByTestId('freeform-table-col-handle-1')).toBeVisible()
+  await expect(page.getByTestId('freeform-table-col-handle-2')).toHaveCount(0)
+
+  // The inner vertical grid lines, in the table's own pixels.
+  const innerEdges = async () => table.locator('line').evaluateAll((lines) =>
+    lines
+      .map((line) => ({ x1: Number(line.getAttribute('x1')), x2: Number(line.getAttribute('x2')) }))
+      .filter(({ x1, x2 }) => x1 === x2 && x1 > 0 && x1 < 480)
+      .map(({ x1 }) => x1)
+      .sort((a, b) => a - b),
+  )
+  const before = await innerEdges()
+  expect(before).toEqual([160, 320])
+
+  // Dragging the first border right widens the first column and narrows the second.
+  const handle = await page.getByTestId('freeform-table-col-handle-0').boundingBox()
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handle!.x + handle!.width / 2 + 60, handle!.y + handle!.height / 2, { steps: 4 })
+  await page.mouse.up()
+
+  const after = await innerEdges()
+  expect(after[0]).toBeGreaterThan(before[0] + 10)
+  expect(after[1]).toBeCloseTo(before[1], 0)
+  // The first cell's text rides along with its wider column.
+  const firstCellX = await table.locator('[data-testid="freeform-table-cell"]').first().getAttribute('x')
+  expect(Number(firstCellX)).toBeCloseTo(after[0] / 2, 0)
+
+  // One drag is one undo step: the columns come back even.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(await innerEdges()).toEqual([160, 320])
+})

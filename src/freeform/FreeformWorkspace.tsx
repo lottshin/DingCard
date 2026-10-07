@@ -70,6 +70,7 @@ import {
   TABLE_ROWS_MAX,
   isValidTableCellText,
   parseTablePaste,
+  tableColumnEdges,
 } from './tables'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
@@ -5822,6 +5823,94 @@ export function FreeformWorkspace({
     window.addEventListener('blur', onBlur)
   }
 
+  /** A table's column-border handle: the drag rebalances the two columns it splits, keeping their combined width. */
+  function onTableColumnPointerDown(
+    event: React.PointerEvent<HTMLButtonElement>,
+    target: SelectionOverlayTarget,
+    columnIndex: number,
+  ) {
+    if (renderScale === null) return
+    if (blockDocumentMutationDuringInteraction()) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    const interactionScale = renderScale
+    const pointerId = event.pointerId
+    const columnParentPath = [...activeGroupPath]
+    event.preventDefault()
+    event.stopPropagation()
+    blurActiveTypingTarget()
+    const startDocument = currentDocumentRef.current
+    const startSlide = startDocument.slides.find((slide) => slide.id === activeSlide.id)
+    if (!startSlide) return
+    const path = [...columnParentPath, target.nodeIds[0]]
+    const node = findNodeAtPath(startSlide.nodes, path)
+    if (!node || node.type !== 'table' || columnIndex >= node.cols - 1) return
+    // Weights live in the table's own pixels so a later box resize keeps the proportions.
+    const edges = tableColumnEdges(node.width, node.cols, node.colWidths)
+    const startWidths = Array.from({ length: node.cols }, (_, col) => edges[col + 1] - edges[col])
+    const startWorld = sceneWorldMatrixAtPath(startSlide.nodes, path)
+    const inverseWorld = startWorld ? invert(startWorld) : null
+    if (!inverseWorld) return
+    const startX = event.clientX
+    const startY = event.clientY
+    const pairTotal = startWidths[columnIndex] + startWidths[columnIndex + 1]
+    const minWidth = Math.max(12, node.width / (node.cols * 6))
+    activeInteractionRef.current = 'resize'
+    setActiveInteraction('resize')
+
+    const onMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
+      const worldDelta = {
+        x: (moveEvent.clientX - startX) / interactionScale,
+        y: (moveEvent.clientY - startY) / interactionScale,
+      }
+      const localDelta = transformVector(inverseWorld, worldDelta)
+      const dragged = Math.min(
+        pairTotal - minWidth,
+        Math.max(minWidth, startWidths[columnIndex] + localDelta.x),
+      )
+      const colWidths = [...startWidths]
+      colWidths[columnIndex] = dragged
+      colWidths[columnIndex + 1] = pairTotal - dragged
+      replaceCurrent({
+        type: 'node/update-content',
+        slideId: startSlide.id,
+        updates: [{ path, patch: { colWidths } }],
+      })
+    }
+
+    const cleanupColumnDrag = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('blur', onBlur)
+      activeInteractionRef.current = null
+      setActiveInteraction(null)
+    }
+    const finishColumnDrag = () => {
+      cleanupColumnDrag()
+      commitLiveEdit(startDocument, t('调整列宽'))
+    }
+    const cancelColumnDrag = () => {
+      cleanupColumnDrag()
+      cancelLiveEdit(startDocument)
+    }
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId === pointerId) finishColumnDrag()
+    }
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId === pointerId) cancelColumnDrag()
+    }
+    const onBlur = () => cancelColumnDrag()
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('blur', onBlur)
+  }
+
   function onRotatePointerDown(event: React.PointerEvent, target: SelectionOverlayTarget) {
     if (renderScale === null) return
     if (blockDocumentMutationDuringInteraction()) {
@@ -7583,6 +7672,7 @@ export function FreeformWorkspace({
                       onVertexPointerDown={onVertexPointerDown}
                       onVertexDoubleClick={onVertexDoubleClick}
                       onShapeParamPointerDown={onShapeParamPointerDown}
+                      onTableColumnPointerDown={onTableColumnPointerDown}
                     />
                   )}
                 </div>

@@ -13,6 +13,7 @@ import {
 import type { Matrix2D, SceneBounds } from './sceneTransform'
 import type { FreeformSceneNode, LinePoint, ScenePath } from './types'
 import { cornerHandlePosition, shapeHandlePosition, shapeParamOf, type ShapeParam } from './shapeGeometry'
+import { tableColumnEdges } from './tables'
 import { t } from '../i18n'
 
 export type SelectionOverlayInteraction = 'move' | 'resize' | 'rotate' | null
@@ -93,6 +94,12 @@ export interface FreeformSelectionOverlayProps {
     target: SelectionOverlayTarget,
     param: ShapeParam,
   ) => void
+  /** A table's column-border handle (single selected table only); drags rebalance the two columns it splits. */
+  onTableColumnPointerDown?: (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    target: SelectionOverlayTarget,
+    columnIndex: number,
+  ) => void
 }
 
 type SelectionOverlayStyle = CSSProperties & {
@@ -119,6 +126,8 @@ interface OverlayFrame {
   vertices?: LinePoint[]
   /** A parametric shape's parameter handle, in the frame's local coordinates. */
   shapeParamHandle?: { param: ShapeParam; x: number; y: number }
+  /** A table's column borders, in the frame's local coordinates; index is the column to the left. */
+  tableColumnHandles?: Array<{ index: number; x: number; y: number }>
 }
 
 function frameCorners(matrix: Matrix2D, width: number, height: number): SelectionOverlayTarget['corners'] {
@@ -206,6 +215,12 @@ function buildOverlayFrames(
   const shapeParamHandle = shapeParamPosition && shapeParam
     ? { param: shapeParam, x: shapeParamPosition.x, y: shapeParamPosition.y }
     : undefined
+  // A table shows a handle on every inner column border, mid-height, for dragging widths.
+  const tableColumnHandles = node.type === 'table' && !node.locked
+    ? tableColumnEdges(localBounds.width, node.cols, node.colWidths)
+      .slice(1, -1)
+      .map((edge, index) => ({ index, x: edge, y: localBounds.height / 2 }))
+    : undefined
   return [{
     target: {
       key: scenePathKey(path),
@@ -225,6 +240,7 @@ function buildOverlayFrames(
     height: localBounds.height,
     vertices,
     ...(shapeParamHandle ? { shapeParamHandle } : {}),
+    ...(tableColumnHandles ? { tableColumnHandles } : {}),
   }]
 }
 
@@ -249,6 +265,7 @@ export function FreeformSelectionOverlay({
   onVertexPointerDown,
   onVertexDoubleClick,
   onShapeParamPointerDown,
+  onTableColumnPointerDown,
 }: FreeformSelectionOverlayProps) {
   const frames = buildOverlayFrames(nodes, selectedPaths, renderScale)
   const inverseRenderScale = renderScale > 0 ? 1 / renderScale : 1
@@ -261,7 +278,7 @@ export function FreeformSelectionOverlay({
       role="presentation"
       style={{ '--freeform-inverse-scale': inverseRenderScale } as SelectionOverlayStyle}
     >
-      {frames.map(({ target, matrix, width, height, vertices, shapeParamHandle }) => {
+      {frames.map(({ target, matrix, width, height, vertices, shapeParamHandle, tableColumnHandles }) => {
           const frameScale = decomposeSimilarity(matrix)?.scale ?? 1
           const itemStyle: SelectionOverlayStyle = {
             left: 0,
@@ -376,6 +393,22 @@ export function FreeformSelectionOverlay({
                   style={{ left: shapeParamHandle.x, top: shapeParamHandle.y }}
                   onPointerDown={(event) => onShapeParamPointerDown(event, target, shapeParamHandle.param)}
                 />
+              )}
+              {interactive && tableColumnHandles && tableColumnHandles.length > 0 && onTableColumnPointerDown && (
+                <>
+                  {tableColumnHandles.map((handle) => (
+                    <button
+                      key={`table-col-${handle.index}`}
+                      className="freeform-ui-only freeform-vertex-handle freeform-table-col-handle"
+                      data-testid={`freeform-table-col-handle-${handle.index}`}
+                      type="button"
+                      aria-label={t('调整第 {n} 列宽', { n: handle.index + 1 })}
+                      title={t('拖动调整这一列和右边一列的宽度')}
+                      style={{ left: handle.x, top: handle.y }}
+                      onPointerDown={(event) => onTableColumnPointerDown(event, target, handle.index)}
+                    />
+                  ))}
+                </>
               )}
               {badge && (
                 <span

@@ -418,6 +418,8 @@ export interface FreeformTableElement extends FreeformElementBase {
   headerFill?: string
   /** The zebra stripes' fill (v35); absent tints the ink like the sample table. */
   stripeFill?: string
+  /** Relative column weights, one per column (v35); absent splits evenly. */
+  colWidths?: number[]
 }
 
 export type FreeformElement =
@@ -472,6 +474,8 @@ export interface FreeformNodeContentPatch {
   cols?: number
   /** A table's cell texts (v34), row-major, replaced wholesale. */
   cells?: string[]
+  /** A table's relative column weights (v35), one per column, replaced wholesale. */
+  colWidths?: number[]
 }
 
 export interface FreeformNodeStylePatch {

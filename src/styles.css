@@ -1701,6 +1701,20 @@ html.theme-anim * {
   height: calc(20px * var(--freeform-inverse-scale, 1));
 }
 
+/* A table's column border: a tall thin grab bar on the border it drags. */
+.freeform-table-col-handle {
+  width: calc(24px * var(--freeform-inverse-scale, 1));
+  height: calc(44px * var(--freeform-inverse-scale, 1));
+  border-radius: calc(8px * var(--freeform-inverse-scale, 1));
+  cursor: ew-resize;
+}
+
+.freeform-table-col-handle::before {
+  width: calc(5px * var(--freeform-inverse-scale, 1));
+  height: calc(36px * var(--freeform-inverse-scale, 1));
+  border-radius: calc(3px * var(--freeform-inverse-scale, 1));
+}
+
 .freeform-vertex-handle::before {
   content: '';
   position: absolute;

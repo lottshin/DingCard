@@ -6,8 +6,10 @@ import {
   TABLE_ROWS_MAX,
   isValidTableCells,
   isValidTableCols,
+  isValidTableColWidths,
   isValidTableRows,
   parseTablePaste,
+  tableColumnEdges,
   tableGeometry,
   tableHeaderVisible,
   tableStriped,
@@ -277,8 +279,7 @@ describe('table element in the document', () => {
     expect(bad).toBe(restored)
   })
 
-  it('carries the color overrides at v35 and rejects them at v34', () => {
-    const table: FreeformTableElement = { ...createTableElement(slide), striped: true, ink: '#334155', headerFill: '#e2e8f0', stripeFill: '#f1f5f9' }
+  it('carries the color overrides at v35 and rejects them at v34', () => {    const table: FreeformTableElement = { ...createTableElement(slide), striped: true, ink: '#334155', headerFill: '#e2e8f0', stripeFill: '#f1f5f9' }
     const tableSlide = { ...slide, nodes: [table as unknown as FreeformSceneNode] }
     const v35 = normalizeFreeformDocument({ documentVersion: 35, activeSlideId: slide.id, slides: [tableSlide] })
     expect(v35).not.toBeNull()
@@ -295,5 +296,80 @@ describe('table element in the document', () => {
       slides: [{ ...slide, nodes: [{ ...table, ink: 'gray' } as unknown as FreeformSceneNode] }],
     })
     expect(badHex).toBeNull()
+  })
+
+  it('splits columns by weights and rebalances them through node/update-content', () => {
+    // Weights are relative: any positive numbers, normalized by their sum.
+    expect(isValidTableColWidths([1, 2, 1], 3)).toBe(true)
+    expect(isValidTableColWidths([1, 0, 1], 3)).toBe(false)
+    expect(isValidTableColWidths([1, 2], 3)).toBe(false)
+    expect(isValidTableColWidths('wide', 3)).toBe(false)
+    expect(tableColumnEdges(480, 3, [2, 1, 1])).toEqual([0, 240, 360, 480])
+
+    // The geometry follows the edges: verticals and cell centers sit on them.
+    const geometry = tableGeometry(480, 320, 2, 3, ['项目', 'A', 'B', '一月', '10', '20'], { colWidths: [2, 1, 1] })
+    const verticals = geometry.lines.filter((line) => line.x1 === line.x2).map((line) => line.x1).sort((a, b) => a - b)
+    expect(verticals).toEqual([0, 240, 360, 480])
+    expect(geometry.cells[0].x).toBe(120)
+    expect(geometry.cells[1].x).toBe(300)
+    expect(geometry.cells[2].x).toBe(420)
+
+    const base = createTableElement(slide)
+    const document: FreeformDocument = {
+      documentVersion: 35,
+      activeSlideId: slide.id,
+      slides: [{ ...slide, nodes: [{ ...base, colWidths: [240, 120, 120] } as unknown as FreeformSceneNode] }],
+    }
+    // A wholesale patch must match the column count; one drag rebalances a pair.
+    const mismatched = freeformReducer(document, {
+      type: 'node/update-content',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { colWidths: [100, 100] } }],
+    })
+    expect(mismatched).toBe(document)
+    const rebalanced = freeformReducer(document, {
+      type: 'node/update-content',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { colWidths: [100, 200, 100] } }],
+    })
+    expect((rebalanced.slides[0].nodes[0] as FreeformTableElement).colWidths).toEqual([100, 200, 100])
+
+    // Adding and dropping columns remaps the kept weights; a new column gets an even share.
+    const widened = freeformReducer(rebalanced, {
+      type: 'node/update-content',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { cols: 4 } }],
+    })
+    expect((widened.slides[0].nodes[0] as FreeformTableElement).colWidths).toEqual([100, 200, 100, 1])
+    const narrowed = freeformReducer(rebalanced, {
+      type: 'node/update-content',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { cols: 2 } }],
+    })
+    expect((narrowed.slides[0].nodes[0] as FreeformTableElement).colWidths).toEqual([100, 200])
+
+    // A no-op cells patch keeps the weights and the node identity.
+    const noop = freeformReducer(rebalanced, {
+      type: 'node/update-content',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: {} }],
+    })
+    expect(noop).toBe(rebalanced)
+  })
+
+  it('carries column weights at v35 and rejects them at v34', () => {
+    const table: FreeformTableElement = { ...createTableElement(slide), colWidths: [2, 1, 1] }
+    const tableSlide = { ...slide, nodes: [table as unknown as FreeformSceneNode] }
+    const v35 = normalizeFreeformDocument({ documentVersion: 35, activeSlideId: slide.id, slides: [tableSlide] })
+    expect(v35).not.toBeNull()
+    expect((v35!.slides[0].nodes[0] as FreeformTableElement).colWidths).toEqual([2, 1, 1])
+    const v34 = normalizeFreeformDocument({ documentVersion: 34, activeSlideId: slide.id, slides: [tableSlide] })
+    expect(v34).toBeNull()
+    const badWeights = normalizeFreeformDocument({
+      documentVersion: 35,
+      activeSlideId: slide.id,
+      slides: [{ ...slide, nodes: [{ ...table, colWidths: [1, 1] } as unknown as FreeformSceneNode] }],
+    })
+    expect(badWeights).toBeNull()
   })
 })

@@ -706,6 +706,7 @@ function SceneLeafContent({
     const table = tableGeometry(leaf.width, leaf.height, leaf.rows, leaf.cols, leaf.cells, {
       headerRow: leaf.headerRow,
       striped: leaf.striped,
+      colWidths: leaf.colWidths,
     })
     const cellFontSize = Math.max(7, Math.min(leaf.height / leaf.rows * 0.42, 14))
     return (

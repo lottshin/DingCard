@@ -76,7 +76,7 @@ import {
 import { isValidPathData } from './pathData'
 import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload, isValidQrQuietZone } from './qrCode'
 import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
-import { isValidTableCells, isValidTableCols, isValidTableRows } from './tables'
+import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {  FreeformChartSeries,
@@ -540,7 +540,7 @@ interface NodePatchResult {
   node: FreeformSceneNode
 }
 
-const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells'])
+const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells', 'colWidths'])
 const STYLE_KEYS = new Set([
   'effect',
   'fontSize',
@@ -837,7 +837,7 @@ function applyContentPatch(
   }
   if (node.type === 'table') {
     const patchKeys = Object.keys(record)
-    if (patchKeys.some((key) => key !== 'rows' && key !== 'cols' && key !== 'cells')) return { ok: false, node }
+    if (patchKeys.some((key) => key !== 'rows' && key !== 'cols' && key !== 'cells' && key !== 'colWidths')) return { ok: false, node }
     const rows = 'rows' in record ? record.rows : node.rows
     const cols = 'cols' in record ? record.cols : node.cols
     if (!isValidTableRows(rows) || !isValidTableCols(cols)) return { ok: false, node }
@@ -855,14 +855,39 @@ function applyContentPatch(
     }
     if (!isValidTableCells(cells as readonly string[], rows, cols)) return { ok: false, node }
     const nextCells = cells as string[]
+    // Column weights follow the grid: a given set must match the new column
+    // count, a resize without one remaps the kept columns and gives a new
+    // column an even share.
+    let colWidths: number[] | undefined
+    if ('colWidths' in record) {
+      if (!isValidTableColWidths(record.colWidths, cols)) return { ok: false, node }
+      colWidths = [...(record.colWidths as number[])]
+    } else if (node.colWidths !== undefined && node.cols !== cols) {
+      const remapped: number[] = []
+      for (let col = 0; col < cols; col += 1) remapped.push(col < node.cols ? node.colWidths[col] : 1)
+      colWidths = remapped
+    } else if (node.colWidths !== undefined) {
+      colWidths = [...node.colWidths]
+    }
+    const colWidthsSame = (node.colWidths === undefined && colWidths === undefined)
+      || (node.colWidths !== undefined && colWidths !== undefined
+        && node.colWidths.length === colWidths.length
+        && node.colWidths.every((weight, index) => weight === colWidths[index]))
     const same = patchKeys.length > 0
       && node.rows === rows
       && node.cols === cols
       && node.cells.length === nextCells.length
       && node.cells.every((cell, index) => cell === nextCells[index])
+      && colWidthsSame
     return {
       ok: true,
-      node: same ? node : { ...node, rows, cols, cells: [...nextCells] },
+      node: same ? node : {
+        ...node,
+        rows,
+        cols,
+        cells: [...nextCells],
+        ...(colWidths !== undefined ? { colWidths } : {}),
+      },
     }
   }
   if (node.type === 'qrcode') {

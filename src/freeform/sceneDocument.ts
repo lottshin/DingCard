@@ -95,7 +95,7 @@ import {
   isValidChartSeriesList,
   type ChartBarMode,
 } from './charts'
-import { isValidTableCellText, isValidTableCols, isValidTableRows } from './tables'
+import { isValidTableCellText, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -164,6 +164,7 @@ const TABLE_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'rows', 'cols', 'cells',
 ])
+// Column weights are optional from v35 on (see TABLE_OPTIONAL_V35_KEYS).
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -397,7 +398,7 @@ const CHART_OPTIONAL_V27_KEYS = new Set([...CHART_OPTIONAL_V24_KEYS, 'barMode'])
 const CHART_OPTIONAL_V31_KEYS = new Set([...CHART_OPTIONAL_V27_KEYS, 'showLegend'])
 const CHART_OPTIONAL_V33_KEYS = new Set([...CHART_OPTIONAL_V31_KEYS, 'showTicks'])
 const TABLE_OPTIONAL_V34_KEYS = new Set(['headerRow', 'striped', 'opacity', 'shadow', 'filter', 'blendMode'])
-const TABLE_OPTIONAL_V35_KEYS = new Set([...TABLE_OPTIONAL_V34_KEYS, 'ink', 'headerFill', 'stripeFill'])
+const TABLE_OPTIONAL_V35_KEYS = new Set([...TABLE_OPTIONAL_V34_KEYS, 'ink', 'headerFill', 'stripeFill', 'colWidths'])
 const PATH_OPTIONAL_V15_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'join', 'fillRule',
 ])
@@ -959,6 +960,8 @@ function normalizeStrictSceneNode(
     if ('ink' in value && (inputVersion < 35 || !isHexColor(value.ink))) return null
     if ('headerFill' in value && (inputVersion < 35 || !isHexColor(value.headerFill))) return null
     if ('stripeFill' in value && (inputVersion < 35 || !isHexColor(value.stripeFill))) return null
+    // Column weights are v35-only too, one positive weight per column.
+    if ('colWidths' in value && (inputVersion < 35 || !isValidTableColWidths(value.colWidths, value.cols))) return null
     const tableAppearance = cloneStrictAppearance(value, inputVersion)
     if (!tableAppearance) return null
     return {
@@ -972,6 +975,7 @@ function normalizeStrictSceneNode(
       ...('ink' in value ? { ink: value.ink as string } : {}),
       ...('headerFill' in value ? { headerFill: value.headerFill as string } : {}),
       ...('stripeFill' in value ? { stripeFill: value.stripeFill as string } : {}),
+      ...('colWidths' in value ? { colWidths: (value.colWidths as number[]).map((weight) => weight) } : {}),
       ...tableAppearance,
     }
   }
