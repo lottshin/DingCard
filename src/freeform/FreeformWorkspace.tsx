@@ -3,6 +3,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { CSSProperties, SetStateAction } from 'react'
 import { toCanvas } from 'html-to-image'
 import { AssetPanel } from '../app/AssetDrawer'
+import { StockPanel } from './StockPanel'
 import { imageFiles } from '../app/assetFiles'
 import { navigate, routes } from '../app/router'
 import type { Asset } from '../assets'
@@ -6993,6 +6994,13 @@ export function FreeformWorkspace({
               <UploadIcon />
               {t('上传图片')}
             </button>
+            <div className="freeform-drawer-section">{t('在线图库')}</div>
+            <StockPanel
+              stock={ownerStore.stock}
+              onInsert={(url, alt, natural) => {
+                void insertImageElement(async () => url, alt, natural)
+              }}
+            />
             <div className="freeform-drawer-section">{t('素材库')}</div>
             <AssetPanel
               ownerId={ownerId}

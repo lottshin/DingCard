@@ -1479,3 +1479,136 @@ describe('RemoteStore draft version history', () => {
     ])
   })
 })
+
+describe('RemoteStore stock library', () => {
+  let values: Map<string, string>
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.resetModules()
+    values = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+      removeItem: vi.fn((key: string) => values.delete(key)),
+    })
+    values.set(TOKEN_KEY, 'stock-token')
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  async function createStore() {
+    const { createRemoteStore } = await import('./remote')
+    return createRemoteStore(API_BASE)
+  }
+
+  it('loads the source list with the session token', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      sources: [
+        { id: 'pixabay', label: 'Pixabay', available: false },
+        { id: 'openverse', label: 'Openverse', available: true },
+      ],
+      preferred: 'openverse',
+    }))
+    const store = await createStore()
+
+    const info = await store.stock!.sources()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(requestUrl(fetchMock.mock.calls[0] as FetchCall)).toBe(`${API_BASE}/api/stock/sources`)
+    expect(requestHeaders(fetchMock.mock.calls[0] as FetchCall).get('authorization')).toBe('Bearer stock-token')
+    expect(info.preferred).toBe('openverse')
+    expect(info.sources).toEqual([
+      { id: 'pixabay', label: 'Pixabay', available: false },
+      { id: 'openverse', label: 'Openverse', available: true },
+    ])
+  })
+
+  it('rejects malformed source lists', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ sources: 'nope' }))
+    const store = await createStore()
+
+    await expectApiError(store.stock!.sources(), 200, '服务器返回了无效的图库响应')
+  })
+
+  it('searches with encoded query params and drops malformed hits', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      source: 'openverse',
+      page: 2,
+      total: 42,
+      results: [
+        { id: 'a-1', thumb: 'https://t/1.jpg', width: 800, height: 600, author: 'Ann' },
+        { id: '', thumb: 'https://t/2.jpg' },
+        { id: 'a-3', thumb: 'https://t/3.jpg', width: 'wide', height: 0 },
+        'not-a-hit',
+      ],
+    }))
+    const store = await createStore()
+
+    const page = await store.stock!.search('雪山 日出', 'openverse', 2)
+
+    const url = new URL(requestUrl(fetchMock.mock.calls[0] as FetchCall))
+    expect(url.pathname).toBe('/api/stock/search')
+    expect(url.searchParams.get('q')).toBe('雪山 日出')
+    expect(url.searchParams.get('source')).toBe('openverse')
+    expect(url.searchParams.get('page')).toBe('2')
+    expect(page).toEqual({
+      source: 'openverse',
+      page: 2,
+      total: 42,
+      results: [
+        { id: 'a-1', thumb: 'https://t/1.jpg', width: 800, height: 600, author: 'Ann' },
+        { id: 'a-3', thumb: 'https://t/3.jpg', width: 0, height: 0, author: '' },
+      ],
+    })
+  })
+
+  it('omits the page param for the first page and passes errors through', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: '图库源 Openverse 未配置访问密钥' }, 400))
+    const store = await createStore()
+
+    await expectApiError(store.stock!.search('x'), 400, '图库源 Openverse 未配置访问密钥')
+    const url = new URL(requestUrl(fetchMock.mock.calls[0] as FetchCall))
+    expect(url.searchParams.has('page')).toBe(false)
+    expect(url.searchParams.has('source')).toBe(false)
+  })
+
+  it('imports by source and id and resolves the upload url against the base', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ref: 'img:abc123',
+      url: '/uploads/abc123.jpg',
+      alt: 'Unsplash · Ann',
+    }))
+    const store = await createStore()
+
+    const imported = await store.stock!.importImage('unsplash', 'abc-123')
+
+    const [callUrl, init] = fetchMock.mock.calls[0]
+    expect(callUrl).toBe(`${API_BASE}/api/stock/import`)
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ source: 'unsplash', id: 'abc-123' })
+    expect(imported).toEqual({
+      ref: 'img:abc123',
+      url: `${API_BASE}/uploads/abc123.jpg`,
+      alt: 'Unsplash · Ann',
+    })
+  })
+
+  it('rejects imports without a usable ref or url', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ref: 'img:abc123', alt: 'x' }, 200))
+    const store = await createStore()
+
+    await expectApiError(store.stock!.importImage('openverse', 'a-1'), 200, '服务器返回了无效的图库响应')
+  })
+
+  it('has no stock library on the local backend', async () => {
+    const { createLocalStore } = await import('./local')
+    const store = createLocalStore()
+    expect(store.stock).toBeNull()
+    expect(store.remote).toBe(false)
+  })
+})

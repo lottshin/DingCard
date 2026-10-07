@@ -3921,3 +3921,158 @@
 .freeform-inspector .freeform-font-swap:hover {
   filter: brightness(0.96);
 }
+
+/* 在线图库 panel in the images drawer: proxied stock search + import. */
+.stock-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stock-search {
+  display: flex;
+  gap: 8px;
+  margin: 0 16px;
+}
+
+.stock-search .search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stock-search .search-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.stock-search .accent {
+  flex: none;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.stock-sources {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 16px;
+}
+
+.stock-source {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 12px/1 var(--ui-font);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.stock-source:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.stock-source.is-active {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.stock-source:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.stock-grid {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 16px;
+}
+
+.stock-hit {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: copy;
+}
+
+.stock-hit img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stock-hit:hover,
+.stock-hit:focus-visible {
+  border-color: var(--accent);
+}
+
+.stock-hit-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 19, 17, 0.45);
+}
+
+.stock-more {
+  flex: none;
+  height: 30px;
+  margin: 0 16px 12px;
+  font-size: 12.5px;
+}
+
+.stock-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 4px 16px 8px;
+  padding: 18px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.stock-empty b {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.stock-empty .ghost {
+  height: 30px;
+  margin-top: 4px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+.stock-degraded {
+  display: grid;
+  gap: 6px;
+  margin: 0 16px 8px;
+  padding: 18px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.stock-degraded b {
+  color: var(--text);
+  font-size: 13px;
+}

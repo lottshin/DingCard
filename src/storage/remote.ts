@@ -12,7 +12,7 @@ import {
   collectFreeformImageSources,
   uploadInlineFreeformImages,
 } from '../freeform/imageAssets'
-import type { ApiToken, AssetStore, AuthStore, DraftStore, DraftVersion, ImageStore, Share, ShareStore, Storage, TokenStore, TrashedProject } from './types'
+import type { ApiToken, AssetStore, AuthStore, DraftStore, DraftVersion, ImageStore, Share, ShareStore, StockHit, StockSearchPage, StockSourceInfo, StockSources, StockStore, Storage, TokenStore, TrashedProject } from './types'
 
 const TOKEN_KEY = 'slicer.token.v1'
 const invalidationListeners = new Set<() => void>()
@@ -328,6 +328,48 @@ export function createRemoteStore(apiBase: string): Storage {
     return asset
   }
 
+  function toStockHit(raw: unknown): StockHit | null {
+    if (!isRecord(raw) || typeof raw.id !== 'string' || raw.id === '') return null
+    if (typeof raw.thumb !== 'string' || raw.thumb === '') return null
+    return {
+      id: raw.id,
+      thumb: raw.thumb,
+      width: Number.isFinite(raw.width) && (raw.width as number) > 0 ? raw.width as number : 0,
+      height: Number.isFinite(raw.height) && (raw.height as number) > 0 ? raw.height as number : 0,
+      author: typeof raw.author === 'string' ? raw.author : '',
+    }
+  }
+
+  function toStockSources(raw: unknown, status: number): StockSources {
+    if (!isRecord(raw) || !Array.isArray(raw.sources) || typeof raw.preferred !== 'string') {
+      throw new ApiError('服务器返回了无效的图库响应', status)
+    }
+    const sources = raw.sources.flatMap((entry): StockSourceInfo[] => {
+      if (!isRecord(entry) || typeof entry.id !== 'string' || typeof entry.label !== 'string') return []
+      if (typeof entry.available !== 'boolean') return []
+      return [{ id: entry.id, label: entry.label, available: entry.available }]
+    })
+    return { sources, preferred: raw.preferred }
+  }
+
+  function toStockSearchPage(raw: unknown, status: number): StockSearchPage {
+    if (!isRecord(raw) || typeof raw.source !== 'string' || typeof raw.page !== 'number') {
+      throw new ApiError('服务器返回了无效的图库响应', status)
+    }
+    const results = Array.isArray(raw.results)
+      ? raw.results.flatMap((entry): StockHit[] => {
+        const hit = toStockHit(entry)
+        return hit ? [hit] : []
+      })
+      : []
+    return {
+      source: raw.source,
+      page: raw.page,
+      total: typeof raw.total === 'number' && raw.total > 0 ? Math.floor(raw.total) : 0,
+      results,
+    }
+  }
+
   // The share page lives on the same server as the API; a QR code needs the
   // absolute URL, so a root-relative path resolves against this origin.
   function absoluteShareUrl(path: string): string {
@@ -535,5 +577,38 @@ export function createRemoteStore(apiBase: string): Storage {
     },
   }
 
-  return { auth, drafts, images, assets, shares, tokens, remote: true }
+  // Stock photo search/import is fully proxied by the backend: the browser
+  // never holds provider keys and the import returns a managed upload.
+  const stock: StockStore = {
+    async sources() {
+      const { data, status } = await api<unknown>('/api/stock/sources')
+      return toStockSources(data, status)
+    },
+    async search(query, source, page) {
+      const params = new URLSearchParams({ q: query })
+      if (source) params.set('source', source)
+      if (typeof page === 'number' && page > 1) params.set('page', String(page))
+      const { data, status } = await api<unknown>(`/api/stock/search?${params}`)
+      return toStockSearchPage(data, status)
+    },
+    async importImage(source, id) {
+      const { data, status } = await api<unknown>('/api/stock/import', {
+        method: 'POST',
+        body: JSON.stringify({ source, id }),
+      })
+      if (!isRecord(data) || typeof data.ref !== 'string' || data.ref === '') {
+        throw new ApiError('服务器返回了无效的图库响应', status)
+      }
+      if (typeof data.url !== 'string' || data.url === '') {
+        throw new ApiError('服务器返回了无效的图库响应', status)
+      }
+      return {
+        ref: data.ref,
+        url: publicImageUrl(data.url),
+        alt: typeof data.alt === 'string' ? data.alt : '',
+      }
+    },
+  }
+
+  return { auth, drafts, images, assets, shares, tokens, stock, remote: true }
 }

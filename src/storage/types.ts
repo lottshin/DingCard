@@ -103,6 +103,55 @@ export interface AssetStore {
   remove(userId: string, id: string): Promise<void>
 }
 
+/** One searchable stock photo source behind the server-side proxy. */
+export interface StockSourceInfo {
+  id: string
+  label: string
+  /** False when the deployment has no API key for this source. */
+  available: boolean
+}
+
+export interface StockSources {
+  sources: readonly StockSourceInfo[]
+  /** The source the panel starts on: first configured source, else openverse. */
+  preferred: string
+}
+
+/** A normalized search hit; `thumb` is a preview URL, `author` feeds attribution. */
+export interface StockHit {
+  id: string
+  thumb: string
+  width: number
+  height: number
+  author: string
+}
+
+export interface StockSearchPage {
+  source: string
+  page: number
+  total: number
+  results: readonly StockHit[]
+}
+
+export interface StockImport {
+  ref: string
+  /** A displayable src for the persisted upload. */
+  url: string
+  /** Attribution text for the inserted element's alt. */
+  alt: string
+}
+
+/**
+ * Online stock photo library, proxied by the backend (keys stay server-side).
+ * Local/offline mode has none — the panel degrades to a setup notice.
+ */
+export interface StockStore {
+  sources(): Promise<StockSources>
+  search(query: string, source?: string, page?: number): Promise<StockSearchPage>
+  /** Downloads the photo server-side and returns an upload reference to embed. */
+  importImage(source: string, id: string): Promise<StockImport>
+}
+
 /** A deck's exported pages behind one unguessable link. */
 export interface Share {
   id: string
@@ -155,6 +204,8 @@ export interface Storage {
   assets: AssetStore
   shares: ShareStore
   tokens: TokenStore
+  /** Online stock library; null in local/offline mode. */
+  stock: StockStore | null
   /** true when backed by a real server (enables login UI, sync messaging). */
   readonly remote: boolean
 }

@@ -42,4 +42,20 @@ export function storeFor(ownerId: string): Storage {
   return isGuestOwner(ownerId) ? local : store
 }
 
-export type { Storage, AuthStore, DraftStore, DraftVersion, DraftVersionDetail, ImageStore, AssetStore, ShareStore, Share } from './types'
+export type {
+  Storage,
+  AuthStore,
+  DraftStore,
+  DraftVersion,
+  DraftVersionDetail,
+  ImageStore,
+  AssetStore,
+  ShareStore,
+  Share,
+  StockStore,
+  StockSources,
+  StockSourceInfo,
+  StockHit,
+  StockSearchPage,
+  StockImport,
+} from './types'

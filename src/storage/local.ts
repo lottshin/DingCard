@@ -157,5 +157,5 @@ export function createLocalStore(pictureBackend?: PictureBackend | null): Storag
     },
   }
 
-  return { auth, drafts, images, assets: createLocalAssetStore(), shares, tokens, remote: false }
+  return { auth, drafts, images, assets: createLocalAssetStore(), shares, tokens, stock: null, remote: false }
 }
