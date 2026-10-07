@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v31 校验：需要 documentVersion=1–31 之一（旧版自动迁移为 v31）、非空 slides、'
+  '文档未通过自由画布 v32 校验：需要 documentVersion=1–32 之一（旧版自动迁移为 v32）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -110,6 +110,9 @@ function describeBackground(background: SlideBackground): string {
     return `image ${src} (${background.fit})`
   }
   if (background.type === 'solid') return `solid ${background.color}`
+  if (background.type === 'pattern') {
+    return `pattern ${background.pattern} (${background.color} base, ${background.patternColor} motif, ${background.size}px)`
+  }
   if (background.type === 'radial-gradient') {
     const stops = background.stops.map((stop) => `${stop.color} @ ${Math.round(stop.offset * 100)}%`)
     return `radial-gradient ${stops.join(' -> ')}`

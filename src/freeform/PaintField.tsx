@@ -67,8 +67,9 @@ function currentPaint(value: PaintValue, fallbackPaint: ColorPaint): ColorPaint 
   return isPaint(value) ? value : fallbackPaint
 }
 
+/** A patterned page shows as its flat base colour here; its own controls live beside it. */
 function modeOf(value: PaintValue): PaintMode {
-  return value.type
+  return value.type === 'pattern' ? 'solid' : value.type
 }
 
 interface ColorButtonProps {

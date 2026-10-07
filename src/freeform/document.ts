@@ -10,6 +10,8 @@ import {
   DEFAULT_SHAPE_PAINT,
   DEFAULT_TEXT_PAINT,
   isHexColor,
+  isValidPagePattern,
+  isValidPagePatternSize,
 } from './paint'
 import {
   cloneImageFraming,
@@ -151,7 +153,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 31,
+    documentVersion: 32,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -430,6 +432,15 @@ function cloneSlideBackground(background: SlideBackground): SlideBackground {
       framing: cloneImageFraming(background.framing),
     }
   }
+  if (background.type === 'pattern') {
+    return {
+      type: 'pattern',
+      color: background.color,
+      patternColor: background.patternColor,
+      pattern: background.pattern,
+      size: background.size,
+    }
+  }
   return cloneColorPaint(background)
 }
 
@@ -438,6 +449,14 @@ const IMAGE_BACKGROUND_KEYS = new Set(['type', 'src', 'fit', 'framing'])
 function validSlideBackground(value: unknown): value is SlideBackground {
   if (isRecord(value) && value.type === 'transparent') {
     return hasExactKeys(value, new Set(['type']))
+  }
+  // A patterned page (v32): a flat base with one repeating motif over it.
+  if (isRecord(value) && value.type === 'pattern') {
+    return hasExactKeys(value, new Set(['type', 'color', 'patternColor', 'pattern', 'size']))
+      && isHexColor(value.color)
+      && isHexColor(value.patternColor)
+      && isValidPagePattern(value.pattern)
+      && isValidPagePatternSize(value.size)
   }
   // A picture filling the page (v16), framed like an image node.
   if (isRecord(value) && value.type === 'image') {
@@ -455,6 +474,13 @@ function slideBackgroundEquals(left: SlideBackground, right: SlideBackground): b
       && left.src === right.src
       && left.fit === right.fit
       && imageFramingEquals(left.framing, right.framing)
+  }
+  if (left.type === 'pattern' || right.type === 'pattern') {
+    return left.type === 'pattern' && right.type === 'pattern'
+      && left.color === right.color
+      && left.patternColor === right.patternColor
+      && left.pattern === right.pattern
+      && left.size === right.size
   }
   return paintEquals(left, right)
 }

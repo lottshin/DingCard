@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 31
+  documentVersion: 32
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -51,11 +51,26 @@ export interface ImagePaint {
   framing: ImageFraming
 }
 
+/** A patterned page (v32): a flat base colour with one repeating motif over it. */
+export interface PatternPaint {
+  type: 'pattern'
+  /** The flat colour under the motif. */
+  color: string
+  /** The colour the motif itself draws in. */
+  patternColor: string
+  /** The motif drawn over the base. */
+  pattern: 'dots' | 'grid' | 'lines' | 'checks'
+  /** One repeat of the motif, in px: 8–64. */
+  size: number
+}
+
 export type SlideBackground =
   | ColorPaint
   | { type: 'transparent' }
   /** A picture filling the page (v16), under everything on it. */
   | ImagePaint
+  /** A patterned page (v32), under everything on it. */
+  | PatternPaint
 
 export interface SceneNodeState {
   id: string

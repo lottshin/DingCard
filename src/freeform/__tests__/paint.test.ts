@@ -3,7 +3,12 @@ import {
   DEFAULT_GRADIENT_ANGLE,
   DEFAULT_PAGE_PAINT,
   DEFAULT_TEXT_PAINT,
+  PAGE_PATTERN_SIZE_DEFAULT,
+  isValidPagePattern,
+  isValidPagePatternSize,
   normalizeAngle,
+  pagePatternFor,
+  patternPaintToCssBackground,
   normalizeColorPaint,
   paintFallbackColor,
   paintToCssBackground,
@@ -50,6 +55,48 @@ describe('paint helpers', () => {
       fit: 'contain',
       framing: { focusX: 0.5, focusY: 0.5, zoom: 1 },
     })).toEqual({})
+  })
+
+  it('renders the v32 patterned page as one CSS background shorthand', () => {
+    const base = { type: 'pattern', color: '#fdf6ec', patternColor: '#18181b', size: 20 } as const
+    // Dots: one tile-sized radial gradient over the base.
+    expect(patternPaintToCssBackground({ ...base, pattern: 'dots' }))
+      .toBe('radial-gradient(circle, #18181b 26%, transparent 27%) 0 0 / 20px 20px, #fdf6ec')
+    // Grid: a horizontal and a vertical hairline per tile.
+    expect(patternPaintToCssBackground({ ...base, pattern: 'grid' }))
+      .toBe('linear-gradient(#18181b 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, #18181b 1px, transparent 1px) 0 0 / 20px 20px, #fdf6ec')
+    // Lines: full-width horizontal stripes.
+    expect(patternPaintToCssBackground({ ...base, pattern: 'lines' }))
+      .toBe('linear-gradient(#18181b 1px, transparent 1px) 0 0 / 100% 20px, #fdf6ec')
+    // Checks: two diagonal hairline sets crossing each other.
+    const checks = patternPaintToCssBackground({ ...base, pattern: 'checks' })
+    expect(checks).toContain('repeating-linear-gradient(45deg, #18181b, #18181b 1px, transparent 1px, transparent 5px)')
+    expect(checks).toContain('repeating-linear-gradient(-45deg,')
+    expect(checks.endsWith(', #fdf6ec')).toBe(true)
+    // The page background renders the same string; sizes round to whole px.
+    expect(slideBackgroundToCss({ ...base, pattern: 'dots', size: 20.4 }))
+      .toBe('radial-gradient(circle, #18181b 26%, transparent 27%) 0 0 / 20px 20px, #fdf6ec')
+  })
+
+  it('derives a pattern from any background, inking light bases and whitening dark ones', () => {
+    expect(pagePatternFor(DEFAULT_PAGE_PAINT, 'dots')).toEqual({
+      type: 'pattern', color: '#ffffff', patternColor: '#18181b', pattern: 'dots', size: PAGE_PATTERN_SIZE_DEFAULT,
+    })
+    expect(pagePatternFor({ type: 'solid', color: '#101828' }, 'grid')).toEqual({
+      type: 'pattern', color: '#101828', patternColor: '#ffffff', pattern: 'grid', size: 20,
+    })
+    // A gradient keeps its first colour as the base; a pattern keeps its own colours.
+    expect(pagePatternFor({ type: 'linear-gradient', from: '#fef3c7', to: '#f59e0b', angle: 90 }, 'lines').color).toBe('#fef3c7')
+    const patterned = pagePatternFor(DEFAULT_PAGE_PAINT, 'dots')
+    expect(pagePatternFor(patterned, 'checks')).toEqual({ ...patterned, pattern: 'checks' })
+    // The motif and its size answer to their own validators.
+    expect(isValidPagePattern('dots')).toBe(true)
+    expect(isValidPagePattern('stripes')).toBe(false)
+    expect(isValidPagePatternSize(8)).toBe(true)
+    expect(isValidPagePatternSize(64)).toBe(true)
+    expect(isValidPagePatternSize(7)).toBe(false)
+    expect(isValidPagePatternSize(65)).toBe(false)
+    expect(isValidPagePatternSize('20')).toBe(false)
   })
 
   it('renders gradient text with a caret fallback color', () => {

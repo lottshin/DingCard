@@ -173,8 +173,15 @@ function recolorPaint<T extends ColorPaint>(paint: T, recolor: Recolor): T {
 }
 
 /** Page backgrounds and shape fills: colour paints change, pictures and "none" don't. */
-function recolorFill(fill: SlideBackground, recolor: Recolor): SlideBackground {
-  return fill.type === 'transparent' || fill.type === 'image' ? fill : recolorPaint(fill, recolor)
+function recolorFill<T extends SlideBackground>(fill: T, recolor: Recolor): T {
+  if (fill.type === 'transparent' || fill.type === 'image') return fill
+  // A patterned page recolours only its flat base; the motif keeps its colour.
+  if (fill.type === 'pattern') {
+    const color = recolor(fill.color)
+    return color === fill.color ? fill : { ...fill, color }
+  }
+  const recolored = recolorPaint(fill, recolor)
+  return (recolored === fill ? fill : recolored) as T
 }
 
 function recolorShadow(shadow: ShadowPaint | undefined, recolor: Recolor): ShadowPaint | undefined {
@@ -303,6 +310,7 @@ type ColorRole = 'background' | 'fill' | 'text' | 'line' | 'shadow'
 function paintColors(paint: SlideBackground): string[] {
   if (paint.type === 'transparent' || paint.type === 'image') return []
   if (paint.type === 'solid') return [paint.color]
+  if (paint.type === 'pattern') return [paint.color, paint.patternColor]
   return 'stops' in paint ? paint.stops.map((stop) => stop.color) : [paint.from, paint.to]
 }
 

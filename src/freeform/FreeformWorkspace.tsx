@@ -162,7 +162,12 @@ import {
   DEFAULT_PAGE_PAINT,
   DEFAULT_SHAPE_PAINT,
   DEFAULT_TEXT_PAINT,
+  PAGE_PATTERNS,
+  PAGE_PATTERN_LABELS,
+  PAGE_PATTERN_SIZES,
+  PAGE_PATTERN_SIZE_LABELS,
   isHexColor,
+  pagePatternFor,
   paintFallbackColor,
   slideBackgroundToCss,
 } from './paint'
@@ -7742,7 +7747,9 @@ export function FreeformWorkspace({
                 <div data-testid="page-background-paint">
                   <PaintField
                     label={t('背景')}
-                    value={activeSlide.background}
+                    value={activeSlide.background.type === 'pattern'
+                      ? { type: 'solid', color: activeSlide.background.color }
+                      : activeSlide.background}
                     modes={['solid', 'linear-gradient', 'radial-gradient', 'transparent', 'image']}
                     fallbackPaint={DEFAULT_PAGE_PAINT}
                     onChange={(background) => updatePageBackground(activeSlide.id, background as SlideBackground)}
@@ -7765,6 +7772,61 @@ export function FreeformWorkspace({
                     imageFramingResetDisabled={!canResetPageFraming}
                   />
                 </div>
+                <div className="field-label with-gap">{t('背景图案')}</div>
+                <div className="seg stretch" role="group" aria-label={t('背景图案')}>
+                  <button
+                    type="button"
+                    className={activeSlide.background.type !== 'pattern' ? 'seg-btn on' : 'seg-btn'}
+                    data-testid="page-pattern-none"
+                    onClick={() => {
+                      if (activeSlide.background.type !== 'pattern') return
+                      updatePageBackground(activeSlide.id, { type: 'solid', color: activeSlide.background.color })
+                    }}
+                  >
+                    {t('无')}
+                  </button>
+                  {PAGE_PATTERNS.map((pattern) => (
+                    <button
+                      key={pattern}
+                      type="button"
+                      className={activeSlide.background.type === 'pattern' && activeSlide.background.pattern === pattern ? 'seg-btn on' : 'seg-btn'}
+                      data-testid={`page-pattern-${pattern}`}
+                      onClick={() => updatePageBackground(activeSlide.id, pagePatternFor(activeSlide.background, pattern))}
+                    >
+                      {t(PAGE_PATTERN_LABELS[pattern])}
+                    </button>
+                  ))}
+                </div>
+                {activeSlide.background.type === 'pattern' && ((pattern) => (
+                  <>
+                    <div className="paint-row" data-testid="page-pattern-colors">
+                      <ColorPickerButton
+                        label={t('底色')}
+                        color={pattern.color}
+                        onChange={(color) => updatePageBackground(activeSlide.id, { ...pattern, color })}
+                      />
+                      <ColorPickerButton
+                        label={t('图案色')}
+                        color={pattern.patternColor}
+                        onChange={(patternColor) => updatePageBackground(activeSlide.id, { ...pattern, patternColor })}
+                      />
+                    </div>
+                    <div className="field-label with-gap">{t('密度')}</div>
+                    <div className="seg stretch" role="group" aria-label={t('密度')}>
+                      {PAGE_PATTERN_SIZES.map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          className={pattern.size === size ? 'seg-btn on' : 'seg-btn'}
+                          data-testid={`page-pattern-size-${size}`}
+                          onClick={() => updatePageBackground(activeSlide.id, { ...pattern, size })}
+                        >
+                          {t(PAGE_PATTERN_SIZE_LABELS[size])}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ))(activeSlide.background)}
                 <input
                   ref={pageBackgroundInputRef}
                   className="freeform-file"

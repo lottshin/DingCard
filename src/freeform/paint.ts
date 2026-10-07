@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { ColorPaint, GradientStop, ShapeFill, SlideBackground } from './types'
+import type { ColorPaint, GradientStop, PatternPaint, ShapeFill, SlideBackground } from './types'
 
 export const DEFAULT_TEXT_PAINT: ColorPaint = { type: 'solid', color: '#18181b' }
 export const DEFAULT_PAGE_PAINT: ColorPaint = { type: 'solid', color: '#ffffff' }
@@ -100,9 +100,77 @@ export function svgGradientOf(paint: ColorPaint, width: number, height: number):
 
 /** The page's CSS background; a picture background is drawn by its own layer (FreeformPageBackground). */
 export function slideBackgroundToCss(background: SlideBackground): string {
-  return background.type === 'transparent' || background.type === 'image'
-    ? 'transparent'
-    : paintToCssBackground(background)
+  if (background.type === 'transparent' || background.type === 'image') return 'transparent'
+  if (background.type === 'pattern') return patternPaintToCssBackground(background)
+  return paintToCssBackground(background)
+}
+
+export const PAGE_PATTERNS = ['dots', 'grid', 'lines', 'checks'] as const
+export type PagePattern = (typeof PAGE_PATTERNS)[number]
+export const PAGE_PATTERN_LABELS = { dots: '圆点', grid: '网格', lines: '横线', checks: '方格' } as const
+export const PAGE_PATTERN_SIZE_MIN = 8
+export const PAGE_PATTERN_SIZE_MAX = 64
+export const PAGE_PATTERN_SIZE_DEFAULT = 20
+
+export function isValidPagePattern(value: unknown): value is PagePattern {
+  return typeof value === 'string' && (PAGE_PATTERNS as readonly string[]).includes(value)
+}
+
+export function isValidPagePatternSize(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+    && value >= PAGE_PATTERN_SIZE_MIN && value <= PAGE_PATTERN_SIZE_MAX
+}
+
+/** One repeat of the motif in px: the three densities the inspector offers. */
+export const PAGE_PATTERN_SIZES = [12, 20, 32] as const
+export const PAGE_PATTERN_SIZE_LABELS = { 12: '小', 20: '中', 32: '大' } as const
+
+/**
+ * The patterned page as one CSS `background` shorthand: the motif's tile over
+ * the flat base colour, so the canvas, thumbnails, and exports all draw it
+ * from the same string.
+ */
+export function patternPaintToCssBackground(paint: PatternPaint): string {
+  const size = Math.round(paint.size)
+  const motif = paint.patternColor
+  const tile = `${size}px ${size}px`
+  const layers: string[] = []
+  if (paint.pattern === 'dots') {
+    layers.push(`radial-gradient(circle, ${motif} 26%, transparent 27%) 0 0 / ${tile}`)
+  } else if (paint.pattern === 'grid') {
+    layers.push(`linear-gradient(${motif} 1px, transparent 1px) 0 0 / ${tile}`)
+    layers.push(`linear-gradient(90deg, ${motif} 1px, transparent 1px) 0 0 / ${tile}`)
+  } else if (paint.pattern === 'lines') {
+    layers.push(`linear-gradient(${motif} 1px, transparent 1px) 0 0 / 100% ${size}px`)
+  } else {
+    const step = Math.max(4, Math.round(size / 4))
+    layers.push(`repeating-linear-gradient(45deg, ${motif}, ${motif} 1px, transparent 1px, transparent ${step}px)`)
+    layers.push(`repeating-linear-gradient(-45deg, ${motif}, ${motif} 1px, transparent 1px, transparent ${step}px)`)
+  }
+  return `${layers.join(', ')}, ${paint.color}`
+}
+
+/** A WCAG-style lightness read of a #RRGGBB colour, 0–1. */
+function isLightColor(hex: string): boolean {
+  const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2] > 0.4
+}
+
+/**
+ * The patterned page an existing background turns into (v32): its own base
+ * colour under ink dots by default, white dots when the base is dark.
+ */
+export function pagePatternFor(background: SlideBackground, pattern: PagePattern): PatternPaint {
+  const color = background.type === 'transparent' || background.type === 'image'
+    ? '#fdf6ec'
+    : background.type === 'pattern'
+      ? background.color
+      : paintFallbackColor(background)
+  const patternColor = background.type === 'pattern'
+    ? background.patternColor
+    : isLightColor(color) ? '#18181b' : '#ffffff'
+  const size = background.type === 'pattern' ? background.size : PAGE_PATTERN_SIZE_DEFAULT
+  return { type: 'pattern', color, patternColor, pattern, size }
 }
 
 export function shapeFillToStyle(fill: ShapeFill): CSSProperties {

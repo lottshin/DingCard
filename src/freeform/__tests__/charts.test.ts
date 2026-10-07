@@ -342,7 +342,7 @@ describe('chart element in the document', () => {
     background: { type: 'solid', color: '#ffffff' },
     nodes: [],
   }
-  const document: FreeformDocument = { documentVersion: 31, activeSlideId: slide.id, slides: [slide] }
+  const document: FreeformDocument = { documentVersion: 32, activeSlideId: slide.id, slides: [slide] }
 
   it('creates a centred bar chart with one sample series', () => {
     const element = createChartElement(slide)
@@ -458,7 +458,7 @@ describe('chart element in the document', () => {
   it('carries the radar kind at v30 and rejects it at v29', () => {
     const radared: FreeformChartElement = { ...createChartElement(slide), chartKind: 'radar' }
     const radarSlide = { ...slide, nodes: [radared as unknown as FreeformSceneNode] }
-    const v30 = normalizeFreeformDocument({ documentVersion: 31, activeSlideId: slide.id, slides: [radarSlide] })
+    const v30 = normalizeFreeformDocument({ documentVersion: 32, activeSlideId: slide.id, slides: [radarSlide] })
     expect(v30).not.toBeNull()
     expect((v30!.slides[0].nodes[0] as FreeformChartElement).chartKind).toBe('radar')
     const v29 = normalizeFreeformDocument({ documentVersion: 29, activeSlideId: slide.id, slides: [radarSlide] })
@@ -476,7 +476,7 @@ describe('chart element in the document', () => {
     // The style patch switches modes; null restores grouped by removal.
     const base = createChartElement(slide)
     const withMode = freeformReducer(
-      { documentVersion: 31, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 32, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { barMode: 'stacked' } }] },
     )
     expect((withMode.slides[0].nodes[0] as FreeformChartElement).barMode).toBe('stacked')
@@ -491,7 +491,7 @@ describe('chart element in the document', () => {
   it('carries the legend switch at v31 and rejects it at v30', () => {
     const switched: FreeformChartElement = { ...createChartElement(slide), showLegend: false }
     const switchedSlide = { ...slide, nodes: [switched as unknown as FreeformSceneNode] }
-    const v31 = normalizeFreeformDocument({ documentVersion: 31, activeSlideId: slide.id, slides: [switchedSlide] })
+    const v31 = normalizeFreeformDocument({ documentVersion: 32, activeSlideId: slide.id, slides: [switchedSlide] })
     expect(v31).not.toBeNull()
     expect((v31!.slides[0].nodes[0] as FreeformChartElement).showLegend).toBe(false)
     const v30 = normalizeFreeformDocument({ documentVersion: 30, activeSlideId: slide.id, slides: [switchedSlide] })
@@ -499,7 +499,7 @@ describe('chart element in the document', () => {
     // The style patch sets all three states; null restores the automatic rule.
     const base = createChartElement(slide)
     const hidden = freeformReducer(
-      { documentVersion: 31, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
+      { documentVersion: 32, activeSlideId: slide.id, slides: [{ ...slide, nodes: [base] }] },
       { type: 'node/update-style', slideId: slide.id, updates: [{ path: [base.id], patch: { showLegend: false } }] },
     )
     expect((hidden.slides[0].nodes[0] as FreeformChartElement).showLegend).toBe(false)

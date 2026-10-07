@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../../../src/freeform/types'
 
 function seedDocument(): FreeformDocument {
   return {
-    documentVersion: 31,
+    documentVersion: 32,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -74,7 +74,7 @@ describe('validateDocument', () => {
     const result = validateDocument(seedDocument())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.documentVersion).toBe(31)
+    expect(result.document.documentVersion).toBe(32)
     expect(result.document.slides[0].id).toBe('slide-1')
   })
 
@@ -261,6 +261,49 @@ describe('validateDocument', () => {
 
     const legacy = structuredClone(marked)
     legacy.documentVersion = 15
+    expect(validateDocument(legacy).ok).toBe(false)
+  })
+
+  test('accepts v32 patterned pages, applies them, and rejects them on v31 inputs', () => {
+    const patterned = seedDocument() as unknown as Record<string, unknown>
+    const slide = (patterned.slides as Array<Record<string, unknown>>)[0]
+    slide.background = {
+      type: 'pattern',
+      color: '#fdf6ec',
+      patternColor: '#18181b',
+      pattern: 'dots',
+      size: 20,
+    }
+    const valid = validateDocument(patterned)
+    expect(valid.ok).toBe(true)
+    if (!valid.ok) return
+
+    const summary = inspectDocument(patterned)
+    if (!summary.ok) throw new Error(summary.error)
+    expect(summary.slides[0].background).toBe('pattern dots (#fdf6ec base, #18181b motif, 20px)')
+
+    // slide/update swaps the motif in one action; an out-of-range size is ignored.
+    const applied = applyActions(valid.document, [
+      {
+        type: 'slide/update',
+        slideId: 'slide-1',
+        patch: { background: { type: 'pattern', color: '#fdf6ec', patternColor: '#18181b', pattern: 'grid', size: 20 } },
+      },
+      {
+        type: 'slide/update',
+        slideId: 'slide-1',
+        patch: { background: { type: 'pattern', color: '#fdf6ec', patternColor: '#18181b', pattern: 'grid', size: 99 } },
+      },
+    ])
+    expect(applied.ok).toBe(true)
+    if (!applied.ok) return
+    expect(applied.changes).toEqual([true, false])
+    expect(applied.document.slides[0].background).toEqual({
+      type: 'pattern', color: '#fdf6ec', patternColor: '#18181b', pattern: 'grid', size: 20,
+    })
+
+    const legacy = structuredClone(patterned)
+    legacy.documentVersion = 31
     expect(validateDocument(legacy).ok).toBe(false)
   })
 

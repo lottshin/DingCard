@@ -21,6 +21,60 @@ test.beforeEach(async ({ context, page }) => {
   await startWithSettingsPanelOpen(page)
 })
 
+test('the page takes a patterned background: motif, colours, density, and off', async ({ page }) => {
+  await openFreeform(page)
+  const canvas = page.getByTestId('freeform-canvas')
+
+  // 无 is on by default: a plain background with no motif layer.
+  await expect(page.getByTestId('page-pattern-none')).toHaveClass(/on/)
+  await expect(canvas).toHaveCSS('background-image', 'none')
+
+  // Dots ink the light default page: one radial-gradient tile over the base.
+  await page.getByTestId('page-pattern-dots').click()
+  await expect(page.getByTestId('page-pattern-dots')).toHaveClass(/on/)
+  await expect(canvas).toHaveCSS('background-image', /radial-gradient\(circle, rgb\(24, 24, 27\) 26%, rgba\(0, 0, 0, 0\) 27%\)/)
+  await expect(canvas).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+
+  // The motif and base recolour through the two pickers' hex fields.
+  for (const [label, color] of [
+    ['底色', '#fef3c7'],
+    ['图案色', '#dc2626'],
+  ] as const) {
+    await page.getByRole('button', { name: label, exact: true }).click()
+    const hex = page.getByLabel(`${label} 自定义 HEX`, { exact: true })
+    await hex.fill(color)
+    await hex.press('Enter')
+    await page.keyboard.press('Escape')
+  }
+  await expect(canvas).toHaveCSS('background-image', /radial-gradient\(circle, rgb\(220, 38, 38\) 26%, rgba\(0, 0, 0, 0\) 27%\)/)
+  await expect(canvas).toHaveCSS('background-color', 'rgb(254, 243, 199)')
+
+  // Grid swaps the motif to two hairlines; the density seg changes the tile.
+  await page.getByTestId('page-pattern-grid').click()
+  await expect(canvas).toHaveCSS('background-image', /linear-gradient\(rgb\(220, 38, 38\) 1px, rgba\(0, 0, 0, 0\) 1px\), linear-gradient\(90deg, rgb\(220, 38, 38\) 1px, rgba\(0, 0, 0, 0\) 1px\)/)
+  await expect(canvas).toHaveCSS('background-size', '20px 20px, 20px 20px, auto')
+  await page.getByTestId('page-pattern-size-32').click()
+  await expect(canvas).toHaveCSS('background-size', '32px 32px, 32px 32px, auto')
+
+  // 无 returns the page to a solid of the pattern's base colour, and undo
+  // walks each choice back to the plain white page.
+  await page.getByTestId('page-pattern-none').click()
+  await expect(canvas).toHaveCSS('background-image', 'none')
+  await expect(canvas).toHaveCSS('background-color', 'rgb(254, 243, 199)')
+  for (const expected of [
+    '32px 32px, 32px 32px, auto',
+    '20px 20px, 20px 20px, auto',
+  ]) {
+    await page.getByRole('button', { name: '撤销', exact: true }).click()
+    await expect(canvas).toHaveCSS('background-size', expected)
+  }
+  // The third undo takes the grid back to red dots on the amber base.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(canvas).toHaveCSS('background-image', /radial-gradient\(circle, rgb\(220, 38, 38\) 26%, rgba\(0, 0, 0, 0\) 27%\)/)
+  await expect(canvas).toHaveCSS('background-size', '20px 20px, auto')
+  await expect(canvas).toHaveCSS('background-color', 'rgb(254, 243, 199)')
+})
+
 test('the page takes a picture background: choose, fit, frame, clear, and it exports under the artwork', async ({ page }) => {
   await openFreeform(page)
   const pagePaint = page.getByTestId('page-background-paint')

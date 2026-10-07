@@ -16,6 +16,8 @@ import {
   DEFAULT_SHAPE_PAINT,
   DEFAULT_TEXT_PAINT,
   isHexColor,
+  isValidPagePattern,
+  isValidPagePatternSize,
   normalizeColorPaint,
 } from './paint'
 import {
@@ -107,7 +109,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -117,6 +119,7 @@ const GRADIENT_PAINT_KEYS = new Set(['type', 'from', 'to', 'angle'])
 const GRADIENT_STOPS_PAINT_KEYS = new Set(['type', 'stops', 'angle'])
 const RADIAL_STOPS_PAINT_KEYS = new Set(['type', 'stops'])
 const TRANSPARENT_PAINT_KEYS = new Set(['type'])
+const PATTERN_PAINT_KEYS = new Set(['type', 'color', 'patternColor', 'pattern', 'size'])
 const IMAGE_FILL_V3_KEYS = new Set(['type', 'src', 'fit'])
 const IMAGE_FILL_V4_KEYS = new Set(['type', 'src', 'fit', 'framing'])
 const GROUP_NODE_KEYS = new Set([
@@ -241,6 +244,26 @@ function cloneStrictSlideBackground(
     && hasExactKeys(value, TRANSPARENT_PAINT_KEYS)
   ) {
     return { type: 'transparent' }
+  }
+  // A patterned page is v32-only; older input versions must reject it.
+  if (isRecord(value) && value.type === 'pattern') {
+    if (
+      inputVersion < 32
+      || !hasExactKeys(value, PATTERN_PAINT_KEYS)
+      || !isHexColor(value.color)
+      || !isHexColor(value.patternColor)
+      || !isValidPagePattern(value.pattern)
+      || !isValidPagePatternSize(value.size)
+    ) {
+      return null
+    }
+    return {
+      type: 'pattern',
+      color: value.color,
+      patternColor: value.patternColor,
+      pattern: value.pattern,
+      size: value.size,
+    }
   }
   // A picture background is v16-only; older input versions must reject it.
   if (isRecord(value) && value.type === 'image') {
@@ -980,7 +1003,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 31,
+    documentVersion: 32,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1129,6 +1152,11 @@ export function normalizeFreeformDocumentV30(value: unknown): FreeformDocument |
 /** Strictly validates an already-v31 document (v31 adds the chart legend switch). */
 export function normalizeFreeformDocumentV31(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 31)
+}
+
+/** Strictly validates an already-v32 document (v32 adds the patterned page). */
+export function normalizeFreeformDocumentV32(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 32)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1398,6 +1426,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 32) return normalizeFreeformDocumentV32(value)
   if (value.documentVersion === 31) return normalizeFreeformDocumentV31(value)
   if (value.documentVersion === 30) return normalizeFreeformDocumentV30(value)
   if (value.documentVersion === 29) return normalizeFreeformDocumentV29(value)
@@ -1444,6 +1473,15 @@ function copySlideBackgroundValue(background: SlideBackground): SlideBackground 
     }
   }
   if (background.type === 'solid') return { type: 'solid', color: background.color }
+  if (background.type === 'pattern') {
+    return {
+      type: 'pattern',
+      color: background.color,
+      patternColor: background.patternColor,
+      pattern: background.pattern,
+      size: background.size,
+    }
+  }
   if (background.type === 'radial-gradient') {
     return { type: 'radial-gradient', stops: background.stops.map((stop) => ({ ...stop })) }
   }
@@ -1468,7 +1506,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 31,
+    documentVersion: 32,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1501,7 +1539,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 31,
+    documentVersion: 32,
     activeSlideId: document.activeSlideId,
     slides,
   }
