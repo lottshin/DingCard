@@ -2804,6 +2804,10 @@ html.theme-anim * {
   margin-top: 12px;
 }
 
+.freeform-inspector .paint-row.with-gap {
+  margin-top: 8px;
+}
+
 .freeform-inspector .field-grid label {
   display: flex;
   flex-direction: column;

@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 34
+  documentVersion: 35
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -412,6 +412,12 @@ export interface FreeformTableElement extends FreeformElementBase {
   headerRow?: boolean
   /** Shade alternating body rows (v34); absent keeps them plain. */
   striped?: boolean
+  /** The ink for cell text and grid lines (v35); absent keeps the default gray. */
+  ink?: string
+  /** The header row's fill (v35); absent tints the ink like the sample table. */
+  headerFill?: string
+  /** The zebra stripes' fill (v35); absent tints the ink like the sample table. */
+  stripeFill?: string
 }
 
 export type FreeformElement =
@@ -561,6 +567,12 @@ export interface FreeformNodeStylePatch {
   headerRow?: boolean | null
   /** Table zebra stripes (v34); `null` restores the plain body. */
   striped?: boolean | null
+  /** Table ink for text and grid lines (v35); `null` restores the default gray. */
+  ink?: string | null
+  /** Table header fill (v35); `null` restores the ink tint. */
+  headerFill?: string | null
+  /** Table stripe fill (v35); `null` restores the ink tint. */
+  stripeFill?: string | null
 }
 
 export interface FreeformNodeGeometryPatch {

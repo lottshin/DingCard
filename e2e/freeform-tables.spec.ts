@@ -47,7 +47,7 @@ test('inserts a table that renders its header and cells and saves', async ({ pag
     return draft ?? null
   })
   expect(stored).not.toBeNull()
-  expect(stored.document.documentVersion).toBe(34)
+  expect(stored.document.documentVersion).toBe(35)
   expect(stored.document.slides[0].nodes[0].type).toBe('table')
 
   // The table survives a reload with all its cells.
@@ -134,4 +134,49 @@ test('resizes rows and columns and pastes a spreadsheet block', async ({ page })
   await page.getByTestId('table-paste-data').click()
   await expect(page.getByText('粘贴内容读不出表格')).toBeVisible()
   await expect(table.getByText('指标', { exact: true })).toBeVisible()
+})
+
+test('recolors the ink, header, and stripes through the pickers', async ({ page }) => {
+  await openFreeform(page)
+  await insertTable(page)
+  const table = page.getByTestId('freeform-table')
+
+  // Stripes on first so the stripe fill has something to paint.
+  await page.getByTestId('table-striped-on').click()
+  await expect(table.locator('[data-testid="freeform-table-stripe"]')).toHaveCount(1)
+
+  // The ink repaints the cell text and the grid lines.
+  await page.getByRole('button', { name: '墨色', exact: true }).click()
+  const inkHex = page.getByLabel('墨色 自定义 HEX', { exact: true })
+  await inkHex.fill('#0f766e')
+  await inkHex.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(table.locator('line').first()).toHaveAttribute('stroke', '#0f766e')
+  await expect(table.locator('[data-testid="freeform-table-cell"]').first()).toHaveAttribute('fill', '#0f766e')
+
+  // The header fill paints at full strength once set.
+  await page.getByRole('button', { name: '表头底色', exact: true }).click()
+  const headerHex = page.getByLabel('表头底色 自定义 HEX', { exact: true })
+  await headerHex.fill('#ccfbf1')
+  await headerHex.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('fill', '#ccfbf1')
+  await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('opacity', '1')
+
+  // The stripe fill paints the zebra row outright.
+  await page.getByRole('button', { name: '斑马纹底色', exact: true }).click()
+  const stripeHex = page.getByLabel('斑马纹底色 自定义 HEX', { exact: true })
+  await stripeHex.fill('#f0fdfa')
+  await stripeHex.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(table.locator('[data-testid="freeform-table-stripe"]')).toHaveAttribute('fill', '#f0fdfa')
+
+  // 恢复默认 removes the override: the header returns to the ink's tint.
+  await page.getByTestId('table-header-reset').click()
+  await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('fill', '#0f766e')
+  await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('opacity', '0.08')
+
+  // Undo restores the painted header fill in one step.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('fill', '#ccfbf1')
 })

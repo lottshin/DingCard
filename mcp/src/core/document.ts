@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v34 校验：需要 documentVersion=1–34 之一（旧版自动迁移为 v34）、非空 slides、'
+  '文档未通过自由画布 v35 校验：需要 documentVersion=1–35 之一（旧版自动迁移为 v35）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {

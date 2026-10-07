@@ -153,14 +153,14 @@ describe('table element in the document', () => {
     // Optional flags ride along; wrong-typed ones reject.
     const striped: FreeformTableElement = { ...table, striped: true, headerRow: false }
     const withFlags = normalizeFreeformDocument({
-      documentVersion: 34,
+      documentVersion: 35,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [striped as unknown as FreeformSceneNode] }],
     })
     expect((withFlags!.slides[0].nodes[0] as FreeformTableElement).striped).toBe(true)
     expect((withFlags!.slides[0].nodes[0] as FreeformTableElement).headerRow).toBe(false)
     const bad = normalizeFreeformDocument({
-      documentVersion: 34,
+      documentVersion: 35,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, cells: ['少'] } as unknown as FreeformSceneNode] }],
     })
@@ -170,7 +170,7 @@ describe('table element in the document', () => {
   it('resizes and replaces cells through node/update-content', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 34,
+      documentVersion: 35,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -214,7 +214,7 @@ describe('table element in the document', () => {
   it('styles the header and stripes through node/update-style', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 34,
+      documentVersion: 35,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -240,5 +240,60 @@ describe('table element in the document', () => {
       updates: [{ path: [base.id], patch: { headerRow: 'no' as unknown as boolean } }],
     })
     expect(bad).toBe(restored)
+  })
+
+  it('styles the ink, header fill, and stripe fill through node/update-style', () => {
+    const base = createTableElement(slide)
+    const document: FreeformDocument = {
+      documentVersion: 35,
+      activeSlideId: slide.id,
+      slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
+    }
+    const styled = freeformReducer(document, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { ink: '#0f766e', headerFill: '#ccfbf1', stripeFill: '#f0fdfa' } }],
+    })
+    const styledTable = styled.slides[0].nodes[0] as FreeformTableElement
+    expect(styledTable.ink).toBe('#0f766e')
+    expect(styledTable.headerFill).toBe('#ccfbf1')
+    expect(styledTable.stripeFill).toBe('#f0fdfa')
+    // null restores the default gray ink tints by removing the fields.
+    const restored = freeformReducer(styled, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { ink: null, headerFill: null, stripeFill: null } }],
+    })
+    const restoredTable = restored.slides[0].nodes[0] as FreeformTableElement
+    expect('ink' in restoredTable).toBe(false)
+    expect('headerFill' in restoredTable).toBe(false)
+    expect('stripeFill' in restoredTable).toBe(false)
+    // A non-hex color rejects the patch and keeps the table as-is.
+    const bad = freeformReducer(restored, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { ink: 'teal' as unknown as string } }],
+    })
+    expect(bad).toBe(restored)
+  })
+
+  it('carries the color overrides at v35 and rejects them at v34', () => {
+    const table: FreeformTableElement = { ...createTableElement(slide), striped: true, ink: '#334155', headerFill: '#e2e8f0', stripeFill: '#f1f5f9' }
+    const tableSlide = { ...slide, nodes: [table as unknown as FreeformSceneNode] }
+    const v35 = normalizeFreeformDocument({ documentVersion: 35, activeSlideId: slide.id, slides: [tableSlide] })
+    expect(v35).not.toBeNull()
+    const kept = v35!.slides[0].nodes[0] as FreeformTableElement
+    expect(kept.ink).toBe('#334155')
+    expect(kept.headerFill).toBe('#e2e8f0')
+    expect(kept.stripeFill).toBe('#f1f5f9')
+    // v34 documents never carried the overrides; a bad hex rejects outright.
+    const v34 = normalizeFreeformDocument({ documentVersion: 34, activeSlideId: slide.id, slides: [tableSlide] })
+    expect(v34).toBeNull()
+    const badHex = normalizeFreeformDocument({
+      documentVersion: 35,
+      activeSlideId: slide.id,
+      slides: [{ ...slide, nodes: [{ ...table, ink: 'gray' } as unknown as FreeformSceneNode] }],
+    })
+    expect(badHex).toBeNull()
   })
 })

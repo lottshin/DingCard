@@ -700,8 +700,9 @@ function SceneLeafContent({
   }
 
   if (leaf.type === 'table') {
-    // The table draws in fixed ink like the charts' axis text.
-    const inkColor = '#3f3f46'
+    // The table draws in one ink like the charts' axis text; the v35 overrides
+    // paint the header and stripes outright while absent keeps the ink tints.
+    const inkColor = leaf.ink ?? '#3f3f46'
     const table = tableGeometry(leaf.width, leaf.height, leaf.rows, leaf.cols, leaf.cells, {
       headerRow: leaf.headerRow,
       striped: leaf.striped,
@@ -716,10 +717,10 @@ function SceneLeafContent({
         style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
       >
         {table.header && (
-          <rect data-testid="freeform-table-header" x={table.header.x} y={table.header.y} width={table.header.width} height={table.header.height} fill={inkColor} opacity={0.08} />
+          <rect data-testid="freeform-table-header" x={table.header.x} y={table.header.y} width={table.header.width} height={table.header.height} fill={leaf.headerFill ?? inkColor} opacity={leaf.headerFill ? 1 : 0.08} />
         )}
         {table.stripes.map((stripe, index) => (
-          <rect key={index} data-testid="freeform-table-stripe" x={stripe.x} y={stripe.y} width={stripe.width} height={stripe.height} fill={inkColor} opacity={0.045} />
+          <rect key={index} data-testid="freeform-table-stripe" x={stripe.x} y={stripe.y} width={stripe.width} height={stripe.height} fill={leaf.stripeFill ?? inkColor} opacity={leaf.stripeFill ? 1 : 0.045} />
         ))}
         {table.lines.map((line, index) => (
           <line key={index} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={inkColor} strokeWidth={1} opacity={0.28} />

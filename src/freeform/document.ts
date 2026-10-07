@@ -155,7 +155,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 34,
+    documentVersion: 35,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -572,6 +572,9 @@ const STYLE_KEYS = new Set([
   'showTicks',
   'headerRow',
   'striped',
+  'ink',
+  'headerFill',
+  'stripeFill',
   'barMode',
   'opacity',
   'shadow',
@@ -604,7 +607,7 @@ const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubble
 const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZone', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'showTicks', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
-const TABLE_APPEARANCE_KEYS = new Set(['headerRow', 'striped', 'opacity', 'shadow', 'filter', 'blendMode'])
+const TABLE_APPEARANCE_KEYS = new Set(['headerRow', 'striped', 'ink', 'headerFill', 'stripeFill', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
 ])
@@ -658,6 +661,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && typeof value !== 'boolean') return false
     } else if (key === 'headerRow' || key === 'striped') {
       if (value !== null && typeof value !== 'boolean') return false
+    } else if (key === 'ink' || key === 'headerFill' || key === 'stripeFill') {
+      if (value !== null && !isHexColor(value)) return false
     } else if (key === 'barMode') {
       if (value !== null && !isValidChartBarMode(value)) return false
     } else if (key === 'filter') {
@@ -1192,6 +1197,7 @@ function applyStylePatch(
   if (node.type === 'table') {
     if (
       keys.some((key) => key !== 'headerRow' && key !== 'striped'
+        && key !== 'ink' && key !== 'headerFill' && key !== 'stripeFill'
         && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
     ) {
       return { ok: false, node }

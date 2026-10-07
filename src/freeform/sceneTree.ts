@@ -1016,6 +1016,9 @@ const CHART_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 const TABLE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   headerRow: (record) => typeof record.headerRow === 'boolean',
   striped: (record) => typeof record.striped === 'boolean',
+  ink: (record) => isHexColor(record.ink),
+  headerFill: (record) => isHexColor(record.headerFill),
+  stripeFill: (record) => isHexColor(record.stripeFill),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,

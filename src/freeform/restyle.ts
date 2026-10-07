@@ -252,9 +252,14 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
         series: node.series.map((entry) => ({ ...entry, color: recolor(entry.color) })),
         shadow: recolorShadow(node.shadow, recolor),
       })
-    // A table carries no recolourable paints: its ink is fixed.
+    // A table's paints are all optional: absent colors keep the default ink.
     case 'table':
-      return patched(node, { shadow: recolorShadow(node.shadow, recolor) })
+      return patched(node, {
+        ...(node.ink !== undefined ? { ink: recolor(node.ink) } : {}),
+        ...(node.headerFill !== undefined ? { headerFill: recolor(node.headerFill) } : {}),
+        ...(node.stripeFill !== undefined ? { stripeFill: recolor(node.stripeFill) } : {}),
+        shadow: recolorShadow(node.shadow, recolor),
+      })
   }
 }
 

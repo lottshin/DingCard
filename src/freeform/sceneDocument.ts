@@ -110,7 +110,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -397,6 +397,7 @@ const CHART_OPTIONAL_V27_KEYS = new Set([...CHART_OPTIONAL_V24_KEYS, 'barMode'])
 const CHART_OPTIONAL_V31_KEYS = new Set([...CHART_OPTIONAL_V27_KEYS, 'showLegend'])
 const CHART_OPTIONAL_V33_KEYS = new Set([...CHART_OPTIONAL_V31_KEYS, 'showTicks'])
 const TABLE_OPTIONAL_V34_KEYS = new Set(['headerRow', 'striped', 'opacity', 'shadow', 'filter', 'blendMode'])
+const TABLE_OPTIONAL_V35_KEYS = new Set([...TABLE_OPTIONAL_V34_KEYS, 'ink', 'headerFill', 'stripeFill'])
 const PATH_OPTIONAL_V15_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'join', 'fillRule',
 ])
@@ -455,7 +456,7 @@ function optionalKeysFor(
     if (inputVersion >= 31) return CHART_OPTIONAL_V31_KEYS
     return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
   }
-  if (type === 'table') return TABLE_OPTIONAL_V34_KEYS
+  if (type === 'table') return inputVersion >= 35 ? TABLE_OPTIONAL_V35_KEYS : TABLE_OPTIONAL_V34_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
@@ -946,7 +947,7 @@ function normalizeStrictSceneNode(
   }
 
   // Table nodes are v34-only: rows × cols of short cell texts, an optional
-  // bold header row and optional zebra stripes.
+  // bold header row, optional zebra stripes, and v35 color overrides.
   if (value.type === 'table') {
     if (inputVersion < 34) return null
     if (!isValidTableRows(value.rows) || !isValidTableCols(value.cols)) return null
@@ -954,6 +955,10 @@ function normalizeStrictSceneNode(
     if (value.cells.length !== value.rows * value.cols) return null
     if ('headerRow' in value && typeof value.headerRow !== 'boolean') return null
     if ('striped' in value && typeof value.striped !== 'boolean') return null
+    // The color overrides are v35-only; older input versions reject them.
+    if ('ink' in value && (inputVersion < 35 || !isHexColor(value.ink))) return null
+    if ('headerFill' in value && (inputVersion < 35 || !isHexColor(value.headerFill))) return null
+    if ('stripeFill' in value && (inputVersion < 35 || !isHexColor(value.stripeFill))) return null
     const tableAppearance = cloneStrictAppearance(value, inputVersion)
     if (!tableAppearance) return null
     return {
@@ -964,6 +969,9 @@ function normalizeStrictSceneNode(
       cells: (value.cells as string[]).map((cell) => cell),
       ...('headerRow' in value ? { headerRow: value.headerRow as boolean } : {}),
       ...('striped' in value ? { striped: value.striped as boolean } : {}),
+      ...('ink' in value ? { ink: value.ink as string } : {}),
+      ...('headerFill' in value ? { headerFill: value.headerFill as string } : {}),
+      ...('stripeFill' in value ? { stripeFill: value.stripeFill as string } : {}),
       ...tableAppearance,
     }
   }
@@ -1046,7 +1054,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 34,
+    documentVersion: 35,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1208,6 +1216,10 @@ export function normalizeFreeformDocumentV33(value: unknown): FreeformDocument |
 }
 
 /** Strictly validates an already-v34 document (v34 adds the table element). */
+export function normalizeFreeformDocumentV35(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 35)
+}
+
 export function normalizeFreeformDocumentV34(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 34)
 }
@@ -1479,6 +1491,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 35) return normalizeFreeformDocumentV35(value)
   if (value.documentVersion === 34) return normalizeFreeformDocumentV34(value)
   if (value.documentVersion === 33) return normalizeFreeformDocumentV33(value)
   if (value.documentVersion === 32) return normalizeFreeformDocumentV32(value)
@@ -1561,7 +1574,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 34,
+    documentVersion: 35,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1594,7 +1607,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 34,
+    documentVersion: 35,
     activeSlideId: document.activeSlideId,
     slides,
   }

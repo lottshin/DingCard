@@ -8786,6 +8786,59 @@ export function FreeformWorkspace({
                           {t('隐藏')}
                         </button>
                       </div>
+                      <div className="field-label with-gap">{t('颜色')}</div>
+                      <div className="paint-row" data-testid="table-colors">
+                        <ColorPickerButton
+                          label={t('墨色')}
+                          color={selectedElement.ink ?? '#3f3f46'}
+                          testId="table-ink-color"
+                          onChange={(ink) => updateSelectedStyle({ ink })}
+                        />
+                        {selectedElement.ink !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="table-ink-reset"
+                            onClick={() => updateSelectedStyle({ ink: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                      </div>
+                      <div className="paint-row with-gap" data-testid="table-fills">
+                        <ColorPickerButton
+                          label={t('表头底色')}
+                          color={selectedElement.headerFill ?? '#3f3f46'}
+                          testId="table-header-color"
+                          onChange={(headerFill) => updateSelectedStyle({ headerFill })}
+                        />
+                        {selectedElement.headerFill !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="table-header-reset"
+                            onClick={() => updateSelectedStyle({ headerFill: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                        <ColorPickerButton
+                          label={t('斑马纹底色')}
+                          color={selectedElement.stripeFill ?? '#3f3f46'}
+                          testId="table-stripe-color"
+                          onChange={(stripeFill) => updateSelectedStyle({ stripeFill })}
+                        />
+                        {selectedElement.stripeFill !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="table-stripe-reset"
+                            onClick={() => updateSelectedStyle({ stripeFill: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                      </div>
                       <div className="field-label with-gap">{t('行列')}</div>
                       <div className="table-size-row" role="group" aria-label={t('行列')}>
                         <button

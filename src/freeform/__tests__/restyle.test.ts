@@ -87,6 +87,32 @@ describe('restyleDocument', () => {
     expect(restyleDocument(document, { colors: { '#abcdef': '#123456' } })).toBe(document)
   })
 
+  it('recolors a table\'s set colors and leaves absent ones alone', () => {
+    const base = template('compare-table-freeform')
+    const slide = base.slides[0]
+    const table = slide.nodes.find((node) => node.type === 'table')
+    if (!table || table.type !== 'table') throw new Error('compare-table template has no table')
+    const withInk = {
+      ...base,
+      slides: [{ ...slide, nodes: slide.nodes.map((node) => node.id === table.id ? { ...table, ink: '#334155' } : node) }],
+    }
+    const next = restyleDocument(withInk, { colors: { '#334155': '#0f766e' } })
+    const recolored = next.slides[0].nodes.find((node) => node.id === table.id)
+    if (!recolored || recolored.type !== 'table') throw new Error('table lost in restyle')
+    expect(recolored.ink).toBe('#0f766e')
+    // The template's unset ink keeps its absence; its header fill maps too when set.
+    const withFills = {
+      ...withInk,
+      slides: [{ ...slide, nodes: slide.nodes.map((node) => node.id === table.id ? { ...table, ink: '#334155', headerFill: '#e2e8f0', stripeFill: '#f1f5f9' } : node) }],
+    }
+    const fills = restyleDocument(withFills, { colors: { '#334155': '#0f766e', '#e2e8f0': '#ccfbf1', '#f1f5f9': '#f0fdfa' } })
+    const refilled = fills.slides[0].nodes.find((node) => node.id === table.id)
+    if (!refilled || refilled.type !== 'table') throw new Error('table lost in restyle')
+    expect(refilled.ink).toBe('#0f766e')
+    expect(refilled.headerFill).toBe('#ccfbf1')
+    expect(refilled.stripeFill).toBe('#f0fdfa')
+  })
+
   it('maps a palette: page and words take its colours, tints keep their place, colours take its accents', () => {
     const document = template('editorial-freeform')
     const sea = PALETTES.find((palette) => palette.id === 'sea-salt')!
