@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 35
+  documentVersion: 36
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -123,7 +123,7 @@ export type BlendMode =
   | 'luminosity'
 
 export interface FreeformElementBase extends SceneNodeState {
-  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table' | 'timeline'
   x: number
   y: number
   width: number
@@ -422,6 +422,20 @@ export interface FreeformTableElement extends FreeformElementBase {
   colWidths?: number[]
 }
 
+/** One entry on a timeline: an optional short label (a date, a step) and its text. */
+export interface FreeformTimelineItem {
+  label?: string
+  text: string
+}
+
+export interface FreeformTimelineElement extends FreeformElementBase {
+  type: 'timeline'
+  /** 2–8 entries down the spine (v36). */
+  items: FreeformTimelineItem[]
+  /** The spine's and dots' colour (v36); absent keeps the blue accent. */
+  accent?: string
+}
+
 export type FreeformElement =
   | FreeformTextElement
   | FreeformImageElement
@@ -431,6 +445,7 @@ export type FreeformElement =
   | FreeformQrCodeElement
   | FreeformChartElement
   | FreeformTableElement
+  | FreeformTimelineElement
 
 /**
  * A scene path contains node IDs from a slide root to one node. The empty
@@ -476,6 +491,8 @@ export interface FreeformNodeContentPatch {
   cells?: string[]
   /** A table's relative column weights (v35), one per column, replaced wholesale. */
   colWidths?: number[]
+  /** A timeline's entries (v36), replaced wholesale. */
+  items?: FreeformTimelineItem[]
 }
 
 export interface FreeformNodeStylePatch {

@@ -260,6 +260,12 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
         ...(node.stripeFill !== undefined ? { stripeFill: recolor(node.stripeFill) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
+    // A timeline's accent is optional: absent keeps the default blue.
+    case 'timeline':
+      return patched(node, {
+        ...(node.accent !== undefined ? { accent: recolor(node.accent) } : {}),
+        shadow: recolorShadow(node.shadow, recolor),
+      })
   }
 }
 
@@ -533,7 +539,7 @@ function keepWordsReadable(document: FreeformDocument): FreeformDocument {
         background = under.type === 'image'
           ? null
           : under.type === 'qrcode' ? under.light
-          : under.type === 'chart' || under.type === 'table' ? null : solidOf(under.fill)
+          : under.type === 'chart' || under.type === 'table' || under.type === 'timeline' ? null : solidOf(under.fill)
         break
       }
       const needed = contrastNeeded(node) + CONTRAST_MARGIN

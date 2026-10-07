@@ -31,6 +31,7 @@ import type {
   FreeformQrCodeElement,
   FreeformChartElement,
   FreeformTableElement,
+  FreeformTimelineElement,
   FreeformShapeElement,
   FreeformTextElement,
   ShapeFill,
@@ -45,6 +46,7 @@ export type ContextToolbarSubject =
   | { kind: 'qrcode'; node: FreeformQrCodeElement }
   | { kind: 'chart'; node: FreeformChartElement }
   | { kind: 'table'; node: FreeformTableElement }
+  | { kind: 'timeline'; node: FreeformTimelineElement }
   | { kind: 'line'; node: FreeformLineElement; strokeWidth: number }
   | { kind: 'path'; node: FreeformPathElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'group'; name: string }
@@ -523,6 +525,13 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
         {subject.kind === 'table' && (
           <>
             <SubjectChip icon={<PathIcon d="M3 4h18v16H3zM3 9.3h18M3 14.6h18M9 4v16M15 4v16" />} label={t('表格')} />
+            <Divider />
+          </>
+        )}
+
+        {subject.kind === 'timeline' && (
+          <>
+            <SubjectChip icon={<PathIcon d="M6 4v16M6 7h9M6 12h12M6 17h8" />} label={t('时间线')} />
             <Divider />
           </>
         )}

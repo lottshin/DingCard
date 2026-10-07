@@ -419,6 +419,7 @@ export const app: Record<string, Translation> = {
   '在线图库': 'Stock photos',
   '轴刻度': 'Axis ticks',
   '表格': 'Table',
+  '时间线': 'Timeline',
   '表头': 'Header row',
   '斑马纹': 'Zebra stripes',
   '墨色': 'Ink',

@@ -19,7 +19,7 @@ const SMALL = 'data:image/png;base64,iVBORw0KGgo='
 
 function freeformDocument(sources: { image: string; fill: string; background?: string }): FreeformDocument {
   return {
-    documentVersion: 35,
+    documentVersion: 36,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',

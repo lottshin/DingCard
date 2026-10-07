@@ -77,6 +77,7 @@ import { isValidPathData } from './pathData'
 import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload, isValidQrQuietZone } from './qrCode'
 import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
+import { isValidTimelineItems, timelineItemsSame } from './timeline'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {  FreeformChartSeries,
@@ -99,6 +100,8 @@ import type {  FreeformChartSeries,
   FreeformSlide,
   FreeformTableElement,
   FreeformTextElement,
+  FreeformTimelineElement,
+  FreeformTimelineItem,
   ImageFraming,
   LinePoint,
   PathFill,
@@ -155,7 +158,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 35,
+    documentVersion: 36,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -311,6 +314,25 @@ export function createTableElement(slide: FreeformSlide): FreeformTableElement {
     rows: 3,
     cols: 3,
     cells: ['项目', '本月', '上月', '阅读', '1.2万', '9800', '涨粉', '320', '210'],
+  }
+}
+
+export function createTimelineElement(slide: FreeformSlide): FreeformTimelineElement {
+  return {
+    id: randomId(),
+    name: '时间线',
+    locked: false,
+    hidden: false,
+    type: 'timeline',
+    ...centerBox(slide, 480, 420),
+    rotation: 0,
+    scale: 1,
+    items: [
+      { label: '3 月', text: '注册账号，发出第一篇笔记' },
+      { label: '6 月', text: '接到第一单商单合作' },
+      { label: '9 月', text: '粉丝破万，开始做系列内容' },
+      { label: '12 月', text: '工作室成立，全职做内容' },
+    ],
   }
 }
 
@@ -540,7 +562,7 @@ interface NodePatchResult {
   node: FreeformSceneNode
 }
 
-const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells', 'colWidths'])
+const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells', 'colWidths', 'items'])
 const STYLE_KEYS = new Set([
   'effect',
   'fontSize',
@@ -608,6 +630,7 @@ const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'stroke', 'strokeWidth', 
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZone', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'showTicks', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
 const TABLE_APPEARANCE_KEYS = new Set(['headerRow', 'striped', 'ink', 'headerFill', 'stripeFill', 'opacity', 'shadow', 'filter', 'blendMode'])
+const TIMELINE_APPEARANCE_KEYS = new Set(['accent', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
 ])
@@ -889,6 +912,22 @@ function applyContentPatch(
         ...(colWidths !== undefined ? { colWidths } : {}),
       },
     }
+  }
+  if (node.type === 'timeline') {
+    if (Object.keys(record).some((key) => key !== 'items')) return { ok: false, node }
+    if ('items' in record) {
+      if (!isValidTimelineItems(record.items)) return { ok: false, node }
+      const items = (record.items as FreeformTimelineItem[]).map((item) => ({
+        text: item.text,
+        ...('label' in item ? { label: item.label } : {}),
+      }))
+      const same = timelineItemsSame(node.items, items)
+      return {
+        ok: true,
+        node: same ? node : { ...node, items },
+      }
+    }
+    return { ok: true, node }
   }
   if (node.type === 'qrcode') {
     if (Object.keys(record).some((key) => key !== 'payload') || !isValidQrPayload(record.payload)) {
@@ -1238,6 +1277,27 @@ function applyStylePatch(
     ) && appearanceKeysSame(node, next, patch, TABLE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
+  if (node.type === 'timeline') {
+    if (
+      keys.some((key) => key !== 'accent'
+        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
+    ) {
+      return { ok: false, node }
+    }
+    if (
+      ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent))
+      || !validAppearancePatch(patch, TIMELINE_APPEARANCE_KEYS)
+    ) {
+      return { ok: false, node }
+    }
+    const next = withAppearancePatch(node, patch, TIMELINE_APPEARANCE_KEYS)
+    const same = keys.every((key) =>
+      TIMELINE_APPEARANCE_KEYS.has(key)
+        ? true
+        : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+    ) && appearanceKeysSame(node, next, patch, TIMELINE_APPEARANCE_KEYS)
+    return { ok: true, node: same ? node : next }
+  }
   if (node.type === 'qrcode') {
     if (
       keys.some((key) => key !== 'dark' && key !== 'light' && key !== 'ecl'
@@ -1503,6 +1563,7 @@ function defaultSceneNodeName(element: FreeformElement): string {
   if (element.type === 'qrcode') return '二维码'
   if (element.type === 'chart') return '图表'
   if (element.type === 'table') return '表格'
+  if (element.type === 'timeline') return '时间线'
   return element.lineKind === 'arrow' ? '箭头' : '直线'
 }
 
@@ -1624,6 +1685,7 @@ function applyLegacyElementPatch(
     qrcode: new Set(['x', 'y', 'width', 'height', 'rotation']),
     chart: new Set(['x', 'y', 'width', 'height', 'rotation']),
     table: new Set(['x', 'y', 'width', 'height', 'rotation']),
+    timeline: new Set(['x', 'y', 'width', 'height', 'rotation']),
   }
   if (!hasOnlyKeys(patch, allowedByType[node.type])) return { ok: false, node }
   if (Object.keys(patch).length === 0) return { ok: true, node }

@@ -96,6 +96,7 @@ import {
   type ChartBarMode,
 } from './charts'
 import { isValidTableCellText, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
+import { isValidTimelineItems, type TimelineItem } from './timeline'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -110,7 +111,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -165,6 +166,12 @@ const TABLE_NODE_KEYS = new Set([
   'scale', 'rows', 'cols', 'cells',
 ])
 // Column weights are optional from v35 on (see TABLE_OPTIONAL_V35_KEYS).
+
+const TIMELINE_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'items',
+])
+const TIMELINE_OPTIONAL_V36_KEYS = new Set(['accent', 'opacity', 'shadow', 'filter', 'blendMode'])
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -458,6 +465,7 @@ function optionalKeysFor(
     return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
   }
   if (type === 'table') return inputVersion >= 35 ? TABLE_OPTIONAL_V35_KEYS : TABLE_OPTIONAL_V34_KEYS
+  if (type === 'timeline') return TIMELINE_OPTIONAL_V36_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
@@ -521,6 +529,11 @@ function hasStrictNodeKeys(
   if (value.type === 'table') {
     if (inputVersion < 34) return false
     return hasKeysWithOptionals(value, TABLE_NODE_KEYS, optionalKeysFor('table', inputVersion))
+  }
+  // Timeline nodes are v36-only.
+  if (value.type === 'timeline') {
+    if (inputVersion < 36) return false
+    return hasKeysWithOptionals(value, TIMELINE_NODE_KEYS, optionalKeysFor('timeline', inputVersion))
   }
   return false
 }
@@ -980,6 +993,26 @@ function normalizeStrictSceneNode(
     }
   }
 
+  // Timeline nodes are v36-only: 2–8 labelled entries down a spine, with an
+  // optional accent colour.
+  if (value.type === 'timeline') {
+    if (inputVersion < 36) return null
+    if (!isValidTimelineItems(value.items)) return null
+    if ('accent' in value && !isHexColor(value.accent)) return null
+    const timelineAppearance = cloneStrictAppearance(value, inputVersion)
+    if (!timelineAppearance) return null
+    return {
+      ...geometry,
+      type: 'timeline',
+      items: (value.items as TimelineItem[]).map((item) => ({
+        text: item.text,
+        ...('label' in item ? { label: item.label } : {}),
+      })),
+      ...('accent' in value ? { accent: value.accent as string } : {}),
+      ...timelineAppearance,
+    }
+  }
+
   return null
 }
 
@@ -1058,7 +1091,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 35,
+    documentVersion: 36,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1220,6 +1253,10 @@ export function normalizeFreeformDocumentV33(value: unknown): FreeformDocument |
 }
 
 /** Strictly validates an already-v34 document (v34 adds the table element). */
+export function normalizeFreeformDocumentV36(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 36)
+}
+
 export function normalizeFreeformDocumentV35(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 35)
 }
@@ -1495,6 +1532,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v21 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 36) return normalizeFreeformDocumentV36(value)
   if (value.documentVersion === 35) return normalizeFreeformDocumentV35(value)
   if (value.documentVersion === 34) return normalizeFreeformDocumentV34(value)
   if (value.documentVersion === 33) return normalizeFreeformDocumentV33(value)
@@ -1578,7 +1616,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 35,
+    documentVersion: 36,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1611,7 +1649,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 35,
+    documentVersion: 36,
     activeSlideId: document.activeSlideId,
     slides,
   }

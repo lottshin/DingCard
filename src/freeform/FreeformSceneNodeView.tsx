@@ -9,6 +9,7 @@ import { bubbleClipPath, starClipPath } from './shapeGeometry'
 import { QR_ECL_DEFAULT, QR_QUIET_ZONE_DEFAULT } from './qrCode'
 import { barChartGeometry, lineChartGeometry, radarChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
 import { tableGeometry } from './tables'
+import { timelineGeometry } from './timeline'
 import { qrMatrix, qrModulePaths } from './qrMatrix'
 import { sceneFilterCss } from './appearance'
 import { fitPathData, pathStrokeScale } from './pathData'
@@ -745,6 +746,65 @@ function SceneLeafContent({
             </text>
           ) : null,
         )}
+      </svg>
+    )
+  }
+
+  if (leaf.type === 'timeline') {
+    // The timeline draws its spine and dots in one accent, its words in ink.
+    const accentColor = leaf.accent ?? '#1d4ed8'
+    const inkColor = '#3f3f46'
+    const timeline = timelineGeometry(leaf.width, leaf.height, leaf.items)
+    const labelSize = Math.max(8, Math.round(timeline.fontSize * 0.78))
+    return (
+      <svg
+        className={presentationOnly ? 'freeform-preview-timeline' : 'freeform-timeline'}
+        data-testid={presentationOnly ? undefined : 'freeform-timeline'}
+        viewBox={`0 0 ${Math.max(1, leaf.width)} ${Math.max(1, leaf.height)}`}
+        aria-hidden="true"
+        style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
+      >
+        <line
+          data-testid="freeform-timeline-spine"
+          x1={timeline.spine.x}
+          y1={timeline.spine.y1}
+          x2={timeline.spine.x}
+          y2={timeline.spine.y2}
+          stroke={accentColor}
+          strokeWidth={2}
+          opacity={0.35}
+        />
+        {timeline.entries.map((entry, index) => (
+          <g key={index}>
+            <circle data-testid="freeform-timeline-dot" cx={timeline.spine.x} cy={entry.dotY} r={5} fill={accentColor} />
+            {entry.label && (
+              <text
+                data-testid="freeform-timeline-label"
+                x={entry.label.x}
+                y={entry.label.y}
+                fontFamily="inherit"
+                fontSize={labelSize}
+                fontWeight={600}
+                fill={accentColor}
+              >
+                {entry.label.text}
+              </text>
+            )}
+            {entry.textLines.map((line, lineIndex) => (
+              <text
+                key={lineIndex}
+                data-testid="freeform-timeline-text"
+                x={line.x}
+                y={line.y}
+                fontFamily="inherit"
+                fontSize={timeline.fontSize}
+                fill={inkColor}
+              >
+                {line.text}
+              </text>
+            ))}
+          </g>
+        ))}
       </svg>
     )
   }

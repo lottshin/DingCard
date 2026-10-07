@@ -72,7 +72,7 @@ export interface TableGeometry {
 
 const CJK = /[\u3400-\u9fff\u3000-\u303f\uff00-\uffef]/
 
-function wrapCellLines(text: string, fontSize: number, maxWidth: number): string[] {
+export function wrapCellLines(text: string, fontSize: number, maxWidth: number): string[] {
   if (text === '') return []
   const perLine = Math.max(1, Math.floor(maxWidth / (fontSize * 1.02)))
   const lines: string[] = []

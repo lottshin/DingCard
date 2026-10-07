@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v35 校验：需要 documentVersion=1–35 之一（旧版自动迁移为 v35）、非空 slides、'
+  '文档未通过自由画布 v36 校验：需要 documentVersion=1–36 之一（旧版自动迁移为 v36）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -36,7 +36,7 @@ export function validateDocument(value: unknown): ValidateResult {
 export interface NodeSummary {
   id: string
   name: string
-  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table' | 'group'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table' | 'timeline' | 'group'
   x: number
   y: number
   rotation: number
@@ -85,6 +85,10 @@ export interface NodeSummary {
   stripeFill?: string
   /** A table's relative column weights (v35), one per column; absent splits evenly. */
   colWidths?: number[]
+  /** A timeline's entries (v36): 2–8 of them, each an optional short label and its text. */
+  items?: Array<{ label?: string; text: string }>
+  /** A timeline's spine and dot colour (v36); absent keeps the blue accent. */
+  accent?: string
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
@@ -204,6 +208,16 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       ...(node.headerFill !== undefined ? { headerFill: node.headerFill } : {}),
       ...(node.stripeFill !== undefined ? { stripeFill: node.stripeFill } : {}),
       ...(node.colWidths !== undefined ? { colWidths: [...node.colWidths] } : {}),
+    }
+  }
+  if (node.type === 'timeline') {
+    return {
+      ...leaf,
+      items: node.items.map((item) => ({
+        text: item.text,
+        ...('label' in item ? { label: item.label } : {}),
+      })),
+      ...(node.accent !== undefined ? { accent: node.accent } : {}),
     }
   }
   if (node.type === 'path') {

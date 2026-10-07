@@ -439,6 +439,12 @@ export function ShapePreviewIcon({ shape, ...props }: IconProps & { shape: strin
         <path d="M4 12.7h24M4 19.3h24M12 6v20M20 6v20" />
       </g>
     ),
+    timeline: (
+      <g fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+        <path d="M8 5v22" />
+        <path d="M8 8.5h14M8 16h10M8 23.5h13" />
+      </g>
+    ),
     line: <path d="M5 27 27 5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />,
     arrow: (
       <g fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
