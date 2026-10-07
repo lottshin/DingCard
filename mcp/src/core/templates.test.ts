@@ -33,9 +33,9 @@ describe('listTemplates', () => {
     }
   })
 
-  test('freeform template ids cover the eight decks, poster ids the twenty-one posters', () => {
+  test('freeform template ids cover the eight decks, poster ids the twenty-two posters', () => {
     expect(freeformTemplateIds()).toHaveLength(8)
-    expect(posterTemplateIds()).toHaveLength(27)
+    expect(posterTemplateIds()).toHaveLength(28)
   })
 
   test('says what each template makes and the size it is drawn at, and what a poster has room for', () => {
@@ -49,6 +49,7 @@ describe('listTemplates', () => {
       posterCapacity: { recipient: true, details: 2 },
     })
     expect(templates.find((template) => template.id === 'timetable-freeform')!.posterCapacity!.table).toEqual({ maxRows: 12, maxColumns: 8 })
+    expect(templates.find((template) => template.id === 'compare-table-freeform')!.posterCapacity!.table).toEqual({ maxRows: 12, maxColumns: 6 })
     expect(templates.find((template) => template.id === 'menu-freeform')!.posterCapacity!.details).toBe(8)
     expect(templates.find((template) => template.id === 'data-roundup-freeform')!.posterCapacity!.chart).toBe(true)
     expect(templates.find((template) => template.id === 'moments-grid-freeform')).toMatchObject({ format: { id: 'moments-grid', width: 3240, height: 3240 } })

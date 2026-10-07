@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { FreeformImageElement, FreeformShapeElement, FreeformTextElement } from '../../../src/freeform/types'
+import type { FreeformImageElement, FreeformShapeElement, FreeformTableElement, FreeformTextElement } from '../../../src/freeform/types'
 import { composePoster, normalizePosterContent } from './poster'
 import { templateMarks } from './layoutIssues'
 import { posterTemplateIds } from './templates'
@@ -241,6 +241,44 @@ describe('composePoster', () => {
     expect(wide.summary.unplaced).toEqual(['第 1 行第 9 列：第9列', '第 1 行第 10 列：第10列'])
     expect(compose('talk-poster-freeform', { title: '讲座', table: [['a']] }).summary.unused).toEqual(['table'])
     expect(normalizePosterContent({ title: 'a', table: ['语文'] })).toContain('table')
+  })
+
+  test('refills the compare poster\'s table element at the content\'s size', () => {
+    const table = [
+      ['对比项', '自己装', '找师傅'],
+      ['费用', '0 元', '150 元'],
+      ['耗时', '一整天', '两小时'],
+    ]
+    const result = compose('compare-table-freeform', { title: '装灯泡，要不要请师傅', body: '手残党还是请师傅吧', table })
+    const element = named(result, '对比表') as FreeformTableElement
+    expect(element.rows).toBe(3)
+    expect(element.cols).toBe(3)
+    expect(element.cells).toEqual(['对比项', '自己装', '找师傅', '费用', '0 元', '150 元', '耗时', '一整天', '两小时'])
+    // The template's stripes and default header stay as drawn.
+    expect(element.striped).toBe(true)
+    expect(element.headerRow).toBeUndefined()
+
+    // Ragged rows fill out to the widest row, and a middle row of blanks keeps its place.
+    const ragged = compose('compare-table-freeform', { title: '对比', table: [['只有一行', '两格'], [], ['第三行']] })
+    const raggedElement = named(ragged, '对比表') as FreeformTableElement
+    expect(raggedElement.rows).toBe(3)
+    expect(raggedElement.cols).toBe(2)
+    expect(raggedElement.cells).toEqual(['只有一行', '两格', '', '', '第三行', ''])
+
+    // Columns past the element's six-column ceiling land in unplaced.
+    const over = compose('compare-table-freeform', {
+      title: '对比',
+      table: [
+        Array.from({ length: 7 }, (_, index) => `第${index + 1}列`),
+        Array.from({ length: 7 }, (_, index) => `${index + 1}`),
+      ],
+    })
+    expect(over.summary.unplaced).toEqual(['第 1 行第 7 列：第7列', '第 2 行第 7 列：7'])
+
+    // Without table content the template's own table stays, like a kept illustration.
+    const kept = compose('compare-table-freeform', { title: '怎么选，看这张表' })
+    const keptElement = named(kept, '对比表') as FreeformTableElement
+    expect(keptElement.cells).toContain('12 元/月')
   })
 
   test('keeps the list card only with lines on it, and an illustration that is the design itself', () => {

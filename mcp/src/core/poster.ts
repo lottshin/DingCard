@@ -6,6 +6,7 @@
 
 import { createDefaultImageFraming } from '../../../src/freeform/imageFraming'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
+import { TABLE_CELL_MAX_CHARS, TABLE_COLS_MAX, TABLE_ROWS_MAX } from '../../../src/freeform/tables'
 import type { FreeformDocument, FreeformSceneNode, FreeformTextElement } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_POSTER_SLOTS, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
@@ -273,6 +274,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   // The chart is filled from its own content: the template's labels set the
   // point count unless the content brings its own.
   const charted = new Map<string, FreeformSceneNode>()
+  const tabled = new Map<string, FreeformSceneNode>()
   if (slots.chart) {
     const node = slide.nodes.find((candidate) => candidate.name === slots.chart!.node)
     if (node?.type === 'chart') {
@@ -315,7 +317,29 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   // A table is drawn again at the content's own size: as many rows and columns as given, filling the same space.
   let tableAt = -1
   const tableCells: FreeformSceneNode[] = []
-  if (slots.table) {
+  if (slots.tableElement) {
+    const node = slide.nodes.find((candidate) => candidate.name === slots.tableElement!.node)
+    if (node?.type === 'table') {
+      if (content.table) {
+        // The element keeps its own limits: 12 rows, 6 columns, 24 characters a
+        // cell; ragged rows fill out to the widest and a lone row pads to two.
+        const cols = Math.min(TABLE_COLS_MAX, Math.max(...content.table.map((row) => row.length)))
+        const rows = content.table.slice(0, TABLE_ROWS_MAX).map((row) => [...row])
+        while (rows.length < 2) rows.push([])
+        const cells: string[] = []
+        for (const row of rows) {
+          for (let col = 0; col < cols; col += 1) cells.push((row[col] ?? '').slice(0, TABLE_CELL_MAX_CHARS))
+        }
+        content.table.forEach((row, rowIndex) => row.forEach((cell, column) => {
+          if (cell && (rowIndex >= TABLE_ROWS_MAX || column >= TABLE_COLS_MAX)) unplaced.push(`第 ${rowIndex + 1} 行第 ${column + 1} 列：${cell}`)
+        }))
+        tabled.set(node.name, { ...node, rows: rows.length, cols, cells })
+      }
+      // Without table content the template's table stays, like a kept illustration.
+    } else if (content.table) {
+      unused.push('table')
+    }
+  } else if (slots.table) {
     const { layout, sample } = slots.table
     const cells = content.table ?? sample.map((row) => row.map(() => ''))
     const shape = tableShape(layout, cells)
@@ -347,6 +371,8 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     if (picture) return [picture]
     const chart = charted.get(node.name)
     if (chart) return [chart]
+    const table = tabled.get(node.name)
+    if (table) return [table]
     if (node.type !== 'text') return [node]
     const text = texts.get(node.name)
     if (text === undefined) return [node]

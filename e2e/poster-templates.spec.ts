@@ -20,7 +20,7 @@ test('the gallery filters templates by size, and a poster opens as one page at i
 
   await dialog.getByTestId('template-format-story').click()
   await expect(dialog.getByTestId('template-format-story')).toHaveAttribute('aria-pressed', 'true')
-  await expect(dialog.locator('.template-tile')).toHaveCount(10)
+  await expect(dialog.locator('.template-tile')).toHaveCount(11)
   await expect(dialog.locator('.template-detail-series')).toHaveText('价目表')
   // The preview keeps the 9:16 page's proportions.
   const preview = await dialog.locator('.template-tile').first().locator('.template-freeform-preview').boundingBox()
@@ -89,6 +89,7 @@ for (const [templateId, size, words] of [
   ['certificate-freeform', 'A4 横 · 1754×1240px', ['荣誉证书', '林一']],
   ['menu-freeform', 'A4 · 1240×1754px', ['今日菜单', '燕麦拿铁']],
   ['note-cover-freeform', '3:4 · 1080×1440px', ['干货分享']],
+  ['compare-table-freeform', '9:16 · 1080×1920px', ['怎么选，看这张表', '12 元/月']],
 ] as const) {
   test(`${templateId} opens at its size with its words`, async ({ page }) => {
     await page.goto(`/#/edit/canvas/template/${templateId}`)

@@ -4,6 +4,7 @@ import type {
   BlendMode,
   ColorPaint,
   FreeformChartElement,
+  FreeformTableElement,
   FreeformDocument,
   FreeformQrCodeElement,
   FreeformSceneNode,
@@ -1181,6 +1182,47 @@ function chartNode(
   }
 }
 
+function tableNode(
+  cells: readonly (readonly string[])[],
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: {
+    name?: string
+    striped?: boolean
+    headerRow?: boolean
+    rotation?: number
+    opacity?: number
+  } = {},
+): FreeformTableElement {
+  const rows = cells.length
+  const cols = Math.max(...cells.map((row) => row.length))
+  const flat: string[] = []
+  for (const row of cells) {
+    for (let col = 0; col < cols; col += 1) flat.push(row[col] ?? '')
+  }
+  return {
+    id: uuid(),
+    name: options.name ?? '表格',
+    locked: false,
+    hidden: false,
+    type: 'table',
+    x,
+    y,
+    width,
+    height,
+    rotation: options.rotation ?? 0,
+    scale: 1,
+    rows,
+    cols,
+    cells: flat,
+    ...(options.headerRow === false ? { headerRow: false } : {}),
+    ...(options.striped ? { striped: true } : {}),
+    ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
+  }
+}
+
 function createTalkPosterDocument(): FreeformDocument {
   const paper = '#f2efe8'
   const ink = '#141414'
@@ -1761,6 +1803,34 @@ function createDataRoundupDocument(): FreeformDocument {
   ])
 }
 
+function createCompareTableDocument(): FreeformDocument {
+  const paper = '#f6f4ee'
+  const ink = '#1f2937'
+  const green = '#0f766e'
+  const muted = '#78716c'
+  return documentFromSlides([
+    slide('对比表', solid(paper), [
+      shapeNode('rect', 80, 560, 920, 900, solid('#ffffff'), { name: '表格卡', cornerRadius: 48, shadow: { color: '#d8d3c4', blur: 40, offsetX: 0, offsetY: 18 } }),
+      textNode('HOW TO CHOOSE', 80, 104, 400, 60, {
+        name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
+        effect: { type: 'background', color: green, amount: 44, radius: 8 },
+      }),
+      textNode('怎么选，看这张表', 80, 204, 920, 160, { name: '标题', fontSize: 92, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('两款笔记 App 的功能对比', 80, 436, 920, 64, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      tableNode([
+        ['对比项', '甲 App', '乙 App'],
+        ['价格', '免费', '12 元/月'],
+        ['离线', '支持', '不支持'],
+        ['导出', 'Markdown', 'PDF'],
+        ['同步', '手动', '自动'],
+      ], 140, 640, 800, 740, { name: '对比表', striped: true }),
+      lineNode(80, 1488, 920, '#e5dfce', 2, { name: '分隔线', cap: 'butt' }),
+      textNode('最后选了乙 App：自动同步省心', 80, 1516, 920, 60, { name: '结论', fontSize: 40, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode('@叮卡工作室', 80, 1796, 920, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),
+    ], STORY),
+  ])
+}
+
 function createSkillRadarDocument(): FreeformDocument {
   const night = '#171b3a'
   const cream = '#eef0fb'
@@ -2083,6 +2153,7 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   timetable: poster('课程表', '表格按科目自动配色，适合学校课程表、培训排课和每周计划。', ['课程表', '学校'], 'a4-landscape'),
   'contact-card': poster('联系卡', '姓名配联系方式和一张带 logo 的圆角二维码，扫一下就能存下名片，适合个人名片和工作室联系页。', ['名片', '联系'], 'square'),
   'data-roundup': poster('数据盘点', '大标题配一张双系列对比柱状图和三个大数字，适合年度盘点、月度总结和数据海报。', ['盘点', '数据'], 'story'),
+  'compare-table': poster('对比表', '大标题配一张斑马纹表格，一行一行比下去，适合产品对比、方案选择和清单式总结。', ['对比', '清单'], 'story'),
   'follow-card': poster('关注引导', '圆点二维码配爱心和关注按钮，适合涨粉海报、主页引导和活动招募。', ['涨粉', '关注'], 'square'),
   'trend-compare': poster('趋势对比', '百分比堆叠柱看占比变化，适合渠道结构、预算分配和人群构成对比。', ['占比', '趋势'], 'story'),
   'polaroid-wall': poster('拍立得墙', '三张带白框的拍立得照片斜着排开，配手记小字，适合探店、旅行和日常记录。', ['拼贴', '手记'], 'xhs'),
@@ -2121,6 +2192,7 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   timetable: createTimetableDocument,
   'contact-card': createContactCardDocument,
   'data-roundup': createDataRoundupDocument,
+  'compare-table': createCompareTableDocument,
   'skill-radar': createSkillRadarDocument,
   'time-split': createTimeSplitDocument,
   'birthday-card': createBirthdayCardDocument,
@@ -2165,6 +2237,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'flyer',
   'contact-card',
   'data-roundup',
+  'compare-table',
   'follow-card',
   'trend-compare',
   'polaroid-wall',

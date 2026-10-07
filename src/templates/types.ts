@@ -38,6 +38,7 @@ export type FreeformPosterSeriesId =
   | 'timetable'
   | 'contact-card'
   | 'data-roundup'
+  | 'compare-table'
   | 'follow-card'
   | 'trend-compare'
   | 'polaroid-wall'

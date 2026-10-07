@@ -334,6 +334,9 @@ export interface PosterSlots {
   titleFlow?: { pinned?: readonly string[] }
   /** A grid of cells: row 0 is the column headings, column 0 the row labels (a timetable). */
   table?: PosterTable
+  /** A v34 table element: filled with `table` content (row 0 is the header);
+   *  without it the template's own stays, like a kept illustration. */
+  tableElement?: { node: string }
   /** The call to action, with the button drawn behind it. */
   cta?: SlotItem
   /** The chart: filled with `chart` content (labels and series); without it
@@ -534,6 +537,14 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     chart: { node: '图表' },
   },
+  'compare-table': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    body: { text: '结论' },
+    brand: { text: '品牌' },
+    tableElement: { node: '对比表' },
+  },
   'follow-card': {
     title: '标题',
     subtitle: { text: '副标题' },
@@ -611,6 +622,7 @@ export function posterSlotNames(slots: PosterSlots): string[] {
   names.push(...(slots.detailsExtras ?? []))
   if (slots.image) names.push(slots.image.node, ...(slots.image.extras ?? []))
   if (slots.chart) names.push(slots.chart.node)
+  if (slots.tableElement) names.push(slots.tableElement.node)
   if (slots.table) {
     const cells = tableCellNames(slots.table.layout, slots.table.sample)
     names.push(...cells.blocks, ...cells.texts)

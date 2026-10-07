@@ -715,6 +715,109 @@ describe('applyActions', () => {
     expect(keptChart && keptChart.type === 'chart' ? keptChart.labels : []).toEqual(['住', '行', '吃'])
   })
 
+  test('applies the v34 table patches through node actions', () => {
+    const withTable = seedDocument()
+    withTable.slides[0].nodes.push({
+      id: 'table-1',
+      name: '表格',
+      locked: false,
+      hidden: false,
+      type: 'table',
+      x: 120,
+      y: 900,
+      width: 480,
+      height: 320,
+      rotation: 0,
+      scale: 1,
+      rows: 3,
+      cols: 3,
+      cells: ['项目', '本月', '上月', '阅读', '1.2万', '9800', '涨粉', '320', '210'],
+    })
+    const valid = validateDocument(withTable)
+    expect(valid.ok).toBe(true)
+    if (!valid.ok) return
+
+    // The v34 style switches stamp, ride in the summary, and clear on null.
+    const styled = applyActions(valid.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { headerRow: false, striped: true } }],
+      },
+    ])
+    expect(styled.ok).toBe(true)
+    if (!styled.ok) return
+    const styledTable = styled.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(styledTable && styledTable.type === 'table' ? styledTable.headerRow : undefined).toBe(false)
+    expect(styledTable && styledTable.type === 'table' ? styledTable.striped : undefined).toBe(true)
+    const summary = inspectDocument(styled.document)
+    if (!summary.ok) throw new Error(summary.error)
+    expect(summary.slides[0].nodes.find((node) => node.id === 'table-1'))
+      .toMatchObject({ type: 'table', headerRow: false, striped: true })
+    const restored = applyActions(styled.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { headerRow: null, striped: null } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { headerRow: 'no' } }],
+      },
+    ])
+    expect(restored.ok).toBe(true)
+    if (!restored.ok) return
+    expect(restored.changes).toEqual([true, false])
+    const clearedTable = restored.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(clearedTable && clearedTable.type === 'table'
+      ? 'headerRow' in clearedTable || 'striped' in clearedTable
+      : true).toBe(false)
+
+    // A bare resize keeps every cell that still has a place; new cells stay empty.
+    const resized = applyActions(valid.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { rows: 2, cols: 4 } }],
+      },
+    ])
+    expect(resized.ok).toBe(true)
+    if (!resized.ok) return
+    const resizedTable = resized.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(resizedTable && resizedTable.type === 'table' ? [resizedTable.rows, resizedTable.cols] : [])
+      .toEqual([2, 4])
+    expect(resizedTable && resizedTable.type === 'table' ? resizedTable.cells : [])
+      .toEqual(['项目', '本月', '上月', '', '阅读', '1.2万', '9800', ''])
+
+    // A wholesale cells patch replaces the grid in one step.
+    const replaced = applyActions(resized.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { cells: ['指标', 'A', 'B', 'C', '一月', '10', '20', '30'] } }],
+      },
+    ])
+    expect(replaced.ok).toBe(true)
+    if (!replaced.ok) return
+    const replacedTable = replaced.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(replacedTable && replacedTable.type === 'table' ? replacedTable.cells : [])
+      .toEqual(['指标', 'A', 'B', 'C', '一月', '10', '20', '30'])
+
+    // A ragged cells array rejects the patch and keeps the table as-is.
+    const rejected = applyActions(replaced.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { cells: ['指标', 'A'] } }],
+      },
+    ])
+    expect(rejected.ok).toBe(true)
+    if (!rejected.ok) return
+    const keptTable = rejected.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(keptTable && keptTable.type === 'table' ? keptTable.cells.length : 0).toBe(8)
+  })
+
   test('applies the v30 quiet-zone patch and surfaces it in summaries', () => {
     const withQr = seedDocument()
     withQr.slides[0].nodes.push({
