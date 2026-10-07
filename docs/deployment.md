@@ -145,6 +145,20 @@ curl -f https://dingcard.example.com/api/health
 docker compose up -d --force-recreate app
 ```
 
+## 在线图库（可选）
+
+编辑器图片抽屉里的「图库」面板可以搜索并导入在线图片。搜索与下载全部由后端代理：密钥只写在服务端 `.env` 里，不会进前端构建，也不会打进镜像。
+
+| 变量 | 用途 |
+|---|---|
+| `PIXABAY_KEY` | Pixabay API 密钥，见 <https://pixabay.com/api/docs/>。留空 = 不启用。 |
+| `UNSPLASH_KEY` | Unsplash Access Key，见 <https://unsplash.com/developers/>。留空 = 不启用。 |
+| `PEXELS_KEY` | Pexels API 密钥，见 <https://www.pexels.com/api/>。留空 = 不启用。 |
+
+三个源全部留空时，面板自动降级到 Openverse——它不需要密钥，只返回 CC0 / 公有领域授权的图片，可商用且无需署名。填了任意一个密钥后，该源会出现在面板的来源选择里，Openverse 始终可用作兜底。
+
+导入的图片与直接上传走同一条管线：服务端下载、校验 MIME 与大小、计入该用户配额、落盘 `/data/uploads`。修改 `.env` 中的密钥后同样需要 `docker compose up -d --force-recreate app` 生效。
+
 ## 备份
 
 数据库使用 SQLite WAL。为了得到一致的数据库和图片快照，备份时先停止 `app`。下面的命令从 `app` 容器动态取得实际卷名，不依赖仓库所在目录的名称。

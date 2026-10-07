@@ -190,6 +190,18 @@ POST /api/images/retain   { urls: string[] }          → { retained: number }
 - **降采样仍在前端做**（现有 `downscaleDataUrl` 保留）：Markdown 粘图默认限制到 1200px，自由编辑图片与形状填充限制到 1800px，上传前先缩图以节省带宽和磁盘。
 - 图片按 `/uploads/<id>.jpg` 存盘,`url` 直接可作 `<img src>`。Fastify static 在开发、联调和生产都提供该路径。
 
+### 在线图库
+```
+GET /api/stock/sources   → { sources: [{ id, label, available }], preferred }
+GET /api/stock/search?q=&source=&page=   → { source, page, total, results: [{ id, thumb, width, height, author }] }
+POST /api/stock/import   { source, id }  → { ref: "img:<id>", url: "/uploads/<id>.jpg", alt }
+```
+- 编辑器「图库」面板的后端代理：Pixabay / Unsplash / Pexels 的 API 密钥只存服务端环境变量（`PIXABAY_KEY` / `UNSPLASH_KEY` / `PEXELS_KEY`），浏览器不接触密钥；Openverse 无需密钥，只搜 CC0 / 公有领域授权图片，始终可用作兜底，全部未配置时 `preferred` 为 `openverse`。
+- 搜索：`q` 去掉首尾空白后需 1~100 字符，否则 400 + `STOCK_INVALID_QUERY`；`source` 缺省用 `preferred`，未知来源 400 + `STOCK_UNKNOWN_SOURCE`，未配置密钥 400 + `STOCK_SOURCE_UNCONFIGURED`；`page` 收敛到 1~50。上游失败统一 502 + `STOCK_UPSTREAM_ERROR`。
+- 导入只接受 `{ source, id }`：服务端用提供方自己的接口把 id 解析成原图 URL 后自行下载，**从不下载客户端传来的 URL**（SSRF 防护）；id 还必须匹配提供方的格式（数字 / slug），否则 400 + `STOCK_INVALID_ID`。
+- 下载经与上传同样的校验与落盘管线：MIME 不在 png/jpeg/webp 白名单 415 + `STOCK_UNSUPPORTED_TYPE`，超过 `MAX_UPLOAD_BYTES` 413 + `STOCK_IMAGE_TOO_LARGE`（`Content-Length` 先行拒绝，实际字节数复核），配额超限 413 + `IMAGE_QUOTA_EXCEEDED`；同一把资源锁覆盖「GC → 配额检查 → 持久化」。`alt` 为 `来源 · 作者` 的署名文案。
+- 三个路由都在 `images` 作用域内（API 令牌需带 `images`）。
+
 ### 素材库
 ```
 GET    /api/assets        → Asset[]   (只返回当前用户的,按 created_at 倒序)

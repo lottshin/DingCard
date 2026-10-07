@@ -19,6 +19,7 @@ import deckRoutes from './routes/decks.js'
 import draftRoutes from './routes/drafts.js'
 import imageRoutes from './routes/images.js'
 import shareRoutes from './routes/shares.js'
+import stockRoutes from './routes/stock.js'
 import tokenRoutes from './routes/tokens.js'
 import { registerSharePage } from './sharePage.js'
 import { registerStaticSite } from './staticSite.js'
@@ -106,6 +107,14 @@ export async function buildApp({
     })
     await app.register(imageRoutes, {
       prefix: '/api/images',
+      assetLock,
+      config: appConfig,
+      stmts: appStmts,
+      reclaimImages,
+    })
+
+    await app.register(stockRoutes, {
+      prefix: '/api/stock',
       assetLock,
       config: appConfig,
       stmts: appStmts,

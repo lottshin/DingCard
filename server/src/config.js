@@ -71,6 +71,13 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
 
+  // Stock library API keys (Pixabay / Unsplash / Pexels). Server-side only —
+  // the browser never sees them. Each source turns on only when its key is
+  // set; Openverse needs no key and stays available as the fallback.
+  pixabayKey: (process.env.PIXABAY_KEY || '').trim(),
+  unsplashKey: (process.env.UNSPLASH_KEY || '').trim(),
+  pexelsKey: (process.env.PEXELS_KEY || '').trim(),
+
   // The operator dashboard token. Unset = the /admin page and /api/admin/stats
   // are not registered at all, so a deployment that never opted in exposes nothing.
   adminToken: (process.env.DINGCARD_ADMIN_TOKEN || '').trim(),
