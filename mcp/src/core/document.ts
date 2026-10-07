@@ -77,7 +77,7 @@ export interface NodeSummary {
   headerRow?: boolean
   /** A table's zebra stripes (v34): `true` shades alternating body rows. */
   striped?: boolean
-  /** A table's ink for text and grid lines (v35); absent keeps the default gray. */
+  /** A table's ink for text and grid lines (v35); a timeline's text colour (v37); absent keeps the defaults. */
   ink?: string
   /** A table's header fill (v35); absent tints the ink. */
   headerFill?: string
@@ -91,8 +91,6 @@ export interface NodeSummary {
   accent?: string
   /** The timeline's entries side by side (v37); absent runs them down the left spine. */
   horizontal?: boolean
-  /** A timeline's text colour (v37); absent keeps the dark grey ink. */
-  ink?: string
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */

@@ -96,4 +96,45 @@ test('edits entries and recolors the spine in the inspector', async ({ page }) =
   await expect(timeline.locator('[data-testid="freeform-timeline-dot"]').first()).toHaveAttribute('fill', '#0f766e')
   await page.getByTestId('timeline-accent-reset').click()
   await expect(timeline.locator('[data-testid="freeform-timeline-spine"]')).toHaveAttribute('stroke', '#1d4ed8')
+
+  // The ink recolors the entries' words; 恢复默认 returns to the grey.
+  await page.getByRole('button', { name: '墨色', exact: true }).click()
+  const inkHex = page.getByLabel('墨色 自定义 HEX', { exact: true })
+  await inkHex.fill('#1f2937')
+  await inkHex.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(timeline.locator('[data-testid="freeform-timeline-text"]').first()).toHaveAttribute('fill', '#1f2937')
+  await page.getByTestId('timeline-ink-reset').click()
+  await expect(timeline.locator('[data-testid="freeform-timeline-text"]').first()).toHaveAttribute('fill', '#3f3f46')
+  await expect(page.getByTestId('timeline-ink-reset')).toHaveCount(0)
+})
+
+test('turns the timeline horizontal in the inspector', async ({ page }) => {
+  await openFreeform(page)
+  await insertTimeline(page)
+  const timeline = page.getByTestId('freeform-timeline')
+
+  // The fresh sample runs down a left spine: a tall line beside left-anchored words.
+  await expect(page.getByTestId('timeline-direction-vertical')).toHaveAttribute('aria-pressed', 'true')
+  const spine = timeline.locator('[data-testid="freeform-timeline-spine"]')
+  await expect(spine).toHaveAttribute('x1', '14')
+  await expect(spine).toHaveAttribute('x2', '14')
+  await expect(timeline.locator('[data-testid="freeform-timeline-label"]').first()).toHaveAttribute('text-anchor', 'start')
+
+  // 横排 lays the spine along the top with the entries side by side, centred.
+  await page.getByTestId('timeline-direction-horizontal').click()
+  await expect(page.getByTestId('timeline-direction-horizontal')).toHaveAttribute('aria-pressed', 'true')
+  await expect(spine).toHaveAttribute('y1', '14')
+  await expect(spine).toHaveAttribute('y2', '14')
+  const firstDot = timeline.locator('[data-testid="freeform-timeline-dot"]').first()
+  const dotX = Number(await firstDot.getAttribute('cx'))
+  expect(dotX).toBeGreaterThan(0)
+  await expect(timeline.locator('[data-testid="freeform-timeline-label"]').first()).toHaveAttribute('text-anchor', 'middle')
+  // The words stay under the spine, next to their dots.
+  const labelY = Number(await timeline.locator('[data-testid="freeform-timeline-label"]').first().getAttribute('y'))
+  expect(labelY).toBeGreaterThan(14)
+  // The horizontal switch is one history step: undo returns to the vertical spine.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(spine).toHaveAttribute('x1', '14')
+  await expect(spine).toHaveAttribute('x2', '14')
 })

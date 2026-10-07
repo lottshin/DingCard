@@ -9048,7 +9048,28 @@ export function FreeformWorkspace({
 
                   {isTimelineElement(selectedElement) && (
                     <InspectorSection title={t('时间线')} testId="inspector-timeline">
-                      <div className="field-label">{t('主线颜色')}</div>
+                      <div className="field-label">{t('方向')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('方向')}>
+                        <button
+                          type="button"
+                          className={selectedElement.horizontal !== true ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.horizontal !== true}
+                          data-testid="timeline-direction-vertical"
+                          onClick={() => updateSelectedStyle({ horizontal: selectedElement.horizontal === true ? false : null })}
+                        >
+                          {t('竖排')}
+                        </button>
+                        <button
+                          type="button"
+                          className={selectedElement.horizontal === true ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.horizontal === true}
+                          data-testid="timeline-direction-horizontal"
+                          onClick={() => updateSelectedStyle({ horizontal: true })}
+                        >
+                          {t('横排')}
+                        </button>
+                      </div>
+                      <div className="field-label with-gap">{t('颜色')}</div>
                       <div className="paint-row" data-testid="timeline-colors">
                         <ColorPickerButton
                           label={t('主线颜色')}
@@ -9062,6 +9083,22 @@ export function FreeformWorkspace({
                             className="ghost"
                             data-testid="timeline-accent-reset"
                             onClick={() => updateSelectedStyle({ accent: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                        <ColorPickerButton
+                          label={t('墨色')}
+                          color={selectedElement.ink ?? '#3f3f46'}
+                          testId="timeline-ink-color"
+                          onChange={(ink) => updateSelectedStyle({ ink })}
+                        />
+                        {selectedElement.ink !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="timeline-ink-reset"
+                            onClick={() => updateSelectedStyle({ ink: null })}
                           >
                             {t('恢复默认')}
                           </button>
