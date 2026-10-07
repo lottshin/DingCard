@@ -1192,6 +1192,10 @@ function tableNode(
     name?: string
     striped?: boolean
     headerRow?: boolean
+    ink?: string
+    headerFill?: string
+    stripeFill?: string
+    colWidths?: number[]
     rotation?: number
     opacity?: number
   } = {},
@@ -1219,6 +1223,10 @@ function tableNode(
     cells: flat,
     ...(options.headerRow === false ? { headerRow: false } : {}),
     ...(options.striped ? { striped: true } : {}),
+    ...(options.ink !== undefined ? { ink: options.ink } : {}),
+    ...(options.headerFill !== undefined ? { headerFill: options.headerFill } : {}),
+    ...(options.stripeFill !== undefined ? { stripeFill: options.stripeFill } : {}),
+    ...(options.colWidths !== undefined ? { colWidths: [...options.colWidths] } : {}),
     ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
   }
 }
@@ -1823,7 +1831,10 @@ function createCompareTableDocument(): FreeformDocument {
         ['离线', '支持', '不支持'],
         ['导出', 'Markdown', 'PDF'],
         ['同步', '手动', '自动'],
-      ], 140, 640, 800, 740, { name: '对比表', striped: true }),
+      ], 140, 640, 800, 740, {
+        name: '对比表', striped: true, ink: '#1f2937',
+        headerFill: '#e7f6f3', stripeFill: '#f2faf8', colWidths: [1.4, 1, 1],
+      }),
       lineNode(80, 1488, 920, '#e5dfce', 2, { name: '分隔线', cap: 'butt' }),
       textNode('最后选了乙 App：自动同步省心', 80, 1516, 920, 60, { name: '结论', fontSize: 40, textFill: solid(ink), fontWeight: 'bold' }),
       textNode('@叮卡工作室', 80, 1796, 920, 48, { name: '品牌', fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 2 }),

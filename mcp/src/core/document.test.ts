@@ -816,6 +816,76 @@ describe('applyActions', () => {
     if (!rejected.ok) return
     const keptTable = rejected.document.slides[0].nodes.find((node) => node.id === 'table-1')
     expect(keptTable && keptTable.type === 'table' ? keptTable.cells.length : 0).toBe(8)
+
+    // The v35 color overrides stamp, ride in the summary, and clear on null.
+    const colored = applyActions(valid.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { ink: '#0f766e', headerFill: '#ccfbf1', stripeFill: '#f0fdfa' } }],
+      },
+    ])
+    expect(colored.ok).toBe(true)
+    if (!colored.ok) return
+    const coloredTable = colored.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(coloredTable && coloredTable.type === 'table' ? coloredTable.ink : undefined).toBe('#0f766e')
+    expect(coloredTable && coloredTable.type === 'table' ? coloredTable.headerFill : undefined).toBe('#ccfbf1')
+    const colorSummary = inspectDocument(colored.document)
+    if (!colorSummary.ok) throw new Error(colorSummary.error)
+    expect(colorSummary.slides[0].nodes.find((node) => node.id === 'table-1'))
+      .toMatchObject({ type: 'table', ink: '#0f766e', stripeFill: '#f0fdfa' })
+    const uncolored = applyActions(colored.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { ink: null, headerFill: null, stripeFill: null } }],
+      },
+    ])
+    expect(uncolored.ok).toBe(true)
+    if (!uncolored.ok) return
+    const uncoloredTable = uncolored.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(uncoloredTable && uncoloredTable.type === 'table'
+      ? 'ink' in uncoloredTable || 'headerFill' in uncoloredTable || 'stripeFill' in uncoloredTable
+      : true).toBe(false)
+
+    // Column weights replace wholesale, must match the column count, and a
+    // resize remaps the kept columns while a new one takes an even share.
+    const weighted = applyActions(valid.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { colWidths: [2, 1, 1] } }],
+      },
+    ])
+    expect(weighted.ok).toBe(true)
+    if (!weighted.ok) return
+    const weightedTable = weighted.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(weightedTable && weightedTable.type === 'table' ? weightedTable.colWidths : undefined).toEqual([2, 1, 1])
+    const weightSummary = inspectDocument(weighted.document)
+    if (!weightSummary.ok) throw new Error(weightSummary.error)
+    expect(weightSummary.slides[0].nodes.find((node) => node.id === 'table-1'))
+      .toMatchObject({ type: 'table', colWidths: [2, 1, 1] })
+    const mismatchedWeights = applyActions(weighted.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { colWidths: [1, 1] } }],
+      },
+    ])
+    expect(mismatchedWeights.ok).toBe(true)
+    if (!mismatchedWeights.ok) return
+    expect(mismatchedWeights.changes).toEqual([false])
+    const remapped = applyActions(weighted.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['table-1'], patch: { cols: 4 } }],
+      },
+    ])
+    expect(remapped.ok).toBe(true)
+    if (!remapped.ok) return
+    const remappedTable = remapped.document.slides[0].nodes.find((node) => node.id === 'table-1')
+    expect(remappedTable && remappedTable.type === 'table' ? remappedTable.colWidths : undefined).toEqual([2, 1, 1, 1])
   })
 
   test('applies the v30 quiet-zone patch and surfaces it in summaries', () => {

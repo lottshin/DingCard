@@ -77,6 +77,14 @@ export interface NodeSummary {
   headerRow?: boolean
   /** A table's zebra stripes (v34): `true` shades alternating body rows. */
   striped?: boolean
+  /** A table's ink for text and grid lines (v35); absent keeps the default gray. */
+  ink?: string
+  /** A table's header fill (v35); absent tints the ink. */
+  headerFill?: string
+  /** A table's stripe fill (v35); absent tints the ink. */
+  stripeFill?: string
+  /** A table's relative column weights (v35), one per column; absent splits evenly. */
+  colWidths?: number[]
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
@@ -192,6 +200,10 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       cells: node.cells,
       ...(node.headerRow !== undefined ? { headerRow: node.headerRow } : {}),
       ...(node.striped !== undefined ? { striped: node.striped } : {}),
+      ...(node.ink !== undefined ? { ink: node.ink } : {}),
+      ...(node.headerFill !== undefined ? { headerFill: node.headerFill } : {}),
+      ...(node.stripeFill !== undefined ? { stripeFill: node.stripeFill } : {}),
+      ...(node.colWidths !== undefined ? { colWidths: [...node.colWidths] } : {}),
     }
   }
   if (node.type === 'path') {

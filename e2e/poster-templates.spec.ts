@@ -97,3 +97,25 @@ for (const [templateId, size, words] of [
     for (const word of words) await expect(page.getByTestId('freeform-canvas')).toContainText(word)
   })
 }
+
+test('compare-table opens with its colored, weighted columns', async ({ page }) => {
+  await page.goto('/#/edit/canvas/template/compare-table-freeform')
+  const table = page.getByTestId('freeform-table')
+  await expect(table).toBeVisible()
+
+  // The template's v35 colors paint the header, the stripes, and the text.
+  await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('fill', '#e7f6f3')
+  await expect(table.locator('[data-testid="freeform-table-stripe"]').first()).toHaveAttribute('fill', '#f2faf8')
+  await expect(table.locator('[data-testid="freeform-table-cell"]').first()).toHaveAttribute('fill', '#1f2937')
+
+  // The label column takes 1.4 of the 3.4 shares: its border sits past a third of the width.
+  const edges = await table.locator('line').evaluateAll((lines) =>
+    lines
+      .map((line) => ({ x1: Number(line.getAttribute('x1')), x2: Number(line.getAttribute('x2')) }))
+      .filter(({ x1, x2 }) => x1 === x2 && x1 > 0 && x1 < 800)
+      .map(({ x1 }) => x1)
+      .sort((a, b) => a - b),
+  )
+  expect(edges[0]).toBeCloseTo((800 * 1.4) / 3.4, 0)
+  expect(edges[1]).toBeCloseTo(800 - (800 * 1) / 3.4, 0)
+})

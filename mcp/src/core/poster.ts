@@ -333,7 +333,19 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
         content.table.forEach((row, rowIndex) => row.forEach((cell, column) => {
           if (cell && (rowIndex >= TABLE_ROWS_MAX || column >= TABLE_COLS_MAX)) unplaced.push(`第 ${rowIndex + 1} 行第 ${column + 1} 列：${cell}`)
         }))
-        tabled.set(node.name, { ...node, rows: rows.length, cols, cells })
+        // The template's column weights follow the grid: kept columns keep
+        // theirs, a new column gets an even share.
+        const templateWeights = node.colWidths
+        const weights = templateWeights
+          ? Array.from({ length: cols }, (_, index) => index < node.cols ? templateWeights[index] : 1)
+          : undefined
+        tabled.set(node.name, {
+          ...node,
+          rows: rows.length,
+          cols,
+          cells,
+          ...(weights ? { colWidths: weights } : {}),
+        })
       }
       // Without table content the template's table stays, like a kept illustration.
     } else if (content.table) {

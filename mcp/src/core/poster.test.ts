@@ -254,9 +254,21 @@ describe('composePoster', () => {
     expect(element.rows).toBe(3)
     expect(element.cols).toBe(3)
     expect(element.cells).toEqual(['对比项', '自己装', '找师傅', '费用', '0 元', '150 元', '耗时', '一整天', '两小时'])
-    // The template's stripes and default header stay as drawn.
+    // The template's stripes and default header stay as drawn, and its colors
+    // and column weights ride along into the filled table.
     expect(element.striped).toBe(true)
     expect(element.headerRow).toBeUndefined()
+    expect(element.ink).toBe('#1f2937')
+    expect(element.headerFill).toBe('#e7f6f3')
+    expect(element.colWidths).toEqual([1.4, 1, 1])
+
+    // A narrower table remaps the template's column weights; its colors stay.
+    const twoCols = compose('compare-table-freeform', { title: '对比', table: [['只有一行', '两格'], ['第二行', '两格']] })
+    const twoColsElement = named(twoCols, '对比表') as FreeformTableElement
+    expect(twoColsElement.cols).toBe(2)
+    expect(twoColsElement.colWidths).toEqual([1.4, 1])
+    expect(twoColsElement.ink).toBe('#1f2937')
+    expect(twoColsElement.stripeFill).toBe('#f2faf8')
 
     // Ragged rows fill out to the widest row, and a middle row of blanks keeps its place.
     const ragged = compose('compare-table-freeform', { title: '对比', table: [['只有一行', '两格'], [], ['第三行']] })
