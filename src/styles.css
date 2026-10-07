@@ -6111,6 +6111,7 @@ html.theme-anim * {
 }
 
 .template-tile {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -6124,6 +6125,46 @@ html.theme-anim * {
   border-color: var(--accent);
   box-shadow: 0 8px 24px rgba(24, 34, 48, 0.1);
   transform: translateY(-2px);
+}
+
+.template-tile-favorite {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 88%);
+  color: #87878f;
+  cursor: pointer;
+}
+
+.template-tile-favorite svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.template-tile-favorite.on {
+  color: #e11d48;
+}
+
+.template-tile-favorite.on svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.template-tile-favorite:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .template-tile-preview {

@@ -172,6 +172,48 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   await expect(page.locator('.freeform-workspace')).toHaveAttribute('data-history-depth', '0')
 })
 
+test('favorites shortlist templates and follow the browser across reloads', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await openFreeformTemplateGallery(page)
+  const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
+  await expect(dialog.locator('.template-tile')).toHaveCount(34)
+
+  // A heart favorites its tile without picking it; the list itself stays whole.
+  await page.getByTestId('template-favorite-skill-radar-freeform').click()
+  await expect(page.getByTestId('template-favorite-skill-radar-freeform')).toHaveClass(/on/)
+  await page.getByTestId('template-favorite-picks-freeform').click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(34)
+
+  // The 收藏 filter narrows to the hearts, in registry order.
+  await page.getByTestId('template-filter-favorites').click()
+  await expect(page.getByTestId('template-filter-favorites')).toHaveAttribute('aria-pressed', 'true')
+  await expect(dialog.locator('.template-tile')).toHaveCount(2)
+  await expect(dialog.locator('.template-tile h3')).toHaveText(['好物安利', '能力雷达'])
+
+  // A keyword combines with the favorites filter like it does with a size.
+  await page.getByTestId('template-search').fill('雷达')
+  await expect(dialog.locator('.template-tile')).toHaveCount(1)
+  await page.getByTestId('template-search').fill('')
+
+  // Turning the filter off brings the whole list back.
+  await page.getByTestId('template-filter-favorites').click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(34)
+
+  // The hearts live in this browser: a reload keeps the shortlist.
+  await page.reload()
+  await page.waitForSelector('.freeform-workspace')
+  await openFreeformTemplateGallery(page)
+  await page.getByTestId('template-filter-favorites').click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(2)
+
+  // Unfavoriting both hearts empties the shortlist with the filter still on.
+  await page.getByTestId('template-favorite-picks-freeform').click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(1)
+  await page.getByTestId('template-favorite-skill-radar-freeform').click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(0)
+  await expect(page.getByTestId('template-search-empty')).toBeVisible()
+})
+
 test('gallery search narrows the list by keyword and combines with the size filter', async ({ page }) => {
   await page.goto('/#/edit/canvas')
   await openFreeformTemplateGallery(page)

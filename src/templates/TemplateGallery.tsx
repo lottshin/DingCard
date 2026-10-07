@@ -7,6 +7,7 @@ import { CloseIcon } from '../ui/icons'
 import { TEMPLATE_FORMATS, templateFormat } from './formats'
 import { markdownFirstPage, previewStyle } from './previewModel'
 import { templatesForWorkspace } from './registry'
+import { loadFavoriteTemplateIds, saveFavoriteTemplateIds, toggleFavoriteTemplateId } from './favorites'
 import type { TemplateDefinition, TemplateFormatId, TemplateWorkspace } from './types'
 import { t } from '../i18n'
 
@@ -95,16 +96,20 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
   const formats = TEMPLATE_FORMATS.filter((format) => allTemplates.some((template) => template.format === format.id))
   const [format, setFormat] = useState<TemplateFormatId | null>(null)
   const [query, setQuery] = useState('')
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => loadFavoriteTemplateIds())
   const queryRef = useRef('')
   // The keyword looks at the copy a tile shows, so it finds what the reader sees.
   const keyword = query.trim().toLowerCase()
+  const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds])
   const templates = useMemo(() => {
     const byFormat = format ? allTemplates.filter((template) => template.format === format) : allTemplates
-    if (!keyword) return byFormat
-    return byFormat.filter((template) =>
+    const byFavorite = favoritesOnly ? byFormat.filter((template) => favoriteSet.has(template.id)) : byFormat
+    if (!keyword) return byFavorite
+    return byFavorite.filter((template) =>
       [template.title, template.description, ...template.tags]
         .some((text) => t(text).toLowerCase().includes(keyword)))
-  }, [allTemplates, format, keyword])
+  }, [allTemplates, format, keyword, favoritesOnly, favoriteSet])
   const [selectedId, setSelectedId] = useState(templates[0]?.id ?? '')
   const [pending, setPending] = useState<TemplateDefinition | null>(null)
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0]
@@ -209,9 +214,33 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
     if (event.key === 'Enter' && event.target === event.currentTarget) requestApply(selected)
   }
 
+  function toggleFavorite(id: string) {
+    setFavoriteIds((current) => {
+      const next = toggleFavoriteTemplateId(current, id)
+      saveFavoriteTemplateIds(next)
+      return next
+    })
+  }
+
   function renderTile(template: TemplateDefinition) {
+    const favorited = favoriteSet.has(template.id)
     return (
       <article key={template.id} className={template.id === selected?.id ? 'template-tile selected' : 'template-tile'}>
+        <button
+          className={favorited ? 'template-tile-favorite on' : 'template-tile-favorite'}
+          type='button'
+          aria-pressed={favorited}
+          aria-label={favorited ? t('取消收藏{title}', { title: t(template.title) }) : t('收藏{title}', { title: t(template.title) })}
+          data-testid={`template-favorite-${template.id}`}
+          onClick={(event) => {
+            event.stopPropagation()
+            toggleFavorite(template.id)
+          }}
+        >
+          <svg viewBox='0 0 20 20' aria-hidden='true'>
+            <path d='M10 17s-6.3-3.9-8.2-7.2C.5 7.4 2 4 5.2 4c2 0 3.4 1.1 4.8 2.9C11.4 5.1 12.8 4 14.8 4 18 4 19.5 7.4 18.2 9.8 16.3 13.1 10 17 10 17Z' />
+          </svg>
+        </button>
         <button
           className='template-tile-preview'
           type='button'
@@ -281,6 +310,14 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
                     {t(entry.name)}
                   </button>
                 ))}
+                <button
+                  type='button'
+                  aria-pressed={favoritesOnly}
+                  data-testid='template-filter-favorites'
+                  onClick={() => setFavoritesOnly((current) => !current)}
+                >
+                  {t('收藏')}
+                </button>
               </div>
             )}
             {templates.map(renderTile)}

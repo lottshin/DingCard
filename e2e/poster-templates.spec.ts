@@ -16,7 +16,7 @@ test('the gallery filters templates by size, and a poster opens as one page at i
   await openFreeformTemplateGallery(page)
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
   const filters = dialog.getByRole('group', { name: '按尺寸筛选' })
-  await expect(filters.getByRole('button')).toHaveText(['全部', '小红书', '竖版海报', '方图', '横版封面', '公众号首图', 'A4 印刷', 'A4 横版', '朋友圈九宫格'])
+  await expect(filters.getByRole('button')).toHaveText(['全部', '小红书', '竖版海报', '方图', '横版封面', '公众号首图', 'A4 印刷', 'A4 横版', '朋友圈九宫格', '收藏'])
 
   await dialog.getByTestId('template-format-story').click()
   await expect(dialog.getByTestId('template-format-story')).toHaveAttribute('aria-pressed', 'true')
