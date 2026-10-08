@@ -3208,6 +3208,23 @@ html.theme-anim * {
   outline: none;
 }
 
+.freeform-inspector .progress-label-input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.freeform-inspector .progress-label-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+  outline: none;
+}
+
 .freeform-inspector .timeline-item input:first-child {
   flex: 0 0 76px;
 }

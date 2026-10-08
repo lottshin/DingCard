@@ -81,7 +81,7 @@ import {
   TIMELINE_TEXT_MAX_CHARS,
   isValidTimelineText,
 } from './timeline'
-import { isValidProgressValue } from './progress'
+import { PROGRESS_LABEL_MAX_CHARS, isValidProgressLabel, isValidProgressValue } from './progress'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
 import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
@@ -9199,6 +9199,37 @@ export function FreeformWorkspace({
                           updateSelectedContent({ value })
                         }}
                       />
+                      <div className="field-label with-gap">{t('标签')}</div>
+                      <input
+                        key={`${selectedElement.id}:${selectedElement.label ?? ''}`}
+                        className="progress-label-input"
+                        data-testid="progress-label-input"
+                        type="text"
+                        defaultValue={selectedElement.label ?? ''}
+                        maxLength={PROGRESS_LABEL_MAX_CHARS}
+                        aria-label={t('进度标签')}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return
+                          event.preventDefault()
+                          const label = event.currentTarget.value.trim()
+                          if (label === (selectedElement.label ?? '')) {
+                            event.currentTarget.blur()
+                            return
+                          }
+                          if (label !== '' && !isValidProgressLabel(label)) {
+                            event.currentTarget.blur()
+                            return
+                          }
+                          updateSelectedContent({ label })
+                          event.currentTarget.blur()
+                        }}
+                        onBlur={(event) => {
+                          const label = event.currentTarget.value.trim()
+                          if (label === (selectedElement.label ?? '')) return
+                          if (label !== '' && !isValidProgressLabel(label)) return
+                          updateSelectedContent({ label })
+                        }}
+                      />
                       <div className="field-label with-gap">{t('样式')}</div>
                       <div className="seg stretch" role="group" aria-label={t('进度样式')}>
                         <button
@@ -9234,6 +9265,24 @@ export function FreeformWorkspace({
                             className="ghost"
                             data-testid="progress-accent-reset"
                             onClick={() => updateSelectedStyle({ accent: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                      </div>
+                      <div className="paint-row with-gap" data-testid="progress-track-colors">
+                        <ColorPickerButton
+                          label={t('轨道底色')}
+                          color={selectedElement.trackFill ?? '#e4e4e7'}
+                          testId="progress-track-color"
+                          onChange={(trackFill) => updateSelectedStyle({ trackFill })}
+                        />
+                        {selectedElement.trackFill !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="progress-track-reset"
+                            onClick={() => updateSelectedStyle({ trackFill: null })}
                           >
                             {t('恢复默认')}
                           </button>

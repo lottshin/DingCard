@@ -3,7 +3,8 @@ import { openFreeform, startWithSettingsPanelOpen } from './freeformTools'
 import { installOfflineFontRoutes } from './offlineFonts'
 
 // The progress element (v38): the Elements panel inserts a 65% bar sample,
-// the inspector edits the share, the style and the colour, and v38 rejects on v37.
+// the inspector edits the share, the style and the colour. v39 names the goal
+// and gives the track its own colour.
 
 test.beforeEach(async ({ context }) => {
   await installOfflineFontRoutes(context)
@@ -105,4 +106,34 @@ test('edits the share, flips to a ring, and recolors in the inspector', async ({
   await page.getByTestId('progress-accent-reset').click()
   await expect(progress.locator('[data-testid="freeform-progress-fill"]')).toHaveAttribute('stroke', '#1d4ed8')
   await expect(page.getByTestId('progress-accent-reset')).toHaveCount(0)
+
+  // 标签 names the goal above the bar: the name sits top-left in ink and the
+  // bar drops under it; an empty name clears it again.
+  await page.getByTestId('progress-kind-bar').click()
+  await page.getByTestId('progress-label-input').fill('读书进度')
+  await page.getByTestId('progress-label-input').press('Enter')
+  const label = progress.locator('[data-testid="freeform-progress-label"]')
+  await expect(label).toHaveText('读书进度')
+  await expect(label).toHaveAttribute('text-anchor', 'start')
+  await expect(label).toHaveAttribute('fill', '#3f3f46')
+  await expect(progress.locator('[data-testid="freeform-progress-track"]')).toHaveAttribute('y', '24')
+  await expect(progress.locator('[data-testid="freeform-progress-fill"]')).toHaveAttribute('y', '24')
+  await page.getByTestId('progress-label-input').fill('')
+  await page.getByTestId('progress-label-input').press('Enter')
+  await expect(progress.locator('[data-testid="freeform-progress-label"]')).toHaveCount(0)
+  await expect(progress.locator('[data-testid="freeform-progress-track"]')).toHaveAttribute('y', '0')
+
+  // 轨道底色 carries its own colour at full strength; 恢复默认 returns the
+  // accent tint.
+  await page.getByRole('button', { name: '轨道底色', exact: true }).click()
+  const trackHex = page.getByLabel('轨道底色 自定义 HEX', { exact: true })
+  await trackHex.fill('#f4f4f5')
+  await trackHex.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(progress.locator('[data-testid="freeform-progress-track"]')).toHaveAttribute('fill', '#f4f4f5')
+  await expect(progress.locator('[data-testid="freeform-progress-track"]')).toHaveAttribute('opacity', '1')
+  await page.getByTestId('progress-track-reset').click()
+  await expect(progress.locator('[data-testid="freeform-progress-track"]')).toHaveAttribute('fill', '#1d4ed8')
+  await expect(progress.locator('[data-testid="freeform-progress-track"]')).toHaveAttribute('opacity', '0.14')
+  await expect(page.getByTestId('progress-track-reset')).toHaveCount(0)
 })
