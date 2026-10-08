@@ -81,6 +81,7 @@ import {
   TIMELINE_TEXT_MAX_CHARS,
   isValidTimelineText,
 } from './timeline'
+import { isValidProgressValue } from './progress'
 import { ICON_STROKE_WIDTH, ICON_VIEWBOX, iconById, type IconDefinition } from './icons'
 import { FreeformElementsPanel, SHAPES, carriesElement, droppedElement, type ElementPick } from './FreeformElementsPanel'
 import { createDecorationNode, decorationById, decorationSize, type DecorationDefinition } from './decorations'
@@ -265,6 +266,7 @@ import type {
   FreeformChartElement,
   FreeformTableElement,
   FreeformTimelineElement,
+  FreeformProgressElement,
   FreeformSceneNode,
   FreeformNodeContentPatch,
   FreeformNodeGeometryPatch,
@@ -962,6 +964,10 @@ function isTableElement(element: FreeformElement | undefined): element is Freefo
 
 function isTimelineElement(element: FreeformElement | undefined): element is FreeformTimelineElement {
   return element?.type === 'timeline'
+}
+
+function isProgressElement(element: FreeformElement | undefined): element is FreeformProgressElement {
+  return element?.type === 'progress'
 }
 
 /** Chart kinds in the inspector segment order. */
@@ -9171,6 +9177,68 @@ export function FreeformWorkspace({
                       >
                         {t('加一条')}
                       </button>
+                    </InspectorSection>
+                  )}
+
+                  {isProgressElement(selectedElement) && (
+                    <InspectorSection title={t('进度')} testId="inspector-progress">
+                      <div className="field-label">{t('数值')}</div>
+                      <input
+                        className="progress-value-input"
+                        data-testid="progress-value-input"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        value={String(selectedElement.value)}
+                        aria-label={t('进度数值')}
+                        onChange={(event) => {
+                          const value = Number(event.currentTarget.value)
+                          if (!isValidProgressValue(value)) return
+                          if (value === selectedElement.value) return
+                          updateSelectedContent({ value })
+                        }}
+                      />
+                      <div className="field-label with-gap">{t('样式')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('进度样式')}>
+                        <button
+                          type="button"
+                          className={selectedElement.progressKind === 'bar' ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.progressKind === 'bar'}
+                          data-testid="progress-kind-bar"
+                          onClick={() => updateSelectedStyle({ progressKind: 'bar' })}
+                        >
+                          {t('横条')}
+                        </button>
+                        <button
+                          type="button"
+                          className={selectedElement.progressKind === 'ring' ? 'seg-btn on' : 'seg-btn'}
+                          aria-pressed={selectedElement.progressKind === 'ring'}
+                          data-testid="progress-kind-ring"
+                          onClick={() => updateSelectedStyle({ progressKind: 'ring' })}
+                        >
+                          {t('圆环')}
+                        </button>
+                      </div>
+                      <div className="field-label with-gap">{t('进度颜色')}</div>
+                      <div className="paint-row" data-testid="progress-colors">
+                        <ColorPickerButton
+                          label={t('进度颜色')}
+                          color={selectedElement.accent ?? '#1d4ed8'}
+                          testId="progress-accent-color"
+                          onChange={(accent) => updateSelectedStyle({ accent })}
+                        />
+                        {selectedElement.accent !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="progress-accent-reset"
+                            onClick={() => updateSelectedStyle({ accent: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                      </div>
                     </InspectorSection>
                   )}
 
