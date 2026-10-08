@@ -47,7 +47,7 @@ test('inserts a timeline that renders its spine, dots, and entries and saves', a
     return draft ?? null
   })
   expect(stored).not.toBeNull()
-  expect(stored.document.documentVersion).toBe(37)
+  expect(stored.document.documentVersion).toBe(38)
   expect(stored.document.slides[0].nodes[0].type).toBe('timeline')
 
   // The timeline survives a reload with all its entries.

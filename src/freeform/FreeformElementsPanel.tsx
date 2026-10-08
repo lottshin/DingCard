@@ -22,6 +22,7 @@ export type ElementPick =
   | { kind: 'chart' }
   | { kind: 'table' }
   | { kind: 'timeline' }
+  | { kind: 'progress' }
   | { kind: 'collage'; id: string }
   | { kind: 'decoration'; id: string }
   | { kind: 'icon'; id: string }
@@ -137,6 +138,7 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
     { id: 'chart', label: '图表' },
     { id: 'table', label: '表格' },
     { id: 'timeline', label: '时间线' },
+    { id: 'progress', label: '进度' },
   ].filter((utility) => !searching || matchesLabel(utility.label, query)), [query, searching, lang])
   const previews = useMemo(() => new Map(DECORATIONS.map((decoration) => [decoration.id, previewSlide(decoration, language)])), [language])
   const nothing = shapes.length + lines.length + collages.length + decorations.length + icons.length + utilities.length === 0
@@ -204,10 +206,10 @@ export const FreeformElementsPanel = memo(function FreeformElementsPanel({
                 type="button"
                 className="freeform-element-tile"
                 data-testid={`insert-${utility.id}`}
-                {...dragProps(utility.id === 'qrcode' || utility.id === 'chart' || utility.id === 'table' || utility.id === 'timeline'
+                {...dragProps(utility.id === 'qrcode' || utility.id === 'chart' || utility.id === 'table' || utility.id === 'timeline' || utility.id === 'progress'
                   ? { kind: utility.id }
                   : { kind: 'chart' })}
-                onClick={() => onPick(utility.id === 'qrcode' || utility.id === 'chart' || utility.id === 'table' || utility.id === 'timeline'
+                onClick={() => onPick(utility.id === 'qrcode' || utility.id === 'chart' || utility.id === 'table' || utility.id === 'timeline' || utility.id === 'progress'
                   ? { kind: utility.id }
                   : { kind: 'chart' })}
               >

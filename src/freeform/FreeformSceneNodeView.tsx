@@ -9,6 +9,7 @@ import { bubbleClipPath, starClipPath } from './shapeGeometry'
 import { QR_ECL_DEFAULT, QR_QUIET_ZONE_DEFAULT } from './qrCode'
 import { barChartGeometry, lineChartGeometry, radarChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
 import { tableGeometry } from './tables'
+import { progressGeometry } from './progress'
 import { timelineGeometry } from './timeline'
 import { qrMatrix, qrModulePaths } from './qrMatrix'
 import { sceneFilterCss } from './appearance'
@@ -809,6 +810,95 @@ function SceneLeafContent({
             ))}
           </g>
         ))}
+      </svg>
+    )
+  }
+
+  if (leaf.type === 'progress') {
+    // The progress tints its track with the accent and draws the done share
+    // on top, with the share's number on the fill or beside it.
+    const accentColor = leaf.accent ?? '#1d4ed8'
+    const geometry = progressGeometry(leaf.width, leaf.height, leaf.progressKind, leaf.value)
+    return (
+      <svg
+        className={presentationOnly ? 'freeform-preview-progress' : 'freeform-progress'}
+        data-testid={presentationOnly ? undefined : 'freeform-progress'}
+        viewBox={`0 0 ${Math.max(1, leaf.width)} ${Math.max(1, leaf.height)}`}
+        aria-hidden="true"
+        style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
+      >
+        {geometry.bar && (
+          <g>
+            <rect
+              data-testid="freeform-progress-track"
+              x={geometry.bar.track.x}
+              y={geometry.bar.track.y}
+              width={geometry.bar.track.width}
+              height={geometry.bar.track.height}
+              rx={geometry.bar.track.radius}
+              fill={accentColor}
+              opacity={0.14}
+            />
+            {geometry.bar.fill && (
+              <rect
+                data-testid="freeform-progress-fill"
+                x={geometry.bar.fill.x}
+                y={geometry.bar.fill.y}
+                width={geometry.bar.fill.width}
+                height={geometry.bar.fill.height}
+                rx={geometry.bar.fill.radius}
+                fill={accentColor}
+              />
+            )}
+            <text
+              data-testid="freeform-progress-percent"
+              x={geometry.bar.percent.x}
+              y={geometry.bar.percent.y}
+              fontFamily="inherit"
+              fontSize={geometry.bar.fontSize}
+              fontWeight={600}
+              fill={geometry.bar.percent.onFill ? '#ffffff' : accentColor}
+            >
+              {geometry.bar.percent.text}
+            </text>
+          </g>
+        )}
+        {geometry.ring && (
+          <g>
+            <circle
+              data-testid="freeform-progress-track"
+              cx={geometry.ring.cx}
+              cy={geometry.ring.cy}
+              r={geometry.ring.radius}
+              fill="none"
+              stroke={accentColor}
+              strokeWidth={Math.max(6, geometry.ring.radius * 0.18)}
+              opacity={0.14}
+            />
+            {geometry.ring.fillPath && (
+              <path
+                data-testid="freeform-progress-fill"
+                d={geometry.ring.fillPath}
+                fill="none"
+                stroke={accentColor}
+                strokeWidth={Math.max(6, geometry.ring.radius * 0.18)}
+                strokeLinecap="round"
+              />
+            )}
+            <text
+              data-testid="freeform-progress-percent"
+              x={geometry.ring.percent.x}
+              y={geometry.ring.percent.y}
+              textAnchor="middle"
+              fontFamily="inherit"
+              fontSize={geometry.ring.fontSize}
+              fontWeight={600}
+              fill={accentColor}
+            >
+              {geometry.ring.percent.text}
+            </text>
+          </g>
+        )}
       </svg>
     )
   }

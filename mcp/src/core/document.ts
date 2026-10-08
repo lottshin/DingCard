@@ -24,7 +24,7 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v37 校验：需要 documentVersion=1–37 之一（旧版自动迁移为 v37）、非空 slides、'
+  '文档未通过自由画布 v38 校验：需要 documentVersion=1–38 之一（旧版自动迁移为 v38）、非空 slides、'
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
@@ -36,7 +36,7 @@ export function validateDocument(value: unknown): ValidateResult {
 export interface NodeSummary {
   id: string
   name: string
-  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table' | 'timeline' | 'group'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table' | 'timeline' | 'progress' | 'group'
   x: number
   y: number
   rotation: number
@@ -87,10 +87,14 @@ export interface NodeSummary {
   colWidths?: number[]
   /** A timeline's entries (v36): 2–8 of them, each an optional short label and its text. */
   items?: Array<{ label?: string; text: string }>
-  /** A timeline's spine and dot colour (v36); absent keeps the blue accent. */
+  /** A timeline's spine and dot colour (v36), a progress's done colour (v38); absent keeps the blue accent. */
   accent?: string
   /** The timeline's entries side by side (v37); absent runs them down the left spine. */
   horizontal?: boolean
+  /** A progress element's kind (v38): a bar across or a ring around. */
+  progressKind?: 'bar' | 'ring'
+  /** A progress element's done share (v38), 0–100 with at most one decimal. */
+  value?: number
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
@@ -222,6 +226,14 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       ...(node.accent !== undefined ? { accent: node.accent } : {}),
       ...(node.horizontal !== undefined ? { horizontal: node.horizontal } : {}),
       ...(node.ink !== undefined ? { ink: node.ink } : {}),
+    }
+  }
+  if (node.type === 'progress') {
+    return {
+      ...leaf,
+      progressKind: node.progressKind,
+      value: node.value,
+      ...(node.accent !== undefined ? { accent: node.accent } : {}),
     }
   }
   if (node.type === 'path') {

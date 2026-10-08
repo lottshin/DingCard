@@ -420,6 +420,7 @@ export const app: Record<string, Translation> = {
   '轴刻度': 'Axis ticks',
   '表格': 'Table',
   '时间线': 'Timeline',
+  '进度': 'Progress',
   '主线颜色': 'Spine colour',
   '条目': 'Entries',
   '时间': 'Time',

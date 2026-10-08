@@ -32,6 +32,7 @@ import type {
   FreeformChartElement,
   FreeformTableElement,
   FreeformTimelineElement,
+  FreeformProgressElement,
   FreeformShapeElement,
   FreeformTextElement,
   ShapeFill,
@@ -47,6 +48,7 @@ export type ContextToolbarSubject =
   | { kind: 'chart'; node: FreeformChartElement }
   | { kind: 'table'; node: FreeformTableElement }
   | { kind: 'timeline'; node: FreeformTimelineElement }
+  | { kind: 'progress'; node: FreeformProgressElement }
   | { kind: 'line'; node: FreeformLineElement; strokeWidth: number }
   | { kind: 'path'; node: FreeformPathElement; strokeWidth: number; canFrame: boolean; frameDisabledReason: string | null }
   | { kind: 'group'; name: string }
@@ -532,6 +534,13 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
         {subject.kind === 'timeline' && (
           <>
             <SubjectChip icon={<PathIcon d="M6 4v16M6 7h9M6 12h12M6 17h8" />} label={t('时间线')} />
+            <Divider />
+          </>
+        )}
+
+        {subject.kind === 'progress' && (
+          <>
+            <SubjectChip icon={<PathIcon d="M4 12a8 8 0 1 1 8 8" />} label={t('进度')} />
             <Divider />
           </>
         )}

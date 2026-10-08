@@ -38,6 +38,7 @@ import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload,
 import { CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
 import { isValidTimelineItems } from './timeline'
+import { isProgressKind, isValidProgressValue } from './progress'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -924,6 +925,13 @@ const TIMELINE_NODE_KEYS = new Set([
 // The timeline's optional fields (accent, v36) are checked in TIMELINE_OPTIONAL_FIELD_CHECKS
 // beside the table's, after the shared field checks below.
 
+const PROGRESS_NODE_KEYS = new Set([
+  'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
+  'scale', 'progressKind', 'value',
+])
+// The progress element's optional fields (accent, v38) are checked in
+// PROGRESS_OPTIONAL_FIELD_CHECKS beside the timeline's.
+
 function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
   const actualKeys = Object.keys(value)
   return actualKeys.length === keys.size && actualKeys.every((key) => keys.has(key))
@@ -1040,6 +1048,14 @@ const TIMELINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   accent: (record) => isHexColor(record.accent),
   horizontal: (record) => record.horizontal === true,
   ink: (record) => isHexColor(record.ink),
+  opacity: OPACITY_FIELD_CHECK,
+  shadow: SHADOW_FIELD_CHECK,
+  filter: FILTER_FIELD_CHECK,
+  blendMode: BLEND_FIELD_CHECK,
+}
+
+const PROGRESS_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  accent: (record) => isHexColor(record.accent),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,
@@ -1202,6 +1218,13 @@ function hasValidNodeFields(node: FreeformSceneNode): boolean {
     return (
       hasValidOptionalFields(record, TIMELINE_NODE_KEYS, TIMELINE_OPTIONAL_FIELD_CHECKS) &&
       isValidTimelineItems(node.items)
+    )
+  }
+  if (node.type === 'progress') {
+    return (
+      hasValidOptionalFields(record, PROGRESS_NODE_KEYS, PROGRESS_OPTIONAL_FIELD_CHECKS) &&
+      isProgressKind(node.progressKind) &&
+      isValidProgressValue(node.value)
     )
   }
   return false

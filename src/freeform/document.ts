@@ -78,6 +78,7 @@ import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isVa
 import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
 import { isValidTimelineItems, timelineItemsSame } from './timeline'
+import { isProgressKind, isValidProgressValue } from './progress'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {  FreeformChartSeries,
@@ -102,6 +103,7 @@ import type {  FreeformChartSeries,
   FreeformTextElement,
   FreeformTimelineElement,
   FreeformTimelineItem,
+  FreeformProgressElement,
   ImageFraming,
   LinePoint,
   PathFill,
@@ -158,7 +160,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 37,
+    documentVersion: 38,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -333,6 +335,21 @@ export function createTimelineElement(slide: FreeformSlide): FreeformTimelineEle
       { label: '9 月', text: '粉丝破万，开始做系列内容' },
       { label: '12 月', text: '工作室成立，全职做内容' },
     ],
+  }
+}
+
+export function createProgressElement(slide: FreeformSlide): FreeformProgressElement {
+  return {
+    id: randomId(),
+    name: '进度',
+    locked: false,
+    hidden: false,
+    type: 'progress',
+    ...centerBox(slide, 480, 96),
+    rotation: 0,
+    scale: 1,
+    progressKind: 'bar',
+    value: 65,
   }
 }
 
@@ -562,7 +579,7 @@ interface NodePatchResult {
   node: FreeformSceneNode
 }
 
-const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells', 'colWidths', 'items'])
+const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells', 'colWidths', 'items', 'value'])
 const STYLE_KEYS = new Set([
   'effect',
   'fontSize',
@@ -588,6 +605,7 @@ const STYLE_KEYS = new Set([
   'logoSrc',
   'quietZone',
   'chartKind',
+  'progressKind',
   'accent',
   'showValues',
   'showLegend',
@@ -632,6 +650,7 @@ const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZ
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'showTicks', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
 const TABLE_APPEARANCE_KEYS = new Set(['headerRow', 'striped', 'ink', 'headerFill', 'stripeFill', 'opacity', 'shadow', 'filter', 'blendMode'])
 const TIMELINE_APPEARANCE_KEYS = new Set(['accent', 'horizontal', 'ink', 'opacity', 'shadow', 'filter', 'blendMode'])
+const PROGRESS_APPEARANCE_KEYS = new Set(['progressKind', 'accent', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
 ])
@@ -675,6 +694,8 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidQrQuietZone(value)) return false
     } else if (key === 'chartKind') {
       if (!isValidChartKind(value)) return false
+    } else if (key === 'progressKind') {
+      if (!isProgressKind(value)) return false
     } else if (key === 'accent') {
       if (value !== null && !isHexColor(value)) return false
     } else if (key === 'showValues') {
@@ -928,6 +949,17 @@ function applyContentPatch(
       return {
         ok: true,
         node: same ? node : { ...node, items },
+      }
+    }
+    return { ok: true, node }
+  }
+  if (node.type === 'progress') {
+    if (Object.keys(record).some((key) => key !== 'value')) return { ok: false, node }
+    if ('value' in record) {
+      if (!isValidProgressValue(record.value)) return { ok: false, node }
+      return {
+        ok: true,
+        node: record.value === node.value ? node : { ...node, value: record.value },
       }
     }
     return { ok: true, node }
@@ -1301,6 +1333,27 @@ function applyStylePatch(
     ) && appearanceKeysSame(node, next, patch, TIMELINE_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
+  if (node.type === 'progress') {
+    if (
+      keys.some((key) => key !== 'progressKind' && key !== 'accent'
+        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
+    ) {
+      return { ok: false, node }
+    }
+    if (
+      ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent))
+      || !validAppearancePatch(patch, PROGRESS_APPEARANCE_KEYS)
+    ) {
+      return { ok: false, node }
+    }
+    const next = withAppearancePatch(node, patch, PROGRESS_APPEARANCE_KEYS)
+    const same = keys.every((key) =>
+      PROGRESS_APPEARANCE_KEYS.has(key)
+        ? true
+        : (node as unknown as UnknownRecord)[key] === (next as unknown as UnknownRecord)[key],
+    ) && appearanceKeysSame(node, next, patch, PROGRESS_APPEARANCE_KEYS)
+    return { ok: true, node: same ? node : next }
+  }
   if (node.type === 'qrcode') {
     if (
       keys.some((key) => key !== 'dark' && key !== 'light' && key !== 'ecl'
@@ -1567,6 +1620,7 @@ function defaultSceneNodeName(element: FreeformElement): string {
   if (element.type === 'chart') return '图表'
   if (element.type === 'table') return '表格'
   if (element.type === 'timeline') return '时间线'
+  if (element.type === 'progress') return '进度'
   return element.lineKind === 'arrow' ? '箭头' : '直线'
 }
 
@@ -1689,6 +1743,7 @@ function applyLegacyElementPatch(
     chart: new Set(['x', 'y', 'width', 'height', 'rotation']),
     table: new Set(['x', 'y', 'width', 'height', 'rotation']),
     timeline: new Set(['x', 'y', 'width', 'height', 'rotation']),
+    progress: new Set(['x', 'y', 'width', 'height', 'rotation']),
   }
   if (!hasOnlyKeys(patch, allowedByType[node.type])) return { ok: false, node }
   if (Object.keys(patch).length === 0) return { ok: true, node }

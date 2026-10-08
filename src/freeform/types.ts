@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 37
+  documentVersion: 38
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -123,7 +123,7 @@ export type BlendMode =
   | 'luminosity'
 
 export interface FreeformElementBase extends SceneNodeState {
-  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table' | 'timeline'
+  type: 'text' | 'image' | 'shape' | 'line' | 'path' | 'qrcode' | 'chart' | 'table' | 'timeline' | 'progress'
   x: number
   y: number
   width: number
@@ -440,6 +440,16 @@ export interface FreeformTimelineElement extends FreeformElementBase {
   ink?: string
 }
 
+export interface FreeformProgressElement extends FreeformElementBase {
+  type: 'progress'
+  /** A bar across the element or a ring around its centre (v38). */
+  progressKind: 'bar' | 'ring'
+  /** How much of the goal is done, 0–100 with at most one decimal (v38). */
+  value: number
+  /** The done part's colour (v38); absent keeps the blue accent. */
+  accent?: string
+}
+
 export type FreeformElement =
   | FreeformTextElement
   | FreeformImageElement
@@ -450,6 +460,7 @@ export type FreeformElement =
   | FreeformChartElement
   | FreeformTableElement
   | FreeformTimelineElement
+  | FreeformProgressElement
 
 /**
  * A scene path contains node IDs from a slide root to one node. The empty
@@ -497,6 +508,8 @@ export interface FreeformNodeContentPatch {
   colWidths?: number[]
   /** A timeline's entries (v36), replaced wholesale. */
   items?: FreeformTimelineItem[]
+  /** A progress element's done share (v38), 0–100 with at most one decimal. */
+  value?: number
 }
 
 export interface FreeformNodeStylePatch {
@@ -574,6 +587,8 @@ export interface FreeformNodeStylePatch {
   quietZone?: number | null
   /** Which chart is drawn (v24); like the shape switcher on shapes. */
   chartKind?: 'bar' | 'ring' | 'line' | 'radar'
+  /** Which progress is drawn (v38): a bar across or a ring around. */
+  progressKind?: 'bar' | 'ring'
   /**
    *  Every series' colour at once (#RRGGBB, v24); `null` restores the default
    *  blue. Series carry their own colours since v26 — this key keeps old

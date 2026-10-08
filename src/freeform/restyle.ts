@@ -267,6 +267,12 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
         ...(node.ink !== undefined ? { ink: recolor(node.ink) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
+    // A progress's accent is optional: absent keeps the blue.
+    case 'progress':
+      return patched(node, {
+        ...(node.accent !== undefined ? { accent: recolor(node.accent) } : {}),
+        shadow: recolorShadow(node.shadow, recolor),
+      })
   }
 }
 
@@ -540,7 +546,7 @@ function keepWordsReadable(document: FreeformDocument): FreeformDocument {
         background = under.type === 'image'
           ? null
           : under.type === 'qrcode' ? under.light
-          : under.type === 'chart' || under.type === 'table' || under.type === 'timeline' ? null : solidOf(under.fill)
+          : under.type === 'chart' || under.type === 'table' || under.type === 'timeline' || under.type === 'progress' ? null : solidOf(under.fill)
         break
       }
       const needed = contrastNeeded(node) + CONTRAST_MARGIN
