@@ -1016,6 +1016,86 @@ describe('applyActions', () => {
     expect(restoredTimeline && restoredTimeline.type === 'timeline' ? 'horizontal' in restoredTimeline || 'ink' in restoredTimeline : true).toBe(false)
   })
 
+  test('applies the v38 progress patches through node actions', () => {
+    const withProgress = seedDocument()
+    withProgress.slides[0].nodes.push({
+      id: 'progress-1',
+      name: '进度',
+      locked: false,
+      hidden: false,
+      type: 'progress',
+      x: 120,
+      y: 900,
+      width: 480,
+      height: 96,
+      rotation: 0,
+      scale: 1,
+      progressKind: 'bar',
+      value: 65,
+    })
+    const valid = validateDocument(withProgress)
+    expect(valid.ok).toBe(true)
+    if (!valid.ok) return
+
+    // The value edits through node/update-content; a hundredth refuses.
+    const updated = applyActions(valid.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { value: 42.5 } }],
+      },
+    ])
+    expect(updated.ok).toBe(true)
+    if (!updated.ok) return
+    const updatedProgress = updated.document.slides[0].nodes.find((node) => node.id === 'progress-1')
+    expect(updatedProgress && updatedProgress.type === 'progress' ? updatedProgress.value : undefined).toBe(42.5)
+    const rejected = applyActions(updated.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { value: 33.33 } }],
+      },
+    ])
+    expect(rejected.ok).toBe(true)
+    if (!rejected.ok) return
+    expect(rejected.changes).toEqual([false])
+
+    // The kind and accent ride node/update-style and the summaries.
+    const styled = applyActions(valid.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { progressKind: 'ring', accent: '#0f766e' } }],
+      },
+    ])
+    expect(styled.ok).toBe(true)
+    if (!styled.ok) return
+    const styledProgress = styled.document.slides[0].nodes.find((node) => node.id === 'progress-1')
+    expect(styledProgress).toMatchObject({ type: 'progress', progressKind: 'ring', value: 65, accent: '#0f766e' })
+    const summary = inspectDocument(styled.document)
+    if (!summary.ok) throw new Error(summary.error)
+    expect(summary.slides[0].nodes.find((node) => node.id === 'progress-1'))
+      .toMatchObject({ type: 'progress', progressKind: 'ring', value: 65, accent: '#0f766e' })
+    const restored = applyActions(styled.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { accent: null } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { progressKind: 'circle' } }],
+      },
+    ])
+    expect(restored.ok).toBe(true)
+    if (!restored.ok) return
+    expect(restored.changes).toEqual([true, false])
+    const restoredProgress = restored.document.slides[0].nodes.find((node) => node.id === 'progress-1')
+    expect(restoredProgress && restoredProgress.type === 'progress' ? 'accent' in restoredProgress : true).toBe(false)
+    expect(restoredProgress && restoredProgress.type === 'progress' ? restoredProgress.progressKind : undefined).toBe('ring')
+  })
+
   test('applies the v30 quiet-zone patch and surfaces it in summaries', () => {
     const withQr = seedDocument()
     withQr.slides[0].nodes.push({
