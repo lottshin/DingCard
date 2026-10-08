@@ -95,6 +95,10 @@ export interface NodeSummary {
   progressKind?: 'bar' | 'ring'
   /** A progress element's done share (v38), 0–100 with at most one decimal. */
   value?: number
+  /** A progress element's goal name (v39), above the bar or under the ring's share. */
+  label?: string
+  /** A progress element's track colour (v39); absent tints the accent to 14%. */
+  trackFill?: string
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
   /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
@@ -234,6 +238,8 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       progressKind: node.progressKind,
       value: node.value,
       ...(node.accent !== undefined ? { accent: node.accent } : {}),
+      ...(node.label !== undefined ? { label: node.label } : {}),
+      ...(node.trackFill !== undefined ? { trackFill: node.trackFill } : {}),
     }
   }
   if (node.type === 'path') {

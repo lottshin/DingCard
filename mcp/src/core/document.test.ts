@@ -1016,7 +1016,7 @@ describe('applyActions', () => {
     expect(restoredTimeline && restoredTimeline.type === 'timeline' ? 'horizontal' in restoredTimeline || 'ink' in restoredTimeline : true).toBe(false)
   })
 
-  test('applies the v38 progress patches through node actions', () => {
+  test('applies the v38 progress patches and the v39 name and track through node actions', () => {
     const withProgress = seedDocument()
     withProgress.slides[0].nodes.push({
       id: 'progress-1',
@@ -1094,6 +1094,73 @@ describe('applyActions', () => {
     const restoredProgress = restored.document.slides[0].nodes.find((node) => node.id === 'progress-1')
     expect(restoredProgress && restoredProgress.type === 'progress' ? 'accent' in restoredProgress : true).toBe(false)
     expect(restoredProgress && restoredProgress.type === 'progress' ? restoredProgress.progressKind : undefined).toBe('ring')
+
+    // The goal's name edits through node/update-content: '' clears it, and a
+    // thirteenth character refuses.
+    const named = applyActions(valid.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { label: '读书进度' } }],
+      },
+    ])
+    expect(named.ok).toBe(true)
+    if (!named.ok) return
+    const namedProgress = named.document.slides[0].nodes.find((node) => node.id === 'progress-1')
+    expect(namedProgress && namedProgress.type === 'progress' ? namedProgress.label : undefined).toBe('读书进度')
+    const overLong = applyActions(named.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { label: 'a'.repeat(13) } }],
+      },
+    ])
+    expect(overLong.ok).toBe(true)
+    if (!overLong.ok) return
+    expect(overLong.changes).toEqual([false])
+    const cleared = applyActions(named.document, [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { label: '' } }],
+      },
+    ])
+    expect(cleared.ok).toBe(true)
+    if (!cleared.ok) return
+    const clearedProgress = cleared.document.slides[0].nodes.find((node) => node.id === 'progress-1')
+    expect(clearedProgress && clearedProgress.type === 'progress' ? 'label' in clearedProgress : true).toBe(false)
+
+    // The track colour rides node/update-style with the name in summaries.
+    const tracked = applyActions(named.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { trackFill: '#e4e4e7' } }],
+      },
+    ])
+    expect(tracked.ok).toBe(true)
+    if (!tracked.ok) return
+    const trackedSummary = inspectDocument(tracked.document)
+    if (!trackedSummary.ok) throw new Error(trackedSummary.error)
+    expect(trackedSummary.slides[0].nodes.find((node) => node.id === 'progress-1'))
+      .toMatchObject({ type: 'progress', label: '读书进度', trackFill: '#e4e4e7' })
+    const untracked = applyActions(tracked.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { trackFill: null } }],
+      },
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['progress-1'], patch: { trackFill: 'grey' } }],
+      },
+    ])
+    expect(untracked.ok).toBe(true)
+    if (!untracked.ok) return
+    expect(untracked.changes).toEqual([true, false])
+    const untrackedProgress = untracked.document.slides[0].nodes.find((node) => node.id === 'progress-1')
+    expect(untrackedProgress && untrackedProgress.type === 'progress' ? 'trackFill' in untrackedProgress : true).toBe(false)
   })
 
   test('applies the v30 quiet-zone patch and surfaces it in summaries', () => {
