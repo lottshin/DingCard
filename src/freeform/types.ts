@@ -1,5 +1,5 @@
 export interface FreeformDocument {
-  documentVersion: 38
+  documentVersion: 39
   slides: FreeformSlide[]
   activeSlideId: string
 }
@@ -448,6 +448,10 @@ export interface FreeformProgressElement extends FreeformElementBase {
   value: number
   /** The done part's colour (v38); absent keeps the blue accent. */
   accent?: string
+  /** The goal's name, above the bar or under the ring's share (v39). */
+  label?: string
+  /** The track's colour (v39); absent tints the accent to 14%. */
+  trackFill?: string
 }
 
 export type FreeformElement =
@@ -510,6 +514,8 @@ export interface FreeformNodeContentPatch {
   items?: FreeformTimelineItem[]
   /** A progress element's done share (v38), 0–100 with at most one decimal. */
   value?: number
+  /** A progress element's goal name (v39), 1–12 characters. */
+  label?: string
 }
 
 export interface FreeformNodeStylePatch {
@@ -615,6 +621,8 @@ export interface FreeformNodeStylePatch {
   stripeFill?: string | null
   /** Timeline entries side by side (v37); `null`/`false` restores the vertical spine. */
   horizontal?: boolean | null
+  /** A progress element's track colour (v39); `null` restores the accent tint. */
+  trackFill?: string | null
 }
 
 export interface FreeformNodeGeometryPatch {

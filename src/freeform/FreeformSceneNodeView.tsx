@@ -815,10 +815,13 @@ function SceneLeafContent({
   }
 
   if (leaf.type === 'progress') {
-    // The progress tints its track with the accent and draws the done share
-    // on top, with the share's number on the fill or beside it.
+    // The track tints the accent to 14% unless it carries its own colour; the
+    // done share draws on top with the share's number, named by the label.
     const accentColor = leaf.accent ?? '#1d4ed8'
-    const geometry = progressGeometry(leaf.width, leaf.height, leaf.progressKind, leaf.value)
+    const trackColor = leaf.trackFill ?? accentColor
+    const geometry = progressGeometry(leaf.width, leaf.height, leaf.progressKind, leaf.value, {
+      label: leaf.label !== undefined,
+    })
     return (
       <svg
         className={presentationOnly ? 'freeform-preview-progress' : 'freeform-progress'}
@@ -827,6 +830,20 @@ function SceneLeafContent({
         aria-hidden="true"
         style={leaf.shadow ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` } : undefined}
       >
+        {geometry.label && (
+          <text
+            data-testid="freeform-progress-label"
+            x={geometry.label.x}
+            y={geometry.label.y}
+            textAnchor={geometry.bar ? 'start' : 'middle'}
+            fontFamily="inherit"
+            fontSize={geometry.label.fontSize}
+            fontWeight={500}
+            fill="#3f3f46"
+          >
+            {leaf.label}
+          </text>
+        )}
         {geometry.bar && (
           <g>
             <rect
@@ -836,8 +853,8 @@ function SceneLeafContent({
               width={geometry.bar.track.width}
               height={geometry.bar.track.height}
               rx={geometry.bar.track.radius}
-              fill={accentColor}
-              opacity={0.14}
+              fill={trackColor}
+              opacity={leaf.trackFill ? 1 : 0.14}
             />
             {geometry.bar.fill && (
               <rect
@@ -871,9 +888,9 @@ function SceneLeafContent({
               cy={geometry.ring.cy}
               r={geometry.ring.radius}
               fill="none"
-              stroke={accentColor}
+              stroke={trackColor}
               strokeWidth={Math.max(6, geometry.ring.radius * 0.18)}
-              opacity={0.14}
+              opacity={leaf.trackFill ? 1 : 0.14}
             />
             {geometry.ring.fillPath && (
               <path

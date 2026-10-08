@@ -38,7 +38,7 @@ import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload,
 import { CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
 import { isValidTimelineItems } from './timeline'
-import { isProgressKind, isValidProgressValue } from './progress'
+import { isProgressKind, isValidProgressLabel, isValidProgressValue } from './progress'
 import { isValidPathData } from './pathData'
 import { cloneImageFraming, isValidImageFraming } from './imageFraming'
 import {
@@ -929,8 +929,8 @@ const PROGRESS_NODE_KEYS = new Set([
   'id', 'name', 'locked', 'hidden', 'type', 'x', 'y', 'width', 'height', 'rotation',
   'scale', 'progressKind', 'value',
 ])
-// The progress element's optional fields (accent, v38) are checked in
-// PROGRESS_OPTIONAL_FIELD_CHECKS beside the timeline's.
+// The progress element's optional fields (label/trackFill, v39; accent, v38)
+// are checked in PROGRESS_OPTIONAL_FIELD_CHECKS beside the timeline's.
 
 function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
   const actualKeys = Object.keys(value)
@@ -1055,6 +1055,8 @@ const TIMELINE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 }
 
 const PROGRESS_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
+  label: (record) => isValidProgressLabel(record.label),
+  trackFill: (record) => isHexColor(record.trackFill),
   accent: (record) => isHexColor(record.accent),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,

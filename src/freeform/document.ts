@@ -78,7 +78,7 @@ import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isVa
 import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
 import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
 import { isValidTimelineItems, timelineItemsSame } from './timeline'
-import { isProgressKind, isValidProgressValue } from './progress'
+import { isProgressKind, isValidProgressLabel, isValidProgressValue } from './progress'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
 import { restyleDocument } from './restyle'
 import type {  FreeformChartSeries,
@@ -160,7 +160,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 38,
+    documentVersion: 39,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -579,7 +579,7 @@ interface NodePatchResult {
   node: FreeformSceneNode
 }
 
-const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells', 'colWidths', 'items', 'value'])
+const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells', 'colWidths', 'items', 'value', 'label'])
 const STYLE_KEYS = new Set([
   'effect',
   'fontSize',
@@ -617,6 +617,7 @@ const STYLE_KEYS = new Set([
   'stripeFill',
   'horizontal',
   'barMode',
+  'trackFill',
   'opacity',
   'shadow',
   'filter',
@@ -650,7 +651,7 @@ const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZ
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'showTicks', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
 const TABLE_APPEARANCE_KEYS = new Set(['headerRow', 'striped', 'ink', 'headerFill', 'stripeFill', 'opacity', 'shadow', 'filter', 'blendMode'])
 const TIMELINE_APPEARANCE_KEYS = new Set(['accent', 'horizontal', 'ink', 'opacity', 'shadow', 'filter', 'blendMode'])
-const PROGRESS_APPEARANCE_KEYS = new Set(['progressKind', 'accent', 'opacity', 'shadow', 'filter', 'blendMode'])
+const PROGRESS_APPEARANCE_KEYS = new Set(['progressKind', 'accent', 'trackFill', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'startCap', 'endCap',
 ])
@@ -708,7 +709,7 @@ function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && typeof value !== 'boolean') return false
     } else if (key === 'horizontal') {
       if (value !== null && typeof value !== 'boolean') return false
-    } else if (key === 'ink' || key === 'headerFill' || key === 'stripeFill') {
+    } else if (key === 'ink' || key === 'headerFill' || key === 'stripeFill' || key === 'trackFill') {
       if (value !== null && !isHexColor(value)) return false
     } else if (key === 'barMode') {
       if (value !== null && !isValidChartBarMode(value)) return false
@@ -954,15 +955,27 @@ function applyContentPatch(
     return { ok: true, node }
   }
   if (node.type === 'progress') {
-    if (Object.keys(record).some((key) => key !== 'value')) return { ok: false, node }
-    if ('value' in record) {
-      if (!isValidProgressValue(record.value)) return { ok: false, node }
-      return {
-        ok: true,
-        node: record.value === node.value ? node : { ...node, value: record.value },
-      }
+    if (Object.keys(record).some((key) => key !== 'value' && key !== 'label')) return { ok: false, node }
+    if ('value' in record && !isValidProgressValue(record.value)) return { ok: false, node }
+    // An empty label clears the goal's name; anything else is its 1–12
+    // character name.
+    if (
+      'label' in record
+      && (typeof record.label !== 'string' || (record.label !== '' && !isValidProgressLabel(record.label)))
+    ) {
+      return { ok: false, node }
     }
-    return { ok: true, node }
+    const same =
+      (!('value' in record) || record.value === node.value)
+      && (!('label' in record) || (record.label === '' ? undefined : record.label) === node.label)
+    if (same) return { ok: true, node }
+    const next = {
+      ...node,
+      ...('value' in record ? { value: record.value as number } : {}),
+      ...('label' in record && record.label !== '' ? { label: record.label as string } : {}),
+    }
+    if ('label' in record && record.label === '') delete next.label
+    return { ok: true, node: next }
   }
   if (node.type === 'qrcode') {
     if (Object.keys(record).some((key) => key !== 'payload') || !isValidQrPayload(record.payload)) {
@@ -1335,13 +1348,14 @@ function applyStylePatch(
   }
   if (node.type === 'progress') {
     if (
-      keys.some((key) => key !== 'progressKind' && key !== 'accent'
+      keys.some((key) => key !== 'progressKind' && key !== 'accent' && key !== 'trackFill'
         && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
     ) {
       return { ok: false, node }
     }
     if (
       ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent))
+      || ('trackFill' in patch && patch.trackFill !== null && !isHexColor(patch.trackFill))
       || !validAppearancePatch(patch, PROGRESS_APPEARANCE_KEYS)
     ) {
       return { ok: false, node }

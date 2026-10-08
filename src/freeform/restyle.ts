@@ -267,10 +267,12 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
         ...(node.ink !== undefined ? { ink: recolor(node.ink) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
-    // A progress's accent is optional: absent keeps the blue.
+    // A progress's accent and track colour are optional: absent keeps the
+    // blue fill and the accent-tinted track.
     case 'progress':
       return patched(node, {
         ...(node.accent !== undefined ? { accent: recolor(node.accent) } : {}),
+        ...(node.trackFill !== undefined ? { trackFill: recolor(node.trackFill) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
   }

@@ -97,7 +97,7 @@ import {
 } from './charts'
 import { isValidTableCellText, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
 import { isValidTimelineItems, type TimelineItem } from './timeline'
-import { isProgressKind, isValidProgressValue } from './progress'
+import { isProgressKind, isValidProgressLabel, isValidProgressValue } from './progress'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -112,7 +112,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -180,6 +180,7 @@ const PROGRESS_NODE_KEYS = new Set([
   'scale', 'progressKind', 'value',
 ])
 const PROGRESS_OPTIONAL_V38_KEYS = new Set(['accent', 'opacity', 'shadow', 'filter', 'blendMode'])
+const PROGRESS_OPTIONAL_V39_KEYS = new Set(['label', 'trackFill', 'accent', 'opacity', 'shadow', 'filter', 'blendMode'])
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -474,7 +475,7 @@ function optionalKeysFor(
   }
   if (type === 'table') return inputVersion >= 35 ? TABLE_OPTIONAL_V35_KEYS : TABLE_OPTIONAL_V34_KEYS
   if (type === 'timeline') return inputVersion >= 37 ? TIMELINE_OPTIONAL_V37_KEYS : TIMELINE_OPTIONAL_V36_KEYS
-  if (type === 'progress') return PROGRESS_OPTIONAL_V38_KEYS
+  if (type === 'progress') return inputVersion >= 39 ? PROGRESS_OPTIONAL_V39_KEYS : PROGRESS_OPTIONAL_V38_KEYS
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
@@ -1034,12 +1035,16 @@ function normalizeStrictSceneNode(
   }
 
   // Progress nodes are v38-only: one share of a goal as a bar or a ring,
-  // with an optional accent colour.
+  // with an optional accent colour; v39 names the goal and tints the track.
   if (value.type === 'progress') {
     if (inputVersion < 38) return null
     if (!isProgressKind(value.progressKind)) return null
     if (!isValidProgressValue(value.value)) return null
     if ('accent' in value && !isHexColor(value.accent)) return null
+    if (inputVersion >= 39) {
+      if ('label' in value && !isValidProgressLabel(value.label)) return null
+      if ('trackFill' in value && !isHexColor(value.trackFill)) return null
+    }
     const progressAppearance = cloneStrictAppearance(value, inputVersion)
     if (!progressAppearance) return null
     return {
@@ -1048,6 +1053,8 @@ function normalizeStrictSceneNode(
       progressKind: value.progressKind,
       value: value.value,
       ...('accent' in value ? { accent: value.accent as string } : {}),
+      ...(inputVersion >= 39 && 'label' in value ? { label: value.label as string } : {}),
+      ...(inputVersion >= 39 && 'trackFill' in value ? { trackFill: value.trackFill as string } : {}),
       ...progressAppearance,
     }
   }
@@ -1130,7 +1137,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 38,
+    documentVersion: 39,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1314,6 +1321,11 @@ export function normalizeFreeformDocumentV37(value: unknown): FreeformDocument |
 /** Strictly validates an already-v38 document (v38 adds the progress element). */
 export function normalizeFreeformDocumentV38(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 38)
+}
+
+/** Strictly validates an already-v39 document (v39 names the goal and tints the track). */
+export function normalizeFreeformDocumentV39(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 39)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1580,9 +1592,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v21 object. */
+/** Normalize any supported freeform document version to a fresh v39 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 39) return normalizeFreeformDocumentV39(value)
   if (value.documentVersion === 38) return normalizeFreeformDocumentV38(value)
   if (value.documentVersion === 37) return normalizeFreeformDocumentV37(value)
   if (value.documentVersion === 36) return normalizeFreeformDocumentV36(value)
@@ -1669,7 +1682,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 38,
+    documentVersion: 39,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1702,7 +1715,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 38,
+    documentVersion: 39,
     activeSlideId: document.activeSlideId,
     slides,
   }

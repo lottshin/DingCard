@@ -52,7 +52,7 @@ test('inserts a progress bar that renders its track, fill, and share and saves',
     return draft ?? null
   })
   expect(stored).not.toBeNull()
-  expect(stored.document.documentVersion).toBe(38)
+  expect(stored.document.documentVersion).toBe(39)
   expect(stored.document.slides[0].nodes[0].type).toBe('progress')
   expect(stored.document.slides[0].nodes[0].value).toBe(65)
 

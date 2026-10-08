@@ -1,5 +1,5 @@
 import { randomId } from '../uid'
-import { normalizeFreeformDocumentV38 } from '../freeform/sceneDocument'
+import { normalizeFreeformDocumentV39 } from '../freeform/sceneDocument'
 import type {
   BlendMode,
   ColorPaint,
@@ -258,11 +258,11 @@ function slide(
 
 function documentFromSlides(slides: FreeformSlide[]): FreeformDocument {
   const document: FreeformDocument = {
-    documentVersion: 38,
+    documentVersion: 39,
     activeSlideId: slides[0].id,
     slides,
   }
-  const normalized = normalizeFreeformDocumentV38(document)
+  const normalized = normalizeFreeformDocumentV39(document)
   if (!normalized) throw new Error('内置模板生成了无效的自由画布文档')
   return normalized
 }

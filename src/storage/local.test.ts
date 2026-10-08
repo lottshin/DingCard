@@ -75,7 +75,7 @@ function group(
 
 function freeformDocument(imageSrc: string, shapeSrc = imageSrc): FreeformDocument {
   return {
-    documentVersion: 38,
+    documentVersion: 39,
     activeSlideId: 'page-1',
     slides: [{
       id: 'page-1',
@@ -378,7 +378,7 @@ describe('LocalStore freeform image persistence', () => {
     if (saved.mode !== 'freeform-slide' || listed[0]?.mode !== 'freeform-slide') {
       throw new Error('Expected freeform drafts')
     }
-    expect(saved.document.documentVersion).toBe(38)
+    expect(saved.document.documentVersion).toBe(39)
     expect(saved.document.slides[0].nodes).toHaveLength(1)
     expect(saved.document.slides[0]).not.toHaveProperty('elements')
     expect(listed[0].document).toEqual(saved.document)
