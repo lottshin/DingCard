@@ -327,3 +327,61 @@ describe('highlighted words', () => {
     expect(issues[0].message).toContain('高亮的「重点」')
   })
 })
+
+describe('data element checks', () => {
+  const qr = (overrides: Record<string, unknown> = {}) => ({
+    id: '二维码',
+    name: '二维码',
+    locked: false,
+    hidden: false,
+    type: 'qrcode',
+    x: 100,
+    y: 100,
+    width: 280,
+    height: 280,
+    rotation: 0,
+    scale: 1,
+    payload: 'https://dingcard.app',
+    dark: '#18181b',
+    light: '#ffffff',
+    ...overrides,
+  }) as unknown as FreeformSceneNode
+
+  test('a scannable, contrasting QR code passes', () => {
+    expect(kinds(layoutIssues(deck([qr()]), measured([], [])))).toEqual([])
+  })
+
+  test('a tiny QR code and a low-contrast one are both called out', () => {
+    const issues = layoutIssues(deck([qr({ id: '小码', name: '小码', width: 96, height: 96 })]), measured([], []))
+    expect(kinds(issues)).toEqual(['tiny-qrcode:小码'])
+    expect(issues[0].message).toContain('至少 120')
+
+    const pale = layoutIssues(deck([qr({ id: '浅码', name: '浅码', dark: '#f4f4f5', light: '#ffffff' })]), measured([], []))
+    expect(kinds(pale)).toEqual(['low-contrast-qrcode:浅码'])
+    expect(pale[0].message).toContain('对比度')
+  })
+
+  test('a progress label wider than its element is called out, a fitting one is not', () => {
+    const progress = (width: number, label: string) => ({
+      id: '进度',
+      name: '进度',
+      locked: false,
+      hidden: false,
+      type: 'progress',
+      x: 100,
+      y: 100,
+      width,
+      height: 96,
+      rotation: 0,
+      scale: 1,
+      progressKind: 'bar',
+      value: 65,
+      label,
+    }) as unknown as FreeformSceneNode
+    // A 12-character name at the bar's 16px label size is wider than 160px.
+    const issues = layoutIssues(deck([progress(120, '十二个字的进度标签啦')]), measured([], []))
+    expect(kinds(issues)).toEqual(['progress-label-overflow:进度'])
+    expect(issues[0].message).toContain('缩短标签')
+    expect(kinds(layoutIssues(deck([progress(480, '读书进度')]), measured([], [])))).toEqual([])
+  })
+})

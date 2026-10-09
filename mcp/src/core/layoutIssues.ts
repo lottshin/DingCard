@@ -3,10 +3,12 @@
 // it. Each issue names the page and node and says, in plain words, what to do.
 
 import { walkScene } from '../../../src/freeform/sceneTree'
+import { progressGeometry } from '../../../src/freeform/progress'
 import type { FreeformDocument, FreeformSceneNode, ScenePath } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, posterSampleNames, slotSampleNames } from '../../../src/templates/slots'
 import type { FreeformDeckSeriesId, FreeformPosterSeriesId } from '../../../src/templates/types'
+import { emWidth } from './textFit'
 import type { InspectedSlide } from '../render/renderer'
 
 export type LayoutIssueKind =
@@ -20,6 +22,9 @@ export type LayoutIssueKind =
   | 'image-failed'
   | 'path-overflow'
   | 'empty-path'
+  | 'tiny-qrcode'
+  | 'low-contrast-qrcode'
+  | 'progress-label-overflow'
 
 export interface LayoutIssue {
   page: number
@@ -43,6 +48,9 @@ interface Rect {
 
 /** Shapes at least this opaque hide what lies under them. */
 const OPAQUE = 0.7
+
+/** Below this a QR code is more decoration than something a phone can scan. */
+const QRCODE_MIN_SCAN = 120
 
 interface TemplateMarks {
   /**
@@ -234,6 +242,29 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         issue('sample-text', node.id, `还是模板里的示例文字「${short(node.text)}」：换成自己的内容或删掉。`)
       }
     }
+
+    // Checks that read the document itself, no measurements needed.
+    walkScene(slide.nodes, (node) => {
+      if (node.type === 'qrcode') {
+        if (Math.min(node.width, node.height) < QRCODE_MIN_SCAN) {
+          issue('tiny-qrcode', node.id, `二维码只有 ${Math.round(node.width)}×${Math.round(node.height)}px，手机很难扫：至少 ${QRCODE_MIN_SCAN}×${QRCODE_MIN_SCAN}，或把导出倍率开到 2。`)
+        }
+        const contrast = contrastRatio(node.dark, node.light)
+        if (contrast !== null && contrast < 3) {
+          issue('low-contrast-qrcode', node.id, `码点色和背景色太接近（对比度 ${contrast.toFixed(1)}:1），扫码不稳：把 dark 和 light 拉开（如 #18181b 和 #ffffff）。`)
+        }
+      }
+      if (node.type === 'progress' && node.label !== undefined) {
+        const geometry = progressGeometry(node.width, node.height, node.progressKind, node.value, { label: true })
+        if (geometry.label) {
+          const labelWidth = emWidth(node.label) * geometry.label.fontSize
+          if (labelWidth > node.width) {
+            issue('progress-label-overflow', node.id, `标签「${node.label}」比元素宽（约 ${Math.round(labelWidth)}px > ${Math.round(node.width)}px）：缩短标签，或把元素加宽。`)
+          }
+        }
+      }
+    })
+
     if (!measured) return
     if (measured.imageError) issue('image-failed', null, `${measured.imageError}：检查图片地址是否能打开。`)
 
