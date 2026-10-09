@@ -889,6 +889,9 @@ const POSTER_HTML = `<!doctype html><html><head><style>
   .two { width: 1080px; height: 1080px; background: #0f172a; color: #fff; padding: 96px; }
   .two svg { width: 240px; height: 240px; }
   .two p { margin: 40px 0 0; font-size: 56px; line-height: 1.3; }
+  .two table { margin-top: 48px; border-collapse: collapse; font-size: 30px; }
+  .two th, .two td { border: 2px solid #475569; padding: 12px 24px; }
+  .two progress { display: block; margin-top: 40px; width: 600px; height: 28px; }
 </style></head><body>
 <section class="one" data-name="封面">
   <h1>春日<em>咖啡</em><br>市集</h1>
@@ -901,6 +904,8 @@ const POSTER_HTML = `<!doctype html><html><head><style>
 <section class="two">
   <svg viewBox="0 0 24 24" fill="none" stroke="#ffd166" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
   <p>四月最后一个周末</p>
+  <table><tr><th>时间</th><th>活动</th></tr><tr><td>14:00</td><td>手冲分享</td></tr><tr><td>16:00</td><td>拉花表演</td></tr></table>
+  <progress value="72" max="100" aria-label="筹备进度"></progress>
 </section>
 </body></html>`
 
@@ -969,6 +974,20 @@ describe('importHtml', () => {
       if (!icon || icon.type !== 'group') throw new Error('expected the icon as a group')
       expect(icon.children.map((child) => child.type)).toEqual(['path', 'path'])
       expect(icon.children[0]).toMatchObject({ stroke: '#ffd166', strokeWidth: 20, cap: 'round', fill: { type: 'transparent' } })
+
+      // A <table> reads as one table element; a <progress> as one bar.
+      const table = leaves(two.nodes).find((node) => node.type === 'table')
+      expect(table).toMatchObject({
+        type: 'table',
+        rows: 3,
+        cols: 2,
+        cells: ['时间', '活动', '14:00', '手冲分享', '16:00', '拉花表演'],
+        headerRow: true,
+      })
+      expect(table && table.type === 'table' && table.width).toBeGreaterThan(250)
+      const progress = leaves(two.nodes).find((node) => node.type === 'progress')
+      expect(progress).toMatchObject({ type: 'progress', progressKind: 'bar', value: 72, label: '筹备进度' })
+      expect(progress && progress.type === 'progress' && progress.height).toBeGreaterThanOrEqual(24)
     },
     420_000,
   )

@@ -47,6 +47,8 @@ import type {
   FreeformElement,
   FreeformGroupNode,
   FreeformImageElement,
+  FreeformProgressElement,
+  FreeformTableElement,
   FreeformLineElement,
   FreeformPathElement,
   FreeformSceneNode,
@@ -100,7 +102,70 @@ const PAGE_MAX = 4096
 const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 }
 
 const SKIPPED_TAGS = new Set(['HEAD', 'SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'LINK', 'META', 'TITLE'])
-const REPLACED_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'IFRAME', 'INPUT', 'TEXTAREA', 'SELECT', 'OBJECT', 'EMBED', 'PICTURE'])
+const REPLACED_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'IFRAME', 'INPUT', 'TEXTAREA', 'SELECT', 'OBJECT', 'EMBED', 'PICTURE', 'TABLE', 'PROGRESS'])
+
+/** The most an HTML table lends a freeform table element. */
+const TABLE_MAX_ROWS = 12
+const TABLE_MAX_COLS = 6
+const TABLE_CELL_MAX_CHARS = 24
+
+/** A `<table>` read down to what a freeform table element can hold. */
+export interface HtmlTableRead {
+  rows: number
+  cols: number
+  /** Row-major, exactly rows × cols, short rows padded with ''. */
+  cells: string[]
+  /** The first row's cells are `<th>`. */
+  headerRow: boolean
+  droppedRows: number
+  droppedCells: number
+  cutChars: number
+}
+
+/**
+ * Read `<tr>` rows of `<th>/<td>` cells as a table element's data: cell text
+ * trimmed and squeezed, rows beyond the element's limits dropped and cells
+ * beyond its width cut, with the losses counted for the notes.
+ */
+export function readHtmlTable(rows: Element[][]): HtmlTableRead {
+  const headerRow = rows[0].some((cell) => cell.tagName.toUpperCase() === 'TH')
+  const kept = rows.slice(0, TABLE_MAX_ROWS)
+  let cols = 0
+  for (const row of kept) cols = Math.max(cols, row.length)
+  let droppedCells = 0
+  if (cols > TABLE_MAX_COLS) {
+    droppedCells = kept.reduce((sum, row) => sum + row.length - TABLE_MAX_COLS, 0)
+    cols = TABLE_MAX_COLS
+  }
+  const cells: string[] = []
+  let cutChars = 0
+  for (const row of kept) {
+    for (let index = 0; index < cols; index += 1) {
+      const text = (row[index]?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      if (text.length > TABLE_CELL_MAX_CHARS) {
+        cutChars += 1
+        cells.push(text.slice(0, TABLE_CELL_MAX_CHARS))
+      } else {
+        cells.push(text)
+      }
+    }
+  }
+  return {
+    rows: kept.length,
+    cols,
+    cells,
+    headerRow,
+    droppedRows: rows.length - kept.length,
+    droppedCells,
+    cutChars,
+  }
+}
+
+/** A `<progress>`'s share of its max, as the progress element takes it. */
+export function progressShare(value: number, max: number): number {
+  const safeMax = max > 0 ? max : 1
+  return Math.min(100, Math.max(0, Math.round((value / safeMax) * 1000) / 10))
+}
 const SVG_SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon'])
 const SVG_HIDDEN_CONTAINERS = new Set(['defs', 'clipPath', 'mask', 'marker', 'pattern', 'symbol', 'linearGradient', 'radialGradient', 'filter'])
 
@@ -1843,6 +1908,8 @@ class PageReader {
       return image ? this.imageNodes(image) : []
     }
     if (tag === 'SVG') return this.svgNodes(element as SVGSVGElement)
+    if (tag === 'TABLE') return this.tableNodes(element)
+    if (tag === 'PROGRESS') return this.progressNodes(element as HTMLProgressElement)
     if (tag === 'CANVAS') {
       try {
         const src = (element as HTMLCanvasElement).toDataURL('image/png')
@@ -1871,6 +1938,62 @@ class PageReader {
       return []
     }
     return this.pictureNodes(image, src, { width: image.naturalWidth, height: image.naturalHeight })
+  }
+
+  /**
+   * A `<table>` becomes one table element: rows of trimmed cell text, the
+   * first row a header when its cells are `<th>`. Beyond what the element can
+   * hold the extras drop with a note saying so (see readHtmlTable).
+   */
+  private tableNodes(element: Element): FreeformSceneNode[] {
+    const style = this.style(element)
+    if (style.visibility !== 'visible') return []
+    const border = this.rel(element.getBoundingClientRect())
+    if (border.width <= 0.01 || border.height <= 0.01) return []
+    const rows = Array.from(element.querySelectorAll('tr'))
+      .map((row) => Array.from(row.querySelectorAll('th,td')))
+      .filter((cells) => cells.length > 0)
+    if (rows.length < 2) {
+      this.note(element, '<table> 至少要有两行才转成表格元素，其余照常排版')
+      return []
+    }
+    const read = readHtmlTable(rows)
+    if (read.droppedRows > 0) this.note(element, `<table> 超过 ${TABLE_MAX_ROWS} 行，后面 ${read.droppedRows} 行没有转`)
+    if (read.droppedCells > 0) this.note(element, `<table> 超过 ${TABLE_MAX_COLS} 列，多出的 ${read.droppedCells} 格没有转`)
+    if (read.cutChars > 0) this.note(element, `<table> 有 ${read.cutChars} 格文字超过 ${TABLE_CELL_MAX_CHARS} 字，被截短`)
+    const node: FreeformTableElement = {
+      ...this.base(element.getAttribute('data-name') ?? '表格', border),
+      type: 'table',
+      rows: read.rows,
+      cols: read.cols,
+      cells: read.cells,
+      headerRow: read.headerRow,
+    }
+    return [node]
+  }
+
+  /** `<progress>` becomes one bar: the share of its max, named by aria-label. */
+  private progressNodes(progress: HTMLProgressElement): FreeformSceneNode[] {
+    const style = this.style(progress)
+    if (style.visibility !== 'visible') return []
+    const border = this.rel(progress.getBoundingClientRect())
+    if (border.width <= 0.01) return []
+    const max = progress.max > 0 ? progress.max : 1
+    const share = progressShare(progress.value, max)
+    const name = progress.getAttribute('data-name') ?? '进度'
+    let label = (progress.getAttribute('aria-label') ?? '').trim()
+    if (label.length > 12) {
+      label = label.slice(0, 12)
+      this.note(progress, '进度的 aria-label 超过 12 字，被截短')
+    }
+    const node: FreeformProgressElement = {
+      ...this.base(name, { ...border, height: Math.max(border.height, 24) }),
+      type: 'progress',
+      progressKind: 'bar',
+      value: share,
+      ...(label !== '' ? { label } : {}),
+    }
+    return [node]
   }
 
   /** The box drawn by object-fit / object-position inside a content box. */
