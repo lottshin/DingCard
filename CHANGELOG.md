@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-10-09
+
+### Added
+
+- MCP 校验会说话（v39）：`validate_document` 失败时不再只回一句「未通过校验」，而是写清第几页、哪个节点、多了或缺少哪个键、或者该写哪个 `documentVersion`；组节点会定位到出错的子节点。`apply_actions` 对没生效的动作逐条返回 `reasons`（与 `changes` 一一对应），说明是哪个键、哪条规则不合法（如「value 必须是 0–100 的数」「progress 的内容只接受 value / label」）。
+- `list_templates` 新增 `kind` / `format` / `q` 三个可选筛选（按整套/单页、页面尺寸、关键词），只取要看的子集，返回小很多。
+
+### Changed
+
+- MCP 工具说明与源码类型对齐：文档版本和节点类型列表从代码常量生成（`FREEFORM_DOCUMENT_VERSION`），并新增漂移测试——版本或节点列表落后于代码就构建失败；工具列表从 9.1 万字符瘦身到 3.4 万（完整文档模型只在 `dingcard://schema/freeform` 资源留一份，其余工具指向它，并有体积上限守卫测试）；所有「仅 vNN」历史注记从工具说明中去除。
+- 前端与 MCP 版本升至 `0.46.0`；服务端仍为 `0.3.0`。`0.46.0` 镜像随 `v0.46.0` 标签发布；README、Compose 和部署文档固定已发布的 GHCR `0.45.0` 镜像。
+- LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
+
 ## [0.45.0] - 2026-10-07
 
 ### Added
