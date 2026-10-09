@@ -40,18 +40,31 @@ describe('dingcard-mcp tool descriptions stay current', () => {
     }
   })
 
-  test('the schema hint covers exactly the scene node types', async () => {
+  test('the schema resource covers exactly the scene node types', async () => {
     const client = await connect()
-    const listing = await client.listTools()
-    const validate = listing.tools.find((tool) => tool.name === 'validate_document')
-    expect(validate).toBeDefined()
-    const hint = validate!.description ?? ''
+    // The one full copy of the document model lives in this resource; the
+    // tool descriptions point here.
+    const resource = await client.readResource({ uri: 'dingcard://schema/freeform' })
+    expect(resource.contents).toHaveLength(1)
+    // The SDK's declared type says `text`; older runtimes deliver `blob`.
+    const content = resource.contents[0] as unknown as { text?: string; blob?: string }
+    const hint = String(content.text ?? content.blob)
     // The hint's node bullets must be exactly the scene's node types —
     // no type forgotten, none invented.
     const listed = [...hint.matchAll(/^- (\w+)：/gm)].map((match) => match[1]).sort()
     expect(listed).toEqual([...FREEFORM_NODE_TYPES].sort())
     // The header count agrees with the bullet list.
     expect(hint).toContain(`节点 ${FREEFORM_NODE_TYPES.length} 选一`)
+  })
+
+  test('the tool list stays small enough to read', async () => {
+    // The five document tools once carried the full schema hint each
+    // (90,991 chars). The single copy now lives in the resource; this cap
+    // keeps descriptions from quietly growing back.
+    const client = await connect()
+    const listing = await client.listTools()
+    const total = listing.tools.reduce((sum, tool) => sum + JSON.stringify(tool).length, 0)
+    expect(total).toBeLessThan(36000)
   })
 
   test('the version constant still pins the document interface', () => {

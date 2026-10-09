@@ -50,7 +50,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 
 模板放不下的版式，可以写成网页交给 `create_document_from_html`，转出来同样接 `check_document` → `render_document`。
 
-工具描述内嵌了 v39 文档模型（含多段渐变、径向渐变、文字描边与竖排文字、图形节点、高亮与下划线片段、图片背景、文字效果、滤镜的色调/灰度/复古黄、图形的图片填充、两端对齐、文字在框里的垂直位置、段间距、列表、删除线和片段字号）、动作类型与 Markdown 信封的字段说明，AI 客户端无需额外文档即可正确构造参数。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
+工具说明保持精简：`validate_document` 的描述带文档速写（顶层结构、节点类型列表、精确键匹配规则），完整的文档模型（每种节点的全部键）只在 `dingcard://schema/freeform` 资源里留一份，其余工具都指向它，AI 客户端按需读取即可。`validate_document` 校验失败会写清第几页、哪个节点、多了或缺少哪个键、该写哪个 `documentVersion`；`apply_actions` 对没生效的动作逐条返回 `reasons`（与 `changes` 一一对应）。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
 
 ## 文档句柄
 
