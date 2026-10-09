@@ -116,7 +116,7 @@ ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle 
 - group：+ children（非空节点数组；组没有 width/height）
 全文档节点 id 必须唯一。`
 
-const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。返回 { ok, document, summary }：summary.pages 是每页的 slideId 与角色，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
+const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放进这页文字留出的最大空位，放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId 与角色，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
 
 const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "# 总标题"：封面标题；它下面、第一个 "##" 之前的文字是封面副标题。
@@ -124,7 +124,8 @@ const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "## 结尾：标题"：可选的结尾页，内容写法同小节。
 templateId：list_templates 返回的自由画布模板 id（如 "editorial-freeform"），整套卡片沿用该模板的版式与风格。${COMPOSE_HINT}`
 
-const CONTENT_SCHEMA_HINT = `content：{ title: 封面标题, subtitle?: 封面副标题, pages: [{ title, body?: 正文段落, points?: [要点…]（"要点：说明" 冒号后面是这一条的第二行）, quote?: 引文（"引文 —— 出处"）, templateId?: 这一页换用另一个套图模板的内页版式 }…], ending?: 结尾页（同 pages 的一项，templateId 换用那个模板的结尾页）}。templateId：list_templates 返回的自由画布模板 id，封面和没写 templateId 的页都用它；不同页可以用不同的套图模板（kind 为 deck），最后用 document/restyle 把配色、字体统一起来。${COMPOSE_HINT}`
+const CONTENT_SCHEMA_HINT = `content：{ title: 封面标题, subtitle?: 封面副标题, pages: [{ title, body?: 正文段落, points?: [要点…]（"要点：说明" 冒号后面是这一条的第二行）, quote?: 引文（"引文 —— 出处"）, templateId?: 这一页换用另一个套图模板的内页版式, chart?: { kind: 'bar'|'ring'|'line'|'radar', labels: [类目×1–12], series: [{ name?, values: [≥0 数值×类目数], color? }] }（这一页配一张图表）, table?: { header?: [表头], rows: [[每格 1–24 字]…] }（这一页配一张表格，含表头最多 12 行 6 列）, timeline?: [{ label?: 时间, text: 内容 }]×2–8（这一页配一条时间线）, progress?: { value: 0–100, label?: 目标名 }（这一页配一条进度条） }…], ending?: 结尾页（同 pages 的一项，templateId 换用那个模板的结尾页）}。每页最多带一种数据元素（chart / table / timeline / progress）。templateId：list_templates 返回的自由画布模板 id，封面和没写 templateId 的页都用它；不同页可以用不同的套图模板（kind 为 deck），最后用 document/restyle 把配色、字体统一起来。${COMPOSE_HINT}`
+
 
 const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI 完全同一归约器）。常用动作：
 - { type: 'slide/add-after-active', slideId? } 在当前页后新增空白页
@@ -283,6 +284,27 @@ export function createDingcardServer(): McpServer {
     points: z.array(z.string()).optional().describe('要点，一条一项；"要点：说明" 冒号后面是第二行'),
     quote: z.string().optional().describe('引文；"引文 —— 出处" 会把出处放在下面'),
     templateId: z.string().optional().describe('这一页换用另一个套图模板（kind 为 deck）的版式；不给就用整套的 templateId'),
+    chart: z.object({
+      kind: z.enum(['bar', 'ring', 'line', 'radar']).describe('图表类型：柱状 / 环形 / 折线 / 雷达'),
+      labels: z.array(z.string()).min(1).describe('类目名，1–12 个，每个 1–24 字'),
+      series: z.array(z.object({
+        name: z.string().optional().describe('系列名，≤12 字；两个以上带名系列自动画图例'),
+        values: z.array(z.number()).describe('数值，长度和 labels 一致'),
+        color: z.string().optional().describe('#RRGGBB；缺省用模板蓝 #1d4ed8'),
+      })).min(1).describe('1–3 个系列'),
+    }).optional().describe('这一页配一张图表，放在文字留出的空位'),
+    table: z.object({
+      header: z.array(z.string()).optional().describe('表头行；不给就整表无表头'),
+      rows: z.array(z.array(z.string())).min(1).describe('数据行；每格 1–24 字，行按最宽的补齐，含表头最多 12 行 6 列'),
+    }).optional().describe('这一页配一张表格，放在文字留出的空位'),
+    timeline: z.array(z.object({
+      label: z.string().optional().describe('时间或步骤，1–12 字，可省略'),
+      text: z.string().describe('内容，1–48 字'),
+    })).min(2).optional().describe('这一页配一条时间线（2–8 步），放在文字留出的空位'),
+    progress: z.object({
+      value: z.number().describe('进度 0–100，最多一位小数'),
+      label: z.string().optional().describe('目标名，1–12 字'),
+    }).optional().describe('这一页配一条进度条，放在文字留出的空位'),
   })
 
   server.tool(

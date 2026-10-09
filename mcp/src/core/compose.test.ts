@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { FreeformDocument, FreeformTextElement } from '../../../src/freeform/types'
-import { composeDeck, normalizeDeckContent, type DeckContent } from './compose'
+import { composeDeck, largestFreeRectangleFor, normalizeDeckContent, type DeckContent } from './compose'
 import { templateMarks } from './layoutIssues'
 import { freeformTemplateIds, instantiateTemplate } from './templates'
 
@@ -232,5 +232,158 @@ describe('composeDeck', () => {
     expect(normalizeDeckContent({ title: 'a', pages: [] })).toContain('至少要有一页')
     expect(normalizeDeckContent({ title: 'a', pages: [{ body: 'x' }] })).toContain('缺少 title')
     expect(composeDeck('editorial-archive-markdown', RICH)).toMatchObject({ ok: false })
+  })
+})
+
+describe('deck data elements', () => {
+  test('places a chart, a table, a timeline and a progress on their pages', () => {
+    const composed = composeDeck('editorial-freeform', {
+      title: '公众号半年成绩单',
+      pages: [
+        {
+          title: '阅读量一路涨',
+          points: ['坚持周更', '标题花心思'],
+          chart: {
+            kind: 'ring',
+            labels: ['一月', '二月', '三月'],
+            series: [{ name: '阅读', values: [120, 240, 480] }],
+          },
+        },
+        {
+          title: '收入构成',
+          table: { header: ['来源', '金额', '占比'], rows: [['广告', '3000', '60%'], ['带货', '2000', '40%']] },
+        },
+        {
+          title: '这半年走过的节点',
+          timeline: [
+            { label: '3 月', text: '注册账号，发出第一篇笔记' },
+            { label: '6 月', text: '粉丝破万' },
+          ],
+        },
+        {
+          title: '年度目标',
+          progress: { value: 62.5, label: '十万粉丝' },
+        },
+      ],
+    })
+    expect(composed.ok).toBe(true)
+    if (!composed.ok) return
+    // Every drawing landed somewhere readable on its page.
+    expect(composed.summary.placed).toHaveLength(4)
+    expect(composed.summary.unplaced).toBeUndefined()
+    const kinds = composed.summary.placed!.map((item) => item.kind)
+    expect(kinds).toEqual(['chart', 'table', 'timeline', 'progress'])
+    for (const item of composed.summary.placed!) {
+      expect(item.width).toBeGreaterThan(0)
+      expect(item.height).toBeGreaterThan(0)
+    }
+    const nodes = composed.document.slides.flatMap((slide) => slide.nodes)
+    const chart = nodes.find((node) => node.type === 'chart')
+    expect(chart).toMatchObject({
+      type: 'chart',
+      chartKind: 'ring',
+      labels: ['一月', '二月', '三月'],
+      series: [{ name: '阅读', values: [120, 240, 480] }],
+    })
+    const table = nodes.find((node) => node.type === 'table')
+    expect(table).toMatchObject({
+      type: 'table',
+      rows: 3,
+      cols: 3,
+      cells: ['来源', '金额', '占比', '广告', '3000', '60%', '带货', '2000', '40%'],
+    })
+    const timeline = nodes.find((node) => node.type === 'timeline')
+    expect(timeline).toMatchObject({
+      type: 'timeline',
+      items: [
+        { label: '3 月', text: '注册账号，发出第一篇笔记' },
+        { label: '6 月', text: '粉丝破万' },
+      ],
+    })
+    const progress = nodes.find((node) => node.type === 'progress')
+    expect(progress).toMatchObject({ type: 'progress', value: 62.5, label: '十万粉丝' })
+    // Nothing the page draws overlaps the drawings.
+    for (const slide of composed.document.slides) {
+      for (const item of composed.summary.placed ?? []) {
+        if (item.slideId !== slide.id) continue
+        const element = slide.nodes.find((node) => node.name === item.node)
+        expect(element).toBeDefined()
+      }
+    }
+  })
+
+  test('a plain table takes no header row, a wide timeline runs horizontally', () => {
+    const composed = composeDeck('editorial-freeform', {
+      title: '清单',
+      pages: [
+        { title: '排片表', table: { rows: [['9:00', '开幕式'], ['10:00', '圆桌']] } },
+        { title: '流程', timeline: [{ text: '第一步' }, { text: '第二步' }, { text: '第三步' }] },
+      ],
+    })
+    expect(composed.ok).toBe(true)
+    if (!composed.ok) return
+    const nodes = composed.document.slides.flatMap((slide) => slide.nodes)
+    const table = nodes.find((node) => node.type === 'table')
+    expect(table).toMatchObject({ rows: 2, cols: 2, headerRow: false })
+    const timeline = nodes.find((node) => node.type === 'timeline')
+    expect(timeline && timeline.type === 'timeline' ? timeline.horizontal : undefined)
+      .toBe(timeline && timeline.type === 'timeline' && timeline.width > timeline.height ? true : undefined)
+  })
+
+  test('rejects two data elements on one page and bad data', () => {
+    expect(composeDeck('editorial-freeform', {
+      title: 'a',
+      pages: [{ title: 'b', chart: { kind: 'bar', labels: ['x'], series: [{ values: [1] }] }, progress: { value: 10 } }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('只能带一种数据元素') })
+    expect(composeDeck('editorial-freeform', {
+      title: 'a',
+      pages: [{ title: 'b', chart: { kind: 'pie', labels: ['x'], series: [{ values: [1] }] } }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('chart.kind') })
+    expect(composeDeck('editorial-freeform', {
+      title: 'a',
+      pages: [{ title: 'b', chart: { kind: 'bar', labels: ['x', 'y'], series: [{ values: [1] }] } }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('values 长度要和 labels 一致') })
+    expect(composeDeck('editorial-freeform', {
+      title: 'a',
+      pages: [{ title: 'b', table: { header: ['a', 'b'], rows: [['one']] } }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('按行对齐') })
+    expect(composeDeck('editorial-freeform', {
+      title: 'a',
+      pages: [{ title: 'b', table: { rows: Array.from({ length: 13 }, () => ['x']) } }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('2–12 行') })
+    expect(composeDeck('editorial-freeform', {
+      title: 'a',
+      pages: [{ title: 'b', timeline: [{ text: '只有一步' }] }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('timeline') })
+    expect(composeDeck('editorial-freeform', {
+      title: 'a',
+      pages: [{ title: 'b', progress: { value: 101 } }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('progress.value') })
+  })
+})
+
+describe('largestFreeRectangleFor', () => {
+  test('finds the whole page when nothing blocks, and the band a line leaves', () => {
+    // An empty page is free almost everywhere.
+    const empty = largestFreeRectangleFor(1080, 1440, [])
+    expect(empty.width * empty.height).toBeGreaterThan(1000 * 1300)
+    // A divider near the bottom leaves a wide band above it.
+    const band = largestFreeRectangleFor(1080, 1440, [{ x: 88, y: 1294, width: 904, height: 12 }])
+    expect(band.width).toBeGreaterThanOrEqual(1000)
+    expect(band.height).toBeGreaterThan(1200)
+    // A body of copy in the middle leaves the lower half.
+    const half = largestFreeRectangleFor(1080, 1440, [
+      { x: 80, y: 192, width: 920, height: 300 },
+      { x: 88, y: 1294, width: 904, height: 12 },
+    ])
+    expect(half.width).toBeGreaterThanOrEqual(880)
+    expect(half.height).toBeGreaterThanOrEqual(700)
+    // A tall strip beside the copy is not mistaken for the best room when a
+    // wider band sits below: areas are compared, not edges.
+    const strip = largestFreeRectangleFor(1080, 1440, [
+      { x: 80, y: 24, width: 920, height: 1400 },
+    ])
+    expect(strip.width).toBeLessThanOrEqual(56)
+    expect(strip.height).toBeGreaterThan(1300)
   })
 })

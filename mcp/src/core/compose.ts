@@ -7,16 +7,55 @@
 
 import { MAX_FREEFORM_SLIDES } from '../../../src/freeform/constants'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
-import type {
-  FreeformDocument,
-  FreeformSceneNode,
-  FreeformSlide,
-  FreeformTextElement,
-} from '../../../src/freeform/types'
+import { diagnoseFreeformDocument } from '../../../src/freeform/diagnostics'
+import {
+  createChartElement,
+  createProgressElement,
+  createTableElement,
+  createTimelineElement,
+} from '../../../src/freeform/document'
+import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartKind, isValidChartLabel, isValidChartSeriesName, isValidChartValue } from '../../../src/freeform/charts'
+import { isValidTableCells, isValidTableCellText, isValidTableCols, isValidTableRows } from '../../../src/freeform/tables'
+import { isValidTimelineItems } from '../../../src/freeform/timeline'
+import { isValidProgressLabel, isValidProgressValue } from '../../../src/freeform/progress'
+import { isHexColor } from '../../../src/freeform/paint'
+import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformSceneNode, type FreeformSlide, type FreeformTextElement } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots, type SlotItem } from '../../../src/templates/slots'
 import type { FreeformDeckSeriesId } from '../../../src/templates/types'
 import { balancedHeading, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export interface DeckChart {
+  /** bar / ring / line / radar. */
+  kind: 'bar' | 'ring' | 'line' | 'radar'
+  /** 1–12 category names, each up to 24 characters. */
+  labels: string[]
+  /** 1–3 series; values line up with the labels. */
+  series: Array<{ name?: string; values: number[]; color?: string }>
+}
+
+export interface DeckTable {
+  /** First row of cells; without it the rows start plain. */
+  header?: string[]
+  /** The body rows; every row has the same number of cells (1–6 columns, 2–12 rows in total). */
+  rows: string[][]
+}
+
+export interface DeckTimeline {
+  /** 2–8 steps: an optional short time and its text. */
+  items: Array<{ label?: string; text: string }>
+}
+
+export interface DeckProgress {
+  /** 0–100 with at most one decimal. */
+  value: number
+  /** The goal's 1–12 character name. */
+  label?: string
+}
 
 export interface DeckPage {
   title: string
@@ -28,6 +67,11 @@ export interface DeckPage {
   quote?: string
   /** Another deck template whose page this one takes (its section page, or for the ending its closing page). */
   templateId?: string
+  /** One data drawing for the page, placed in the room the words leave; at most one of chart / table / timeline / progress. */
+  chart?: DeckChart
+  table?: DeckTable
+  timeline?: DeckTimeline
+  progress?: DeckProgress
 }
 
 export interface DeckContent {
@@ -50,7 +94,7 @@ export interface ComposeSuccess {
   ok: true
   document: FreeformDocument
   summary: {
-    documentVersion: 27
+    documentVersion: number
     templateId: string
     slideCount: number
     coverTitle: string
@@ -60,6 +104,10 @@ export interface ComposeSuccess {
     shrunk: FontAdjustment[]
     /** Copy that still doesn't fit at the smallest size: shorten it (check_document measures the real layout). */
     overflowing: Array<{ slideId: string; page: number; node: string; text: string }>
+    /** Data drawings placed on their pages, with the box each got. */
+    placed?: Array<{ slideId: string; page: number; kind: 'chart' | 'table' | 'timeline' | 'progress'; node: string; x: number; y: number; width: number; height: number }>
+    /** Data drawings that found no room on their page. */
+    unplaced?: Array<{ slideId: string; page: number; kind: 'chart' | 'table' | 'timeline' | 'progress'; reason: string }>
   }
 }
 
@@ -76,6 +124,91 @@ function clean(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim() : ''
 }
 
+/** How a page's one data drawing reads, checked against the same rules as hand-written documents. */
+function cleanData(label: string, record: Record<string, unknown>): { chart?: DeckChart; table?: DeckTable; timeline?: DeckTimeline; progress?: DeckProgress } | string {
+  const kinds = (['chart', 'table', 'timeline', 'progress'] as const).filter((kind) => record[kind] !== undefined)
+  if (kinds.length === 0) return {}
+  if (kinds.length > 1) return `${label}只能带一种数据元素（chart / table / timeline / progress），收到了：${kinds.join('、')}`
+  if (kinds[0] === 'chart') {
+    const chart = record.chart as Record<string, unknown>
+    const kind = chart.kind
+    if (!isValidChartKind(kind)) return `${label}.chart.kind 必须是 bar / ring / line / radar 之一`
+    const labels = chart.labels
+    if (!Array.isArray(labels) || labels.length === 0 || labels.length > CHART_POINTS_MAX
+      || !labels.every(isValidChartLabel)) {
+      return `${label}.chart.labels 必须是 ${1}–${CHART_POINTS_MAX} 个 1–24 字符的类目名`
+    }
+    const series = chart.series
+    if (!Array.isArray(series) || series.length === 0
+      || !series.every((entry) => isRecord(entry)
+        && (entry.name === undefined || isValidChartSeriesName(entry.name))
+        && Array.isArray(entry.values) && entry.values.length === labels.length
+        && entry.values.every(isValidChartValue)
+        && (entry.color === undefined || isHexColor(entry.color)))) {
+      return `${label}.chart.series 必须是 1–3 个 { name?, values: [≥0 数字 × ${labels.length}], color?(#RRGGBB) }，values 长度要和 labels 一致`
+    }
+    return {
+      chart: {
+        kind,
+        labels: [...labels],
+        series: series.map((entry) => ({
+          ...(entry.name !== undefined ? { name: entry.name } : {}),
+          values: [...entry.values],
+          ...(entry.color !== undefined ? { color: entry.color } : {}),
+        })),
+      },
+    }
+  }
+  if (kinds[0] === 'table') {
+    const table = record.table as Record<string, unknown>
+    const header = table.header === undefined ? undefined : table.header
+    if (header !== undefined && (!Array.isArray(header) || !header.every((cell) => isValidTableCellText(cell)))) {
+      return `${label}.table.header 必须是 1–24 字符的字符串数组`
+    }
+    const rows = table.rows
+    if (!Array.isArray(rows) || rows.length === 0
+      || !rows.every((row) => Array.isArray(row) && row.every((cell) => isValidTableCellText(cell)))) {
+      return `${label}.table.rows 必须是二维字符串数组，每个单元格 1–24 字符`
+    }
+    const cols = header !== undefined ? Math.max(header.length, ...rows.map((row) => row.length))
+      : Math.max(...rows.map((row) => row.length))
+    const total = (header !== undefined ? 1 : 0) + rows.length
+    if (!isValidTableCols(cols)) return `${label}.table 最多 6 列（含表头），现在最多的一行有 ${cols} 格`
+    if (!isValidTableRows(total)) return `${label}.table 含表头一共要 2–12 行，现在是 ${total} 行`
+    const flat = (header !== undefined ? header : []).concat(...rows)
+    if (!isValidTableCells(flat, total, cols)) return `${label}.table 的单元格需要按行对齐（补空字符串到相同列数）`
+    return {
+      table: {
+        ...(header !== undefined ? { header: [...header] } : {}),
+        rows: rows.map((row) => [...row]),
+      },
+    }
+  }
+  if (kinds[0] === 'timeline') {
+    const timeline = record.timeline
+    if (!isValidTimelineItems(timeline)) {
+      return `${label}.timeline 必须是 2–8 个 { label?(1–12 字), text(1–48 字) }`
+    }
+    return {
+      timeline: {
+        items: (timeline as DeckTimeline['items']).map((item) => ({
+          ...(item.label !== undefined ? { label: item.label } : {}),
+          text: item.text,
+        })),
+      },
+    }
+  }
+  const progress = record.progress as Record<string, unknown>
+  if (!isValidProgressValue(progress.value)) {
+    return `${label}.progress.value 必须是 0–100 的数，最多一位小数`
+  }
+  const progressLabel = clean(progress.label)
+  if (progressLabel !== '' && !isValidProgressLabel(progressLabel)) {
+    return `${label}.progress.label 必须是 1–12 个字`
+  }
+  return { progress: { value: progress.value, ...(progressLabel ? { label: progressLabel } : {}) } }
+}
+
 function cleanPage(value: unknown, label: string): DeckPage | string {
   if (typeof value !== 'object' || value === null) return `${label}需要是对象`
   const record = value as Record<string, unknown>
@@ -87,12 +220,15 @@ function cleanPage(value: unknown, label: string): DeckPage | string {
   const body = clean(record.body)
   const quote = clean(record.quote)
   const templateId = clean(record.templateId)
+  const data = cleanData(label, record)
+  if (typeof data === 'string') return data
   return {
     title,
     ...(body ? { body } : {}),
     ...(points.length > 0 ? { points } : {}),
     ...(quote ? { quote } : {}),
     ...(templateId ? { templateId } : {}),
+    ...data,
   }
 }
 
@@ -611,15 +747,29 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
   ]
 
   const filled = plan.map((entry) => ({ ...entry, result: fillSlide(entry.layout.slide, entry.layout.slots, entry.fill) }))
+  // Data drawings land in the room the words leave, one per page at most.
+  const placed: Array<{ slideId: string; page: number; kind: 'chart' | 'table' | 'timeline' | 'progress'; node: string; x: number; y: number; width: number; height: number }> = []
+  const unplaced: Array<{ slideId: string; page: number; kind: 'chart' | 'table' | 'timeline' | 'progress'; reason: string }> = []
+  for (const [index, entry] of filled.entries()) {
+    const page = entry.role === 'cover' ? content : entry.role === 'section' ? content.pages[index - 1] : content.ending
+    const element = page && dataElementOf(page)
+    if (!element) continue
+    const outcome = placeElement(entry.result.slide, element)
+    const record = { slideId: entry.result.slide.id, page: index + 1, kind: element.kind }
+    if (outcome) placed.push({ ...record, node: outcome.name, ...outcome.box })
+    else unplaced.push({ ...record, reason: '这一页的空位放不下它：删短文字或换个版式更松的模板' })
+  }
   const slides = filled.map((entry) => entry.result.slide)
-  const document = normalizeFreeformDocument({ documentVersion: 27, activeSlideId: slides[0].id, slides })
-  if (!document) return { ok: false, error: '生成的文档未通过 v20 校验。' }
+  const document = normalizeFreeformDocument({ documentVersion: FREEFORM_DOCUMENT_VERSION, activeSlideId: slides[0].id, slides })
+  if (!document) {
+    return { ok: false, error: `生成的文档未通过校验：${diagnoseFreeformDocument({ documentVersion: FREEFORM_DOCUMENT_VERSION, activeSlideId: slides[0].id, slides }) ?? '请反馈'}` }
+  }
 
   return {
     ok: true,
     document,
     summary: {
-      documentVersion: 27,
+      documentVersion: FREEFORM_DOCUMENT_VERSION,
       templateId,
       slideCount: document.slides.length,
       coverTitle: content.title,
@@ -640,6 +790,171 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
         page: index + 1,
         ...item,
       }))),
+      ...(placed.length > 0 ? { placed } : {}),
+      ...(unplaced.length > 0 ? { unplaced } : {}),
     },
+  }
+}
+
+/** A page's one data drawing, as the node factory that builds it sees it. */
+function dataElementOf(page: DeckPage): { kind: 'chart'; chart: DeckChart } | { kind: 'table'; table: DeckTable } | { kind: 'timeline'; timeline: DeckTimeline } | { kind: 'progress'; progress: DeckProgress } | null {
+  if (page.chart) return { kind: 'chart', chart: page.chart }
+  if (page.table) return { kind: 'table', table: page.table }
+  if (page.timeline) return { kind: 'timeline', timeline: page.timeline }
+  if (page.progress) return { kind: 'progress', progress: page.progress }
+  return null
+}
+
+/** The size a data drawing wants, and the least it can be readable at. */
+function elementSize(kind: 'chart' | 'table' | 'timeline' | 'progress'): { desired: { width: number; height: number }; min: { width: number; height: number } } {
+  switch (kind) {
+    case 'chart': return { desired: { width: 480, height: 320 }, min: { width: 280, height: 180 } }
+    case 'table': return { desired: { width: 480, height: 320 }, min: { width: 320, height: 160 } }
+    case 'timeline': return { desired: { width: 480, height: 420 }, min: { width: 320, height: 200 } }
+    case 'progress': return { desired: { width: 480, height: 96 }, min: { width: 240, height: 64 } }
+  }
+}
+
+/** Every leaf box a placed element has to keep clear of. */
+function blockingBoxes(nodes: readonly FreeformSceneNode[]): Box[] {
+  const boxes: Box[] = []
+  const walk = (list: readonly FreeformSceneNode[]) => {
+    for (const node of list) {
+      if (node.hidden) continue
+      // Nearly transparent shapes are glows behind the copy, not obstacles.
+      if (node.type === 'shape' && (node.opacity ?? 1) < SEE_THROUGH) continue
+      if (node.type === 'group') {
+        walk(node.children)
+        continue
+      }
+      const box = boxOf(node)
+      if (box) boxes.push(box)
+    }
+  }
+  walk(nodes)
+  return boxes
+}
+
+/** The largest empty rectangle on a page, on a coarse grid. */
+export function largestFreeRectangleFor(width: number, height: number, boxes: Box[]): Box {
+  const CELL = 16
+  const columns = Math.max(1, Math.floor(width / CELL))
+  const rows = Math.max(1, Math.floor(height / CELL))
+  const blocked = (column: number, row: number) => {
+    const x = column * CELL
+    const y = row * CELL
+    if (x < PAGE_MARGIN || y < PAGE_MARGIN || x + CELL > width - PAGE_MARGIN || y + CELL > height - PAGE_MARGIN) return true
+    return boxes.some((box) => x < box.x + box.width && x + CELL > box.x && y < box.y + box.height && y + CELL > box.y)
+  }
+  // Free cells pile upward row by row. Every rectangle is measured once: from
+  // the first column of a run of cells at least that tall, as far right as the
+  // run stays that tall. Areas are compared in cells; the answer is pixels.
+  const heights = new Array<number>(columns).fill(0)
+  let best = { x: PAGE_MARGIN, y: PAGE_MARGIN, width: 0, height: 0 }
+  let bestArea = 0
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      heights[column] = blocked(column, row) ? 0 : heights[column] + 1
+    }
+    for (let column = 0; column < columns; column += 1) {
+      const height = heights[column]
+      if (height === 0) continue
+      // The first column of an equal-height run measures the whole run once;
+      // a taller neighbour does not cover this shorter, wider rectangle.
+      if (column > 0 && heights[column - 1] === height) continue
+      let width = 1
+      while (column + width < columns && heights[column + width] >= height) width += 1
+      if (height * width > bestArea) {
+        bestArea = height * width
+        best = { x: column * CELL, y: (row - height + 1) * CELL, width: width * CELL, height: height * CELL }
+      }
+    }
+  }
+  return best
+}
+
+/**
+ * Put a page's data drawing on the filled slide, in the room the words left:
+ * the element takes its wanted size centred in the largest free rectangle,
+ * shrinking to the rectangle when it is smaller. Returns the node's name and
+ * final box, or null when even the minimum size does not fit.
+ */
+function placeElement(
+  slide: FreeformSlide,
+  element: NonNullable<ReturnType<typeof dataElementOf>>,
+): { name: string; box: { x: number; y: number; width: number; height: number } } | null {
+  const { desired, min } = elementSize(element.kind)
+  const free = largestFreeRectangleFor(slide.width, slide.height, blockingBoxes(slide.nodes))
+  const fit = {
+    width: Math.min(desired.width, free.width),
+    height: Math.min(desired.height, free.height),
+  }
+  if (fit.width < min.width || fit.height < min.height) return null
+  const x = Math.round(free.x + (free.width - fit.width) / 2)
+  const y = Math.round(free.y + (free.height - fit.height) / 2)
+  const box = { x, y, width: Math.round(fit.width), height: Math.round(fit.height) }
+  const placed = elementNode(element, slide, box)
+  slide.nodes = [...slide.nodes, placed]
+  return { name: placed.name, box }
+}
+
+/** Build the drawing's node from the editor's own sample, with the reader's data. */
+function elementNode(
+  element: NonNullable<ReturnType<typeof dataElementOf>>,
+  slide: FreeformSlide,
+  box: { x: number; y: number; width: number; height: number },
+): FreeformSceneNode {
+  if (element.kind === 'chart') {
+    const chart = element.chart
+    const node = createChartElement(slide)
+    return {
+      ...node,
+      ...box,
+      chartKind: chart.kind,
+      labels: [...chart.labels],
+      series: chart.series.map((entry, index) => ({
+        ...(entry.name !== undefined ? { name: entry.name } : {}),
+        values: [...entry.values],
+        color: entry.color ?? (index === 0 ? CHART_ACCENT_DEFAULT : node.series[0].color),
+      })),
+    }
+  }
+  if (element.kind === 'table') {
+    const table = element.table
+    const cols = Math.max(
+      table.header?.length ?? 0,
+      ...table.rows.map((row) => row.length),
+    )
+    const pad = (row: string[]) => [...row, ...Array.from({ length: cols - row.length }, () => '')]
+    const cells: string[] = [...(table.header ? pad(table.header) : []), ...table.rows.flatMap((row) => pad(row))]
+    const node = createTableElement(slide)
+    return {
+      ...node,
+      ...box,
+      rows: (table.header ? 1 : 0) + table.rows.length,
+      cols,
+      cells,
+      ...(table.header ? {} : { headerRow: false }),
+    }
+  }
+  if (element.kind === 'timeline') {
+    const node = createTimelineElement(slide)
+    return {
+      ...node,
+      ...box,
+      items: element.timeline.items.map((item) => ({
+        ...(item.label !== undefined ? { label: item.label } : {}),
+        text: item.text,
+      })),
+      // Wide free room runs the entries side by side; tall room keeps the spine on the left.
+      ...(box.width > box.height ? { horizontal: true } : {}),
+    }
+  }
+  const node = createProgressElement(slide)
+  return {
+    ...node,
+    ...box,
+    value: element.progress.value,
+    ...(element.progress.label ? { label: element.progress.label } : {}),
   }
 }
