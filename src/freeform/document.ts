@@ -577,6 +577,8 @@ function sceneNodeIdSet(nodes: readonly FreeformSceneNode[]): Set<string> {
 interface NodePatchResult {
   ok: boolean
   node: FreeformSceneNode
+  /** Why the patch refused, in the agent's words; absent when it applies. */
+  reason?: string
 }
 
 const CONTENT_KEYS = new Set(['text', 'src', 'alt', 'd', 'viewBox', 'payload', 'labels', 'series', 'rows', 'cols', 'cells', 'colWidths', 'items', 'value', 'label'])
@@ -660,82 +662,83 @@ const PATH_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'cap', 'join', 'fillRule',
 ])
 
-/** Validate every v6 appearance key present on a style patch; false rejects. */
-function validAppearancePatch(patch: UnknownRecord, fields: ReadonlySet<string>): boolean {
+/** The first appearance key whose value rejects, with the rule it broke; null when all pass. */
+function appearanceProblemKey(patch: UnknownRecord, fields: ReadonlySet<string>): string | null {
+  const problem = (key: string, rule: string) => `样式键 ${key} 的值不合法：${rule}`
   for (const key of fields) {
     if (!(key in patch)) continue
     const value = patch[key]
     if (key === 'opacity') {
-      if (!isValidOpacity(value)) return false
+      if (!isValidOpacity(value)) return problem('opacity', '必须是 0–1 的数')
     } else if (key === 'shadow') {
-      if (value !== null && !cloneShadowPaint(value)) return false
+      if (value !== null && !cloneShadowPaint(value)) return problem('shadow', '必须是 { color, blur, offsetX, offsetY }（或传 null 清除）')
     } else if (key === 'lineHeight') {
-      if (value !== null && !isValidLineHeight(value)) return false
+      if (value !== null && !isValidLineHeight(value)) return problem('lineHeight', '必须是 0.5–4 的行高倍数（或传 null 恢复默认）')
     } else if (key === 'letterSpacing') {
-      if (value !== null && !isValidLetterSpacing(value)) return false
+      if (value !== null && !isValidLetterSpacing(value)) return problem('letterSpacing', '必须是 -50–200 的像素字距（或传 null 恢复默认）')
     } else if (key === 'italic') {
-      if (typeof value !== 'boolean') return false
+      if (typeof value !== 'boolean') return problem('italic', '必须是 true 或 false')
     } else if (key === 'vertical') {
-      if (typeof value !== 'boolean') return false
+      if (typeof value !== 'boolean') return problem('vertical', '必须是 true 或 false')
     } else if (key === 'cornerRadius') {
-      if (value !== null && !isValidCornerRadius(value)) return false
+      if (value !== null && !isValidCornerRadius(value)) return problem('cornerRadius', '必须是 0–2000 的像素圆角（或传 null 恢复直角）')
     } else if (key === 'starInnerRatio') {
-      if (value !== null && !isValidStarInnerRatio(value)) return false
+      if (value !== null && !isValidStarInnerRatio(value)) return problem('starInnerRatio', '必须是 0.15–0.85 的五角星内径比（或传 null 恢复 0.38）')
     } else if (key === 'bubbleTailX') {
-      if (value !== null && !isValidBubbleTailX(value)) return false
+      if (value !== null && !isValidBubbleTailX(value)) return problem('bubbleTailX', '必须是 0.05–0.95 的尾巴位置（或传 null 恢复 0.5）')
     } else if (key === 'dark' || key === 'light') {
-      if (value !== null && !isHexColor(value)) return false
+      if (value !== null && !isHexColor(value)) return problem(key, '必须是 #RRGGBB（或传 null 恢复默认）')
     } else if (key === 'ecl') {
-      if (value !== null && !isValidQrEcl(value)) return false
+      if (value !== null && !isValidQrEcl(value)) return problem('ecl', `必须是 ${['L', 'M', 'Q', 'H'].join(' / ')} 之一（或传 null 恢复 M）`)
     } else if (key === 'moduleStyle') {
-      if (value !== null && !isValidQrModuleStyle(value)) return false
+      if (value !== null && !isValidQrModuleStyle(value)) return problem('moduleStyle', `必须是 ${['square', 'rounded', 'dot'].join(' / ')} 之一（或传 null 恢复方块）`)
     } else if (key === 'logoSrc') {
-      if (value !== null && !isValidQrLogoSrc(value)) return false
+      if (value !== null && !isValidQrLogoSrc(value)) return problem('logoSrc', '必须是图片地址或 img: 引用（或传 null 移除）')
     } else if (key === 'quietZone') {
-      if (value !== null && !isValidQrQuietZone(value)) return false
+      if (value !== null && !isValidQrQuietZone(value)) return problem('quietZone', '必须是 0–4 的码边距模块数（或传 null 恢复 2）')
     } else if (key === 'chartKind') {
-      if (!isValidChartKind(value)) return false
+      if (!isValidChartKind(value)) return problem('chartKind', `必须是 ${['bar', 'ring', 'line', 'radar'].join(' / ')} 之一`)
     } else if (key === 'progressKind') {
-      if (!isProgressKind(value)) return false
+      if (!isProgressKind(value)) return problem('progressKind', `必须是 ${['bar', 'ring'].join(' / ')} 之一`)
     } else if (key === 'accent') {
-      if (value !== null && !isHexColor(value)) return false
+      if (value !== null && !isHexColor(value)) return problem('accent', '必须是 #RRGGBB（或传 null 恢复默认色）')
     } else if (key === 'showValues') {
-      if (value !== null && value !== true) return false
+      if (value !== null && value !== true) return problem('showValues', '必须是 true（或传 null 关闭）')
     } else if (key === 'showLegend') {
-      if (value !== null && typeof value !== 'boolean') return false
+      if (value !== null && typeof value !== 'boolean') return problem('showLegend', '必须是 true / false（或传 null 恢复自动）')
     } else if (key === 'showTicks') {
-      if (value !== null && typeof value !== 'boolean') return false
+      if (value !== null && typeof value !== 'boolean') return problem('showTicks', '必须是 true / false（或传 null 恢复显示）')
     } else if (key === 'headerRow' || key === 'striped') {
-      if (value !== null && typeof value !== 'boolean') return false
+      if (value !== null && typeof value !== 'boolean') return problem(key, '必须是 true / false（或传 null 恢复默认）')
     } else if (key === 'horizontal') {
-      if (value !== null && typeof value !== 'boolean') return false
+      if (value !== null && typeof value !== 'boolean') return problem('horizontal', '必须是 true / false（或传 null / false 恢复竖排）')
     } else if (key === 'ink' || key === 'headerFill' || key === 'stripeFill' || key === 'trackFill') {
-      if (value !== null && !isHexColor(value)) return false
+      if (value !== null && !isHexColor(value)) return problem(key, '必须是 #RRGGBB（或传 null 恢复默认）')
     } else if (key === 'barMode') {
-      if (value !== null && !isValidChartBarMode(value)) return false
+      if (value !== null && !isValidChartBarMode(value)) return problem('barMode', `必须是 ${['grouped', 'stacked', 'percent'].join(' / ')} 之一（或传 null 恢复并排）`)
     } else if (key === 'filter') {
-      if (value !== null && !cloneSceneFilter(value, true)) return false
+      if (value !== null && !cloneSceneFilter(value, true)) return problem('filter', '必须是 { brightness?, contrast?, saturation?, blur?, hue?, grayscale?, sepia? } 至少一键（或传 null 清除）')
     } else if (key === 'blendMode') {
-      if (value !== null && !isValidBlendMode(value)) return false
+      if (value !== null && !isValidBlendMode(value)) return problem('blendMode', '必须是已知的混合模式之一（或传 null 恢复正常）')
     } else if (key === 'dash') {
-      if (value !== null && !isValidDash(value)) return false
+      if (value !== null && !isValidDash(value)) return problem('dash', '必须是大于 0 的虚线长度（或传 null 恢复实线）')
     } else if (key === 'cap') {
-      if (!isValidLineCap(value)) return false
+      if (!isValidLineCap(value)) return problem('cap', `必须是 ${['round', 'butt', 'square'].join(' / ')} 之一`)
     } else if (key === 'join') {
-      if (!isValidLineJoin(value)) return false
+      if (!isValidLineJoin(value)) return problem('join', `必须是 ${['round', 'miter', 'bevel'].join(' / ')} 之一`)
     } else if (key === 'fillRule') {
-      if (!isValidFillRule(value)) return false
+      if (!isValidFillRule(value)) return problem('fillRule', `必须是 ${['nonzero', 'evenodd'].join(' / ')} 之一`)
     } else if (key === 'startCap' || key === 'endCap') {
-      if (value !== null && !isValidLineEndpointCap(value)) return false
+      if (value !== null && !isValidLineEndpointCap(value)) return problem(key, `必须是 ${['none', 'arrow', 'dot'].join(' / ')} 之一（或传 null 恢复跟随 lineKind）`)
     } else if (key === 'stroke') {
-      if (value !== null && !isHexColor(value)) return false
+      if (value !== null && !isHexColor(value)) return problem('stroke', '必须是 #RRGGBB（或传 null 清除）')
     } else if (key === 'strokeWidth') {
-      if (value !== null && !isValidTextStrokeWidth(value)) return false
+      if (value !== null && !isValidTextStrokeWidth(value)) return problem('strokeWidth', '必须是 0.5–100 的像素宽度（或传 null 清除）')
     } else if (key === 'effect') {
-      if (value !== null && !isValidTextEffect(value)) return false
+      if (value !== null && !isValidTextEffect(value)) return problem('effect', '必须是合法的文字效果对象（或传 null 去掉）')
     }
   }
-  return true
+  return null
 }
 
 /**
@@ -812,13 +815,19 @@ function applyContentPatch(
   node: FreeformSceneNode,
   patch: FreeformNodeContentPatch,
 ): NodePatchResult {
-  if (!isRecord(patch) || !hasOnlyKeys(patch, CONTENT_KEYS) || Object.keys(patch).length === 0) {
-    return { ok: false, node }
+  if (!isRecord(patch) || !hasOnlyKeys(patch, CONTENT_KEYS)) {
+    return { ok: false, node, reason: `内容键必须是这些之一：${[...CONTENT_KEYS].join(' / ')}` }
+  }
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, node, reason: '内容键至少要写一个' }
   }
   const record = patch as unknown as UnknownRecord
   if (node.type === 'text') {
-    if (Object.keys(record).some((key) => key !== 'text') || typeof record.text !== 'string') {
-      return { ok: false, node }
+    if (Object.keys(record).some((key) => key !== 'text')) {
+      return { ok: false, node, reason: `text 的内容只接受 text，收到不允许的键：${Object.keys(record).filter((key) => key !== 'text').join('、')}` }
+    }
+    if (typeof record.text !== 'string') {
+      return { ok: false, node, reason: 'text 的内容必须是字符串' }
     }
     const text = record.text
     if (text === node.text) return { ok: true, node }
@@ -830,12 +839,12 @@ function applyContentPatch(
     }
   }
   if (node.type === 'image') {
-    if (
-      Object.keys(record).some((key) => key !== 'src' && key !== 'alt') ||
-      ('src' in record && typeof record.src !== 'string') ||
-      ('alt' in record && typeof record.alt !== 'string')
-    ) {
-      return { ok: false, node }
+    const unexpected = Object.keys(record).filter((key) => key !== 'src' && key !== 'alt')
+    if (unexpected.length > 0) {
+      return { ok: false, node, reason: `image 的内容只接受 src / alt，收到不允许的键：${unexpected.join('、')}` }
+    }
+    if (('src' in record && typeof record.src !== 'string') || ('alt' in record && typeof record.alt !== 'string')) {
+      return { ok: false, node, reason: 'image 的 src 和 alt 都必须是字符串' }
     }
     const src = 'src' in record ? (record.src as string) : node.src
     const alt = 'alt' in record ? (record.alt as string) : node.alt
@@ -854,12 +863,19 @@ function applyContentPatch(
   }
   if (node.type === 'chart') {
     const patchKeys = Object.keys(record)
-    if (patchKeys.some((key) => key !== 'labels' && key !== 'series')) return { ok: false, node }
+    const unexpected = patchKeys.filter((key) => key !== 'labels' && key !== 'series')
+    if (unexpected.length > 0) {
+      return { ok: false, node, reason: `chart 的内容只接受 labels / series，收到不允许的键：${unexpected.join('、')}` }
+    }
     const labels = 'labels' in record ? record.labels as unknown : node.labels
     if (!Array.isArray(labels) || labels.length === 0 || labels.length > CHART_POINTS_MAX
-      || !labels.every(isValidChartLabel)) return { ok: false, node }
+      || !labels.every(isValidChartLabel)) {
+      return { ok: false, node, reason: `labels 必须是 1–${CHART_POINTS_MAX} 个 1–24 字符的字符串` }
+    }
     const series = 'series' in record ? record.series as unknown : node.series
-    if (!isValidChartSeriesList(series, labels.length)) return { ok: false, node }
+    if (!isValidChartSeriesList(series, labels.length)) {
+      return { ok: false, node, reason: `series 必须是 1–3 个 { name?, values: [≥0 数值 × ${labels.length}], color: #RRGGBB }，values 长度要和 labels 一致` }
+    }
     const same = ('labels' in record || 'series' in record)
       && (node.labels.length === labels.length
         && node.labels.every((label, index) => label === labels[index])
@@ -885,10 +901,15 @@ function applyContentPatch(
   }
   if (node.type === 'table') {
     const patchKeys = Object.keys(record)
-    if (patchKeys.some((key) => key !== 'rows' && key !== 'cols' && key !== 'cells' && key !== 'colWidths')) return { ok: false, node }
+    const unexpected = patchKeys.filter((key) => key !== 'rows' && key !== 'cols' && key !== 'cells' && key !== 'colWidths')
+    if (unexpected.length > 0) {
+      return { ok: false, node, reason: `table 的内容只接受 rows / cols / cells / colWidths，收到不允许的键：${unexpected.join('、')}` }
+    }
     const rows = 'rows' in record ? record.rows : node.rows
     const cols = 'cols' in record ? record.cols : node.cols
-    if (!isValidTableRows(rows) || !isValidTableCols(cols)) return { ok: false, node }
+    if (!isValidTableRows(rows) || !isValidTableCols(cols)) {
+      return { ok: false, node, reason: 'rows 必须是 2–12、cols 必须是 1–6 的整数' }
+    }
     // A bare rows/cols change resizes the grid: every cell that still has a
     // place keeps its text, the new places start empty.
     let cells: unknown = 'cells' in record ? record.cells : undefined
@@ -901,14 +922,18 @@ function applyContentPatch(
       }
       cells = resized
     }
-    if (!isValidTableCells(cells as readonly string[], rows, cols)) return { ok: false, node }
+    if (!isValidTableCells(cells as readonly string[], rows, cols)) {
+      return { ok: false, node, reason: `cells 必须正好是 rows × cols（${rows} × ${cols}）个 1–24 字符的字符串（按行展开）` }
+    }
     const nextCells = cells as string[]
     // Column weights follow the grid: a given set must match the new column
     // count, a resize without one remaps the kept columns and gives a new
     // column an even share.
     let colWidths: number[] | undefined
     if ('colWidths' in record) {
-      if (!isValidTableColWidths(record.colWidths, cols)) return { ok: false, node }
+      if (!isValidTableColWidths(record.colWidths, cols)) {
+        return { ok: false, node, reason: `colWidths 必须正好是 ${cols} 个大于 0 的数（与新列数一致）` }
+      }
       colWidths = [...(record.colWidths as number[])]
     } else if (node.colWidths !== undefined && node.cols !== cols) {
       const remapped: number[] = []
@@ -939,9 +964,14 @@ function applyContentPatch(
     }
   }
   if (node.type === 'timeline') {
-    if (Object.keys(record).some((key) => key !== 'items')) return { ok: false, node }
+    const unexpected = Object.keys(record).filter((key) => key !== 'items')
+    if (unexpected.length > 0) {
+      return { ok: false, node, reason: `timeline 的内容只接受 items（整体替换），收到不允许的键：${unexpected.join('、')}` }
+    }
     if ('items' in record) {
-      if (!isValidTimelineItems(record.items)) return { ok: false, node }
+      if (!isValidTimelineItems(record.items)) {
+        return { ok: false, node, reason: 'items 必须是 2–8 个 { label?(1–12 字), text(1–48 字) }，整体替换' }
+      }
       const items = (record.items as FreeformTimelineItem[]).map((item) => ({
         text: item.text,
         ...('label' in item ? { label: item.label } : {}),
@@ -955,15 +985,20 @@ function applyContentPatch(
     return { ok: true, node }
   }
   if (node.type === 'progress') {
-    if (Object.keys(record).some((key) => key !== 'value' && key !== 'label')) return { ok: false, node }
-    if ('value' in record && !isValidProgressValue(record.value)) return { ok: false, node }
+    const unexpected = Object.keys(record).filter((key) => key !== 'value' && key !== 'label')
+    if (unexpected.length > 0) {
+      return { ok: false, node, reason: `progress 的内容只接受 value / label，收到不允许的键：${unexpected.join('、')}` }
+    }
+    if ('value' in record && !isValidProgressValue(record.value)) {
+      return { ok: false, node, reason: 'value 必须是 0–100 的数，最多一位小数（如 65、42.5）' }
+    }
     // An empty label clears the goal's name; anything else is its 1–12
     // character name.
     if (
       'label' in record
       && (typeof record.label !== 'string' || (record.label !== '' && !isValidProgressLabel(record.label)))
     ) {
-      return { ok: false, node }
+      return { ok: false, node, reason: 'label 必须是 1–12 个字的字符串，传 "" 清除' }
     }
     const same =
       (!('value' in record) || record.value === node.value)
@@ -978,23 +1013,30 @@ function applyContentPatch(
     return { ok: true, node: next }
   }
   if (node.type === 'qrcode') {
-    if (Object.keys(record).some((key) => key !== 'payload') || !isValidQrPayload(record.payload)) {
-      return { ok: false, node }
+    const unexpected = Object.keys(record).filter((key) => key !== 'payload')
+    if (unexpected.length > 0) {
+      return { ok: false, node, reason: `qrcode 的内容只接受 payload，收到不允许的键：${unexpected.join('、')}` }
+    }
+    if (!isValidQrPayload(record.payload)) {
+      return { ok: false, node, reason: 'payload 必须是 1–512 个字符的文字或 URL' }
     }
     const payload = record.payload as string
     return { ok: true, node: payload === node.payload ? node : { ...node, payload } }
   }
   if (node.type === 'path') {
-    if (
-      Object.keys(record).some((key) => key !== 'd' && key !== 'viewBox') ||
-      ('d' in record && !isValidPathData(record.d))
-    ) {
-      return { ok: false, node }
+    const unexpected = Object.keys(record).filter((key) => key !== 'd' && key !== 'viewBox')
+    if (unexpected.length > 0) {
+      return { ok: false, node, reason: `path 的内容只接受 d / viewBox，收到不允许的键：${unexpected.join('、')}` }
+    }
+    if ('d' in record && !isValidPathData(record.d)) {
+      return { ok: false, node, reason: 'd 必须是合法的 SVG 路径（以 M 开头，最长 20000 字符）' }
     }
     let viewBox = node.viewBox
     if ('viewBox' in record) {
       const cloned = clonePathViewBox(record.viewBox)
-      if (!cloned) return { ok: false, node }
+      if (!cloned) {
+        return { ok: false, node, reason: 'viewBox 必须是 { x, y, width(>0), height(>0) }' }
+      }
       viewBox = cloned
     }
     const d = 'd' in record ? (record.d as string) : node.d
@@ -1005,7 +1047,11 @@ function applyContentPatch(
         : { ...node, d, viewBox },
     }
   }
-  return { ok: false, node }
+  return {
+    ok: false,
+    node,
+    reason: `${node.type} 节点没有可改的内容字段（内容只属于 text / image / chart / table / timeline / progress / qrcode / path）`,
+  }
 }
 
 function richTextSpansEqual(
@@ -1057,12 +1103,22 @@ function withTextLayoutPatch(node: FreeformTextElement, patch: FreeformNodeStyle
   return next
 }
 
+/** Why a style patch's keys don't fit the node type; lists what it takes. */
+function styleKeyReason(type: string, allowed: Iterable<string>, keys: readonly string[]): string {
+  const allowedSet = allowed instanceof Set ? allowed : new Set(allowed)
+  const unexpected = keys.filter((key) => !allowedSet.has(key))
+  return `${type} 的样式只接受 ${[...allowedSet].join(' / ')}，收到不允许的键：${unexpected.join('、')}`
+}
+
 function applyStylePatch(
   node: FreeformSceneNode,
   patch: FreeformNodeStylePatch,
 ): NodePatchResult {
-  if (!isRecord(patch) || !hasOnlyKeys(patch, STYLE_KEYS) || Object.keys(patch).length === 0) {
-    return { ok: false, node }
+  if (!isRecord(patch) || !hasOnlyKeys(patch, STYLE_KEYS)) {
+    return { ok: false, node, reason: `样式键必须是这些之一：${[...STYLE_KEYS].join(' / ')}` }
+  }
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, node, reason: '样式键至少要写一个' }
   }
   const keys = Object.keys(patch)
   if (node.type === 'text') {
@@ -1088,20 +1144,29 @@ function applyStylePatch(
       'paragraphSpacing',
       'list',
     ])
-    if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
-    if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {
-      return { ok: false, node }
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('text', allowed, keys) }
     }
-    if ('align' in patch && !TEXT_ALIGNS.has(patch.align as string)) return { ok: false, node }
+    if ('textFill' in patch && !isValidSceneColorPaint(patch.textFill)) {
+      return { ok: false, node, reason: 'textFill 必须是 ColorPaint（纯色 #RRGGBB 或渐变）' }
+    }
+    if ('align' in patch && !TEXT_ALIGNS.has(patch.align as string)) {
+      return { ok: false, node, reason: `align 必须是 ${[...TEXT_ALIGNS].join(' / ')} 之一` }
+    }
     let spansPatch: RichTextSpan[] | undefined
     if ('spans' in patch) {
       const normalized = normalizeRichTextSpans(patch.spans, node.text.length)
-      if (!normalized) return { ok: false, node }
+      if (!normalized) {
+        return { ok: false, node, reason: `spans 必须是 text 内的字符区间 [{ start, end, … }]：0 ≤ start < end ≤ ${node.text.length}，按 start 排序不重叠，至少含一种样式（传 [] 清空）` }
+      }
       spansPatch = normalized
     }
-    if (!validAppearancePatch(patch, TEXT_APPEARANCE_KEYS)) return { ok: false, node }
+    const appearanceProblem = appearanceProblemKey(patch, TEXT_APPEARANCE_KEYS)
+    if (appearanceProblem) return { ok: false, node, reason: appearanceProblem }
     const laidOut = withTextLayoutPatch(node, patch)
-    if (!laidOut) return { ok: false, node }
+    if (!laidOut) {
+      return { ok: false, node, reason: '文字样式放不下这个文本框：检查 fontSize / lineHeight / letterSpacing / paragraphSpacing 的范围' }
+    }
     // A new size for the whole text takes the words sized on their own along, in proportion.
     const scaledSpans = 'fontSize' in patch && !('spans' in patch) && typeof patch.fontSize === 'number' && node.fontSize > 0
       ? scaleSpanFontSizes(node.spans, patch.fontSize / node.fontSize)
@@ -1136,16 +1201,18 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'image') {
-    if (!keys.every((key) => key === 'fit' || key === 'framing' || IMAGE_APPEARANCE_KEYS.has(key))) {
-      return { ok: false, node }
+    const allowed = new Set(['fit', 'framing', ...IMAGE_APPEARANCE_KEYS])
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('image', allowed, keys) }
     }
-    if (
-      ('fit' in patch && patch.fit !== 'cover' && patch.fit !== 'contain')
-      || ('framing' in patch && !isValidImageFraming(patch.framing))
-      || !validAppearancePatch(patch, IMAGE_APPEARANCE_KEYS)
-    ) {
-      return { ok: false, node }
+    if ('fit' in patch && patch.fit !== 'cover' && patch.fit !== 'contain') {
+      return { ok: false, node, reason: 'fit 必须是 cover / contain' }
     }
+    if ('framing' in patch && !isValidImageFraming(patch.framing)) {
+      return { ok: false, node, reason: 'framing 必须是 { focusX(0–1), focusY(0–1), zoom(1–4) }' }
+    }
+    const appearanceProblem = appearanceProblemKey(patch, IMAGE_APPEARANCE_KEYS)
+    if (appearanceProblem) return { ok: false, node, reason: appearanceProblem }
     const fit = 'fit' in patch ? patch.fit as typeof node.fit : node.fit
     const framing = 'framing' in patch
       ? patch.framing as ImageFraming
@@ -1178,20 +1245,27 @@ function applyStylePatch(
       'filter',
       'blendMode',
     ])
-    if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
-    if ('shape' in patch && !isValidShape(patch.shape)) return { ok: false, node }
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('shape', allowed, keys) }
+    }
+    if ('shape' in patch && !isValidShape(patch.shape)) {
+      return { ok: false, node, reason: 'shape 必须是 rect / ellipse / triangle / diamond / pentagon / star / hexagon / heart / bubble 之一' }
+    }
     if ('fill' in patch && !isValidSceneShapeFill(patch.fill)) {
-      return { ok: false, node }
+      return { ok: false, node, reason: 'fill 必须是 ColorPaint、{ type: \'transparent\' } 或 { type: \'image\', src, fit, framing }' }
     }
     // Shape strokes stay plain color strings; `null` clears only text outlines.
-    if ('stroke' in patch && typeof patch.stroke !== 'string') return { ok: false, node }
+    if ('stroke' in patch && typeof patch.stroke !== 'string') {
+      return { ok: false, node, reason: 'shape 的 stroke 必须是 #RRGGBB 颜色字符串' }
+    }
     if (
       'strokeWidth' in patch
       && (typeof patch.strokeWidth !== 'number' || !Number.isFinite(patch.strokeWidth))
     ) {
-      return { ok: false, node }
+      return { ok: false, node, reason: 'strokeWidth 必须是数字' }
     }
-    if (!validAppearancePatch(patch, SHAPE_APPEARANCE_KEYS)) return { ok: false, node }
+    const appearanceProblem = appearanceProblemKey(patch, SHAPE_APPEARANCE_KEYS)
+    if (appearanceProblem) return { ok: false, node, reason: appearanceProblem }
     let fill = node.fill
     if ('fill' in patch) {
       const incoming = patch.fill as ShapeFill
@@ -1237,26 +1311,33 @@ function applyStylePatch(
       'lineKind', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap',
       'startCap', 'endCap', 'points',
     ])
-    if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('line', allowed, keys) }
+    }
     if ('lineKind' in patch && patch.lineKind !== 'line' && patch.lineKind !== 'arrow') {
-      return { ok: false, node }
+      return { ok: false, node, reason: 'lineKind 必须是 line / arrow' }
     }
     // Line strokes stay plain color strings; `null` clears only text outlines.
-    if ('stroke' in patch && typeof patch.stroke !== 'string') return { ok: false, node }
+    if ('stroke' in patch && typeof patch.stroke !== 'string') {
+      return { ok: false, node, reason: 'line 的 stroke 必须是 #RRGGBB 颜色字符串' }
+    }
     if (
       'strokeWidth' in patch
       && (typeof patch.strokeWidth !== 'number' || !Number.isFinite(patch.strokeWidth))
     ) {
-      return { ok: false, node }
+      return { ok: false, node, reason: 'strokeWidth 必须是数字' }
     }
     // Vertex lists must stay inside the node box; a bad list rejects the patch.
     let points: LinePoint[] | undefined
     if ('points' in patch) {
       const cloned = cloneLinePoints(patch.points, node.width, node.height)
-      if (!cloned) return { ok: false, node }
+      if (!cloned) {
+        return { ok: false, node, reason: `points 必须是 2–64 个 { x, y }，坐标都要落在节点盒内（0 ≤ x ≤ ${node.width}、0 ≤ y ≤ ${node.height}）` }
+      }
       points = cloned
     }
-    if (!validAppearancePatch(patch, LINE_APPEARANCE_KEYS)) return { ok: false, node }
+    const appearanceProblem = appearanceProblemKey(patch, LINE_APPEARANCE_KEYS)
+    if (appearanceProblem) return { ok: false, node, reason: appearanceProblem }
     const next = withAppearancePatch({
       ...node,
       ...('lineKind' in patch ? { lineKind: patch.lineKind as typeof node.lineKind } : {}),
@@ -1274,20 +1355,21 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'chart') {
-    if (
-      keys.some((key) => key !== 'chartKind' && key !== 'accent' && key !== 'showValues'
-        && key !== 'barMode' && key !== 'showLegend' && key !== 'showTicks'
-        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
-    ) {
-      return { ok: false, node }
+    const allowed = new Set([
+      'chartKind', 'accent', 'showValues', 'barMode', 'showLegend', 'showTicks',
+      ...CHART_APPEARANCE_KEYS,
+    ])
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('chart', allowed, keys) }
     }
-    if (
-      ('chartKind' in patch && !isValidChartKind(patch.chartKind))
-      || ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent))
-      || !validAppearancePatch(patch, CHART_APPEARANCE_KEYS)
-    ) {
-      return { ok: false, node }
+    if ('chartKind' in patch && !isValidChartKind(patch.chartKind)) {
+      return { ok: false, node, reason: 'chartKind 必须是 bar / ring / line / radar 之一' }
     }
+    if ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent)) {
+      return { ok: false, node, reason: 'accent 必须是 #RRGGBB（或传 null 恢复 #1d4ed8）' }
+    }
+    const appearanceProblem = appearanceProblemKey(patch, CHART_APPEARANCE_KEYS)
+    if (appearanceProblem) return { ok: false, node, reason: appearanceProblem }
     // accent recolours every series at once (a v24 habit kept replayable);
     // `null` restores the default blue on each of them.
     const accent = 'accent' in patch
@@ -1307,16 +1389,12 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'table') {
-    if (
-      keys.some((key) => key !== 'headerRow' && key !== 'striped'
-        && key !== 'ink' && key !== 'headerFill' && key !== 'stripeFill'
-        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
-    ) {
-      return { ok: false, node }
+    const allowed = new Set(['headerRow', 'striped', 'ink', 'headerFill', 'stripeFill', ...TABLE_APPEARANCE_KEYS])
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('table', allowed, keys) }
     }
-    if (!validAppearancePatch(patch, TABLE_APPEARANCE_KEYS)) {
-      return { ok: false, node }
-    }
+    const tableProblem = appearanceProblemKey(patch, TABLE_APPEARANCE_KEYS)
+    if (tableProblem) return { ok: false, node, reason: tableProblem }
     const next = withAppearancePatch(node, patch, TABLE_APPEARANCE_KEYS)
     const same = keys.every((key) =>
       TABLE_APPEARANCE_KEYS.has(key)
@@ -1326,18 +1404,15 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'timeline') {
-    if (
-      keys.some((key) => key !== 'accent' && key !== 'horizontal' && key !== 'ink'
-        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
-    ) {
-      return { ok: false, node }
+    const allowed = new Set(['accent', 'horizontal', 'ink', ...TIMELINE_APPEARANCE_KEYS])
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('timeline', allowed, keys) }
     }
-    if (
-      ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent))
-      || !validAppearancePatch(patch, TIMELINE_APPEARANCE_KEYS)
-    ) {
-      return { ok: false, node }
+    if ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent)) {
+      return { ok: false, node, reason: 'accent 必须是 #RRGGBB（或传 null 恢复蓝）' }
     }
+    const timelineProblem = appearanceProblemKey(patch, TIMELINE_APPEARANCE_KEYS)
+    if (timelineProblem) return { ok: false, node, reason: timelineProblem }
     const next = withAppearancePatch(node, patch, TIMELINE_APPEARANCE_KEYS)
     const same = keys.every((key) =>
       TIMELINE_APPEARANCE_KEYS.has(key)
@@ -1347,19 +1422,18 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'progress') {
-    if (
-      keys.some((key) => key !== 'progressKind' && key !== 'accent' && key !== 'trackFill'
-        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
-    ) {
-      return { ok: false, node }
+    const allowed = new Set(['progressKind', 'accent', 'trackFill', ...PROGRESS_APPEARANCE_KEYS])
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('progress', allowed, keys) }
     }
-    if (
-      ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent))
-      || ('trackFill' in patch && patch.trackFill !== null && !isHexColor(patch.trackFill))
-      || !validAppearancePatch(patch, PROGRESS_APPEARANCE_KEYS)
-    ) {
-      return { ok: false, node }
+    if ('accent' in patch && patch.accent !== null && !isHexColor(patch.accent)) {
+      return { ok: false, node, reason: 'accent 必须是 #RRGGBB（或传 null 恢复蓝）' }
     }
+    if ('trackFill' in patch && patch.trackFill !== null && !isHexColor(patch.trackFill)) {
+      return { ok: false, node, reason: 'trackFill 必须是 #RRGGBB（或传 null 恢复按进度色铺 14% 浅底）' }
+    }
+    const progressProblem = appearanceProblemKey(patch, PROGRESS_APPEARANCE_KEYS)
+    if (progressProblem) return { ok: false, node, reason: progressProblem }
     const next = withAppearancePatch(node, patch, PROGRESS_APPEARANCE_KEYS)
     const same = keys.every((key) =>
       PROGRESS_APPEARANCE_KEYS.has(key)
@@ -1369,20 +1443,21 @@ function applyStylePatch(
     return { ok: true, node: same ? node : next }
   }
   if (node.type === 'qrcode') {
-    if (
-      keys.some((key) => key !== 'dark' && key !== 'light' && key !== 'ecl'
-        && key !== 'moduleStyle' && key !== 'logoSrc' && key !== 'quietZone'
-        && key !== 'opacity' && key !== 'shadow' && key !== 'filter' && key !== 'blendMode')
-    ) {
-      return { ok: false, node }
+    const allowed = new Set([
+      'dark', 'light', 'ecl', 'moduleStyle', 'logoSrc', 'quietZone',
+      ...QRCODE_APPEARANCE_KEYS,
+    ])
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('qrcode', allowed, keys) }
     }
-    if (
-      ('dark' in patch && patch.dark !== null && !isHexColor(patch.dark))
-      || ('light' in patch && patch.light !== null && !isHexColor(patch.light))
-      || !validAppearancePatch(patch, QRCODE_APPEARANCE_KEYS)
-    ) {
-      return { ok: false, node }
+    if ('dark' in patch && patch.dark !== null && !isHexColor(patch.dark)) {
+      return { ok: false, node, reason: 'dark 必须是 #RRGGBB（或传 null 恢复默认）' }
     }
+    if ('light' in patch && patch.light !== null && !isHexColor(patch.light)) {
+      return { ok: false, node, reason: 'light 必须是 #RRGGBB（或传 null 恢复默认）' }
+    }
+    const qrcodeProblem = appearanceProblemKey(patch, QRCODE_APPEARANCE_KEYS)
+    if (qrcodeProblem) return { ok: false, node, reason: qrcodeProblem }
     // dark/light are required fields: `null` restores their defaults instead
     // of removing them.
     const dark = 'dark' in patch
@@ -1402,17 +1477,24 @@ function applyStylePatch(
   }
   if (node.type === 'path') {
     const allowed = new Set(['fill', 'stroke', 'strokeWidth', 'dash', ...PATH_APPEARANCE_KEYS])
-    if (!keys.every((key) => allowed.has(key))) return { ok: false, node }
+    if (!keys.every((key) => allowed.has(key))) {
+      return { ok: false, node, reason: styleKeyReason('path', allowed, keys) }
+    }
     // Path fills are colors, nothing, or (v19) pictures; strokes are hex colors.
-    if ('fill' in patch && !isValidScenePathFill(patch.fill)) return { ok: false, node }
-    if ('stroke' in patch && !isHexColor(patch.stroke)) return { ok: false, node }
+    if ('fill' in patch && !isValidScenePathFill(patch.fill)) {
+      return { ok: false, node, reason: 'fill 必须是 ColorPaint、{ type: \'transparent\' } 或 { type: \'image\', src, fit, framing }' }
+    }
+    if ('stroke' in patch && !isHexColor(patch.stroke)) {
+      return { ok: false, node, reason: 'stroke 必须是 #RRGGBB' }
+    }
     if ('strokeWidth' in patch && !isValidPathStrokeWidth(patch.strokeWidth)) {
-      return { ok: false, node }
+      return { ok: false, node, reason: 'strokeWidth 必须是 0–10000 的 viewBox 单位（0 即不描边）' }
     }
     if ('dash' in patch && patch.dash !== null && !isValidPathDash(patch.dash)) {
-      return { ok: false, node }
+      return { ok: false, node, reason: 'dash 必须是大于 0 的 viewBox 单位虚线长度（或传 null 恢复实线）' }
     }
-    if (!validAppearancePatch(patch, PATH_APPEARANCE_KEYS)) return { ok: false, node }
+    const pathProblem = appearanceProblemKey(patch, PATH_APPEARANCE_KEYS)
+    if (pathProblem) return { ok: false, node, reason: pathProblem }
     const { dash: _previousDash, ...undashed } = node
     const base: FreeformPathElement = {
       ...('dash' in patch ? undashed : node),
@@ -1435,31 +1517,42 @@ function applyStylePatch(
     ) && appearanceKeysSame(node, next, patch, PATH_APPEARANCE_KEYS)
     return { ok: true, node: same ? node : next }
   }
-  return { ok: false, node }
+  return {
+    ok: false,
+    node,
+    reason: `${node.type} 节点没有可改的样式字段（组没有自己的样式；样式属于 text / image / shape / line / path / qrcode / chart / table / timeline / progress）`,
+  }
 }
 
 function applyGeometryPatch(
   node: FreeformSceneNode,
   patch: FreeformNodeGeometryPatch,
 ): NodePatchResult {
-  if (!isRecord(patch) || !hasOnlyKeys(patch, GEOMETRY_KEYS) || Object.keys(patch).length === 0) {
-    return { ok: false, node }
+  if (!isRecord(patch) || !hasOnlyKeys(patch, GEOMETRY_KEYS)) {
+    return { ok: false, node, reason: `几何键只接受 ${[...GEOMETRY_KEYS].join(' / ')}` }
+  }
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, node, reason: '几何键至少要写一个' }
   }
   const record = patch as unknown as UnknownRecord
   const keys = Object.keys(record)
   if (node.type === 'group' && keys.some((key) => key === 'width' || key === 'height')) {
-    return { ok: false, node }
+    return { ok: false, node, reason: '组没有自己的 width / height（由子节点撑开）' }
   }
   const values = Object.values(record)
   if (values.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
-    return { ok: false, node }
+    return { ok: false, node, reason: '几何值必须都是有限数字' }
   }
   const scale = 'scale' in record ? (record.scale as number) : node.scale
-  if (scale <= 0) return { ok: false, node }
+  if (scale <= 0) {
+    return { ok: false, node, reason: 'scale 必须大于 0' }
+  }
   if (node.type !== 'group') {
     const width = 'width' in record ? (record.width as number) : node.width
     const height = 'height' in record ? (record.height as number) : node.height
-    if (width <= 0 || height <= 0) return { ok: false, node }
+    if (width <= 0 || height <= 0) {
+      return { ok: false, node, reason: 'width 和 height 必须都大于 0' }
+    }
   }
   const next = {
     ...node,
@@ -1486,7 +1579,9 @@ function applyGeometryPatch(
       line.width,
       line.height,
     )
-    if (!scaled) return { ok: false, node }
+    if (!scaled) {
+      return { ok: false, node, reason: '改 width / height 后顶点装不进新的节点盒：把 points 一起调整，或先去掉 points' }
+    }
     return { ok: true, node: { ...line, points: scaled } }
   }
   const same = keys.every(
@@ -1564,6 +1659,84 @@ function reduceNodeUpdateBatch(
   if (!nodes || invalidPatch || nodes === slide.nodes) return document
   if (validateSceneNodesForMutation(nodes)) return document
   return withSlideNodes(document, slideId, () => nodes)
+}
+
+/**
+ * Why a node-update action would not apply, in the reader's words — the
+ * first reason its own checks hit: an unknown slide, an unknown path, a
+ * locked node, or the first patch the node refused (the patch functions'
+ * `reason`). `null` when the batch applies cleanly or the action is not a
+ * node update; post-mutation rejections are too rare to mirror here.
+ */
+export function describeFreeformActionRejection(
+  document: FreeformDocument,
+  action: unknown,
+): string | null {
+  if (!isRecord(action)) return null
+  const type = action.type
+  if (
+    type !== 'node/update-content'
+    && type !== 'node/update-style'
+    && type !== 'node/update-geometry'
+  ) {
+    return null
+  }
+  const category: NodeUpdateCategory = type === 'node/update-content'
+    ? 'content'
+    : type === 'node/update-style'
+      ? 'style'
+      : 'geometry'
+  if (typeof action.slideId !== 'string') return `${type} 的 slideId 必须是字符串`
+  const slide = document.slides.find((candidate) => candidate.id === action.slideId)
+  if (!slide) {
+    const known = document.slides.map((entry) => entry.id).join('、')
+    return `找不到这一页：${action.slideId}（文档里有：${known}）`
+  }
+  if (!Array.isArray(action.updates) || action.updates.length === 0) {
+    return `${type} 的 updates 必须是非空的 [{ path, patch }] 数组`
+  }
+  const paths: ScenePath[] = []
+  const seen = new Set<string>()
+  for (const update of action.updates) {
+    if (!isRecord(update)) return 'updates 里的每一项必须是 { path, patch } 对象'
+    if (!validScenePath(update.path)) {
+      return `path 必须是节点 id 的字符串数组，收到 ${JSON.stringify(update.path) ?? String(update.path)}（用 inspect_document 拿节点 id 和路径）`
+    }
+    const key = scenePathKey(update.path)
+    if (seen.has(key)) return `updates 里有重复的 path：${JSON.stringify(update.path)}`
+    seen.add(key)
+    paths.push(update.path)
+    if (!isRecord(update.patch)) return 'patch 必须是对象'
+  }
+  let pathIndex: ReturnType<typeof buildScenePathIndex>
+  try {
+    pathIndex = buildScenePathIndex(slide.nodes)
+  } catch {
+    return null
+  }
+  if (!canApplySceneAction(slide.nodes, { kind: category, paths }, pathIndex)) {
+    for (const path of paths) {
+      const target = pathIndex.get(scenePathKey(path))
+      if (!target) return `路径找不到节点：${JSON.stringify(path)}（用 inspect_document 拿节点 id 和路径）`
+      if (target.effectiveLocked) return `「${target.node.name}」被锁定（locked），不能编辑`
+      if (category === 'geometry' && target.subtreeLocked) {
+        return `「${target.node.name}」在锁定的组里，不能改几何`
+      }
+    }
+    return '这个节点更新不被允许'
+  }
+  for (const update of action.updates as Array<{ path: ScenePath; patch: UnknownRecord }>) {
+    const node = pathIndex.get(scenePathKey(update.path))?.node
+    if (!node) return `路径找不到节点：${JSON.stringify(update.path)}`
+    const result: NodePatchResult =
+      category === 'content'
+        ? applyContentPatch(node, update.patch as FreeformNodeContentPatch)
+        : category === 'style'
+          ? applyStylePatch(node, update.patch as FreeformNodeStylePatch)
+          : applyGeometryPatch(node, update.patch as FreeformNodeGeometryPatch)
+    if (!result.ok) return result.reason ?? '补丁未通过校验'
+  }
+  return null
 }
 
 function reduceImageCropUpdate(

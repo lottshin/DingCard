@@ -3,6 +3,8 @@ import {
   createFreeformDocument,
   createImageElement,
   createLineElement,
+  createProgressElement,
+  describeFreeformActionRejection,
   createPathElement,
   createShapeElement,
   createSlide,
@@ -1616,5 +1618,109 @@ describe('slide/insert', () => {
     expect(insert(full, { slides: [page('a')] })).toBe(full)
     // Replacing a page keeps the count.
     expect(insert(full, { slides: [page('a')], replaceSlideId: 'p0' }).slides).toHaveLength(500)
+  })
+})
+
+describe('describeFreeformActionRejection', () => {
+  const deckWithProgress = () => {
+    const document = createFreeformDocument()
+    const progress = { ...createProgressElement(document.slides[0]), id: 'progress-1', name: '读书进度' }
+    return {
+      ...document,
+      slides: [{ ...document.slides[0], nodes: [progress as unknown as FreeformSceneNode] }],
+    }
+  }
+  const contentAction = (patch: Record<string, unknown>) => ({
+    type: 'node/update-content',
+    slideId: 'nonexistent' as unknown as string,
+    updates: [{ path: ['progress-1'], patch }],
+  })
+
+  it('stays quiet for a batch that applies and for other actions', () => {
+    const document = deckWithProgress()
+    const slideId = document.slides[0].id
+    expect(describeFreeformActionRejection(document, {
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: ['progress-1'], patch: { value: 42.5 } }],
+    })).toBeNull()
+    expect(describeFreeformActionRejection(document, { type: 'slide/delete', slideId })).toBeNull()
+  })
+
+  it('names the slide, the path, the keys and the rules it broke', () => {
+    const document = deckWithProgress()
+    const slideId = document.slides[0].id
+    const wrongSlide = contentAction({ value: 42.5 })
+    wrongSlide.slideId = 'missing-page'
+    expect(describeFreeformActionRejection(document, wrongSlide)).toContain('找不到这一页：missing-page')
+
+    const wrongKey = describeFreeformActionRejection(document, {
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: ['progress-1'], patch: { items: [] } }],
+    })
+    expect(wrongKey).toContain('progress 的内容只接受 value / label')
+    expect(wrongKey).toContain('items')
+
+    const wrongValue = describeFreeformActionRejection(document, {
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: ['progress-1'], patch: { value: 33.33 } }],
+    })
+    expect(wrongValue).toContain('value 必须是 0–100 的数')
+
+    const wrongPath = describeFreeformActionRejection(document, {
+      type: 'node/update-style',
+      slideId,
+      updates: [{ path: ['no-such-node'], patch: { accent: '#0f766e' } }],
+    })
+    expect(wrongPath).toContain('路径找不到节点')
+
+    const wrongStyleKey = describeFreeformActionRejection(document, {
+      type: 'node/update-style',
+      slideId,
+      updates: [{ path: ['progress-1'], patch: { chartKind: 'bar' } }],
+    })
+    expect(wrongStyleKey).toContain('progress 的样式只接受')
+    expect(wrongStyleKey).toContain('chartKind')
+
+    const badAppearance = describeFreeformActionRejection(document, {
+      type: 'node/update-style',
+      slideId,
+      updates: [{ path: ['progress-1'], patch: { opacity: 7 } }],
+    })
+    expect(badAppearance).toContain('样式键 opacity 的值不合法')
+  })
+
+  it('reports locked nodes and malformed batches', () => {
+    const document = deckWithProgress()
+    const slideId = document.slides[0].id
+    const locked = {
+      ...document,
+      slides: [{
+        ...document.slides[0],
+        nodes: [{
+          ...document.slides[0].nodes[0],
+          locked: true,
+        } as unknown as FreeformSceneNode],
+      }],
+    }
+    expect(describeFreeformActionRejection(locked, {
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: ['progress-1'], patch: { value: 10 } }],
+    })).toContain('被锁定')
+
+    expect(describeFreeformActionRejection(document, {
+      type: 'node/update-content',
+      slideId,
+      updates: [],
+    })).toContain('updates 必须是非空')
+
+    expect(describeFreeformActionRejection(document, {
+      type: 'node/update-content',
+      slideId,
+      updates: [{ path: ['progress-1'], patch: { value: 10 } }, { path: ['progress-1'], patch: { value: 20 } }],
+    })).toContain('重复的 path')
   })
 })

@@ -9,7 +9,7 @@
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { diagnoseFreeformDocument } from '../../../src/freeform/diagnostics'
-import { reduceFreeformDocument } from '../../../src/freeform/document'
+import { describeFreeformActionRejection, reduceFreeformDocument } from '../../../src/freeform/document'
 import { DECORATIONS } from '../../../src/freeform/decorations'
 import { ICONS } from '../../../src/freeform/icons'
 import { FREEFORM_DOCUMENT_VERSION } from '../../../src/freeform/types'
@@ -289,7 +289,7 @@ export function inspectDocument(value: unknown): InspectResult {
 }
 
 export type ApplyActionsResult =
-  | { ok: true; document: FreeformDocument; changes: boolean[] }
+  | { ok: true; document: FreeformDocument; changes: boolean[]; reasons: Array<string | null> }
   | { ok: false; error: string }
 
 /** Deterministic JSON comparison: key order never matters. */
@@ -311,14 +311,17 @@ export function applyActions(value: unknown, actions: unknown): ApplyActionsResu
   }
   let document = validated.document
   const changes: boolean[] = []
+  const reasons: Array<string | null> = []
   for (const action of actions) {
     const next = reduceFreeformDocument(document, action as FreeformAction)
-    changes.push(stableJson(next) !== stableJson(document))
+    const changed = stableJson(next) !== stableJson(document)
+    changes.push(changed)
+    reasons.push(changed ? null : describeFreeformActionRejection(document, action))
     document = next
   }
   const finalCheck = normalizeFreeformDocument(document)
   if (!finalCheck) {
     return { ok: false, error: `应用动作后文档未通过 v${FREEFORM_DOCUMENT_VERSION} 校验（不应发生，请反馈）：${diagnoseFreeformDocument(document) ?? ''}` }
   }
-  return { ok: true, document: finalCheck, changes }
+  return { ok: true, document: finalCheck, changes, reasons }
 }

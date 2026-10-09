@@ -1278,6 +1278,34 @@ describe('applyActions', () => {
     expect(result.ok).toBe(false)
   })
 
+  test('returns a reason for every action that did not apply', () => {
+    // An honest action applies and gets null; a refused one says why.
+    const result = applyActions(seedDocument(), [
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['title-1'], patch: { text: '新标题' } }],
+      },
+      {
+        type: 'node/update-content',
+        slideId: 'slide-1',
+        updates: [{ path: ['title-1'], patch: { value: 42.5 } }],
+      },
+      {
+        type: 'node/update-content',
+        slideId: 'missing-page',
+        updates: [{ path: ['title-1'], patch: { text: '哪页？' } }],
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.changes).toEqual([true, false, false])
+    expect(result.reasons[0]).toBeNull()
+    expect(result.reasons[1]).toContain('text 的内容只接受 text')
+    expect(result.reasons[1]).toContain('value')
+    expect(result.reasons[2]).toContain('找不到这一页：missing-page')
+  })
+
   test('applies the v21 shape parameters through node/update-style', () => {
     const withStar = seedDocument()
     withStar.slides[0].nodes.push({
