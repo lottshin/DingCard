@@ -397,6 +397,54 @@ describe('validateDocument', () => {
     expect(validateDocument(document).ok).toBe(false)
   })
 
+  test('names the page, node and key when validation fails', () => {
+    // A progress node missing its value: the error says which page, which
+    // node, and exactly which key to add.
+    const document = seedDocument() as unknown as Record<string, unknown>
+    const slide = (document.slides as Array<Record<string, unknown>>)[0]
+    const nodes = slide.nodes as Array<Record<string, unknown>>
+    nodes.push({
+      id: 'progress-1',
+      name: '读书进度',
+      locked: false,
+      hidden: false,
+      type: 'progress',
+      x: 120,
+      y: 900,
+      width: 480,
+      height: 96,
+      rotation: 0,
+      scale: 1,
+      progressKind: 'bar',
+    })
+    const rejected = validateDocument(document)
+    expect(rejected.ok).toBe(false)
+    if (rejected.ok) return
+    expect(rejected.error).toContain('第 1 页')
+    expect(rejected.error).toContain('「读书进度」')
+    expect(rejected.error).toContain('缺少必需的键：value')
+
+    // A v38 document carrying the v39 label: the error names the version to
+    // write instead of a bare "did not pass".
+    const v38 = JSON.parse(JSON.stringify(document)) as Record<string, unknown>
+    v38.documentVersion = 38
+    const v38Nodes = (v38.slides as Array<Record<string, unknown>>)[0].nodes as Array<Record<string, unknown>>
+    const progress = v38Nodes.find((node) => node.type === 'progress') as Record<string, unknown>
+    progress.value = 65
+    progress.label = '读书进度'
+    const versionRejected = validateDocument(v38)
+    expect(versionRejected.ok).toBe(false)
+    if (versionRejected.ok) return
+    expect(versionRejected.error).toContain('需要 v39 的字段')
+    expect(versionRejected.error).toContain('写的是 v38')
+
+    // Odd shapes still fall back to a readable sentence.
+    const shape = validateDocument({ documentVersion: 99, slides: [], activeSlideId: '' })
+    expect(shape.ok).toBe(false)
+    if (shape.ok) return
+    expect(shape.error).toContain('documentVersion 需要')
+  })
+
   test('rejects bad geometry and unknown versions', () => {
     const badScale = seedDocument() as unknown as Record<string, unknown>
     const slide = (badScale.slides as Array<Record<string, unknown>>)[0]

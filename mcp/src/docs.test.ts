@@ -26,16 +26,17 @@ describe('dingcard-mcp tool descriptions stay current', () => {
     const listing = await client.listTools()
     expect(listing.tools.length).toBeGreaterThan(0)
     for (const tool of listing.tools) {
+      const description = tool.description ?? ''
       // Any "自由画布 vNN" claim must name the current version…
-      for (const match of tool.description.matchAll(/自由画布 v(\d+)/g)) {
+      for (const match of description.matchAll(/自由画布 v(\d+)/g)) {
         expect(match[1], `${tool.name} 的版本说明落后了`).toBe(String(FREEFORM_DOCUMENT_VERSION))
       }
       // …and no example may pin another version.
-      for (const match of tool.description.matchAll(/documentVersion: (\d+)/g)) {
+      for (const match of description.matchAll(/documentVersion: (\d+)/g)) {
         expect(match[1], `${tool.name} 的示例版本落后了`).toBe(String(FREEFORM_DOCUMENT_VERSION))
       }
-      expect(tool.description, `${tool.name} 还带着 v1–v19 的旧迁移范围`).not.toContain('v1–v19')
-      expect(tool.description, `${tool.name} 还在说 v20 文档`).not.toContain('v20 文档')
+      expect(description, `${tool.name} 还带着 v1–v19 的旧迁移范围`).not.toContain('v1–v19')
+      expect(description, `${tool.name} 还在说 v20 文档`).not.toContain('v20 文档')
     }
   })
 
@@ -44,7 +45,7 @@ describe('dingcard-mcp tool descriptions stay current', () => {
     const listing = await client.listTools()
     const validate = listing.tools.find((tool) => tool.name === 'validate_document')
     expect(validate).toBeDefined()
-    const hint = validate!.description
+    const hint = validate!.description ?? ''
     // The hint's node bullets must be exactly the scene's node types —
     // no type forgotten, none invented.
     const listed = [...hint.matchAll(/^- (\w+)：/gm)].map((match) => match[1]).sort()

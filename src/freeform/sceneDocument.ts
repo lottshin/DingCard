@@ -553,6 +553,70 @@ function hasStrictNodeKeys(
   return false
 }
 
+/** Required keys per node type, mirroring hasStrictNodeKeys's dispatch. */
+const REQUIRED_NODE_KEYS: Record<string, ReadonlySet<string>> = {
+  group: GROUP_NODE_KEYS,
+  text: TEXT_NODE_KEYS,
+  image: IMAGE_NODE_V4_KEYS,
+  shape: SHAPE_NODE_KEYS,
+  line: LINE_NODE_KEYS,
+  path: PATH_NODE_KEYS,
+  qrcode: QRCODE_NODE_KEYS,
+  chart: CHART_NODE_KEYS_V26,
+  table: TABLE_NODE_KEYS,
+  timeline: TIMELINE_NODE_KEYS,
+  progress: PROGRESS_NODE_KEYS,
+}
+
+/** The input version each node type arrives at; earlier versions reject it. */
+const NODE_TYPE_MIN_VERSION: Record<string, number> = {
+  group: 3,
+  text: 3,
+  image: 3,
+  shape: 3,
+  line: 3,
+  path: 15,
+  qrcode: 22,
+  chart: 24,
+  table: 34,
+  timeline: 36,
+  progress: 38,
+}
+
+/**
+ * Why a node record's keys don't match its type at `inputVersion`: the
+ * unknown type, the keys it is missing, or the keys it must not have.
+ * `null` when the key sets match and the failure, if any, is in a field's
+ * value — the diagnostics module phrases that case on its own.
+ */
+export function describeNodeKeyProblem(
+  value: UnknownRecord,
+  inputVersion: StrictDocumentVersion,
+): string | null {
+  if (typeof value.type !== 'string') {
+    return `没有 type 字段（必须是 ${Object.keys(REQUIRED_NODE_KEYS).join(' / ')} 之一）`
+  }
+  const minVersion = NODE_TYPE_MIN_VERSION[value.type]
+  if (minVersion === undefined) {
+    return `节点类型「${value.type}」不是已知的 ${Object.keys(REQUIRED_NODE_KEYS).length} 种（${Object.keys(REQUIRED_NODE_KEYS).join(' / ')}）`
+  }
+  if (inputVersion < minVersion) {
+    return `节点类型「${value.type}」是 v${minVersion} 才有的，这份文档写的是 v${inputVersion}`
+  }
+  let required = REQUIRED_NODE_KEYS[value.type]
+  if (value.type === 'image' && inputVersion < 4) required = IMAGE_NODE_V3_KEYS
+  if (value.type === 'chart' && inputVersion < 26) required = CHART_NODE_KEYS
+  const optional = value.type === 'group' ? undefined : optionalKeysFor(value.type, inputVersion)
+  const actual = new Set(Object.keys(value))
+  const missing = [...required].filter((key) => !actual.has(key))
+  if (missing.length > 0) return `缺少必需的键：${missing.join('、')}`
+  const extra = [...actual].filter(
+    (key) => !required.has(key) && !(optional?.has(key) ?? false),
+  )
+  if (extra.length > 0) return `多了 v${inputVersion} 的 ${value.type} 不接受的键：${extra.join('、')}`
+  return null
+}
+
 /** Clone the version-gated base appearance fields; null rejects. */
 function cloneStrictAppearance(
   value: UnknownRecord,

@@ -8,9 +8,11 @@
 //   - reduceFreeformDocument:    the exact action reducer the UI dispatches to
 
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
+import { diagnoseFreeformDocument } from '../../../src/freeform/diagnostics'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
 import { DECORATIONS } from '../../../src/freeform/decorations'
 import { ICONS } from '../../../src/freeform/icons'
+import { FREEFORM_DOCUMENT_VERSION } from '../../../src/freeform/types'
 import { deckStyle, type DeckStyle } from './styles'
 import type {
   FreeformAction,
@@ -24,12 +26,16 @@ export type ValidateResult =
   | { ok: false; error: string }
 
 const VALIDATE_ERROR =
-  '文档未通过自由画布 v39 校验：需要 documentVersion=1–39 之一（旧版自动迁移为 v39）、非空 slides、'
+  `文档未通过自由画布 v${FREEFORM_DOCUMENT_VERSION} 校验：需要 documentVersion=1–${FREEFORM_DOCUMENT_VERSION} 之一（旧版自动迁移为 v${FREEFORM_DOCUMENT_VERSION}）、非空 slides、`
   + '合法的 activeSlideId，且每个节点的键必须与类型精确匹配（不允许多余或缺失键）。'
 
 export function validateDocument(value: unknown): ValidateResult {
   const document = normalizeFreeformDocument(value)
-  if (!document) return { ok: false, error: VALIDATE_ERROR }
+  if (!document) {
+    // The diagnosis names the page, node, keys or version; the static text
+    // is only the fallback for shapes the prober cannot narrow down.
+    return { ok: false, error: diagnoseFreeformDocument(value) ?? VALIDATE_ERROR }
+  }
   return { ok: true, document }
 }
 
@@ -312,7 +318,7 @@ export function applyActions(value: unknown, actions: unknown): ApplyActionsResu
   }
   const finalCheck = normalizeFreeformDocument(document)
   if (!finalCheck) {
-    return { ok: false, error: '应用动作后文档未通过 v20 校验（不应发生，请反馈）' }
+    return { ok: false, error: `应用动作后文档未通过 v${FREEFORM_DOCUMENT_VERSION} 校验（不应发生，请反馈）：${diagnoseFreeformDocument(document) ?? ''}` }
   }
   return { ok: true, document: finalCheck, changes }
 }
