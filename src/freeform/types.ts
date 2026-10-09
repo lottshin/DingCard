@@ -1,5 +1,8 @@
+/** The documentVersion a fresh freeform document carries; older versions migrate to it. */
+export const FREEFORM_DOCUMENT_VERSION = 39
+
 export interface FreeformDocument {
-  documentVersion: 39
+  documentVersion: typeof FREEFORM_DOCUMENT_VERSION
   slides: FreeformSlide[]
   activeSlideId: string
 }

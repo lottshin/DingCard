@@ -50,6 +50,7 @@ import type {
   ImageFraming,
   ScenePath,
 } from '../types'
+import { FREEFORM_DOCUMENT_VERSION } from '../types'
 
 function legacyText(id: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -245,6 +246,8 @@ function nestedGroups(depth: number): unknown {
 describe('freeform scene types and limits', () => {
   it('uses the current recursive scene types', () => {
     expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<39>()
+    expectTypeOf<FreeformDocument['documentVersion']>().toEqualTypeOf<typeof FREEFORM_DOCUMENT_VERSION>()
+    expect(FREEFORM_DOCUMENT_VERSION).toBe(39)
     expectTypeOf<FreeformSlide>().toHaveProperty('nodes')
     expectTypeOf<FreeformSceneLeaf>().toHaveProperty('scale')
     expectTypeOf<FreeformGroupNode>().toHaveProperty('children')

@@ -12,7 +12,22 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { MAX_FREEFORM_SLIDES } from '../../src/freeform/constants'
-import type { FreeformDocument, FreeformSlide } from '../../src/freeform/types'
+import { FREEFORM_DOCUMENT_VERSION } from '../../src/freeform/types'
+import type { FreeformDocument, FreeformSceneNode, FreeformSlide } from '../../src/freeform/types'
+
+/**
+ * Every freeform node type, kept in the MCP's doc voice. The two assertions
+ * below fail to compile when the scene union and this list disagree, so the
+ * schema hint can never drift behind the types.
+ */
+type FreeformNodeType = FreeformSceneNode['type']
+export const FREEFORM_NODE_TYPES = [
+  'text', 'image', 'shape', 'line', 'path', 'qrcode',
+  'chart', 'table', 'timeline', 'progress', 'group',
+] as const satisfies readonly FreeformNodeType[]
+type MissingNodeType = Exclude<FreeformNodeType, typeof FREEFORM_NODE_TYPES[number]>
+/** Compiles only while every scene node type appears in FREEFORM_NODE_TYPES. */
+export const assertNoMissingNodeType: MissingNodeType extends never ? true : ['漏了节点类型，请补进 FREEFORM_NODE_TYPES', MissingNodeType] = true
 import { composeDeck } from './core/compose'
 import { applyActions, inspectDocument, validateDocument } from './core/document'
 import { DocumentStore, expandPath, resolveDocumentInput, writeDocumentFile, type DocumentInput, type StoredDocument } from './core/documents'
@@ -80,12 +95,12 @@ const BLEND_HINT = "blendMode?('normal'|'multiply'|'screen'|'overlay'|'darken'|'
 const TEXT_STROKE_HINT = "stroke?(#RRGGBB 文字描边色，仅 v8；配 strokeWidth 使用), strokeWidth?(0.5–100 px 文字描边宽度，仅 v8), vertical?(true 竖排文字，仅 v9)"
 const TEXT_EFFECT_HINT = `文字效果，仅 v17，一段文字一种：{ type: 'neon', color, amount } 发光 | { type: 'outline', color, amount } 字外描边（贴纸字） | { type: 'hollow', amount } 镂空（只留文字颜色的轮廓） | { type: 'splice', color, amount, angle } 镂空字叠在错开的实心字上 | { type: 'offset', color, amount, angle } 硬投影 | { type: 'echo', color, amount, angle } 两层渐淡的重影 | { type: 'glitch', color, color2, amount } 左右错开的双色故障 | { type: 'extrude', color, amount, angle } 立体 | { type: 'background', color, amount, radius } 每行文字后面一块底色（标签） | { type: 'marker', color, amount } 每行下半截的荧光笔；color/color2 为 #RRGGBB，amount 0–100（按字号比例的强度或大小，50 为默认），angle 0–360（0 向右、90 向下），radius 0–100（底色圆角）；node/update-style 的 effect 传 null 去掉。现成的花字见 list_text_styles`
 
-const DOCUMENT_SCHEMA_HINT = `document：自由画布 v20 文档（JSON；v1–v19 输入会自动迁移为 v20）。
-顶层 { documentVersion: 33, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes, guides? }。
+const DOCUMENT_SCHEMA_HINT = `document：自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（JSON；v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入会自动迁移为 v${FREEFORM_DOCUMENT_VERSION}）。
+顶层 { documentVersion: ${FREEFORM_DOCUMENT_VERSION}, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes, guides? }。
 guides? 为该页编辑器参考线（仅 v10）：[{ id(非空且页内唯一), axis('x' 竖线 | 'y' 横线), position(页面内坐标，x ∈ [0, 页宽]，y ∈ [0, 页高]) }]，每页至多 64 条；仅用于编辑器显示与吸附，不参与渲染导出。
 background 为 { type: 'solid', color } | { type: 'linear-gradient', from, to, angle } | { type: 'linear-gradient', stops: [{ offset(0–1 递增), color }×2–8], angle } (仅 v8) | { type: 'radial-gradient', stops: [{ offset(0–1 递增), color }×2–8] } (仅 v12，居中圆 radial-gradient，半径为最远角) | { type: 'transparent' } | { type: 'image', src(URL 或 data URL), fit('cover' 铺满裁切 | 'contain' 完整显示，留空处透明), framing({ focusX(0–1), focusY(0–1), zoom(1–4) } 取景，默认 { focusX: 0.5, focusY: 0.5, zoom: 1 }) } (仅 v16，整页背景图，画在所有节点下面；混合模式会和它混合) | { type: 'pattern', color(底色 #RRGGBB), patternColor(图案色 #RRGGBB), pattern('dots' 圆点|'grid' 网格|'lines' 横线|'checks' 交叉网格), size(一个重复的 px，8–64) } (仅 v32，平色底上重复图案，画在所有节点下面)。
 ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle }（stops 仅 v8）与径向 { type: 'radial-gradient', stops }（仅 v12）；可用于页面背景、文字填充、形状填充与图形填充。
-节点六选一，键必须精确匹配（不允许多余/缺失键；v6–v9 外观键均可选、缺省即默认样式），公共键：id, name, locked, hidden, type, x, y, rotation(度，绕节点盒中心顺时针旋转), scale(>0)：
+节点 ${FREEFORM_NODE_TYPES.length} 选一（${FREEFORM_NODE_TYPES.join(' / ')}），键必须精确匹配（不允许多余/缺失键；v6–v9 外观键均可选、缺省即默认样式），公共键：id, name, locked, hidden, type, x, y, rotation(度，绕节点盒中心顺时针旋转), scale(>0)：
 - text：+ width, height, text, spans?(可选富文本片段数组 [{ start, end, bold?(true), color?(#RRGGBB 文字色), highlight?(#RRGGBB 高亮底色，仅 v16), underline?(true 下划线，仅 v16), strike?(true 删除线，仅 v20), fontSize?(1–4096 这几个字自己的字号 px，仅 v20；整段的 fontSize 改变时按比例跟着变) }]：text 内字符区间 [start, end)，0≤start<end≤text 长度，按 start 排序且不重叠，至少含一种样式；用来强调关键词：加粗、换色、荧光笔式高亮、下划线、删除线（划掉的原价）、放大（价格里的数字）), fontSize, fontFamily, textFill(ColorPaint), align('left'|'center'|'right'|'justify'；justify 两端对齐仅 v20，中文正文常用，每段最后一行靠左), fontWeight('normal'|'bold'), verticalAlign?('middle'|'bottom' 框比文字高时文字垂直居中或靠下，仅 v20，缺省靠上), paragraphSpacing?(>0–1000 px 段间距：text 里每个换行分出一段，段与段之间多出这么多，仅 v20), list?('bullet'|'number' 每段一个列表项，前面自动加圆点或编号、换行悬挂缩进，空段不算，仅 v20；圆点和编号不要写进 text), lineHeight?(0.5–4 无单位行高倍数), letterSpacing?(-50–200 px 字距), italic?(true 斜体), ${TEXT_STROKE_HINT}, effect?(${TEXT_EFFECT_HINT}), opacity?(0–1 不透明度), ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - image：+ width, height, src(URL 或 data URL), alt, fit('cover'|'contain'), framing({ focusX, focusY, zoom(1–4) }), cornerRadius?(0–2000 px 圆角，仅 v28), stroke?(#RRGGBB 相框颜色，仅 v29), strokeWidth?(0.5–100 px 相框宽度，仅 v29，颜色和宽度都设置才显示), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - shape：+ width, height, shape('rect'|'ellipse'|'triangle'|'diamond'|'pentagon'|'hexagon'|'star'|'heart'|'bubble'；star/hexagon 仅 v7，diamond/pentagon/heart/bubble 仅 v21), fill(ColorPaint 或 { type: 'image', src, fit, framing } 或 { type: 'transparent' } 无填充纯描边形状，仅 v11), stroke, strokeWidth, cornerRadius?(0–2000 px 圆角，作用于矩形), starInnerRatio?(0.15–0.85 五角星内径比，仅 v21，缺省 0.38), bubbleTailX?(0.05–0.95 对话气泡尾巴沿底边的位置，仅 v21，缺省 0.5 居中), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
@@ -171,7 +186,7 @@ export function createDingcardServer(): McpServer {
 
   const documentInput = {
     documentId: z.string().optional().describe('创建或修改文档的工具返回的 documentId（推荐：不必来回传整份文档）'),
-    document: z.unknown().optional().describe('完整的 v20（或 v1–v19 旧版）文档 JSON，可替代 documentId'),
+    document: z.unknown().optional().describe(`完整的 v${FREEFORM_DOCUMENT_VERSION}（或 v1–${FREEFORM_DOCUMENT_VERSION - 1} 旧版）文档 JSON，可替代 documentId`),
     documentPath: z.string().optional().describe('文档 JSON 文件的路径，可替代 documentId'),
   }
   const includeDocument = z.boolean().optional().describe('同时返回完整文档 JSON（默认只返回 documentId 和 version）')
@@ -198,9 +213,13 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）、时间线位（timeline，吃 details 行）。按内容和尺寸挑模板。先用它拿到 templateId。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
-    {},
-    async () => jsonResult({ templates: listTemplates() }),
+    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）、时间线位（timeline，吃 details 行）。可以用 kind / format / q 三个可选参数只取要看的子集（如 kind: "poster"、format: "xhs"、q: "菜单"），返回会小很多。按内容和尺寸挑模板。先用它拿到 templateId。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
+    {
+      kind: z.enum(['deck', 'poster']).optional().describe('只列这一类：deck 整套卡片，poster 单页海报'),
+      format: z.string().optional().describe('按页面尺寸 id 筛选（不区分大小写的子串匹配，如 "xhs"、"a4"）'),
+      q: z.string().optional().describe('关键词，匹配标题、描述或标签（如 "菜单"、"时间线"）'),
+    },
+    async ({ kind, format, q }) => jsonResult({ templates: listTemplates({ kind, format, q }) }),
   )
 
   server.tool(
@@ -268,7 +287,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_html',
-    `把你写的 HTML/CSS 网页转成在叮卡里能逐个修改的自由画布文档（v20）。适合模板排不出来的版式：直接用网页写法排版，叮卡在浏览器里排好后，把每个色块、文字、图片和 SVG 图形读成形状、文字框、图片和图形节点，位置、字号、行高、字距、颜色、圆角、边框、阴影、渐变、透明度、混合模式、滤镜和旋转都照网页来，层叠顺序按 CSS（含 z-index）。
+    `把你写的 HTML/CSS 网页转成在叮卡里能逐个修改的自由画布文档（v${FREEFORM_DOCUMENT_VERSION}）。适合模板排不出来的版式：直接用网页写法排版，叮卡在浏览器里排好后，把每个色块、文字、图片和 SVG 图形读成形状、文字框、图片和图形节点，位置、字号、行高、字距、颜色、圆角、边框、阴影、渐变、透明度、混合模式、滤镜和旋转都照网页来，层叠顺序按 CSS（含 z-index）。
 写法：
 - 每页一个 <section>，放在 <body> 下面，用 CSS 写死宽高（px），如 1080×1440（小红书 3:4）、1080×1920（9:16）、1080×1080；没有 section 时整个 body 是一页，尺寸用 width / height。100vw、100vh 就是 width × height。
 - 字体用内置的：苹方 "PingFang SC"、思源黑体 "Noto Sans SC"、思源宋体 "Noto Serif SC"、霞鹜文楷 "LXGW WenKai TC"、站酷小薇 "ZCOOL XiaoWei"、系统宋体 "Songti SC"；别的字体换成同类的内置字体（notes 里会写）。字重只有常规和粗体，600 及以上算粗体。
@@ -319,7 +338,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_content',
-    `按结构化内容生成一整套自由画布卡片（v20）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容。${CONTENT_SCHEMA_HINT}`,
+    `按结构化内容生成一整套自由画布卡片（v${FREEFORM_DOCUMENT_VERSION}）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容。${CONTENT_SCHEMA_HINT}`,
     {
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
       content: z.object({
@@ -382,7 +401,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_outline',
-    `按 Markdown 大纲生成一整套自由画布卡片（v20）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板。${OUTLINE_SCHEMA_HINT}`,
+    `按 Markdown 大纲生成一整套自由画布卡片（v${FREEFORM_DOCUMENT_VERSION}）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板。${OUTLINE_SCHEMA_HINT}`,
     {
       outline: z.string().describe('Markdown 大纲：# 总标题 + 若干 ## 小节（小节下正文行填入该页正文）'),
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
@@ -483,7 +502,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'validate_document',
-    `校验文档是否为合法的自由画布 v20 文档（v1–v19 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
+    `校验文档是否为合法的自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因。${DOCUMENT_SCHEMA_HINT}`,
     { ...documentInput, includeDocument },
     async ({ includeDocument: withDocument, ...input }) => {
       const resolved = await documentFor(input)
@@ -546,7 +565,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v20 文档（v1–v19 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
+    `把自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_SCHEMA_HINT}`,
     {
       ...documentInput,
       outputDir: z.string().describe('输出目录（不存在会创建）'),
@@ -615,7 +634,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'share_document',
-    '把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。自由画布文档（documentId 或 v20 文档）和 Markdown 卡片信封（source、platformId、themeId 等，与 render_markdown 的 document 相同）都可以。需要先设环境变量 DINGCARD_SERVER_URL（部署的服务端地址）、DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里；list_shares 查已有分享，revoke_share 随时撤销（撤销后立刻打不开）。',
+    '把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。自由画布文档（documentId 或 v${FREEFORM_DOCUMENT_VERSION} 文档）和 Markdown 卡片信封（source、platformId、themeId 等，与 render_markdown 的 document 相同）都可以。需要先设环境变量 DINGCARD_SERVER_URL（部署的服务端地址）、DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里；list_shares 查已有分享，revoke_share 随时撤销（撤销后立刻打不开）。',
     {
       ...documentInput,
       title: z.string().optional().describe('分享页标题，默认「叮卡分享」'),
@@ -848,7 +867,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-schema',
     'dingcard://schema/freeform',
-    { description: '自由画布 v20 文档模型与校验规则说明' },
+    { description: `自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档模型与校验规则说明` },
     textResource(DOCUMENT_SCHEMA_HINT),
   )
   server.registerResource(
@@ -896,7 +915,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'freeform-example',
     'dingcard://examples/freeform',
-    { description: '完整自由画布 v20 文档示例（编辑部模板实例）', mimeType: 'application/json' },
+    { description: `完整自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档示例（编辑部模板实例）`, mimeType: 'application/json' },
     async (uri: URL) => ({
       contents: [{
         uri: uri.href,

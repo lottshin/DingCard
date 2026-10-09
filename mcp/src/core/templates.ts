@@ -107,7 +107,18 @@ function posterCapacityOf(series: string): PosterCapacity | undefined {
   }
 }
 
-export function listTemplates(): TemplateSummary[] {
+/** Narrow list_templates to what the caller is shopping for. */
+export interface TemplateFilter {
+  /** deck: full card sets; poster: single pages. */
+  kind?: TemplateKind
+  /** Page-size id, matched as a case-insensitive substring (如 "xhs"、"a4"). */
+  format?: string
+  /** Keyword matched against title, description and tags. */
+  q?: string
+}
+
+export function listTemplates(filter: TemplateFilter = {}): TemplateSummary[] {
+  const query = filter.q?.trim().toLowerCase()
   return TEMPLATE_REGISTRY.map((template) => {
     const capacity = template.workspace === 'freeform' && template.kind === 'deck' ? capacityOf(template.series) : undefined
     const posterCapacity = template.kind === 'poster' ? posterCapacityOf(template.series) : undefined
@@ -124,6 +135,11 @@ export function listTemplates(): TemplateSummary[] {
       ...(capacity ? { capacity } : {}),
       ...(posterCapacity ? { posterCapacity } : {}),
     }
+  }).filter((template) => {
+    if (filter.kind && template.kind !== filter.kind) return false
+    if (filter.format && !template.format.id.toLowerCase().includes(filter.format.toLowerCase())) return false
+    if (query && !`${template.title} ${template.description} ${template.tags.join(' ')}`.toLowerCase().includes(query)) return false
+    return true
   })
 }
 
