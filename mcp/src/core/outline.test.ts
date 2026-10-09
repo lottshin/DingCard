@@ -117,3 +117,69 @@ describe('createDocumentFromOutline', () => {
     if (!markdownTemplate.ok) expect(markdownTemplate.error).toContain('仅支持自由画布模板')
   })
 })
+
+describe('outline tables', () => {
+  test('reads a Markdown table as the section\'s table element', () => {
+    const parsed = parseOutline(`# 半年报
+## 收入构成
+| 来源 | 金额 | 占比 |
+| --- | --- | --- |
+| 广告 | 3000 | 60% |
+| 带货 | 2000 | 40% |
+
+## 写在最后
+继续加油`)
+    expect(parsed?.sections[0].table).toEqual({
+      header: ['来源', '金额', '占比'],
+      rows: [['广告', '3000', '60%'], ['带货', '2000', '40%']],
+    })
+    expect(parsed?.sections[1].table).toBeUndefined()
+  })
+
+  test('a table sits between body and points, and a second one joins it', () => {
+    const parsed = parseOutline(`# 表格
+## 第一节
+开头一句
+| a | b |
+| --- | --- |
+| 1 | 2 |
+中间一句
+- 要点一
+| c | d |
+| --- | --- |
+| 3 | 4 |`)
+    expect(parsed?.sections[0]).toEqual({
+      title: '第一节',
+      body: '开头一句\n中间一句',
+      points: ['要点一'],
+      table: { header: ['a', 'b'], rows: [['1', '2'], ['3', '4']] },
+    })
+  })
+
+  test('pipe lines without a separator stay ordinary body copy', () => {
+    const parsed = parseOutline('# t\n## s\n| 不是表格 | 没有 |')
+    expect(parsed?.sections[0].table).toBeUndefined()
+    expect(parsed?.sections[0].body).toContain('不是表格')
+  })
+
+  test('composes an outline table into a placed table element', () => {
+    const composed = createDocumentFromOutline(
+      `# 课程表
+## 周一安排
+| 节次 | 周一 |
+| --- | --- |
+| 第 1 节 | 语文 |
+| 第 2 节 | 数学 |`,
+      'editorial-freeform',
+    )
+    expect(composed.ok).toBe(true)
+    if (!composed.ok) return
+    const table = composed.document.slides.flatMap((slide) => slide.nodes).find((node) => node.type === 'table')
+    expect(table).toMatchObject({
+      type: 'table',
+      rows: 3,
+      cols: 2,
+      cells: ['节次', '周一', '第 1 节', '语文', '第 2 节', '数学'],
+    })
+  })
+})

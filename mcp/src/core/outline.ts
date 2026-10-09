@@ -18,12 +18,31 @@ const POINT = /^(?:[-*+•]\s+|\d+[.、)]\s*)/
 const QUOTE = /^>\s?/
 const ENDING = /^(?:结尾|结束语|收尾|ending|end)\s*[：:]\s*(.+)$/i
 const RULE = /^(?:-{3,}|\*{3,}|_{3,})$/
+const TABLE_ROW = /^\|/
+const TABLE_SEPARATOR = /^\|[\s:|-]+\|?$/
 
 interface Draft {
   title: string
   body: string[]
   points: string[]
   quote: string[]
+  table?: { header: string[]; rows: string[][] }
+}
+
+/** One `| a | b |` line as its cells; the outer pipes fall away. */
+function tableCells(line: string): string[] {
+  return line.split('|').slice(1, -1).map((cell) => cell.trim())
+}
+
+/**
+ * Read a run of `|` lines as one Markdown table: the first row is the header,
+ * the second must be the `| --- |` separator, the rest are data rows. Rows of
+ * a second table in the same section join the first one's.
+ */
+function readTable(lines: readonly string[]): { header: string[]; rows: string[][] } | null {
+  const rows = lines.map(tableCells)
+  if (rows.length < 2 || !TABLE_SEPARATOR.test(lines[1])) return null
+  return { header: rows[0], rows: rows.slice(2) }
 }
 
 function toPage(draft: Draft): DeckPage {
@@ -32,14 +51,16 @@ function toPage(draft: Draft): DeckPage {
     ...(draft.body.length > 0 ? { body: draft.body.join('\n') } : {}),
     ...(draft.points.length > 0 ? { points: draft.points } : {}),
     ...(draft.quote.length > 0 ? { quote: draft.quote.join(' ') } : {}),
+    ...(draft.table ? { table: draft.table } : {}),
   }
 }
 
 /**
  * Parse an outline. "# 总标题" names the deck and the lines under it (before
  * the first "##") are the cover's subtitle. Each "## 小节" is a page: list
- * lines ("- 要点", "1. 要点") are its points, "> 引文" its quote, other lines
- * its body. A section headed "## 结尾：标题" becomes the closing page.
+ * lines ("- 要点", "1. 要点") are its points, "> 引文" its quote, a Markdown
+ * table (first row the header, second the `| --- |` separator) its table,
+ * other lines its body. A section headed "## 结尾：标题" becomes the closing page.
  */
 export function parseOutline(source: string): ParsedOutline | null {
   const lines = typeof source === 'string' ? source.replace(/\r\n?/g, '\n').split('\n') : []
@@ -48,8 +69,14 @@ export function parseOutline(source: string): ParsedOutline | null {
   const sections: Draft[] = []
   let ending: Draft | null = null
   let current: Draft | null = null
-  for (const rawLine of lines) {
-    const line = rawLine.trim()
+  const absorb = (line: string) => {
+    if (!current) return
+    if (QUOTE.test(line)) current.quote.push(line.replace(QUOTE, '').trim())
+    else if (POINT.test(line)) current.points.push(line.replace(POINT, '').trim())
+    else current.body.push(line)
+  }
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim()
     if (line.length === 0 || RULE.test(line)) continue
     if (HEADING_1.test(line) && !HEADING_2.test(line)) {
       if (title === null && current === null) title = line.replace(HEADING_1, '').trim()
@@ -67,9 +94,27 @@ export function parseOutline(source: string): ParsedOutline | null {
       if (title !== null) subtitle.push(line.replace(POINT, '').trim())
       continue
     }
-    if (QUOTE.test(line)) current.quote.push(line.replace(QUOTE, '').trim())
-    else if (POINT.test(line)) current.points.push(line.replace(POINT, '').trim())
-    else current.body.push(line)
+    if (TABLE_ROW.test(line)) {
+      // Gather the whole table before the other line kinds see it.
+      const tableLines: string[] = []
+      while (index < lines.length) {
+        const candidate = lines[index].trim()
+        if (!TABLE_ROW.test(candidate)) break
+        tableLines.push(candidate)
+        index += 1
+      }
+      index -= 1
+      const table = readTable(tableLines)
+      if (table) {
+        if (!current.table) current.table = table
+        else current.table.rows.push(...table.rows)
+        continue
+      }
+      // Pipe lines that are not a table read as ordinary body copy.
+      tableLines.forEach((tableLine) => absorb(tableLine))
+      continue
+    }
+    absorb(line)
   }
   if (sections.length === 0) return null
   if (sections.some((section) => section.title.length === 0)) return null

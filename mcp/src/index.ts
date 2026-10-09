@@ -121,6 +121,7 @@ const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你�
 const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "# 总标题"：封面标题；它下面、第一个 "##" 之前的文字是封面副标题。
 - "## 小节标题"：每个小节一页。小节下 "- 要点" 或 "1. 要点" 是要点（"要点：说明" 冒号后面是这一条的第二行），"> 引文" 是引文（"引文 —— 出处"），其他行是正文。
+- 小节里的 Markdown 表格（第一行是表头、第二行是 | --- | 分隔线、之后每行一格）变成这一页的表格元素，和 chart / timeline / progress 一样放进文字留出的空位；同一节第二张表格的行接在第一张后面。
 - "## 结尾：标题"：可选的结尾页，内容写法同小节。
 templateId：list_templates 返回的自由画布模板 id（如 "editorial-freeform"），整套卡片沿用该模板的版式与风格。${COMPOSE_HINT}`
 
