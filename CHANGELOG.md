@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-10-09
+
+### Added
+
+- MCP 新增 `search_images`：搜索在线图库给卡片配图，返回能直接使用的图片地址。配置了部署服务端（`DINGCARD_SERVER_URL` 和账号）时走服务端图库代理（Pixabay / Unsplash / Pexels / Openverse，密钥留在服务端），配套的 `import_stock_image` 把选中的原图转存到账号里得到稳定地址；没配置时直连 Openverse（免密钥，只搜 CC0 可商用图），结果的 `url` 直接填进海报 `image`、图片节点 `src` 或页面图片背景。
+- HTML 导入认得表格和进度条：`create_document_from_html` 里 `<table>` 转成一个表格元素（首行 `<th>` 即表头；超过 12 行 / 6 列 / 24 字的部分丢掉并附说明），`<progress>` 转成进度条（`value/max` 换算成百分比，`aria-label` 作目标名）。
+
+### Changed
+
+- 前端与 MCP 版本升至 `0.48.0`；服务端仍为 `0.3.0`。`0.48.0` 镜像随 `v0.48.0` 标签发布；README、Compose 和部署文档固定已发布的 GHCR `0.47.0` 镜像。
+- LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
+
 ## [0.47.0] - 2026-10-09
 
 ### Added
