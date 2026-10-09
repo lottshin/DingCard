@@ -38,6 +38,7 @@ import { createDocumentFromOutline } from './core/outline'
 import { composePoster } from './core/poster'
 import { listCollages } from './core/collages'
 import { serverClientFromEnv } from './core/serverClient'
+import { importStockImage, searchStockImages } from './core/stock'
 import { listFilterPresets, listStyles, listTextStyles } from './core/styles'
 import { instantiateTemplate, listTemplates, templatePages } from './core/templates'
 import { checkDocument } from './render/check'
@@ -788,6 +789,32 @@ export function createDingcardServer(): McpServer {
       } catch (error) {
         return errorResult(error)
       }
+    },
+  )
+
+  server.tool(
+    'search_images',
+    '搜索在线图库的照片，给卡片配图：返回缩略图和能直接使用的图片地址，把它们填进图片字段（create_poster_from_content 的 image、图片节点的 src、页面的图片背景都接受 http(s) 地址）。配置了 DINGCARD_SERVER_URL（和账号）时走部署服务端的图库代理（Pixabay / Unsplash / Pexels / Openverse，密钥留在服务端），选中的图用 import_stock_image 转存成账号里的稳定地址；没配置时直连 Openverse（免密钥、只搜 CC0 可商用图），结果里的 url 可以直接用、无需转存。搜索词用中英文内容词都行，如 "咖啡馆 内景"、"city night skyline"。',
+    {
+      query: z.string().min(1).describe('搜索词，如 "咖啡馆 内景"、"city skyline night"'),
+      page: z.number().int().min(1).max(50).optional().describe('页码，默认 1；一页约 12 张'),
+      source: z.string().optional().describe('图库源 id（服务端模式下可换源，如 pixabay / unsplash / pexels / openverse）；不填用默认源'),
+    },
+    async ({ query, page, source }) => {
+      const result = await searchStockImages(query, { page, source, server: serverClientFromEnv() })
+      return jsonResult(result)
+    },
+  )
+
+  server.tool(
+    'import_stock_image',
+    '把 search_images 选中的一张照片通过部署的服务端转存到账号的图片库里，得到稳定的原图地址（比缩略图清晰，也不会因为图库改链接而失效）。返回的 url 直接填进图片字段。需要 DINGCARD_SERVER_URL（和账号）；没配置时不用转存，直接用 search_images 结果里的 url。',
+    {
+      source: z.string().describe('search_images 结果里的图库源 id（如 pixabay / openverse）'),
+      id: z.string().describe('search_images 结果里这一张的 id'),
+    },
+    async ({ source, id }) => {
+      return jsonResult(await importStockImage(source, id, { server: serverClientFromEnv() }))
     },
   )
 

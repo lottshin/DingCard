@@ -48,6 +48,10 @@ export interface ServerClientOptions {
 export interface DingcardServer {
   /** The configured origin, without a trailing slash. */
   readonly serverUrl: string
+  /** One authenticated GET, parsed as JSON; throws a readable error on failure. */
+  apiGet(path: string): Promise<unknown>
+  /** One authenticated POST with a JSON body, parsed as JSON on success. */
+  apiPost(path: string, body: unknown): Promise<unknown>
   /** Upload one rendered page; returns its managed (absolute) URL. */
   uploadImage(bytes: Uint8Array, filename: string): Promise<string>
   createShare(title: string, urls: readonly string[], expiresInHours?: number): Promise<ServerShare>
@@ -175,6 +179,20 @@ export function createServerClient(options: ServerClientOptions): DingcardServer
 
   return {
     serverUrl: base,
+    async apiGet(path: string) {
+      const response = await request(path)
+      if (!response.ok) throw new Error(await errorText(response))
+      return await response.json()
+    },
+    async apiPost(path: string, body: unknown) {
+      const response = await request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) throw new Error(await errorText(response))
+      return await response.json()
+    },
     async uploadImage(bytes: Uint8Array, filename: string) {
       const form = new FormData()
       form.append('file', new Blob([bytes as BlobPart], { type: 'image/png' }), filename)
