@@ -481,4 +481,13 @@ export const app: Record<string, Translation> = {
   '垂直翻转': 'Flip vertical',
   '实线': 'Solid line',
   '虚线': 'Dash',
+  '查找替换': 'Find and replace',
+  '查找': 'Find',
+  '替换为': 'Replace with',
+  '范围': 'Scope',
+  '整套作品': 'Whole deck',
+  '仅当前页': 'Current page only',
+  '已替换': 'Replaced',
+  '没有找到要替换的文字': 'No matching text found',
+  '全部替换': 'Replace all',
 }

@@ -6768,3 +6768,41 @@ html.theme-anim * {
 .freeform-inspector .flip-row button {
   flex: 1 1 0;
 }
+
+.find-replace-modal .find-replace-field input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  padding: 0 10px;
+}
+
+.find-replace-modal .find-replace-field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+  outline: none;
+}
+
+.find-replace-modal .find-replace-field + .find-replace-field {
+  margin-top: 12px;
+}
+
+.find-replace-modal .seg {
+  margin-top: 14px;
+}
+
+.find-replace-modal .find-replace-result {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.find-replace-modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}

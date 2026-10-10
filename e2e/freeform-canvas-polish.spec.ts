@@ -2045,3 +2045,52 @@ test.describe('freeform editing chrome', () => {
     await expect(menu.getByTestId('freeform-context-menu-lock').locator('kbd')).toHaveCount(0)
   })
 })
+
+test('finds and replaces text across the whole deck with one undo', async ({ page }) => {
+  await openFreeform(page)
+  // One page carrying the words, then a duplicate so the deck has two.
+  await insertText(page)
+  await page.locator('.freeform-element .freeform-textbox').first().fill('周一喝咖啡')
+  await duplicateCurrentPage(page)
+  await insertText(page)
+  await page.locator('.freeform-element .freeform-textbox').first().fill('周二也喝咖啡')
+
+  await page.getByTestId('find-replace-trigger').click()
+  const dialog = page.getByTestId('find-replace-dialog')
+  await expect(dialog).toBeVisible()
+  // Empty find keeps the button disabled.
+  await expect(page.getByTestId('find-replace-apply')).toBeDisabled()
+  await page.getByTestId('find-input').fill('咖啡')
+  await page.getByTestId('replace-input').fill('手冲')
+  await page.getByTestId('find-replace-apply').click()
+  await expect(page.getByTestId('find-replace-result')).toHaveText('已替换')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
+  await expect(page.getByTestId('editor-save-state')).toHaveText(/已保存/)
+  // The current (second) page carries the new words on the canvas...
+  await expect(page.locator('.freeform-element .freeform-textbox').first()).toHaveText('周二也喝手冲')
+  // ...and so does the first page in the stored draft: one apply covered the deck.
+  const stored = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    const drafts = key ? JSON.parse(localStorage.getItem(key) ?? '[]') : []
+    return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
+  })
+  const storedTexts = stored.document.slides.flatMap(
+    (slide: { nodes: Array<{ type: string; text?: string }> }) => slide.nodes
+      .filter((node) => node.type === 'text').map((node) => node.text),
+  )
+  expect(storedTexts).toContain('周一喝手冲')
+  expect(storedTexts).toContain('周二也喝手冲')
+
+  // One undo returns both pages to the old words.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(page.locator('.freeform-element .freeform-textbox').first()).toHaveText('周二也喝咖啡')
+  await expect(page.getByTestId('editor-save-state')).toHaveText(/已保存/)
+  const undone = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    const drafts = key ? JSON.parse(localStorage.getItem(key) ?? '[]') : []
+    return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
+  })
+  expect(undone.document.slides[0].nodes.find((node: { type: string }) => node.type === 'text').text).toBe('周一喝咖啡')
+})

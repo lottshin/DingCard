@@ -100,6 +100,7 @@ import { rangeHasRichTextStyle, restyleRichTextRange, type RichTextStyle } from 
 import { BLEND_MODES, LINE_POINTS_MIN, sceneFilterEquals } from './appearance'
 import { FILTER_PRESETS, FILTER_PRESET_SWATCH, filterPresetCss } from './filterPresets'
 import { FreeformExportMenu } from './FreeformExportMenu'
+import { FreeformFindReplaceDialog } from './FreeformFindReplaceDialog'
 import { FreeformShareDialog } from './FreeformShareDialog'
 import { DraftHistoryDialog } from '../app/DraftHistoryDialog'
 import { FreeformContextToolbar, type ContextToolbarSubject } from './FreeformContextToolbar'
@@ -1357,6 +1358,7 @@ export function FreeformWorkspace({
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [shareResult, setShareResult] = useState<Share | null>(null)
   const [shareRevoking, setShareRevoking] = useState(false)
   const [shareError, setShareError] = useState<string | null>(null)
@@ -6793,7 +6795,22 @@ export function FreeformWorkspace({
             </WorkspaceToolbar>
           )}
           primary={(
-            <FreeformExportMenu
+            <>
+              <button
+                type="button"
+                className="bar-btn"
+                data-testid="find-replace-trigger"
+                onClick={() => setFindReplaceOpen(true)}
+                title={t('查找替换')}
+                aria-label={t('查找替换')}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                  <path d="M13.2 13.2 17 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  <path d="M6.5 9h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+              </button>
+              <FreeformExportMenu
               disabled={renderScale === null || hasImageEditSession}
               exporting={exporting}
               progress={exportProgress}
@@ -6813,6 +6830,7 @@ export function FreeformWorkspace({
                 }
                 : undefined}
             />
+            </>
           )}
         />
       )}
@@ -6821,6 +6839,23 @@ export function FreeformWorkspace({
         <OperationNotice
           title={operationNotice}
           onDismiss={() => setOperationNotice(null)}
+        />
+      )}
+
+      {findReplaceOpen && (
+        <FreeformFindReplaceDialog
+          slideCount={doc.slides.length}
+          activeSlideName={activeSlide.name}
+          onApply={(find, replace, scope) => {
+            const changed = applyAction({
+              type: 'document/find-replace',
+              find,
+              replace,
+              ...(scope === 'slide' ? { slideId: activeSlide.id } : {}),
+            })
+            return changed
+          }}
+          onClose={() => setFindReplaceOpen(false)}
         />
       )}
 
