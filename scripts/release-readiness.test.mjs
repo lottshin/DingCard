@@ -58,21 +58,21 @@ test('release entry documentation matches current versions and commands', () => 
   const readme = read('README.md')
   const changelog = read('CHANGELOG.md')
   const backendPlan = read('docs/backend-plan.md')
-  const releaseNotes = markdownSection(changelog, '[0.50.0] - 2026-10-10')
+  const releaseNotes = markdownSection(changelog, '[0.51.0] - 2026-10-10')
   const license = read('LICENSE')
-  assert.equal(frontend.version, '0.50.0')
-  assert.equal(frontendLock.version, '0.50.0')
-  assert.equal(frontendLock.packages[''].version, '0.50.0')
+  assert.equal(frontend.version, '0.51.0')
+  assert.equal(frontendLock.version, '0.51.0')
+  assert.equal(frontendLock.packages[''].version, '0.51.0')
   assert.equal(server.version, '0.3.0')
   assert.equal(serverLock.version, '0.3.0')
   assert.equal(serverLock.packages[''].version, '0.3.0')
   assert.equal(exists('public/favicon.svg'), true, 'README header favicon must exist')
   assert.match(readme, /public\/favicon\.svg/)
-  assert.match(readme, /version-0\.50\.0/)
+  assert.match(readme, /version-0\.51\.0/)
   assert.match(readme, /编辑档案[\s\S]*公共剧场[\s\S]*议题封面/)
   assert.match(readme, /自由画布[\s\S]*八套/)
   assert.match(readme, /独立图片[\s\S]*裁剪[\s\S]*八个黑柄/)
-  assert.match(backendPlan, /当前源码版本：前端 `0\.50\.0`，后端 `0\.3\.0`/)
+  assert.match(backendPlan, /当前源码版本：前端 `0\.51\.0`，后端 `0\.3\.0`/)
   assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/)
   assert.match(readme, /Node\.js 22\+/)
   for (const scriptName of Object.keys(frontend.scripts)) {
@@ -91,14 +91,12 @@ test('release entry documentation matches current versions and commands', () => 
   assert.match(readme, /VITE_API_BASE/)
   assert.match(readme, /LocalStore[\s\S]*RemoteStore[\s\S]*不(?:会|自动)迁移/)
 
-  assert.match(releaseNotes, /元素翻转/)
-  assert.match(releaseNotes, /水平翻转/)
-  assert.match(releaseNotes, /垂直翻转/)
-  assert.match(releaseNotes, /flipX/)
-  assert.match(releaseNotes, /flipY/)
-  assert.match(releaseNotes, /v40/)
-  assert.match(releaseNotes, /镜像随 `v0\.50\.0` 标签发布/)
-  assert.match(releaseNotes, /GHCR[^\n]*`0\.49\.0`/)
+  assert.match(releaseNotes, /虚线/)
+  assert.match(releaseNotes, /strokeDash/)
+  assert.match(releaseNotes, /v41/)
+  assert.match(releaseNotes, /实线/)
+  assert.match(releaseNotes, /镜像随 `v0\.51\.0` 标签发布/)
+  assert.match(releaseNotes, /GHCR[^\n]*`0\.50\.0`/)
   assert.match(releaseNotes, /LocalStore[^\n]*RemoteStore[^\n]*不自动迁移/)
   assert.match(changelog, /混合尺寸[^\n]*确认/)
   assert.match(license, /MIT License/)
@@ -114,7 +112,7 @@ test('MCP automation package stays documented, versioned, and tested', () => {
 
   const mcp = JSON.parse(read('mcp/package.json'))
   assert.equal(mcp.name, 'dingcard-mcp')
-  assert.equal(mcp.version, '0.50.0')
+  assert.equal(mcp.version, '0.51.0')
   assert.equal(mcp.private, true, 'mcp package stays private (no npm publish)')
   for (const scriptName of Object.keys(mcp.scripts)) {
     assert.equal(typeof mcp.scripts[scriptName], 'string')
@@ -306,7 +304,7 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
     'git clone https://github.com/lottshin/DingCard.git',
     'cp .env.example .env',
     'openssl rand -hex 32',
-    'DINGCARD_VERSION=0.49.0',
+    'DINGCARD_VERSION=0.50.0',
     'docker compose pull',
     'docker compose up -d --no-build',
     'curl -f http://127.0.0.1:8080/api/health',
@@ -320,7 +318,7 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
   const deployment = read('docs/deployment.md')
   for (const entry of [
     'JWT_SECRET',
-    'DINGCARD_VERSION=0.49.0',
+    'DINGCARD_VERSION=0.50.0',
     'WEB_PORT=127.0.0.1:8080',
     'docker compose config --quiet',
     'docker compose pull',
@@ -401,7 +399,7 @@ test('deployment documentation keeps the shortest safe Docker path', () => {
   assert.match(httpsSection, /两条检查都输出匹配结果后再执行/)
 
   const envExample = read('.env.example')
-  assert.match(envExample, /^DINGCARD_VERSION=0\.49\.0$/m)
+  assert.match(envExample, /^DINGCARD_VERSION=0\.50\.0$/m)
   assert.match(envExample, /127\.0\.0\.1:8080/)
   assert.match(envExample, /app:3000/)
   assert.match(envExample, /Fastify[^\n]*统一限制[^\n]*\r?\nMAX_UPLOAD_BYTES=/)
@@ -521,7 +519,7 @@ test('compose packages the release as one pinned app service', () => {
   const compose = read('docker-compose.yml')
 
   assert.deepEqual(composeServiceNames(compose), ['app'])
-  assert.match(compose, /image:\s*ghcr\.io\/lottshin\/dingcard:\$\{DINGCARD_VERSION:-0\.49\.0\}/)
+  assert.match(compose, /image:\s*ghcr\.io\/lottshin\/dingcard:\$\{DINGCARD_VERSION:-0\.50\.0\}/)
   assert.match(compose, /build:\s*\n\s+context:\s*\.\s*\n\s+args:\s*\n\s+VITE_API_BASE:\s*\/\s*$/m)
   assert.match(compose, /JWT_SECRET:\s*\$\{JWT_SECRET:\?[^}]+\}/)
   assert.match(compose, /NODE_ENV:\s*production/)
