@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-10-10
+
+### Added
+
+- 四角圆角（v42）：矩形形状的圆角可以四个角分别设——检视器「外观」区新增左上/右上/右下/左下四个输入（未分别设置时显示统一值，改任意一角即生成四角数据），「统一圆角」一键恢复。文档层面 `cornerRadii: { topLeft, topRight, bottomRight, bottomLeft }` 走 `node/update-style`（各 0–2000 px，仅 v42 的 rect，覆盖 `cornerRadius`，传 `null` 恢复统一圆角）；虚线描边在四角模式下按每角的圆弧精确描出。
+
+### Changed
+
+- 前端与 MCP 版本升至 `0.53.0`；服务端仍为 `0.3.0`。`0.53.0` 镜像随 `v0.53.0` 标签发布；README、Compose 和部署文档固定已发布的 GHCR `0.52.0` 镜像。
+- LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
+
 ## [0.52.0] - 2026-10-10
 
 ### Added
