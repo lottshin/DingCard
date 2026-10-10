@@ -30,7 +30,7 @@ unset JWT_SECRET
 chmod 600 .env
 ```
 
-模板已经固定 `DINGCARD_VERSION=0.53.0`。先检查配置，再拉取预构建镜像并启动 `app`：
+模板已经固定 `DINGCARD_VERSION=0.54.0`。先检查配置，再拉取预构建镜像并启动 `app`：
 
 ```bash
 docker compose config --quiet
@@ -129,7 +129,7 @@ curl -f https://dingcard.example.com/api/health
 
 | 变量 | 用途 |
 |---|---|
-| `DINGCARD_VERSION` | GHCR 镜像版本，当前固定为 `0.53.0`。生产环境不要默认使用 `latest`。 |
+| `DINGCARD_VERSION` | GHCR 镜像版本，当前固定为 `0.54.0`。生产环境不要默认使用 `latest`。 |
 | `JWT_SECRET` | JWT 签名密钥。必须随机生成，不要提交到 Git。 |
 | `WEB_PORT` | Compose 对外端口。接入 HTTPS 后使用 `127.0.0.1:8080`。 |
 | `JWT_EXPIRY` | 登录有效期，默认 `7d`。 |
@@ -229,7 +229,7 @@ curl -f http://127.0.0.1:8080/api/health
 ```bash
 docker compose down --remove-orphans
 git pull --ff-only
-sed -i 's/^DINGCARD_VERSION=.*/DINGCARD_VERSION=0.53.0/' .env
+sed -i 's/^DINGCARD_VERSION=.*/DINGCARD_VERSION=0.54.0/' .env
 docker compose config --quiet
 docker compose pull
 docker compose up -d --no-build
