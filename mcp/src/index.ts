@@ -575,17 +575,19 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'check_document',
-    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下被裁掉（附能放下的字号 fitFontSize）、文字互相叠住、文字被上层色块挡住、跑出页面、文字和底色对比太低、还留着模板示例文字、空文本框、图片没加载出来、图形画到了自己的框外（viewBox 没包住 d）、图形既无填充也无描边而看不见、二维码太小扫不动或码点底色太接近、进度标签比元素宽、对齐差几px、离页边太近、正文太小、字体或文字颜色太多、标题和正文拉不开层级。fix: true 时除了缩字号，还把差几 px 的对齐自动吸齐（改了哪些在 fixed 和 snapped 里）。每条带 page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法。fix: true 时把放不下的文字改成能放下的字号并保存（用 documentId 时就地更新，返回 documentId 和 version），附改了哪些（fixed）和剩下的问题。文档怎么写见 validate_document 的说明与 dingcard://schema/freeform 资源。`,
+    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下被裁掉（附能放下的字号 fitFontSize）、文字互相叠住、文字被上层色块挡住、跑出页面、文字和底色对比太低、还留着模板示例文字、空文本框、图片没加载出来、图形画到了自己的框外（viewBox 没包住 d）、图形既无填充也无描边而看不见、二维码太小扫不动或码点底色太接近、进度标签比元素宽、对齐差几px、离页边太近、正文太小、字体或文字颜色太多、标题和正文拉不开层级。每条带 page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法。fix: true 时把放不下的文字缩到能放下的字号、把差几 px 的对齐吸齐，并保存（用 documentId 时就地更新，返回 documentId 和 version），附改了哪些（fixed 是缩过的字号，snapped 是挪过的位置）和剩下的问题。文档怎么写见 validate_document 的说明与 dingcard://schema/freeform 资源。`,
     {
       ...documentInput,
-      fix: z.boolean().optional().describe('把放不下的文字自动缩到能放下的字号（改动保存回这份文档，返回 documentId 和 version）'),
+      fix: z.boolean().optional().describe('把放不下的文字缩到能放下的字号、把差几 px 的对齐吸齐（改动保存回这份文档，返回 documentId 和 version）'),
       includeDocument,
     },
     async ({ fix, includeDocument: withDocument, ...input }) => {
       const resolved = await documentFor(input)
       if (!resolved.ok) return jsonResult(resolved)
       const checked = await checkDocument(resolved.document, { fix })
-      if (!checked.ok || !checked.document || !checked.fixed?.length) {
+      // Resized text and snapped edges both change the deck; either is saved.
+      const changed = checked.ok && ((checked.fixed?.length ?? 0) > 0 || (checked.snapped?.length ?? 0) > 0)
+      if (!checked.ok || !checked.document || !changed) {
         const { document: _unchanged, ...rest } = checked as typeof checked & { document?: unknown }
         return jsonResult(rest)
       }
@@ -665,7 +667,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'share_document',
-    '把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。自由画布文档（documentId 或 v${FREEFORM_DOCUMENT_VERSION} 文档）和 Markdown 卡片信封（source、platformId、themeId 等，与 render_markdown 的 document 相同）都可以。需要先设环境变量 DINGCARD_SERVER_URL（部署的服务端地址）、DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里；list_shares 查已有分享，revoke_share 随时撤销（撤销后立刻打不开）。',
+    `把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。自由画布文档（documentId 或 v${FREEFORM_DOCUMENT_VERSION} 文档）和 Markdown 卡片信封（source、platformId、themeId 等，与 render_markdown 的 document 相同）都可以。需要先设环境变量 DINGCARD_SERVER_URL（部署的服务端地址）、DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里；list_shares 查已有分享，revoke_share 随时撤销（撤销后立刻打不开）。`,
     {
       ...documentInput,
       title: z.string().optional().describe('分享页标题，默认「叮卡分享」'),

@@ -250,11 +250,14 @@ export function snapSceneDrag(
   // Equal spacing: when the dragged group's gaps with its two neighbours on
   // an axis are almost equal, they snap to exactly equal and the badge says
   // the shared gap. An align snap on an axis wins that axis; the equal-gap
-  // nudge only rides the axes no line claimed.
+  // nudge only rides the axes no line claimed. Snapping switched off (a zero
+  // threshold) switches this off too.
   let outDx = final.dx
   let outDy = final.dy
   let gap: SpaceGap | undefined
-  const space = equalSpaceDrag(nodes, parentPath, selected, rawBoundsForSpacing(bounds, clamped))
+  const space = threshold > 0
+    ? equalSpaceDrag(nodes, parentPath, selected, rawBoundsForSpacing(bounds, clamped))
+    : null
   if (space) {
     if (!xSnap.line && space.dx !== 0) outDx = clamped.dx + space.dx
     if (!ySnap.line && space.dy !== 0) outDy = clamped.dy + space.dy

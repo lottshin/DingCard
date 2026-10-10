@@ -389,51 +389,88 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
       }
     }
 
-    // Edges that almost line up: the slips a reader feels, snap-fixable.
+    // Edges that almost line up: the slips a reader feels, snap-fixable. A
+    // text lines up by the edge its words sit on (left, centre or right, as
+    // aligned); a box by any of its edges. Two things already exactly lined
+    // up one way (two centred texts) are not a slip on another edge.
+    type EdgeKind = 'start' | 'centre' | 'end'
+    type Target = (typeof alignmentTargets)[number]
+    const edgesOf = (entry: Target, axis: 'x' | 'y'): EdgeKind[] => {
+      const { node } = entry
+      if (node.type !== 'text' || node.vertical) return ['start', 'centre', 'end']
+      if (axis === 'x') return node.align === 'center' ? ['centre'] : node.align === 'right' ? ['end'] : ['start']
+      return node.verticalAlign === 'middle' ? ['centre'] : node.verticalAlign === 'bottom' ? ['end'] : ['start']
+    }
+    const edgeAt = (entry: Target, axis: 'x' | 'y', kind: EdgeKind): number => {
+      const start = axis === 'x' ? entry.box.x : entry.box.y
+      const size = axis === 'x' ? entry.box.width : entry.box.height
+      return kind === 'start' ? start : kind === 'centre' ? start + size / 2 : start + size
+    }
+    const linedUp = (a: Target, b: Target, axis: 'x' | 'y'): boolean => {
+      const theirs = edgesOf(b, axis)
+      return edgesOf(a, axis).some((kind) => theirs.includes(kind) && Math.abs(edgeAt(a, axis, kind) - edgeAt(b, axis, kind)) < 0.5)
+    }
+    // Words inset in their own card or tag keep a padding on purpose.
+    const inside = (inner: Target['box'], outer: Target['box']): boolean => inner.x >= outer.x - 0.5
+      && inner.y >= outer.y - 0.5
+      && inner.x + inner.width <= outer.x + outer.width + 0.5
+      && inner.y + inner.height <= outer.y + outer.height + 0.5
+    const nested = (a: Target, b: Target): boolean => inside(a.box, b.box) || inside(b.box, a.box)
+    const EDGE_WORDS: Record<'x' | 'y', Record<EdgeKind, string>> = {
+      x: { start: '左边', centre: '中线', end: '右边' },
+      y: { start: '上边', centre: '中线', end: '下边' },
+    }
+    const templateNames = namesOfTemplateNodes()
     for (const axis of ['x', 'y'] as const) {
-      const clusters: Array<Array<{ node: LeafNode; index: number; box: { x: number; y: number; width: number; height: number }; edge: number }>> = []
-      const sorted = [...alignmentTargets]
-        .map((entry) => ({ ...entry, edge: axis === 'x' ? entry.box.x : entry.box.y }))
-        .sort((a, b) => a.edge - b.edge)
-      for (const item of sorted) {
-        const last = clusters[clusters.length - 1]
-        if (last && item.edge - last[last.length - 1].edge <= SNAP_MAX) last.push(item)
-        else clusters.push([item])
-      }
       let reported = 0
-      for (const cluster of clusters) {
-        if (cluster.length < 2) continue
-        const span = cluster[cluster.length - 1].edge - cluster[0].edge
-        if (span < SNAP_MIN) continue
-        if (reported >= ALIGNMENT_ISSUES_PER_PAGE) break
-        // The biggest node leads; the rest snap to its edge. A little thing
-        // hanging off a big one is usually an ornament doing it on purpose.
-        const anchor = [...cluster].sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height)[0]
-        const anchorArea = anchor.box.width * anchor.box.height
-        const templateNames = namesOfTemplateNodes()
-        const clusterWith = cluster.filter((item) => item.node.id === anchor.node.id
-          || (item.box.width * item.box.height >= ORNAMENT_AREA_RATIO * anchorArea
-            && !(templateNames.has(item.node.name) && templateNames.has(anchor.node.name))))
-        const spanWith = clusterWith.length >= 2
-          ? clusterWith[clusterWith.length - 1].edge - clusterWith[0].edge
-          : 0
-        if (spanWith < SNAP_MIN) continue
-        reported += 1
-        const moves = clusterWith
-          .filter((item) => item.node.id !== anchor.node.id && Math.abs(item.edge - anchor.edge) >= SNAP_MIN)
-          .map((item) => ({
-            path: [item.node.id] as ScenePath,
-            nodeId: item.node.id,
-            from: item.edge,
-            to: anchor.edge,
-          }))
-        if (moves.length === 0) continue
-        const away = moves.sort((a, b) => Math.abs(b.to - b.from) - Math.abs(a.to - a.from))[0]
-        const awayNode = cluster.find((item) => item.node.id === away.nodeId)!
-        const word = axis === 'x' ? '左边' : '上边'
-        issue('misalignment', anchor.node.id,
-          `「${awayNode.node.name}」和「${anchor.node.name}」的${word}差 ${Math.round(Math.abs(away.to - away.from))}px：对齐到一起更整齐。`,
-          { alignment: { axis, anchorId: anchor.node.id, moves } })
+      // Each node moves at most once per axis, so the fixes never fight.
+      const moved = new Set<string>()
+      for (const kind of ['start', 'centre', 'end'] as const) {
+        const clusters: Array<Array<Target & { edge: number }>> = []
+        const sorted = alignmentTargets
+          .filter((entry) => edgesOf(entry, axis).includes(kind))
+          .map((entry) => ({ ...entry, edge: edgeAt(entry, axis, kind) }))
+          .sort((a, b) => a.edge - b.edge)
+        for (const item of sorted) {
+          const last = clusters[clusters.length - 1]
+          if (last && item.edge - last[last.length - 1].edge <= SNAP_MAX) last.push(item)
+          else clusters.push([item])
+        }
+        for (const cluster of clusters) {
+          if (cluster.length < 2) continue
+          const span = cluster[cluster.length - 1].edge - cluster[0].edge
+          if (span < SNAP_MIN) continue
+          if (reported >= ALIGNMENT_ISSUES_PER_PAGE) break
+          // The biggest node leads; the rest snap to its edge. A little thing
+          // hanging off a big one is usually an ornament doing it on purpose.
+          const anchor = [...cluster].sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height)[0]
+          const anchorArea = anchor.box.width * anchor.box.height
+          const clusterWith = cluster.filter((item) => item.node.id === anchor.node.id
+            || (item.box.width * item.box.height >= ORNAMENT_AREA_RATIO * anchorArea
+              && !(templateNames.has(item.node.name) && templateNames.has(anchor.node.name))
+              && !moved.has(item.node.id)
+              && !linedUp(item, anchor, axis)
+              && !nested(item, anchor)))
+          const spanWith = clusterWith.length >= 2
+            ? clusterWith[clusterWith.length - 1].edge - clusterWith[0].edge
+            : 0
+          if (spanWith < SNAP_MIN) continue
+          // A move puts the node's box where its edge meets the anchor's.
+          const moves = clusterWith
+            .filter((item) => item.node.id !== anchor.node.id && Math.abs(item.edge - anchor.edge) >= SNAP_MIN)
+            .map((item) => {
+              const from = axis === 'x' ? item.box.x : item.box.y
+              return { path: [item.node.id] as ScenePath, nodeId: item.node.id, from, to: from + anchor.edge - item.edge }
+            })
+          if (moves.length === 0) continue
+          reported += 1
+          moves.forEach((move) => moved.add(move.nodeId))
+          const away = [...moves].sort((a, b) => Math.abs(b.to - b.from) - Math.abs(a.to - a.from))[0]
+          const awayNode = cluster.find((item) => item.node.id === away.nodeId)!
+          issue('misalignment', anchor.node.id,
+            `「${awayNode.node.name}」和「${anchor.node.name}」的${EDGE_WORDS[axis][kind]}差 ${Math.round(Math.abs(away.to - away.from))}px：对齐到一起更整齐。`,
+            { alignment: { axis, anchorId: anchor.node.id, moves } })
+        }
       }
     }
 

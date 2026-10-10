@@ -7621,6 +7621,7 @@ export function FreeformWorkspace({
                         className="freeform-ui-only freeform-space-badge"
                         data-testid="freeform-space-badge"
                         data-space-axis={spaceGap.axis}
+                        style={{ top: 8 / renderScale, fontSize: 12 / renderScale }}
                       >
                         {t('间距 {n}', { n: Math.round(spaceGap.gap) })}
                       </div>

@@ -40,6 +40,22 @@ describe('dingcard-mcp tool descriptions stay current', () => {
     }
   })
 
+  test('no description or resource shows a placeholder the code forgot to fill', async () => {
+    // A '…${x}…' written with plain quotes reaches the model word for word.
+    const client = await connect()
+    const listing = await client.listTools()
+    for (const tool of listing.tools) {
+      expect(JSON.stringify(tool), `${tool.name} 的说明里有没填上的占位符`).not.toContain('${')
+    }
+    const { resources } = await client.listResources()
+    for (const resource of resources) {
+      const read = await client.readResource({ uri: resource.uri })
+      for (const content of read.contents as unknown as Array<{ text?: string }>) {
+        expect(content.text ?? '', `${resource.uri} 里有没填上的占位符`).not.toContain('${')
+      }
+    }
+  })
+
   test('the schema resource covers exactly the scene node types', async () => {
     const client = await connect()
     // The one full copy of the document model lives in this resource; the

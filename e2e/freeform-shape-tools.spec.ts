@@ -351,13 +351,24 @@ test('flips a heart left-right and top-bottom from the inspector (v40)', async (
   await expect(flipX).toBeVisible()
   await expect(flipX).toHaveAttribute('aria-pressed', 'false')
 
+  const unflipped = await wrapper.boundingBox()
+  expect(unflipped).not.toBeNull()
+  const stayedPut = async () => {
+    const box = await wrapper.boundingBox()
+    expect(Math.abs(box!.x - unflipped!.x)).toBeLessThan(1)
+    expect(Math.abs(box!.y - unflipped!.y)).toBeLessThan(1)
+  }
+
   await flipX.click()
   await expect(flipX).toHaveAttribute('aria-pressed', 'true')
-  // The wrapper mirrors about its own centre: scaleX(-1) shows up negated.
-  await expect(wrapper).toHaveCSS('transform', /matrix\(-[\d.]+,/)
+  // The wrapper mirrors about its own centre: scaleX(-1) shows up negated,
+  // with no translation, so the heart stays where it was drawn.
+  await expect(wrapper).toHaveCSS('transform', 'matrix(-1, 0, 0, 1, 0, 0)')
+  await stayedPut()
   await flipY.click()
   await expect(flipY).toHaveAttribute('aria-pressed', 'true')
-  await expect(wrapper).toHaveCSS('transform', /matrix\(-1, 0, 0, -1,/)
+  await expect(wrapper).toHaveCSS('transform', 'matrix(-1, 0, 0, -1, 0, 0)')
+  await stayedPut()
 
   // Flipping back is one click; the stored draft carries v40.
   await flipX.click()

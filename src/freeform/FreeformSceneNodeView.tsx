@@ -1213,10 +1213,11 @@ function SceneNodeBranch({
         width: node.width,
         height: node.height,
         // A mirror flips in the element's own (rotated) frame, so it goes
-        // after the rotate and carries its own centre-back translation.
+        // after the rotate. The element turns about its centre, so the
+        // mirror needs no translation to stay where it is.
         transform: `rotate(${node.rotation}deg) scale(${node.scale})`
-          + ('flipX' in node && node.flipX ? ` translate(${node.width}px, 0) scaleX(-1)` : '')
-          + ('flipY' in node && node.flipY ? ` translate(0, ${node.height}px) scaleY(-1)` : ''),
+          + ('flipX' in node && node.flipX ? ' scaleX(-1)' : '')
+          + ('flipY' in node && node.flipY ? ' scaleY(-1)' : ''),
         opacity: node.opacity,
         filter: node.filter ? sceneFilterCss(node.filter) : undefined,
         mixBlendMode: node.blendMode ?? undefined,

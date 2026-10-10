@@ -406,6 +406,39 @@ describe('design quality checks', () => {
     })
   })
 
+  test('centred and right-aligned text line up by the edge their words sit on', () => {
+    const misaligned = (document: FreeformDocument) => layoutIssues(document, measured([], []))
+      .filter((issue) => issue.kind === 'misalignment')
+    // Both centred on the page: the boxes' left edges are 7px apart, the words are not.
+    expect(misaligned(deck([
+      text('甲标题', { fontSize: 120, x: 240, y: 300, width: 600, height: 160, align: 'center' }),
+      text('乙副题', { x: 233, y: 500, width: 614, height: 60, align: 'center' }),
+      text('丙正文', { x: 140, y: 640, width: 800, height: 200, align: 'center' }),
+    ]))).toEqual([])
+    // Centres 6px apart are the slip; the fix moves the box until the centres meet.
+    const centres = misaligned(deck([
+      text('甲标题', { fontSize: 120, x: 240, y: 300, width: 600, height: 160, align: 'center' }),
+      text('乙副题', { x: 239, y: 500, width: 614, height: 60, align: 'center' }),
+    ]))
+    expect(centres.map((issue) => issue.message)).toEqual(['「乙副题」和「甲标题」的中线差 6px：对齐到一起更整齐。'])
+    expect(centres[0].alignment?.moves).toEqual([{ path: ['乙副题'], nodeId: '乙副题', from: 239, to: 233 }])
+    // Right-aligned words line up on the right.
+    const rights = misaligned(deck([
+      text('甲标题', { fontSize: 96, x: 480, y: 300, width: 500, height: 140, align: 'right' }),
+      text('乙副题', { x: 585, y: 500, width: 400, height: 60, align: 'right' }),
+    ]))
+    expect(rights.map((issue) => issue.message)).toEqual(['「乙副题」和「甲标题」的右边差 5px：对齐到一起更整齐。'])
+    expect(rights[0].alignment?.moves).toEqual([{ path: ['乙副题'], nodeId: '乙副题', from: 585, to: 580 }])
+  })
+
+  test('words inset in their own card keep their padding', () => {
+    const document = deck([
+      card('甲卡片', '#f4f4f5', { x: 100, y: 100, width: 400, height: 200 }),
+      text('乙卡字', { x: 108, y: 108, width: 300, height: 60 }),
+    ])
+    expect(kinds(layoutIssues(document, measured([], []))).filter((kind) => kind.startsWith('misalignment'))).toEqual([])
+  })
+
   test('a pair of template-named nodes carries the design, not a slip', () => {
     const document = deck([
       text('主标题', { fontSize: 56, x: 100, y: 100 }),

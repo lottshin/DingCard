@@ -269,4 +269,16 @@ it('evens out nearly equal gaps and reports the shared space', () => {
     100,
   )
   expect(exact.space).toBeUndefined()
+  // Snapping switched off (threshold 0) leaves the gaps as dragged.
+  const off = snapSceneDrag(
+    { width: 1080, height: 1440 },
+    nodes,
+    [],
+    ['中间'],
+    160,
+    100,
+    { threshold: 0 },
+  )
+  expect(off.dx).toBe(160)
+  expect(off.space).toBeUndefined()
 })
