@@ -2224,7 +2224,7 @@ describe('element flips (v40)', () => {
     }
     const v40 = normalizeFreeformDocument({ documentVersion: 40, activeSlideId: 'slide-1', slides: [flipSlide([element])] })
     expect(v40).not.toBeNull()
-    const node = v40!.slides[0].nodes[0] as Record<string, unknown>
+    const node = v40!.slides[0].nodes[0] as unknown as Record<string, unknown>
     expect(node.flipX).toBe(true)
     expect(node.flipY).toBe(true)
     const v39 = normalizeFreeformDocument({ documentVersion: 39, activeSlideId: 'slide-1', slides: [flipSlide([element])] })

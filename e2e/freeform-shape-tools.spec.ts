@@ -336,3 +336,40 @@ test('opens a v20 document with stars and migrates it intact', async ({ page }) 
   await dragCentreTo(page, handle, { x: box!.x + box!.width / 2 - 60, y: box!.y + box!.height / 2 - 40 })
   expect((await inlineClipPath(starView)).startsWith('polygon(')).toBe(true)
 })
+
+test('flips a heart left-right and top-bottom from the inspector (v40)', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page, '心形')
+  const heart = page.locator('.freeform-shape.shape-heart')
+  await expect(heart).toBeVisible()
+  const wrapper = page.getByTestId('freeform-element').filter({ has: page.locator('.freeform-shape.shape-heart') })
+
+  // The flip buttons sit in 位置与尺寸; a heart is asymmetric both ways.
+  await expect(page.getByTestId('inspector-geometry')).toBeVisible()
+  const flipX = page.getByTestId('flip-x')
+  const flipY = page.getByTestId('flip-y')
+  await expect(flipX).toBeVisible()
+  await expect(flipX).toHaveAttribute('aria-pressed', 'false')
+
+  await flipX.click()
+  await expect(flipX).toHaveAttribute('aria-pressed', 'true')
+  // The wrapper mirrors about its own centre: scaleX(-1) shows up negated.
+  await expect(wrapper).toHaveCSS('transform', /matrix\(-[\d.]+,/)
+  await flipY.click()
+  await expect(flipY).toHaveAttribute('aria-pressed', 'true')
+  await expect(wrapper).toHaveCSS('transform', /matrix\(-1, 0, 0, -1,/)
+
+  // Flipping back is one click; the stored draft carries v40.
+  await flipX.click()
+  await expect(flipX).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByTestId('editor-save-state')).toHaveText(/已保存/)
+  const stored = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    const drafts = key ? JSON.parse(localStorage.getItem(key) ?? '[]') : []
+    return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
+  })
+  expect(stored).not.toBeNull()
+  expect(stored.document.documentVersion).toBe(40)
+  expect(stored.document.slides[0].nodes[0].flipY).toBe(true)
+  expect(stored.document.slides[0].nodes[0].flipX).toBeUndefined()
+})

@@ -6759,3 +6759,12 @@ html.theme-anim * {
 .freeform-guide-readout.is-snapped {
   background: var(--accent);
 }
+
+.freeform-inspector .flip-row {
+  display: flex;
+  gap: 8px;
+}
+
+.freeform-inspector .flip-row button {
+  flex: 1 1 0;
+}

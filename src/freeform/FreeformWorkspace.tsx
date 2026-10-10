@@ -2402,6 +2402,16 @@ export function FreeformWorkspace({
     return updateNodeStyleAtPath(activeSlide.id, selectedPath, patch)
   }
 
+  /** Mirror flips are geometry in the document's terms (v40). */
+  function updateSelectedGeometry(patch: FreeformNodeGeometryPatch): boolean {
+    if (!selectedPath) return false
+    return applyAction({
+      type: 'node/update-geometry',
+      slideId: activeSlide.id,
+      updates: [{ path: [...selectedPath], patch }],
+    })
+  }
+
   const activeTextRange = useMemo(() => {
     if (!textSelection || !isTextElement(selectedElement)) return null
     if (textSelection.path[textSelection.path.length - 1] !== selectedElement.id) return null
@@ -8149,6 +8159,28 @@ export function FreeformWorkspace({
                         </label>
                       )}
                     </div>
+                    {(isImageElement(selectedElement) || isShapeElement(selectedElement) || isPathElement(selectedElement)) && (
+                      <div className="flip-row with-gap" data-testid="flip-row">
+                        <button
+                          type="button"
+                          className="ghost"
+                          data-testid="flip-x"
+                          aria-pressed={selectedElement.flipX === true}
+                          onClick={() => updateSelectedGeometry({ flipX: selectedElement.flipX !== true })}
+                        >
+                          {t('水平翻转')}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          data-testid="flip-y"
+                          aria-pressed={selectedElement.flipY === true}
+                          onClick={() => updateSelectedGeometry({ flipY: selectedElement.flipY !== true })}
+                        >
+                          {t('垂直翻转')}
+                        </button>
+                      </div>
+                    )}
                     {isShapeElement(selectedElement) && (
                       <>
                         <div className="field-label with-gap">{t('形状')}</div>

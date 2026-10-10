@@ -1726,16 +1726,15 @@ describe('describeFreeformActionRejection', () => {
 })
 
 describe('element flips', () => {
-  const slideOf = () => createSlide()
   const shapeDeck = () => {
-    const element = { ...createShapeElement(slideOf()), id: 'shape-1', shape: 'heart' as const, fill: { type: 'solid' as const, color: '#f59e0b' }, stroke: '#18181b', strokeWidth: 4 }
+    const element = { ...createShapeElement(createSlide(), 'heart'), fill: { type: 'solid' as const, color: '#f59e0b' }, stroke: '#18181b', strokeWidth: 4, id: 'shape-1' }
     return {
       ...createFreeformDocument(),
       slides: [{ ...createFreeformDocument().slides[0], nodes: [element as unknown as FreeformSceneNode] }],
     }
   }
   const textDeck = () => {
-    const element = { ...createTextElement(slideOf()), id: 'text-1' }
+    const element = { ...createTextElement(createSlide()), id: 'text-1' }
     return {
       ...createFreeformDocument(),
       slides: [{ ...createFreeformDocument().slides[0], nodes: [element as unknown as FreeformSceneNode] }],
@@ -1750,12 +1749,12 @@ describe('element flips', () => {
   it('mirrors a shape and restores it through the geometry patch', () => {
     const document = shapeDeck()
     const flipped = flip(document, { flipX: true, flipY: true })
-    const node = flipped.slides[0].nodes[0] as Record<string, unknown>
+    const node = flipped.slides[0].nodes[0] as unknown as Record<string, unknown>
     expect(node.flipX).toBe(true)
     expect(node.flipY).toBe(true)
     const restored = flip(flipped, { flipX: false, flipY: false })
-    expect('flipX' in (restored.slides[0].nodes[0] as Record<string, unknown>)).toBe(false)
-    expect('flipY' in (restored.slides[0].nodes[0] as Record<string, unknown>)).toBe(false)
+    expect('flipX' in (restored.slides[0].nodes[0] as unknown as Record<string, unknown>)).toBe(false)
+    expect('flipY' in (restored.slides[0].nodes[0] as unknown as Record<string, unknown>)).toBe(false)
     // A same-state patch is no edit at all.
     const same = flip(flipped, { flipX: true })
     expect(same).toBe(flipped)

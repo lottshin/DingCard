@@ -477,4 +477,6 @@ export const app: Record<string, Translation> = {
   '正在导入': 'Importing',
   '加载中…': 'Loading…',
   '加载更多': 'Load more',
+  '水平翻转': 'Flip horizontal',
+  '垂直翻转': 'Flip vertical',
 }
