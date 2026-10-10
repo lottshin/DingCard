@@ -1467,3 +1467,17 @@ describe('applyActions', () => {
     const plain = solid.document.slides[0].nodes.find((node) => node.id === 'rect-1') as unknown as Record<string, unknown>
     expect('strokeDash' in plain).toBe(false)
   })
+
+  test('applies the deck-wide find-replace action', () => {
+    const result = applyActions(seedDocument(), [
+      { type: 'document/find-replace', find: '你好，叮卡', replace: '你好，世界' },
+      // An empty find changes nothing.
+      { type: 'document/find-replace', find: '', replace: 'x' },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.changes).toEqual([true, false])
+    expect(result.reasons[1]).toContain('find 为空')
+    const title = result.document.slides[0].nodes.find((node) => node.id === 'title-1')
+    expect(title && title.type === 'text' ? title.text : '').toContain('你好，世界')
+  })

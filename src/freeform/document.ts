@@ -1703,6 +1703,15 @@ export function describeFreeformActionRejection(
 ): string | null {
   if (!isRecord(action)) return null
   const type = action.type
+  if (type === 'document/find-replace') {
+    if (typeof action.find !== 'string' || action.find === '') return 'find 为空串：要给出要找的文字'
+    if (typeof action.replace !== 'string') return 'replace 必须是字符串（可以是空串，表示删掉这些字）'
+    if (action.slideId !== undefined
+      && (typeof action.slideId !== 'string' || !document.slides.some((slide) => slide.id === action.slideId))) {
+      return `找不到这一页：${String(action.slideId)}`
+    }
+    return null
+  }
   if (
     type !== 'node/update-content'
     && type !== 'node/update-style'
@@ -2169,6 +2178,31 @@ export function reduceFreeformDocument(
       }
       case 'document/restyle':
         return restyleDocument(document, action)
+      case 'document/find-replace': {
+        const find = isRecord(action) && typeof action.find === 'string' ? action.find : ''
+        if (find === '') return document
+        const replace = isRecord(action) && typeof action.replace === 'string' ? action.replace : ''
+        const only = isRecord(action) && typeof action.slideId === 'string' ? action.slideId : null
+        let changed = false
+        const slides = document.slides.map((slide) => {
+          if (only !== null && slide.id !== only) return slide
+          let slideChanged = false
+          const nodes = slide.nodes.map((leaf) => {
+            if (leaf.type !== 'text' || !leaf.text.includes(find)) return leaf
+            const text = leaf.text.split(find).join(replace)
+            if (text === leaf.text) return leaf
+            slideChanged = true
+            // The spans follow the words they colour, exactly as typing does.
+            const remapped = remapRichTextSpans(leaf.spans, leaf.text, text)
+            const { spans: _previousSpans, ...rest } = leaf
+            return remapped ? { ...rest, text, spans: remapped } : { ...rest, text }
+          })
+          if (!slideChanged) return slide
+          changed = true
+          return { ...slide, nodes }
+        })
+        return changed ? { ...document, slides } : document
+      }
       case 'slide/update': {
         if (!isRecord(action.patch) || !hasOnlyKeys(action.patch, new Set(['name', 'background']))) {
           return document

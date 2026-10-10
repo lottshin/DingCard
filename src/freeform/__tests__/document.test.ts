@@ -1800,3 +1800,73 @@ describe('shape dash (v41)', () => {
     expect('strokeDash' in (restored.slides[0].nodes[0] as unknown as Record<string, unknown>)).toBe(false)
   })
 })
+
+describe('document/find-replace', () => {
+  const deckWithText = (texts: string[]) => {
+    const nodes = texts.map((text, index) => ({
+      ...createTextElement(createSlide()),
+      id: `text-${index}`,
+      text,
+    } as unknown as FreeformSceneNode))
+    return {
+      ...createFreeformDocument(),
+      slides: [
+        { ...createFreeformDocument().slides[0], id: 'page-1', nodes: nodes.slice(0, 2) },
+        { ...createFreeformDocument().slides[0], id: 'page-2', name: '第 2 页', nodes: nodes.slice(2) },
+      ],
+    }
+  }
+  const replace = (document: FreeformDocument, find: string, replaceWith: string, slideId?: string) => freeformReducer(document, {
+    type: 'document/find-replace',
+    find,
+    replace: replaceWith,
+    ...(slideId !== undefined ? { slideId } : {}),
+  })
+  const textsOf = (document: FreeformDocument) => document.slides.flatMap((slide) => slide.nodes)
+    .map((node) => node.type === 'text' ? node.text : '')
+
+  it('replaces across every page in one step, remapping spans', () => {
+    const document = deckWithText(['咖啡节来了', '来喝咖啡', '不相关的文字', '咖啡与甜点'])
+    const replaced = replace(document, '咖啡', '茶饮')
+    expect(textsOf(replaced)).toEqual(['茶饮节来了', '来喝茶饮', '不相关的文字', '茶饮与甜点'])
+    // Scope to one page.
+    const scoped = replace(document, '咖啡', '茶饮', 'page-1')
+    expect(textsOf(scoped)).toEqual(['茶饮节来了', '来喝茶饮', '不相关的文字', '咖啡与甜点'])
+    // No hits is no edit at all.
+    expect(replace(document, '不存在', 'x')).toBe(document)
+    expect(replace(document, '', 'x')).toBe(document)
+  })
+
+  it('remaps spans the way typing does: inside the edit they drop, after it they shift', () => {
+    const nodes = [{
+      ...createTextElement(createSlide()),
+      id: 'text-0',
+      text: '拿铁最好喝',
+      // Bold on 最好喝, after the replaced region.
+      spans: [{ start: 2, end: 5, bold: true }],
+    } as unknown as FreeformSceneNode]
+    const document = {
+      ...createFreeformDocument(),
+      slides: [{ ...createFreeformDocument().slides[0], nodes }],
+    }
+    const grown = freeformReducer(document, { type: 'document/find-replace', find: '拿铁', replace: '冰滴咖啡' })
+    const grownNode = grown.slides[0].nodes[0]
+    expect(grownNode.type === 'text' && grownNode.text).toBe('冰滴咖啡最好喝')
+    expect(grownNode.type === 'text' && grownNode.spans).toEqual([{ start: 4, end: 7, bold: true }])
+    // A span over the replaced words drops, as a plain edit would drop it.
+    const covered = [{
+      ...createTextElement(createSlide()),
+      id: 'text-0',
+      text: '拿铁最好喝',
+      spans: [{ start: 0, end: 2, bold: true }],
+    } as unknown as FreeformSceneNode]
+    const coveredDocument = {
+      ...createFreeformDocument(),
+      slides: [{ ...createFreeformDocument().slides[0], nodes: covered }],
+    }
+    const replaced = freeformReducer(coveredDocument, { type: 'document/find-replace', find: '拿铁', replace: '手冲' })
+    const node = replaced.slides[0].nodes[0]
+    expect(node.type === 'text' && node.text).toBe('手冲最好喝')
+    expect(node.type === 'text' && node.spans).toBeUndefined()
+  })
+})

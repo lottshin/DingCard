@@ -720,6 +720,19 @@ export type FreeformAction =
       /** Font family → font family, keyed by the families the deck has now; wins over the font set. */
       fonts?: Record<string, string>
     }
+  /**
+   * Replace every occurrence of `find` with `replace` in the deck's texts
+   * (or one slide's), remapping rich-text spans; one undo step.
+   */
+  | {
+      type: 'document/find-replace'
+      /** What to look for; an empty string changes nothing. */
+      find: string
+      /** What takes its place. */
+      replace: string
+      /** Only this slide when given; otherwise every slide. */
+      slideId?: string
+    }
   | { type: 'node/set-locked'; slideId: string; path: ScenePath; locked: boolean }
   | { type: 'node/set-hidden'; slideId: string; path: ScenePath; hidden: boolean }
   | { type: 'node/rename'; slideId: string; path: ScenePath; name: string }
