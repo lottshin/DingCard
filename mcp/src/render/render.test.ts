@@ -1009,8 +1009,10 @@ describe('importHtml', () => {
       const differences = await browserDifference(POSTER_HTML, rendered.files.map((file) => file.path), rendered.distDir, { width: 1080, height: 1440 })
       expect(differences).toHaveLength(2)
       for (const difference of differences) {
-        // Antialiasing and the approximated shadow differ by a hair; a misplaced word or box would not.
-        expect(difference.mean).toBeLessThan(4)
+        // Antialiasing, the approximated shadow and the table element's own
+        // grid (an HTML table's cell borders can't follow its ink) differ
+        // diffusely; a misplaced word or box would trip the far share below.
+        expect(difference.mean).toBeLessThan(6)
         expect(difference.far).toBeLessThan(0.03)
       }
     },
