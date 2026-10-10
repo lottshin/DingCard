@@ -102,7 +102,7 @@ const PAGE_MAX = 4096
 const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 }
 
 const SKIPPED_TAGS = new Set(['HEAD', 'SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'LINK', 'META', 'TITLE'])
-const REPLACED_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'IFRAME', 'INPUT', 'TEXTAREA', 'SELECT', 'OBJECT', 'EMBED', 'PICTURE', 'TABLE', 'PROGRESS'])
+const REPLACED_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'IFRAME', 'INPUT', 'TEXTAREA', 'SELECT', 'OBJECT', 'EMBED', 'PICTURE', 'PROGRESS'])
 
 /** The most an HTML table lends a freeform table element. */
 const TABLE_MAX_ROWS = 12
@@ -515,6 +515,7 @@ function textName(text: string): string {
 class PageReader {
   private readonly styles = new Map<Element, CSSStyleDeclaration>()
   private readonly opacities = new Map<Element, number>()
+  private readonly tableReads = new Map<Element, ReturnType<PageReader['tableElementRead']>>()
   private readonly normalLineHeights = new Map<string, number>()
   private readonly view: Window
 
@@ -655,7 +656,10 @@ class PageReader {
   }
 
   private isReplaced(element: Element): boolean {
-    return REPLACED_TAGS.has(element.tagName.toUpperCase())
+    const tag = element.tagName.toUpperCase()
+    // A table is one element only when the element can draw it as it looks.
+    if (tag === 'TABLE') return this.tableElementRead(element) !== null
+    return REPLACED_TAGS.has(tag)
   }
 
   classify(element: Element): ElementKind {
@@ -1941,26 +1945,116 @@ class PageReader {
   }
 
   /**
-   * A `<table>` becomes one table element: rows of trimmed cell text, the
-   * first row a header when its cells are `<th>`. Beyond what the element can
-   * hold the extras drop with a note saying so (see readHtmlTable).
+   * Whether a `<table>` can become one table element without changing how it
+   * looks, and with what: one text colour (the ink), a header row of `<th>`
+   * on one background (or none), body rows plain or striped every second row,
+   * column widths. A table the element can't draw that way — spans, mixed
+   * text colours or weights, per-cell fills, more than 12 rows or 6 columns,
+   * a cell longer than 24 characters, one row — stays words and shapes, laid
+   * out as the browser drew it. Null then.
+   */
+  private tableElementRead(element: Element): (HtmlTableRead & {
+    ink: string
+    headerFill?: string
+    stripeFill?: string
+    colWidths?: number[]
+  }) | null {
+    if (this.tableReads.has(element)) return this.tableReads.get(element) ?? null
+    const decide = () => {
+      if (element.querySelector('table')) return null
+      const rows = Array.from(element.querySelectorAll('tr'))
+        .filter((row) => row.closest('table') === element)
+        .map((row) => Array.from(row.children).filter((cell) => cell.tagName === 'TD' || cell.tagName === 'TH') as HTMLTableCellElement[])
+        .filter((cells) => cells.length > 0)
+      if (rows.length < 2 || rows.length > TABLE_MAX_ROWS) return null
+      const cells = rows.flat()
+      if (cells.some((cell) => cell.colSpan > 1 || cell.rowSpan > 1)) return null
+      if (Math.max(...rows.map((row) => row.length)) > TABLE_MAX_COLS) return null
+      const read = readHtmlTable(rows)
+      if (read.cutChars > 0) return null
+      // One ink for every word, however deep it sits in its cell.
+      const inks = new Set<string>()
+      for (const cell of cells) {
+        for (const holder of [cell, ...Array.from(cell.querySelectorAll('*'))]) {
+          if (!Array.from(holder.childNodes).some((child) => child.nodeType === Node.TEXT_NODE && child.textContent?.trim())) continue
+          const color = this.color(this.style(holder).color)
+          if (!color || color.a < 1) return null
+          inks.add(hexOf(color))
+        }
+      }
+      if (inks.size > 1) return null
+      const ink = [...inks][0] ?? hexOf(this.color(this.style(element).color) ?? { r: 63, g: 63, b: 70, a: 1 })
+      const bold = (cell: Element) => isBoldWeight(this.style(cell).fontWeight)
+      const header = read.headerRow
+      const body = header ? rows.slice(1) : rows
+      if (body.flat().some(bold)) return null
+      if (header && !rows[0].every(bold)) return null
+      // A row's fill: its cells' own, else the row's; transparent when neither paints.
+      const fillOf = (row: HTMLTableCellElement[]): string | null | undefined => {
+        const fills = new Set(row.map((cell) => {
+          const own = this.color(this.style(cell).backgroundColor)
+          const painted = own && own.a > 0 ? own : this.color(this.style(cell.parentElement!).backgroundColor)
+          if (!painted || painted.a === 0) return 'none'
+          return painted.a < 1 ? 'mixed' : hexOf(painted)
+        }))
+        if (fills.size !== 1 || fills.has('mixed')) return undefined
+        const fill = [...fills][0]
+        return fill === 'none' ? null : fill
+      }
+      const headerFill = header ? fillOf(rows[0]) : null
+      if (headerFill === undefined) return null
+      const bodyFills = body.map(fillOf)
+      if (bodyFills.some((fill) => fill === undefined)) return null
+      // Plain, or every second body row shaded in one colour (the element's stripes).
+      const shaded = new Set(bodyFills.filter((fill, index) => index % 2 === 1 && fill !== null))
+      const plainRows = bodyFills.filter((fill, index) => index % 2 === 0 || fill === null)
+      if (plainRows.some((fill) => fill !== null)) return null
+      if (shaded.size > 1) return null
+      const stripeFill = [...shaded][0] as string | undefined
+      if (stripeFill && bodyFills.some((fill, index) => index % 2 === 1 && fill !== stripeFill)) return null
+      // The header's own colour, or the ground under the table so the
+      // element's default header tint doesn't appear where the page had none.
+      const ground = this.groundColor(element)
+      const widths = rows[0].map((cell) => cell.getBoundingClientRect().width)
+      const total = widths.reduce((sum, width) => sum + width, 0)
+      const even = widths.every((width) => Math.abs(width - total / widths.length) <= total * 0.02)
+      return {
+        ...read,
+        ink,
+        ...(header && headerFill ? { headerFill } : header && ground ? { headerFill: ground } : {}),
+        ...(stripeFill ? { stripeFill } : {}),
+        ...(!even && widths.length === read.cols && total > 0
+          ? { colWidths: widths.map((width) => Math.round((width / total) * 1000) / 1000) }
+          : {}),
+      }
+    }
+    const read = decide()
+    this.tableReads.set(element, read)
+    if (!read) this.note(element, '<table> 的样式（合并单元格、多种文字颜色或底色、超过 12 行 6 列、格子超过 24 字或只有一行）表格元素画不出来，按网页原样导成了文字和色块')
+    return read
+  }
+
+  /** The solid colour painted under `element`: its own background, else the nearest ancestor's. */
+  private groundColor(element: Element): string | null {
+    for (let current: Element | null = element; current; current = current.parentElement) {
+      const color = this.color(this.style(current).backgroundColor)
+      if (color && color.a >= 1) return hexOf(color)
+      if (current === this.page) break
+    }
+    return null
+  }
+
+  /**
+   * A `<table>` the element can draw becomes one table element in the
+   * browser's place, coloured as the page coloured it (see tableElementRead).
    */
   private tableNodes(element: Element): FreeformSceneNode[] {
     const style = this.style(element)
     if (style.visibility !== 'visible') return []
     const border = this.rel(element.getBoundingClientRect())
     if (border.width <= 0.01 || border.height <= 0.01) return []
-    const rows = Array.from(element.querySelectorAll('tr'))
-      .map((row) => Array.from(row.querySelectorAll('th,td')))
-      .filter((cells) => cells.length > 0)
-    if (rows.length < 2) {
-      this.note(element, '<table> 至少要有两行才转成表格元素，其余照常排版')
-      return []
-    }
-    const read = readHtmlTable(rows)
-    if (read.droppedRows > 0) this.note(element, `<table> 超过 ${TABLE_MAX_ROWS} 行，后面 ${read.droppedRows} 行没有转`)
-    if (read.droppedCells > 0) this.note(element, `<table> 超过 ${TABLE_MAX_COLS} 列，多出的 ${read.droppedCells} 格没有转`)
-    if (read.cutChars > 0) this.note(element, `<table> 有 ${read.cutChars} 格文字超过 ${TABLE_CELL_MAX_CHARS} 字，被截短`)
+    const read = this.tableElementRead(element)
+    if (!read) return []
     const node: FreeformTableElement = {
       ...this.base(element.getAttribute('data-name') ?? '表格', border),
       type: 'table',
@@ -1968,11 +2062,19 @@ class PageReader {
       cols: read.cols,
       cells: read.cells,
       headerRow: read.headerRow,
+      ink: read.ink,
+      ...(read.headerFill ? { headerFill: read.headerFill } : {}),
+      ...(read.stripeFill ? { striped: true, stripeFill: read.stripeFill } : {}),
+      ...(read.colWidths ? { colWidths: read.colWidths } : {}),
     }
     return [node]
   }
 
-  /** `<progress>` becomes one bar: the share of its max, named by aria-label. */
+  /**
+   * `<progress>` becomes one bar: the share of its max in its `accent-color`.
+   * Its aria-label names the layer — the page never showed it, so the bar
+   * doesn't either.
+   */
   private progressNodes(progress: HTMLProgressElement): FreeformSceneNode[] {
     const style = this.style(progress)
     if (style.visibility !== 'visible') return []
@@ -1980,18 +2082,14 @@ class PageReader {
     if (border.width <= 0.01) return []
     const max = progress.max > 0 ? progress.max : 1
     const share = progressShare(progress.value, max)
-    const name = progress.getAttribute('data-name') ?? '进度'
-    let label = (progress.getAttribute('aria-label') ?? '').trim()
-    if (label.length > 12) {
-      label = label.slice(0, 12)
-      this.note(progress, '进度的 aria-label 超过 12 字，被截短')
-    }
+    const name = progress.getAttribute('data-name') ?? (progress.getAttribute('aria-label')?.trim() || '进度')
+    const accent = style.accentColor && style.accentColor !== 'auto' ? this.color(style.accentColor) : null
     const node: FreeformProgressElement = {
       ...this.base(name, { ...border, height: Math.max(border.height, 24) }),
       type: 'progress',
       progressKind: 'bar',
       value: share,
-      ...(label !== '' ? { label } : {}),
+      ...(accent && accent.a > 0 ? { accent: hexOf(accent) } : {}),
     }
     return [node]
   }

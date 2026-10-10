@@ -975,7 +975,8 @@ describe('importHtml', () => {
       expect(icon.children.map((child) => child.type)).toEqual(['path', 'path'])
       expect(icon.children[0]).toMatchObject({ stroke: '#ffd166', strokeWidth: 20, cap: 'round', fill: { type: 'transparent' } })
 
-      // A <table> reads as one table element; a <progress> as one bar.
+      // A <table> the element can draw as it looks reads as one table
+      // element in the page's colours; a <progress> as one bar.
       const table = leaves(two.nodes).find((node) => node.type === 'table')
       expect(table).toMatchObject({
         type: 'table',
@@ -983,10 +984,14 @@ describe('importHtml', () => {
         cols: 2,
         cells: ['时间', '活动', '14:00', '手冲分享', '16:00', '拉花表演'],
         headerRow: true,
+        ink: '#ffffff',
+        headerFill: '#0f172a',
       })
       expect(table && table.type === 'table' && table.width).toBeGreaterThan(250)
       const progress = leaves(two.nodes).find((node) => node.type === 'progress')
-      expect(progress).toMatchObject({ type: 'progress', progressKind: 'bar', value: 72, label: '筹备进度' })
+      // The aria-label names the layer; the page never showed it, so the bar doesn't either.
+      expect(progress).toMatchObject({ type: 'progress', progressKind: 'bar', value: 72, name: '筹备进度' })
+      expect(progress && 'label' in progress).toBe(false)
       expect(progress && progress.type === 'progress' && progress.height).toBeGreaterThanOrEqual(24)
     },
     420_000,
@@ -1008,6 +1013,41 @@ describe('importHtml', () => {
         expect(difference.mean).toBeLessThan(4)
         expect(difference.far).toBeLessThan(0.03)
       }
+    },
+    420_000,
+  )
+
+  test(
+    'keeps a table the element can\'t draw as the browser drew it, words and all',
+    async () => {
+      const html = `<!doctype html><html><head><style>
+        body { margin: 0; }
+        section { width: 1080px; height: 1080px; background: #0f172a; color: #f8fafc; padding: 96px; box-sizing: border-box; font-family: "Noto Sans SC", sans-serif; }
+        table { width: 100%; border-collapse: collapse; font-size: 36px; }
+        th { background: #f59e0b; color: #0f172a; text-align: left; padding: 20px; }
+        td { padding: 20px; border-bottom: 2px solid #334155; }
+        td.num { text-align: right; color: #fbbf24; }
+      </style></head><body><section>
+        <table><tr><th>品名</th><th>杯数</th></tr><tr><td>手冲</td><td class="num">320</td></tr><tr><td>冷萃</td><td class="num">280</td></tr></table>
+        <table><tr><td>只有一行的表也不丢字</td></tr></table>
+      </section></body></html>`
+      const result = await importHtml(html)
+      if (!result.ok) throw new Error(result.error)
+      const nodes = leaves(result.document.slides[0].nodes)
+      // Two text colours and a one-row table: neither becomes a table element…
+      expect(nodes.some((node) => node.type === 'table')).toBe(false)
+      // …and every word arrives as the page set it.
+      const words = nodes.flatMap((node) => node.type === 'text' ? [node.text] : [])
+      for (const word of ['品名', '杯数', '手冲', '320', '冷萃', '280', '只有一行的表也不丢字']) expect(words).toContain(word)
+      // One note for both, counted.
+      expect(result.notes.filter((note) => note.message.includes('<table>')).map((note) => note.message)).toEqual([expect.stringContaining('（2 处）')])
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-html-table-'))
+      const rendered = await renderDocument(result.document, { outputDir, baseName: 'converted' })
+      if (!rendered.ok) throw new Error(rendered.error)
+      const [difference] = await browserDifference(html, rendered.files.map((file) => file.path), rendered.distDir, { width: 1080, height: 1080 })
+      expect(difference.mean).toBeLessThan(4)
+      expect(difference.far).toBeLessThan(0.03)
     },
     420_000,
   )

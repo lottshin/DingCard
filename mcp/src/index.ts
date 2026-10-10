@@ -318,6 +318,7 @@ export function createDingcardServer(): McpServer {
 - 字体用内置的：苹方 "PingFang SC"、思源黑体 "Noto Sans SC"、思源宋体 "Noto Serif SC"、霞鹜文楷 "LXGW WenKai TC"、站酷小薇 "ZCOOL XiaoWei"、系统宋体 "Songti SC"；别的字体换成同类的内置字体（notes 里会写）。字重只有常规和粗体，600 及以上算粗体。
 - 图片用 <img> 或 CSS background-image，object-fit、object-position、圆角和圆形裁切都照着来；src 写本机路径（相对路径按 htmlPath 所在目录或当前目录找）、http(s) URL 或 data URL，本机图片和本机样式表会嵌进来。
 - 图标和图形写成内联 <svg>（path、rect、circle、ellipse、line、polyline、polygon），每个变成一个图形节点，一个 svg 里有几个就成一个组合；长短不一的虚线（环形进度条）照画出来的样子描成线段，SVG 里的 <text> 变成单行文字框，<use> 引用不转。
+- <table> 能照原样画成表格元素时就变成一个可逐格编辑的表格（一种文字颜色、<th> 表头一种底色或没有、正文行不铺色或隔行铺一种色、2–12 行 1–6 列、每格 24 字以内、没有合并单元格），文字颜色、表头底色、斑马纹和列宽照网页来；画不出来的照网页原样导成文字和色块，notes 里会说。<progress> 变成进度条，颜色取 accent-color，aria-label 作图层名（网页上不显示，所以进度条上也不画）。
 - 一段文字里的加粗、换色、行内底色（行内元素的 background）、下划线和删除线会变成文字片段，text-align: justify 照样两端对齐。一个块里只有这段文字、几种字号的行高倍数又一样时（价格里放大的数字），不同字号成为带字号的片段；否则同一行里的不同字号、和行内块（inline-block 标签）同一行的文字会拆成几个文字框，保证位置不变。整齐的 <ul> / <ol>（每项只有文字、样式一样、圆点或编号在外侧、间距一样）转成一个列表文字，其他列表的圆点和编号单独成字；::before / ::after 照常生效。
 - data-name="主标题" 给图层起名，data-group 让一个元素连同里面的东西成为一个组合。
 - 不支持的会写进 notes 并尽量近似：脚本和动画、clip-path、mask、backdrop-filter、内阴影、多层阴影（只留第一层）。透明度不一的渐变（比如照片上的渐隐遮罩）、平铺和锥形渐变会画成一张图。
