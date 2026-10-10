@@ -1,5 +1,5 @@
 /** The documentVersion a fresh freeform document carries; older versions migrate to it. */
-export const FREEFORM_DOCUMENT_VERSION = 42
+export const FREEFORM_DOCUMENT_VERSION = 43
 
 export interface FreeformDocument {
   documentVersion: typeof FREEFORM_DOCUMENT_VERSION
@@ -418,6 +418,8 @@ export interface FreeformChartElement extends FreeformElementBase {
    *  drawn; `false` removes them and lets the plot run to the left edge.
    */
   showTicks?: boolean
+  /** The labels', ticks' and legend's text colour (v43); absent keeps the dark grey ink. */
+  ink?: string
 }
 
 /**
@@ -479,6 +481,8 @@ export interface FreeformProgressElement extends FreeformElementBase {
   label?: string
   /** The track's colour (v39); absent tints the accent to 14%. */
   trackFill?: string
+  /** The goal's name colour (v43); absent keeps the dark grey ink. */
+  ink?: string
 }
 
 export type FreeformElement =
@@ -644,7 +648,8 @@ export interface FreeformNodeStylePatch {
   headerRow?: boolean | null
   /** Table zebra stripes (v34); `null` restores the plain body. */
   striped?: boolean | null
-  /** Table ink for text and grid lines (v35); `null` restores the default gray. */
+  /** The text ink of a table (and its grid lines, v35), a timeline's entries (v37),
+   *  or a chart's or progress bar's words (v43); `null` restores the default gray. */
   ink?: string | null
   /** Table header fill (v35); `null` restores the ink tint. */
   headerFill?: string | null

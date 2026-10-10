@@ -7,7 +7,7 @@ import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './r
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
 import { bubbleClipPath, shapeOutlinePath, starClipPath } from './shapeGeometry'
 import { QR_ECL_DEFAULT, QR_QUIET_ZONE_DEFAULT } from './qrCode'
-import { barChartGeometry, lineChartGeometry, radarChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
+import { barChartGeometry, chartLabelFont, chartTickFont, lineChartGeometry, radarChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
 import { tableGeometry } from './tables'
 import { progressGeometry } from './progress'
 import { timelineGeometry } from './timeline'
@@ -475,15 +475,16 @@ function SceneLeafContent({
     // One to three labelled series drawn as bars, a ring, or a line. The view
     // box is the node box in px, so labels size with the element.
     const showValues = leaf.showValues === true
-    const fontSize = Math.max(9, Math.min(leaf.height * 0.062, 15))
-    const fontColor = '#3f3f46'
+    const fontSize = chartLabelFont(leaf.height, leaf.width, leaf.labels, leaf.chartKind === 'radar' ? 'radar' : leaf.chartKind === 'line' ? 'line' : 'bar')
+    // The words, ticks and grid lines draw in the chart's ink (v43), dark grey by default.
+    const fontColor = leaf.ink ?? '#3f3f46'
     const commonText = {
       textAnchor: 'middle' as const,
       fontFamily: 'inherit',
       fontSize,
       fill: fontColor,
     }
-    const tickFont = Math.max(8, Math.min(leaf.height * 0.055, 12))
+    const tickFont = chartTickFont(leaf.height)
     const axisMarks = (axis: { ticks: Array<{ y: number; text: string }>; leftPad: number } | null) => (
       axis ? (
         <>
@@ -670,8 +671,19 @@ function SceneLeafContent({
         })()}
         {leaf.chartKind === 'ring' && (() => {
           const chart = ringChartGeometry(leaf.series, { showValues, showLegend: leaf.showLegend })
+          // The ring is laid out in a 100-unit square: draw that square as
+          // large as the box allows, centred, so the ring fills the chart.
+          const side = Math.max(1, Math.min(leaf.width, leaf.height))
           return (
-            <>
+            <svg
+              x={(leaf.width - side) / 2}
+              y={(leaf.height - side) / 2}
+              width={side}
+              height={side}
+              viewBox="0 0 100 100"
+              overflow="visible"
+              data-testid="freeform-chart-ring"
+            >
               {chart.segments.length === 0
                 ? <circle cx={50} cy={50} r={34} fill="none" stroke={chart.track} strokeWidth={17} />
                 : chart.segments.map((segment, index) => (
@@ -694,7 +706,7 @@ function SceneLeafContent({
                 )
               ))}
               {legend(chart.legend, 6.5)}
-            </>
+            </svg>
           )
         })()}
       </svg>
@@ -710,7 +722,7 @@ function SceneLeafContent({
       striped: leaf.striped,
       colWidths: leaf.colWidths,
     })
-    const cellFontSize = Math.max(7, Math.min(leaf.height / leaf.rows * 0.42, 14))
+    const cellFontSize = table.fontSize
     return (
       <svg
         className={presentationOnly ? 'freeform-preview-table' : 'freeform-table'}
@@ -774,12 +786,12 @@ function SceneLeafContent({
           x2={timeline.spine.x2}
           y2={timeline.spine.y2}
           stroke={accentColor}
-          strokeWidth={2}
+          strokeWidth={timeline.spineWidth}
           opacity={0.35}
         />
         {timeline.entries.map((entry, index) => (
           <g key={index}>
-            <circle data-testid="freeform-timeline-dot" cx={entry.dot.x} cy={entry.dot.y} r={5} fill={accentColor} />
+            <circle data-testid="freeform-timeline-dot" cx={entry.dot.x} cy={entry.dot.y} r={timeline.dotRadius} fill={accentColor} />
             {entry.label && (
               <text
                 data-testid="freeform-timeline-label"
@@ -839,7 +851,7 @@ function SceneLeafContent({
             fontFamily="inherit"
             fontSize={geometry.label.fontSize}
             fontWeight={500}
-            fill="#3f3f46"
+            fill={leaf.ink ?? '#3f3f46'}
           >
             {leaf.label}
           </text>

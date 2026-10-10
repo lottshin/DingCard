@@ -8733,6 +8733,24 @@ export function FreeformWorkspace({
                           </button>
                         ))}
                       </div>
+                      <div className="paint-row with-gap" data-testid="chart-ink-colors">
+                        <ColorPickerButton
+                          label={t('墨色')}
+                          color={selectedElement.ink ?? '#3f3f46'}
+                          testId="chart-ink-color"
+                          onChange={(ink) => updateSelectedStyle({ ink })}
+                        />
+                        {selectedElement.ink !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="chart-ink-reset"
+                            onClick={() => updateSelectedStyle({ ink: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                      </div>
                       <div className="field-label with-gap">{t('系列')}</div>
                       <div className="seg stretch" role="group" aria-label={t('系列')}>
                         {selectedElement.series.map((entry, index) => (
@@ -9390,6 +9408,24 @@ export function FreeformWorkspace({
                             className="ghost"
                             data-testid="progress-track-reset"
                             onClick={() => updateSelectedStyle({ trackFill: null })}
+                          >
+                            {t('恢复默认')}
+                          </button>
+                        )}
+                      </div>
+                      <div className="paint-row with-gap" data-testid="progress-ink-colors">
+                        <ColorPickerButton
+                          label={t('墨色')}
+                          color={selectedElement.ink ?? '#3f3f46'}
+                          testId="progress-ink-color"
+                          onChange={(ink) => updateSelectedStyle({ ink })}
+                        />
+                        {selectedElement.ink !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="progress-ink-reset"
+                            onClick={() => updateSelectedStyle({ ink: null })}
                           >
                             {t('恢复默认')}
                           </button>

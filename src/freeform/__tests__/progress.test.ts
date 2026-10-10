@@ -79,18 +79,26 @@ describe('progress element', () => {
   it('names the goal above the bar and under the ring\'s share', () => {
     // Above the bar: the name sits at the top-left and the bar shrinks to
     // the room left under it.
+    // The name takes 30% of the element (body copy at card size), the bar the rest.
     const bar = progressGeometry(480, 96, 'bar', 65, { label: true })
-    expect(bar.label).toEqual({ x: 0, y: 17.6, fontSize: 16 })
-    expect(bar.bar!.track).toEqual({ x: 0, y: 24, width: 480, height: 72, radius: 36 })
-    expect(bar.bar!.fill!.y).toBe(24)
-    expect(bar.bar!.fill!.height).toBe(72)
-    expect(bar.bar!.percent.y).toBeCloseTo(67.92, 6)
+    expect(bar.label!.x).toBe(0)
+    expect(bar.label!.fontSize).toBeCloseTo(28.8, 6)
+    expect(bar.label!.y).toBeCloseTo(31.68, 6)
+    expect(bar.bar!.track.y).toBeCloseTo(43.2, 6)
+    expect(bar.bar!.track.height).toBeCloseTo(52.8, 6)
+    expect(bar.bar!.track.radius).toBeCloseTo(26.4, 6)
+    expect(bar.bar!.fill!.y).toBeCloseTo(43.2, 6)
+    expect(bar.bar!.fill!.height).toBeCloseTo(52.8, 6)
+    expect(bar.bar!.percent.y).toBeCloseTo(79.48416, 6)
     // Under the ring's share: the percent-and-name stack centres on the
-    // ring's middle.
+    // ring's middle, both grown with the ring.
     const ring = progressGeometry(240, 240, 'ring', 75, { label: true })
-    expect(ring.label).toEqual({ x: 120, y: 141.9, fontSize: 20 })
+    expect(ring.label!.x).toBe(120)
+    expect(ring.label!.fontSize).toBeCloseTo(30.2064, 6)
+    expect(ring.label!.y).toBeCloseTo(150.62424, 6)
+    expect(ring.ring!.fontSize).toBeCloseTo(48.72, 6)
     expect(ring.ring!.percent.x).toBe(120)
-    expect(ring.ring!.percent.y).toBeCloseTo(121.9, 6)
+    expect(ring.ring!.percent.y).toBeCloseTo(123.47976, 6)
     // Without a name the geometry is the plain v38 layout.
     expect(progressGeometry(480, 96, 'bar', 65, {}).label).toBeNull()
   })
@@ -104,7 +112,7 @@ describe('progress element', () => {
     expect('label' in element).toBe(false)
 
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -139,7 +147,7 @@ describe('progress element', () => {
   it('names and clears the goal through node/update-content', () => {
     const element = createProgressElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -181,7 +189,7 @@ describe('progress element', () => {
   it('restyles the accent, the kind, and the track colour through node/update-style', () => {
     const element = createProgressElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -229,7 +237,7 @@ describe('progress element', () => {
   it('carries the goal name and track colour at v39 and rejects them at v38', () => {
     const element = createProgressElement(slide)
     const progressSlide = { ...slide, nodes: [element as unknown as FreeformSceneNode] }
-    const v39 = normalizeFreeformDocument({ documentVersion: 42, activeSlideId: slide.id, slides: [progressSlide] })
+    const v39 = normalizeFreeformDocument({ documentVersion: 43, activeSlideId: slide.id, slides: [progressSlide] })
     expect(v39).not.toBeNull()
     expect((v39!.slides[0].nodes[0] as FreeformProgressElement).value).toBe(65)
     const v38 = normalizeFreeformDocument({ documentVersion: 38, activeSlideId: slide.id, slides: [progressSlide] })
@@ -238,7 +246,7 @@ describe('progress element', () => {
     expect(v37).toBeNull()
     // The v39 fields ride on a v39 document; on a v38 one they reject it.
     const named = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{
         ...slide,
@@ -272,7 +280,7 @@ describe('progress element', () => {
     expect(trackedAtV38).toBeNull()
     // A bad label or a bad track hex rejects even a v39 document.
     const badLabel = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{
         ...slide,
@@ -281,7 +289,7 @@ describe('progress element', () => {
     })
     expect(badLabel).toBeNull()
     const badTrackHex = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{
         ...slide,
@@ -289,5 +297,37 @@ describe('progress element', () => {
       }],
     })
     expect(badTrackHex).toBeNull()
+  })
+})
+
+describe('progress ink (v43)', () => {
+  it('colours the goal name at v43, clears it with null, and rejects it at v42', () => {
+    const element = { ...createProgressElement(slide), label: '读书进度' }
+    const document: FreeformDocument = {
+      documentVersion: 43,
+      activeSlideId: slide.id,
+      slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
+    }
+    const inked = freeformReducer(document, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [element.id], patch: { ink: '#f8fafc' } }],
+    })
+    expect((inked.slides[0].nodes[0] as FreeformProgressElement).ink).toBe('#f8fafc')
+    const cleared = freeformReducer(inked, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [element.id], patch: { ink: null } }],
+    })
+    expect('ink' in (cleared.slides[0].nodes[0] as FreeformProgressElement)).toBe(false)
+    expect(freeformReducer(document, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [element.id], patch: { ink: 'white' } }],
+    })).toBe(document)
+    const withInk = { ...element, ink: '#f8fafc' }
+    const v43 = normalizeFreeformDocument({ documentVersion: 43, activeSlideId: slide.id, slides: [{ ...slide, nodes: [withInk] }] })
+    expect((v43!.slides[0].nodes[0] as FreeformProgressElement).ink).toBe('#f8fafc')
+    expect(normalizeFreeformDocument({ documentVersion: 42, activeSlideId: slide.id, slides: [{ ...slide, nodes: [withInk] }] })).toBeNull()
   })
 })

@@ -42,9 +42,42 @@ export function isValidChartSeriesName(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= CHART_SERIES_NAME_MAX_LENGTH
 }
 
-/** The size category labels render at; mirrors the view's label font. */
-export function chartLabelFont(height: number): number {
-  return Math.max(9, Math.min(height * 0.062, 15))
+/** The largest chart text: category labels on a 1080px card. */
+export const CHART_FONT_SIZE_MAX = 28
+
+/**
+ * The size category labels render at (the view and the layout share it): as
+ * large as the chart's height allows (up to CHART_FONT_SIZE_MAX), shrinking
+ * only as far as every label fits its slot in two lines (bar, line) or keeps
+ * clear of the web (radar). When nothing larger fits, the 15px-capped size
+ * charts always had.
+ */
+export function chartLabelFont(
+  height: number,
+  width?: number,
+  labels?: readonly string[],
+  kind: 'bar' | 'line' | 'radar' = 'bar',
+): number {
+  const largest = Math.max(9, Math.min(height * 0.062, CHART_FONT_SIZE_MAX))
+  const floor = Math.max(9, Math.min(height * 0.062, 15))
+  if (width === undefined || !labels || labels.length === 0) return floor
+  const fits = (fontSize: number) => {
+    if (kind === 'radar') return labels.every((text) => chartLabelWidth(text, fontSize) <= width * 0.28)
+    const slot = (width / labels.length) * 0.94
+    return labels.every((text) => {
+      const lines = chartLabelLines(text, slot, fontSize)
+      return lines.length <= 2 && lines.every((line) => chartLabelWidth(line, fontSize) <= slot)
+    })
+  }
+  for (let fontSize = Math.floor(largest); fontSize > floor; fontSize -= 1) {
+    if (fits(fontSize)) return fontSize
+  }
+  return floor
+}
+
+/** The y-axis tick text size; the view and the axis padding share it. */
+export function chartTickFont(height: number): number {
+  return Math.max(8, Math.min(height * 0.055, 22))
 }
 
 /** A label's rough width: CJK glyphs a full em, the rest a bit over half. */
@@ -181,7 +214,7 @@ function chartAxis(
     return { max: ceiling, ticks: [], leftPad: 0 }
   }
   const plotHeight = Math.max(1, height - topPad - bottomPad)
-  const tickFont = Math.min(height * 0.055, 12)
+  const tickFont = chartTickFont(height)
   const yAt = (value: number) => height - bottomPad - (value / ceiling) * plotHeight
   return {
     max: ceiling,
@@ -242,7 +275,7 @@ function legendLayout(
   const fontSize = Math.max(8, Math.min(
     height * 0.06,
     width / (texts.reduce((sum, text) => sum + text.length, 0) * 0.62 + named.length * 2.2),
-    16,
+    CHART_FONT_SIZE_MAX,
   ))
   const chip = Math.max(6, fontSize * 0.62)
   const gap = fontSize * 0.9
@@ -288,7 +321,7 @@ export function barChartGeometry(
   const topPad = height * 0.1 + legend.height
   const bottomPad = height * 0.16
   const plotHeight = Math.max(1, height - topPad - bottomPad)
-  const labelFontSize = Math.min(height * 0.07, width / (labels.length * 4), 16)
+  const labelFontSize = Math.min(height * 0.07, width / (labels.length * 4), CHART_FONT_SIZE_MAX)
   const totals = labels.map((_, index) => series.reduce((sum, entry) => sum + (entry.values[index] ?? 0), 0))
   const max = mode === 'percent'
     ? 1
@@ -373,7 +406,7 @@ export function barChartGeometry(
     labels: labels.map((text, index) => ({
       x: axis.leftPad + slot * index + slot / 2,
       y: baselineY + labelFontSize * 1.4,
-      lines: chartLabelLines(text, slot * 0.94, chartLabelFont(height)),
+      lines: chartLabelLines(text, slot * 0.94, chartLabelFont(height, width, labels, 'bar')),
     })),
     values,
     percents,
@@ -420,7 +453,7 @@ export function lineChartGeometry(
   const slot = count > 1 ? plotWidth / (count - 1) : 0
   const xAt = (index: number) => (count > 1 ? axis.leftPad + slot * index : axis.leftPad + plotWidth / 2)
   const yAt = (value: number) => height - bottomPad - value * scale
-  const fontSize = Math.min(height * 0.07, width / (count * 4), 16)
+  const fontSize = Math.min(height * 0.07, width / (count * 4), CHART_FONT_SIZE_MAX)
   const lines = series.map((entry) => {
     const points = entry.values.map((value, index) => ({ x: xAt(index), y: yAt(value) }))
     const area = points.length > 1
@@ -445,7 +478,7 @@ export function lineChartGeometry(
     labels: labels.map((text, index) => ({
       x: xAt(index),
       y: height - bottomPad + fontSize * 1.4,
-      lines: chartLabelLines(text, (count > 1 ? slot : plotWidth) * 0.94, chartLabelFont(height)),
+      lines: chartLabelLines(text, (count > 1 ? slot : plotWidth) * 0.94, chartLabelFont(height, width, labels, 'line')),
     })),
     baseline: { y: height - bottomPad },
     axis,
@@ -495,7 +528,7 @@ export function radarChartGeometry(
 ): ChartRadarGeometry {
   const legend = legendLayout(width, height, series, options.showLegend)
   const count = Math.max(3, labels.length)
-  const fontSize = chartLabelFont(height)
+  const fontSize = chartLabelFont(height, width, labels, 'radar')
   const center = { x: width / 2, y: height * 0.46 + legend.height / 2 }
   const radius = Math.max(1, Math.min(width / 2, height * 0.42) - fontSize * 1.6)
   const angleAt = (index: number) => -Math.PI / 2 + (index * 2 * Math.PI) / count

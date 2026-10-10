@@ -72,7 +72,7 @@ function drawing(id: string, overrides: Partial<FreeformPathElement> = {}): Free
 
 function deck(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 42,
+    documentVersion: 43,
     activeSlideId: 'page',
     slides: [{ id: 'page', name: '第 1 页', width: 1080, height: 1440, background: { type: 'solid', color: '#ffffff' }, nodes }],
   }
@@ -386,6 +386,54 @@ describe('data element checks', () => {
   })
 })
 
+describe('words inside data drawings', () => {
+  const table = (overrides: Record<string, unknown> = {}) => ({
+    id: '表格',
+    name: '表格',
+    locked: false,
+    hidden: false,
+    type: 'table',
+    x: 88,
+    y: 400,
+    width: 904,
+    height: 336,
+    rotation: 0,
+    scale: 1,
+    rows: 4,
+    cols: 2,
+    cells: ['门店', '营收', '南山', '128', '福田', '96', '前海', '73'],
+    ...overrides,
+  }) as unknown as FreeformSceneNode
+  const onGround = (color: string, nodes: FreeformSceneNode[]): FreeformDocument => ({
+    ...deck(nodes),
+    slides: [{ ...deck(nodes).slides[0], background: { type: 'solid', color } }],
+  })
+
+  test('a card-sized table in the page ink passes', () => {
+    expect(kinds(layoutIssues(onGround('#ffffff', [table()]), measured([], [])))).toEqual([])
+  })
+
+  test('dark default words on a dark page, small words, and cut cells are each called out', () => {
+    const dark = layoutIssues(onGround('#0f0b1f', [table()]), measured([], []))
+    expect(kinds(dark)).toEqual(['low-contrast:表格'])
+    expect(dark[0].message).toContain('浅色')
+    // The fix the message names clears it.
+    expect(kinds(layoutIssues(onGround('#0f0b1f', [table({ ink: '#f4f4f5' })]), measured([], [])))).toEqual([])
+    // Rows of 30px only hold 12.6px words.
+    const small = layoutIssues(onGround('#ffffff', [table({ height: 120 })]), measured([], []))
+    expect(kinds(small)).toContain('tiny-text:表格')
+    // A long cell in a narrow column ends in an ellipsis.
+    const cut = layoutIssues(onGround('#ffffff', [table({ width: 200, height: 160, cells: ['门店', '营收', '这一格写得特别特别长放不下', '128', '福田', '96', '前海', '73'] })]), measured([], []))
+    expect(kinds(cut)).toContain('data-clipped:表格')
+    expect(cut.find((issue) => issue.kind === 'data-clipped')!.message).toContain('第 2 行第 1 列')
+  })
+
+  test('a white card under a drawing is its ground', () => {
+    const document = onGround('#0f0b1f', [card('白卡', '#ffffff', { x: 40, y: 360, width: 1000, height: 420 }), table()])
+    expect(kinds(layoutIssues(document, measured([], [])))).toEqual([])
+  })
+})
+
 describe('design quality checks', () => {
   test('near-miss edges report the slip and the snap the fix would apply', () => {
     // Generated names, not a template's own node names: a pair the template
@@ -429,6 +477,23 @@ describe('design quality checks', () => {
     ]))
     expect(rights.map((issue) => issue.message)).toEqual(['「乙副题」和「甲标题」的右边差 5px：对齐到一起更整齐。'])
     expect(rights[0].alignment?.moves).toEqual([{ path: ['乙副题'], nodeId: '乙副题', from: 585, to: 580 }])
+  })
+
+  test('an addition lined up with the template\'s edges follows its design; a slip snaps to it', () => {
+    const misaligned = (document: FreeformDocument) => layoutIssues(document, measured([], []))
+      .filter((issue) => issue.kind === 'misalignment')
+    // The template sets its headline 8px left of its body (an optical choice).
+    const page = (x: number) => deck([
+      text('标题', { fontSize: 112, x: 80, y: 192, width: 920, height: 300 }),
+      text('导语', { x: 88, y: 518, width: 880, height: 170 }),
+      card('我加的表', '#f4f4f5', { x, y: 760, width: 904, height: 420 }),
+    ])
+    // On the body's edge: part of the design, nothing to report.
+    expect(misaligned(page(88))).toEqual([])
+    // 5px off both: the addition moves, never the template's own nodes.
+    const slipped = misaligned(page(93))
+    expect(slipped).toHaveLength(1)
+    expect(slipped[0].alignment?.moves.map((move) => move.nodeId)).toEqual(['我加的表'])
   })
 
   test('words inset in their own card keep their padding', () => {

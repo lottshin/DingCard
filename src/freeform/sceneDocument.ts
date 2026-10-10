@@ -112,7 +112,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | 43
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -181,6 +181,7 @@ const PROGRESS_NODE_KEYS = new Set([
 ])
 const PROGRESS_OPTIONAL_V38_KEYS = new Set(['accent', 'opacity', 'shadow', 'filter', 'blendMode'])
 const PROGRESS_OPTIONAL_V39_KEYS = new Set(['label', 'trackFill', 'accent', 'opacity', 'shadow', 'filter', 'blendMode'])
+const PROGRESS_OPTIONAL_V43_KEYS = new Set([...PROGRESS_OPTIONAL_V39_KEYS, 'ink'])
 
 const CORNER_RADII_KEYS = new Set(['topLeft', 'topRight', 'bottomRight', 'bottomLeft'])
 
@@ -436,6 +437,7 @@ const CHART_OPTIONAL_V24_KEYS = new Set(['showValues', 'opacity', 'shadow', 'fil
 const CHART_OPTIONAL_V27_KEYS = new Set([...CHART_OPTIONAL_V24_KEYS, 'barMode'])
 const CHART_OPTIONAL_V31_KEYS = new Set([...CHART_OPTIONAL_V27_KEYS, 'showLegend'])
 const CHART_OPTIONAL_V33_KEYS = new Set([...CHART_OPTIONAL_V31_KEYS, 'showTicks'])
+const CHART_OPTIONAL_V43_KEYS = new Set([...CHART_OPTIONAL_V33_KEYS, 'ink'])
 const TABLE_OPTIONAL_V34_KEYS = new Set(['headerRow', 'striped', 'opacity', 'shadow', 'filter', 'blendMode'])
 const TABLE_OPTIONAL_V35_KEYS = new Set([...TABLE_OPTIONAL_V34_KEYS, 'ink', 'headerFill', 'stripeFill', 'colWidths'])
 const PATH_OPTIONAL_V15_KEYS = new Set([
@@ -498,13 +500,17 @@ function optionalKeysFor(
     return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
   }
   if (type === 'chart') {
+    if (inputVersion >= 43) return CHART_OPTIONAL_V43_KEYS
     if (inputVersion >= 33) return CHART_OPTIONAL_V33_KEYS
     if (inputVersion >= 31) return CHART_OPTIONAL_V31_KEYS
     return inputVersion >= 27 ? CHART_OPTIONAL_V27_KEYS : CHART_OPTIONAL_V24_KEYS
   }
   if (type === 'table') return inputVersion >= 35 ? TABLE_OPTIONAL_V35_KEYS : TABLE_OPTIONAL_V34_KEYS
   if (type === 'timeline') return inputVersion >= 37 ? TIMELINE_OPTIONAL_V37_KEYS : TIMELINE_OPTIONAL_V36_KEYS
-  if (type === 'progress') return inputVersion >= 39 ? PROGRESS_OPTIONAL_V39_KEYS : PROGRESS_OPTIONAL_V38_KEYS
+  if (type === 'progress') {
+    if (inputVersion >= 43) return PROGRESS_OPTIONAL_V43_KEYS
+    return inputVersion >= 39 ? PROGRESS_OPTIONAL_V39_KEYS : PROGRESS_OPTIONAL_V38_KEYS
+  }
   if (type === 'line') {
     if (inputVersion >= 14) return LINE_OPTIONAL_V14_KEYS
     if (inputVersion >= 13) return LINE_OPTIONAL_V13_KEYS
@@ -1026,6 +1032,10 @@ function normalizeStrictSceneNode(
       if ('showTicks' in value) {
         if (inputVersion < 33 || typeof value.showTicks !== 'boolean') return null
       }
+      // The text ink is v43-only; older input versions reject it.
+      if ('ink' in value) {
+        if (inputVersion < 43 || !isHexColor(value.ink)) return null
+      }
       const chartAppearance = cloneStrictAppearance(value, inputVersion)
       if (!chartAppearance) return null
       return {
@@ -1042,6 +1052,7 @@ function normalizeStrictSceneNode(
         ...('barMode' in value ? { barMode: value.barMode as ChartBarMode } : {}),
         ...('showLegend' in value ? { showLegend: value.showLegend as boolean } : {}),
         ...('showTicks' in value ? { showTicks: value.showTicks as boolean } : {}),
+        ...('ink' in value ? { ink: value.ink as string } : {}),
         ...chartAppearance,
       }
     }
@@ -1170,6 +1181,8 @@ function normalizeStrictSceneNode(
       if ('label' in value && !isValidProgressLabel(value.label)) return null
       if ('trackFill' in value && !isHexColor(value.trackFill)) return null
     }
+    // The label's ink is v43-only.
+    if ('ink' in value && (inputVersion < 43 || !isHexColor(value.ink))) return null
     const progressAppearance = cloneStrictAppearance(value, inputVersion)
     if (!progressAppearance) return null
     return {
@@ -1180,6 +1193,7 @@ function normalizeStrictSceneNode(
       ...('accent' in value ? { accent: value.accent as string } : {}),
       ...(inputVersion >= 39 && 'label' in value ? { label: value.label as string } : {}),
       ...(inputVersion >= 39 && 'trackFill' in value ? { trackFill: value.trackFill as string } : {}),
+      ...('ink' in value ? { ink: value.ink as string } : {}),
       ...progressAppearance,
     }
   }
@@ -1262,7 +1276,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 42,
+    documentVersion: 43,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1466,6 +1480,11 @@ export function normalizeFreeformDocumentV41(value: unknown): FreeformDocument |
 /** Strictly validates an already-v42 document (v42 rounds rects per corner). */
 export function normalizeFreeformDocumentV42(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 42)
+}
+
+/** Strictly validates an already-v43 document (v43 inks chart and progress text). */
+export function normalizeFreeformDocumentV43(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 43)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1735,6 +1754,7 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
 /** Normalize any supported freeform document version to a fresh v42 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 43) return normalizeFreeformDocumentV43(value)
   if (value.documentVersion === 42) return normalizeFreeformDocumentV42(value)
   if (value.documentVersion === 41) return normalizeFreeformDocumentV41(value)
   if (value.documentVersion === 40) return normalizeFreeformDocumentV40(value)
@@ -1825,7 +1845,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 42,
+    documentVersion: 43,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1858,7 +1878,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 42,
+    documentVersion: 43,
     activeSlideId: document.activeSlideId,
     slides,
   }

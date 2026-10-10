@@ -4,6 +4,9 @@
 
 import { walkScene } from '../../../src/freeform/sceneTree'
 import { progressGeometry } from '../../../src/freeform/progress'
+import { chartLabelFont } from '../../../src/freeform/charts'
+import { tableGeometry } from '../../../src/freeform/tables'
+import { timelineGeometry } from '../../../src/freeform/timeline'
 import type { FreeformDocument, FreeformSceneNode, ScenePath } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, posterSampleNames, slotSampleNames } from '../../../src/templates/slots'
@@ -25,6 +28,7 @@ export type LayoutIssueKind =
   | 'tiny-qrcode'
   | 'low-contrast-qrcode'
   | 'progress-label-overflow'
+  | 'data-clipped'
   | 'misalignment'
   | 'edge-margin'
   | 'tiny-text'
@@ -315,6 +319,66 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
       }
     })
 
+    // Inside the data drawings: words cut short, words too small for a
+    // phone, and words that vanish into what they sit on.
+    const groundUnder = (node: FreeformSceneNode): string | null => {
+      const index = slide.nodes.indexOf(node)
+      const centre = { x: node.x + ('width' in node ? node.width : 0) / 2, y: node.y + ('height' in node ? node.height : 0) / 2 }
+      for (let below = (index === -1 ? 0 : index) - 1; below >= 0; below -= 1) {
+        const under = slide.nodes[below]
+        if (under.hidden || under.type === 'group' || under.type === 'text' || under.type === 'line') continue
+        if (centre.x < under.x || centre.y < under.y || centre.x > under.x + under.width || centre.y > under.y + under.height) continue
+        if ((under.opacity ?? 1) < OPAQUE) continue
+        if (under.type === 'shape' || under.type === 'path') {
+          if (under.fill.type === 'transparent') continue
+          return solidColor(under.fill)
+        }
+        // A picture or another drawing underneath: its colour isn't known here.
+        return null
+      }
+      const background = slide.background
+      if (background.type === 'solid' || background.type === 'pattern') return background.color
+      if (background.type === 'linear-gradient') return 'stops' in background ? background.stops[0].color : background.from
+      if (background.type === 'radial-gradient') return background.stops[0].color
+      return background.type === 'transparent' ? '#ffffff' : null
+    }
+    const dataWords = (node: FreeformSceneNode, what: string, size: number, color: string, needed = 4.5) => {
+      if (size < TINY_TEXT) {
+        issue('tiny-text', node.id, `「${node.name}」的${what}只有 ${Math.round(size)}px，手机上看不清：把「${node.name}」放大，或减少它装的内容。`)
+      }
+      const ground = groundUnder(node)
+      const contrast = ground ? contrastRatio(color, ground) : null
+      if (contrast !== null && contrast < needed) {
+        issue('low-contrast', node.id, `「${node.name}」的${what}（${color}）和底色 ${ground} 对比只有 ${contrast.toFixed(1)}:1：用 node/update-style 把 ink 设成${(contrastRatio(ground!, '#ffffff') ?? 0) > (contrastRatio(ground!, '#000000') ?? 0) ? '浅色（如 #f4f4f5）' : '深色（如 #27272a）'}。`)
+      }
+    }
+    walkScene(slide.nodes, (node) => {
+      if (node.hidden) return
+      if (node.type === 'table') {
+        const geometry = tableGeometry(node.width, node.height, node.rows, node.cols, node.cells, { headerRow: node.headerRow, striped: node.striped, colWidths: node.colWidths })
+        dataWords(node, '格子文字', geometry.fontSize, node.ink ?? '#3f3f46')
+        if (geometry.clipped.length > 0) {
+          const where = geometry.clipped.slice(0, 3).map((index) => `第 ${Math.floor(index / node.cols) + 1} 行第 ${index % node.cols + 1} 列`).join('、')
+          issue('data-clipped', node.id, `「${node.name}」${where}${geometry.clipped.length > 3 ? ` 等 ${geometry.clipped.length} 格` : ''}放不下，被省略号截掉了：把表格放大、删短这些格，或减少行列。`)
+        }
+      } else if (node.type === 'timeline') {
+        const geometry = timelineGeometry(node.width, node.height, node.items, { horizontal: node.horizontal })
+        dataWords(node, '条目文字', geometry.fontSize, node.ink ?? '#3f3f46')
+        const cut = geometry.entries.flatMap((entry, index) => entry.textLines.some((line) => line.text.endsWith('…')) ? [index + 1] : [])
+        if (cut.length > 0) {
+          issue('data-clipped', node.id, `「${node.name}」第 ${cut.join('、')} 条放不下，被省略号截掉了：把时间线放大、删短这些条目，或减少条目。`)
+        }
+      } else if (node.type === 'chart') {
+        if (node.chartKind !== 'ring') {
+          const kind = node.chartKind === 'radar' ? 'radar' : node.chartKind === 'line' ? 'line' : 'bar'
+          dataWords(node, '类目文字', chartLabelFont(node.height, node.width, node.labels, kind), node.ink ?? '#3f3f46')
+        }
+      } else if (node.type === 'progress' && node.label !== undefined) {
+        const geometry = progressGeometry(node.width, node.height, node.progressKind, node.value, { label: true })
+        if (geometry.label) dataWords(node, '目标名', geometry.label.fontSize, node.ink ?? '#3f3f46')
+      }
+    })
+
     // Design-quality checks, read off the document itself.
     type LeafNode = Exclude<FreeformSceneNode, { type: 'group' }>
     const boxes: Array<{ node: LeafNode; index: number; box: { x: number; y: number; width: number; height: number } }> = []
@@ -401,6 +465,7 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
       if (axis === 'x') return node.align === 'center' ? ['centre'] : node.align === 'right' ? ['end'] : ['start']
       return node.verticalAlign === 'middle' ? ['centre'] : node.verticalAlign === 'bottom' ? ['end'] : ['start']
     }
+    // Boxes line up as the editor's guides line them up: by their edges.
     const edgeAt = (entry: Target, axis: 'x' | 'y', kind: EdgeKind): number => {
       const start = axis === 'x' ? entry.box.x : entry.box.y
       const size = axis === 'x' ? entry.box.width : entry.box.height
@@ -441,23 +506,31 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
           const span = cluster[cluster.length - 1].edge - cluster[0].edge
           if (span < SNAP_MIN) continue
           if (reported >= ALIGNMENT_ISSUES_PER_PAGE) break
-          // The biggest node leads; the rest snap to its edge. A little thing
-          // hanging off a big one is usually an ornament doing it on purpose.
-          const anchor = [...cluster].sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height)[0]
+          // The template's own nodes carry the design: the biggest of them
+          // leads, else the biggest node; the rest snap to its edge. A little
+          // thing hanging off a big one is usually an ornament doing it on purpose.
+          const byArea = (a: Target, b: Target) => b.box.width * b.box.height - a.box.width * a.box.height
+          const designed = cluster.filter((item) => templateNames.has(item.node.name))
+          const anchor = [...(designed.length > 0 ? designed : cluster)].sort(byArea)[0]
           const anchorArea = anchor.box.width * anchor.box.height
           const clusterWith = cluster.filter((item) => item.node.id === anchor.node.id
             || (item.box.width * item.box.height >= ORNAMENT_AREA_RATIO * anchorArea
               && !(templateNames.has(item.node.name) && templateNames.has(anchor.node.name))
               && !moved.has(item.node.id)
               && !linedUp(item, anchor, axis)
-              && !nested(item, anchor)))
+              && !nested(item, anchor)
+              // An addition lined up with any of the template's edges follows its design.
+              && !(designed.length > 0 && !templateNames.has(item.node.name)
+                && designed.some((other) => Math.abs(edgeAt(other, axis, kind) - item.edge) < 0.5))))
           const spanWith = clusterWith.length >= 2
             ? clusterWith[clusterWith.length - 1].edge - clusterWith[0].edge
             : 0
           if (spanWith < SNAP_MIN) continue
           // A move puts the node's box where its edge meets the anchor's.
+          // The template's nodes never move for an addition: the addition does.
           const moves = clusterWith
             .filter((item) => item.node.id !== anchor.node.id && Math.abs(item.edge - anchor.edge) >= SNAP_MIN)
+            .filter((item) => designed.length === 0 || !templateNames.has(item.node.name))
             .map((item) => {
               const from = axis === 'x' ? item.box.x : item.box.y
               return { path: [item.node.id] as ScenePath, nodeId: item.node.id, from, to: from + anchor.edge - item.edge }

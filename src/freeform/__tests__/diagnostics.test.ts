@@ -56,7 +56,7 @@ describe('freeform document diagnostics', () => {
     expect(unknown).toContain('不是已知的')
 
     const extra = diagnoseFreeformDocument(documentWith([{ ...progress, value: 65, flavour: 'sweet' }]))
-    expect(extra).toContain('多了 v42 的 progress 不接受的键：flavour')
+    expect(extra).toContain('多了 v43 的 progress 不接受的键：flavour')
 
     const noType = diagnoseFreeformDocument(documentWith([{ ...progress, type: undefined, value: 65 }]))
     expect(noType).toContain('没有 type 字段')

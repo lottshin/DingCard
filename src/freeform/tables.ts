@@ -68,6 +68,48 @@ export interface TableGeometry {
   lines: Array<{ x1: number; y1: number; x2: number; y2: number }>
   /** One entry per cell, row-major: wrapped lines and the header's boldness. */
   cells: Array<{ x: number; y: number; lines: string[]; bold: boolean }>
+  /** The cell text size every cell is drawn at. */
+  fontSize: number
+  /** Cells whose words didn't fit and end in an ellipsis, row-major indexes. */
+  clipped: number[]
+}
+
+/** The largest cell text a table draws: body copy on a 1080px card. */
+export const TABLE_FONT_SIZE_MAX = 32
+
+/**
+ * The cell text size for a table: as large as its rows allow (42% of a row,
+ * up to TABLE_FONT_SIZE_MAX), shrinking only as far as every cell's words
+ * fit their cell. When nothing larger fits, the 14px-capped size tables
+ * always had, which may cut words short.
+ */
+export function tableFontSize(
+  width: number,
+  height: number,
+  rows: number,
+  cols: number,
+  cells: readonly string[],
+  colWidths?: readonly number[],
+): number {
+  const rowHeight = height / rows
+  const largest = Math.max(7, Math.min(rowHeight * 0.42, TABLE_FONT_SIZE_MAX))
+  const floor = Math.max(7, Math.min(rowHeight * 0.42, 14))
+  const edges = tableColumnEdges(width, cols, colWidths)
+  const fits = (fontSize: number) => {
+    const padding = fontSize * 0.32
+    const maxLines = Math.max(1, Math.floor((rowHeight - padding) / (fontSize * 1.22)))
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const text = cells[row * cols + col] ?? ''
+        if (text && wrapCellLines(text, fontSize, edges[col + 1] - edges[col] - padding * 2).length > maxLines) return false
+      }
+    }
+    return true
+  }
+  for (let fontSize = Math.floor(largest); fontSize > floor; fontSize -= 1) {
+    if (fits(fontSize)) return fontSize
+  }
+  return floor
 }
 
 const CJK = /[\u3400-\u9fff\u3000-\u303f\uff00-\uffef]/
@@ -104,7 +146,7 @@ export function tableGeometry(
   const striped = tableStriped(options.striped)
   const edges = tableColumnEdges(width, cols, options.colWidths)
   const rowHeight = height / rows
-  const fontSize = Math.max(7, Math.min(rowHeight * 0.42, 14))
+  const fontSize = tableFontSize(width, height, rows, cols, cells, options.colWidths)
   const lineHeight = fontSize * 1.22
   const padding = fontSize * 0.32
 
@@ -133,11 +175,13 @@ export function tableGeometry(
   }
 
   const cellTexts: TableGeometry['cells'] = []
+  const clipped: number[] = []
   const maxLines = Math.max(1, Math.floor((rowHeight - padding) / lineHeight))
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
       const colWidth = edges[col + 1] - edges[col]
       const wrapped = wrapCellLines(cells[row * cols + col] ?? '', fontSize, colWidth - padding * 2)
+      if (wrapped.length > maxLines) clipped.push(row * cols + col)
       const linesShown = wrapped.length > maxLines
         ? [...wrapped.slice(0, maxLines - 1), `${wrapped[maxLines - 1].slice(0, -1)}…`]
         : wrapped
@@ -157,6 +201,8 @@ export function tableGeometry(
     stripes,
     lines,
     cells: cellTexts,
+    fontSize,
+    clipped,
   }
 }
 

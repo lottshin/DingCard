@@ -312,7 +312,7 @@ describe('deck data elements', () => {
     }
   })
 
-  test('a plain table takes no header row, a wide timeline runs horizontally', () => {
+  test('a plain table takes no header row, a timeline with room runs down its spine', () => {
     const composed = composeDeck('editorial-freeform', {
       title: '清单',
       pages: [
@@ -326,8 +326,35 @@ describe('deck data elements', () => {
     const table = nodes.find((node) => node.type === 'table')
     expect(table).toMatchObject({ rows: 2, cols: 2, headerRow: false })
     const timeline = nodes.find((node) => node.type === 'timeline')
-    expect(timeline && timeline.type === 'timeline' ? timeline.horizontal : undefined)
-      .toBe(timeline && timeline.type === 'timeline' && timeline.width > timeline.height ? true : undefined)
+    if (!timeline || timeline.type !== 'timeline') throw new Error('no timeline')
+    // The page has the height for three entries stacked, body-sized.
+    expect(timeline.horizontal).toBeUndefined()
+    expect(timeline.height).toBeGreaterThanOrEqual(3 * 104 * 0.8)
+  })
+
+  test('takes the page column and the page colours', () => {
+    const composed = composeDeck('neon-freeform', {
+      title: '复盘',
+      pages: [
+        { title: '季度营收', chart: { kind: 'bar', labels: ['Q1', 'Q2'], series: [{ name: '去年', values: [3, 4] }, { name: '今年', values: [4, 6] }] } },
+        { title: '门店', table: { header: ['门店', '营收'], rows: [['南山', '128'], ['福田', '96']] } },
+      ],
+    })
+    expect(composed.ok).toBe(true)
+    if (!composed.ok) return
+    const nodes = composed.document.slides.flatMap((slide) => slide.nodes)
+    const chart = nodes.find((node) => node.type === 'chart')
+    if (!chart || chart.type !== 'chart') throw new Error('no chart')
+    // Across the deck's ruled column, not a fixed 480px block.
+    expect(chart.x).toBe(88)
+    expect(chart.width).toBe(904)
+    // Two unnamed colours: a quiet series and the deck's accent, never the same.
+    expect(chart.series[0].color).not.toBe(chart.series[1].color)
+    // Light words on the dark deck.
+    expect(chart.ink).toBeDefined()
+    const table = nodes.find((node) => node.type === 'table')
+    if (!table || table.type !== 'table') throw new Error('no table')
+    expect(table.ink).toBe(chart.ink)
   })
 
   test('rejects two data elements on one page and bad data', () => {

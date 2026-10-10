@@ -41,14 +41,17 @@ describe('timeline element', () => {
       { text: '中间没有标签的一步' },
       { label: '12 月', text: '结尾' },
     ]
-    const geometry = timelineGeometry(480, 300, items)
-    expect(geometry.spine).toEqual({ x1: 14, y1: 4, x2: 14, y2: 296 })
-    // Three rows of 100: the dots sit at each row's centre.
+    // Rows of 44: the words stay at the size small timelines always drew.
+    const geometry = timelineGeometry(480, 132, items)
+    expect(geometry.fontSize).toBeCloseTo(44 * 0.34, 6)
+    expect(geometry.spine).toEqual({ x1: 14, y1: 4, x2: 14, y2: 128 })
+    // Three rows of 44: the dots sit at each row's centre.
     expect(geometry.entries.map((entry) => entry.dot)).toEqual([
-      { x: 14, y: 50 },
-      { x: 14, y: 150 },
-      { x: 14, y: 250 },
+      { x: 14, y: 22 },
+      { x: 14, y: 66 },
+      { x: 14, y: 110 },
     ])
+    expect(geometry.dotRadius).toBe(5)
     // The label sits above the text, both beside the spine, left-anchored.
     expect(geometry.entries[0].label).toMatchObject({ x: 34, text: '3 月', anchor: 'start' })
     expect(geometry.entries[1].label).toBeNull()
@@ -62,23 +65,47 @@ describe('timeline element', () => {
     expect(wrapped.entries[1].textLines.length).toBe(1)
   })
 
+  it('grows its words with the room, shrinking only until every entry fits whole', () => {
+    const items: FreeformTimelineItem[] = [
+      { label: '3 月', text: '开始' },
+      { text: '中间没有标签的一步' },
+      { label: '12 月', text: '结尾' },
+    ]
+    // Rows of 100 on a card-sized timeline: body-copy text, bigger dots.
+    const roomy = timelineGeometry(480, 300, items)
+    expect(roomy.fontSize).toBe(32)
+    expect(roomy.dotRadius).toBeGreaterThan(5)
+    expect(roomy.entries[0].textLines[0].x).toBeGreaterThan(roomy.spine.x1 + roomy.dotRadius)
+    // No entry is cut short at the grown size.
+    expect(roomy.entries.every((entry) => entry.textLines.every((line) => !line.text.endsWith('…')))).toBe(true)
+    // A long entry in a narrow timeline keeps its words by taking a smaller size.
+    const narrow = timelineGeometry(240, 300, [
+      { label: '1 月', text: '这一句有点长，要在窄窄的一栏里放下' },
+      { text: '短句' },
+    ])
+    expect(narrow.fontSize).toBeLessThan(32)
+    expect(narrow.entries[0].textLines.some((line) => line.text.endsWith('…'))).toBe(false)
+  })
+
   it('lays horizontal entries side by side under a top spine, centred on their dots', () => {
     const items: FreeformTimelineItem[] = [
       { label: '1 月', text: '起步' },
       { label: '6 月', text: '一半' },
       { label: '12 月', text: '收尾' },
     ]
-    const geometry = timelineGeometry(600, 200, items, { horizontal: true })
+    // Columns of 100: the words stay at the size small timelines always drew.
+    const geometry = timelineGeometry(300, 200, items.map((item) => item), { horizontal: true })
+    expect(geometry.fontSize).toBeCloseTo(14, 6)
     // The spine runs along the top; the dots sit at each column's centre.
-    expect(geometry.spine).toEqual({ x1: 4, y1: 14, x2: 596, y2: 14 })
+    expect(geometry.spine).toEqual({ x1: 4, y1: 14, x2: 296, y2: 14 })
     expect(geometry.entries.map((entry) => entry.dot)).toEqual([
-      { x: 100, y: 14 },
-      { x: 300, y: 14 },
-      { x: 500, y: 14 },
+      { x: 50, y: 14 },
+      { x: 150, y: 14 },
+      { x: 250, y: 14 },
     ])
     // Words centre on the dot instead of hanging to the right of a spine.
-    expect(geometry.entries[0].label).toMatchObject({ x: 100, text: '1 月', anchor: 'middle' })
-    expect(geometry.entries[0].textLines[0]).toMatchObject({ x: 100, anchor: 'middle' })
+    expect(geometry.entries[0].label).toMatchObject({ x: 50, text: '1 月', anchor: 'middle' })
+    expect(geometry.entries[0].textLines[0]).toMatchObject({ x: 50, anchor: 'middle' })
     // The label sits above the text, just under the spine.
     expect(geometry.entries[0].label!.y).toBeLessThan(geometry.entries[0].textLines[0].y)
     // Narrow columns wrap their text instead of running into the neighbour.
@@ -89,7 +116,9 @@ describe('timeline element', () => {
     expect(wrapped.entries[0].textLines.length).toBeGreaterThan(1)
     expect(wrapped.entries[1].textLines.length).toBe(1)
     // Without the option the spine stays vertical.
-    expect(timelineGeometry(600, 200, items).spine).toEqual({ x1: 14, y1: 4, x2: 14, y2: 196 })
+    const vertical = timelineGeometry(600, 132, items).spine
+    expect(vertical.x1).toBe(vertical.x2)
+    expect(vertical.y2).toBe(128)
   })
 
   it('creates a four-entry sample and replaces items through node/update-content', () => {
@@ -99,7 +128,7 @@ describe('timeline element', () => {
     expect(timelineItemsSame(element.items, element.items.map((item) => ({ ...item })))).toBe(true)
 
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -126,7 +155,7 @@ describe('timeline element', () => {
   it('styles the accent, layout, and ink through node/update-style', () => {
     const element = createTimelineElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -218,7 +247,7 @@ describe('timeline element', () => {
     const element = createTimelineElement(slide)
     const polished: FreeformTimelineElement = { ...element, horizontal: true, ink: '#1f2937' }
     const v37 = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [polished as unknown as FreeformSceneNode] }],
     })
@@ -233,13 +262,13 @@ describe('timeline element', () => {
     })
     expect(v36).toBeNull()
     const badBoolean = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...element, horizontal: 'yes' } as unknown as FreeformSceneNode] }],
     })
     expect(badBoolean).toBeNull()
     const badInk = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...element, ink: 'grey' } as unknown as FreeformSceneNode] }],
     })

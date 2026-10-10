@@ -14,7 +14,7 @@ import {
   createTableElement,
   createTimelineElement,
 } from '../../../src/freeform/document'
-import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartKind, isValidChartLabel, isValidChartSeriesName, isValidChartValue } from '../../../src/freeform/charts'
+import { CHART_POINTS_MAX, isValidChartKind, isValidChartLabel, isValidChartSeriesName, isValidChartValue } from '../../../src/freeform/charts'
 import { isValidTableCells, isValidTableCellText, isValidTableCols, isValidTableRows } from '../../../src/freeform/tables'
 import { isValidTimelineItems } from '../../../src/freeform/timeline'
 import { isValidProgressLabel, isValidProgressValue } from '../../../src/freeform/progress'
@@ -24,6 +24,7 @@ import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots, type SlotItem } from '../../../src/templates/slots'
 import type { FreeformDeckSeriesId } from '../../../src/templates/types'
 import { balancedHeading, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
+import { blockingBoxes, drawingBox, pagePalette, seriesColors, type PagePalette } from './dataPlacement'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -805,36 +806,6 @@ function dataElementOf(page: DeckPage): { kind: 'chart'; chart: DeckChart } | { 
   return null
 }
 
-/** The size a data drawing wants, and the least it can be readable at. */
-function elementSize(kind: 'chart' | 'table' | 'timeline' | 'progress'): { desired: { width: number; height: number }; min: { width: number; height: number } } {
-  switch (kind) {
-    case 'chart': return { desired: { width: 480, height: 320 }, min: { width: 280, height: 180 } }
-    case 'table': return { desired: { width: 480, height: 320 }, min: { width: 320, height: 160 } }
-    case 'timeline': return { desired: { width: 480, height: 420 }, min: { width: 320, height: 200 } }
-    case 'progress': return { desired: { width: 480, height: 96 }, min: { width: 240, height: 64 } }
-  }
-}
-
-/** Every leaf box a placed element has to keep clear of. */
-function blockingBoxes(nodes: readonly FreeformSceneNode[]): Box[] {
-  const boxes: Box[] = []
-  const walk = (list: readonly FreeformSceneNode[]) => {
-    for (const node of list) {
-      if (node.hidden) continue
-      // Nearly transparent shapes are glows behind the copy, not obstacles.
-      if (node.type === 'shape' && (node.opacity ?? 1) < SEE_THROUGH) continue
-      if (node.type === 'group') {
-        walk(node.children)
-        continue
-      }
-      const box = boxOf(node)
-      if (box) boxes.push(box)
-    }
-  }
-  walk(nodes)
-  return boxes
-}
-
 /** The largest empty rectangle on a page, on a coarse grid. */
 export function largestFreeRectangleFor(width: number, height: number, boxes: Box[]): Box {
   const CELL = 16
@@ -846,9 +817,10 @@ export function largestFreeRectangleFor(width: number, height: number, boxes: Bo
     if (x < PAGE_MARGIN || y < PAGE_MARGIN || x + CELL > width - PAGE_MARGIN || y + CELL > height - PAGE_MARGIN) return true
     return boxes.some((box) => x < box.x + box.width && x + CELL > box.x && y < box.y + box.height && y + CELL > box.y)
   }
-  // Free cells pile upward row by row. Every rectangle is measured once: from
-  // the first column of a run of cells at least that tall, as far right as the
-  // run stays that tall. Areas are compared in cells; the answer is pixels.
+  // Free cells pile upward row by row; each row's heights form a histogram
+  // whose largest rectangle is found with a stack, so a wide band under a
+  // taller free column is measured too. Areas are compared in cells; the
+  // answer is pixels.
   const heights = new Array<number>(columns).fill(0)
   let best = { x: PAGE_MARGIN, y: PAGE_MARGIN, width: 0, height: 0 }
   let bestArea = 0
@@ -856,57 +828,94 @@ export function largestFreeRectangleFor(width: number, height: number, boxes: Bo
     for (let column = 0; column < columns; column += 1) {
       heights[column] = blocked(column, row) ? 0 : heights[column] + 1
     }
-    for (let column = 0; column < columns; column += 1) {
-      const height = heights[column]
-      if (height === 0) continue
-      // The first column of an equal-height run measures the whole run once;
-      // a taller neighbour does not cover this shorter, wider rectangle.
-      if (column > 0 && heights[column - 1] === height) continue
-      let width = 1
-      while (column + width < columns && heights[column + width] >= height) width += 1
-      if (height * width > bestArea) {
-        bestArea = height * width
-        best = { x: column * CELL, y: (row - height + 1) * CELL, width: width * CELL, height: height * CELL }
+    const stack: number[] = []
+    for (let column = 0; column <= columns; column += 1) {
+      const current = column < columns ? heights[column] : 0
+      while (stack.length > 0 && heights[stack[stack.length - 1]] >= current) {
+        const tall = heights[stack.pop()!]
+        if (tall === 0) continue
+        const start = stack.length > 0 ? stack[stack.length - 1] + 1 : 0
+        const span = column - start
+        if (tall * span > bestArea) {
+          bestArea = tall * span
+          best = { x: start * CELL, y: (row - tall + 1) * CELL, width: span * CELL, height: tall * CELL }
+        }
       }
+      stack.push(column)
     }
   }
   return best
 }
 
 /**
+ * The height a drawing wants at a column `width`, the least it stays
+ * readable at, and its narrowest. Rows and entries get room for body-sized
+ * words; charts keep a print-like aspect.
+ */
+function drawingWants(
+  element: NonNullable<ReturnType<typeof dataElementOf>>,
+  width: number,
+  room: number,
+): { height: number; minHeight: number; minWidth: number; horizontal?: boolean } {
+  switch (element.kind) {
+    case 'chart':
+      return element.chart.kind === 'ring' || element.chart.kind === 'radar'
+        ? { height: Math.min(width * 0.8, 640), minHeight: 260, minWidth: 280 }
+        : { height: width * 0.62, minHeight: 260, minWidth: 360 }
+    case 'table': {
+      const rows = (element.table.header ? 1 : 0) + element.table.rows.length
+      return { height: rows * 84, minHeight: rows * 44, minWidth: 320 }
+    }
+    case 'timeline': {
+      const items = element.timeline.items.length
+      // Down a spine when the page has the height for it, else side by side.
+      const stacked = items * 104
+      if (room >= stacked * 0.8 || items > 5 || width < 600) {
+        return { height: stacked, minHeight: items * 56, minWidth: 320 }
+      }
+      return { height: 300, minHeight: 200, minWidth: 600, horizontal: true }
+    }
+    case 'progress':
+      return { height: element.progress.label ? 140 : 96, minHeight: 64, minWidth: 280 }
+  }
+}
+
+/**
  * Put a page's data drawing on the filled slide, in the room the words left:
- * the element takes its wanted size centred in the largest free rectangle,
- * shrinking to the rectangle when it is smaller. Returns the node's name and
- * final box, or null when even the minimum size does not fit.
+ * across the page's content column, under the words above it, at the height
+ * its kind wants, in the page's own ink and accent. Returns the node's name
+ * and final box, or null when even its least size does not fit.
  */
 function placeElement(
   slide: FreeformSlide,
   element: NonNullable<ReturnType<typeof dataElementOf>>,
 ): { name: string; box: { x: number; y: number; width: number; height: number } } | null {
-  const { desired, min } = elementSize(element.kind)
-  const free = largestFreeRectangleFor(slide.width, slide.height, blockingBoxes(slide.nodes))
-  const fit = {
-    width: Math.min(desired.width, free.width),
-    height: Math.min(desired.height, free.height),
-  }
-  if (fit.width < min.width || fit.height < min.height) return null
-  const x = Math.round(free.x + (free.width - fit.width) / 2)
-  const y = Math.round(free.y + (free.height - fit.height) / 2)
-  const box = { x, y, width: Math.round(fit.width), height: Math.round(fit.height) }
-  const placed = elementNode(element, slide, box)
+  const free = largestFreeRectangleFor(slide.width, slide.height, blockingBoxes(slide))
+  let horizontal = false
+  const box = drawingBox(slide, free, (width) => {
+    const wants = drawingWants(element, width, free.height)
+    horizontal = wants.horizontal === true
+    return wants
+  })
+  if (!box) return null
+  const placed = elementNode(element, slide, box, pagePalette(slide), horizontal)
   slide.nodes = [...slide.nodes, placed]
   return { name: placed.name, box }
 }
 
-/** Build the drawing's node from the editor's own sample, with the reader's data. */
+/** Build the drawing's node from the editor's own sample, with the reader's data in the page's colours. */
 function elementNode(
   element: NonNullable<ReturnType<typeof dataElementOf>>,
   slide: FreeformSlide,
   box: { x: number; y: number; width: number; height: number },
+  palette: PagePalette,
+  horizontal: boolean,
 ): FreeformSceneNode {
   if (element.kind === 'chart') {
     const chart = element.chart
     const node = createChartElement(slide)
+    // Unnamed colours come from the page: quiet series first, the accent last.
+    const colors = seriesColors(palette, chart.series.length)
     return {
       ...node,
       ...box,
@@ -915,8 +924,9 @@ function elementNode(
       series: chart.series.map((entry, index) => ({
         ...(entry.name !== undefined ? { name: entry.name } : {}),
         values: [...entry.values],
-        color: entry.color ?? (index === 0 ? CHART_ACCENT_DEFAULT : node.series[0].color),
+        color: entry.color ?? colors[index],
       })),
+      ink: palette.ink,
     }
   }
   if (element.kind === 'table') {
@@ -935,6 +945,8 @@ function elementNode(
       cols,
       cells,
       ...(table.header ? {} : { headerRow: false }),
+      // The header and stripes tint the ink, so they follow it onto any ground.
+      ink: palette.ink,
     }
   }
   if (element.kind === 'timeline') {
@@ -946,8 +958,9 @@ function elementNode(
         ...(item.label !== undefined ? { label: item.label } : {}),
         text: item.text,
       })),
-      // Wide free room runs the entries side by side; tall room keeps the spine on the left.
-      ...(box.width > box.height ? { horizontal: true } : {}),
+      ...(horizontal ? { horizontal: true } : {}),
+      accent: palette.accent,
+      ink: palette.ink,
     }
   }
   const node = createProgressElement(slide)
@@ -956,5 +969,7 @@ function elementNode(
     ...box,
     value: element.progress.value,
     ...(element.progress.label ? { label: element.progress.label } : {}),
+    accent: palette.accent,
+    ink: palette.ink,
   }
 }

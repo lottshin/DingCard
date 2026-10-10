@@ -250,6 +250,7 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
     case 'chart':
       return patched(node, {
         series: node.series.map((entry) => ({ ...entry, color: recolor(entry.color) })),
+        ...(node.ink !== undefined ? { ink: recolor(node.ink) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
     // A table's paints are all optional: absent colors keep the default ink.
@@ -273,6 +274,7 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
       return patched(node, {
         ...(node.accent !== undefined ? { accent: recolor(node.accent) } : {}),
         ...(node.trackFill !== undefined ? { trackFill: recolor(node.trackFill) } : {}),
+        ...(node.ink !== undefined ? { ink: recolor(node.ink) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
   }

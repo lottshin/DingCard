@@ -113,6 +113,21 @@ describe('restyleDocument', () => {
     expect(refilled.stripeFill).toBe('#f0fdfa')
   })
 
+  it('recolors a chart\'s ink (v43) with its series', () => {
+    const base = template('data-roundup-freeform')
+    const slide = base.slides[0]
+    const chart = slide.nodes.find((node) => node.type === 'chart')
+    if (!chart || chart.type !== 'chart') throw new Error('data-roundup template has no chart')
+    const withInk = {
+      ...base,
+      slides: [{ ...slide, nodes: slide.nodes.map((node) => node.id === chart.id ? { ...chart, ink: '#334155' } : node) }],
+    }
+    const next = restyleDocument(withInk, { colors: { '#334155': '#0f766e' } })
+    const recolored = next.slides[0].nodes.find((node) => node.id === chart.id)
+    if (!recolored || recolored.type !== 'chart') throw new Error('chart lost in restyle')
+    expect(recolored.ink).toBe('#0f766e')
+  })
+
   it('maps a palette: page and words take its colours, tints keep their place, colours take its accents', () => {
     const document = template('editorial-freeform')
     const sea = PALETTES.find((palette) => palette.id === 'sea-salt')!

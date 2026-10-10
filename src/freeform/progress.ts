@@ -62,8 +62,9 @@ export function progressGeometry(
     const radius = Math.max(6, Math.min(width, height) / 2 - 4)
     const cx = width / 2
     const cy = height / 2
-    const fontSize = Math.max(14, Math.min(radius * 0.42, 34))
-    const labelFontSize = Math.max(10, Math.min(fontSize * 0.62, 20))
+    // The share and its name grow with the ring: a hero number on a card.
+    const fontSize = Math.max(14, Math.min(radius * 0.42, 96))
+    const labelFontSize = Math.max(10, Math.min(fontSize * 0.62, 40))
     // With a name under the share, centre the percent-and-name stack on the
     // ring's middle; without one, keep the percent at its optical centre.
     const labelGap = 6
@@ -100,10 +101,11 @@ export function progressGeometry(
 
   // The bar fills what is left under the goal's name; the share rides inside
   // when wide enough, else just past the drawn fill's end.
-  const labelFontSize = Math.max(11, Math.min(height * 0.3, 16))
+  // The name and the share grow with the bar, up to body copy on a 1080px card.
+  const labelFontSize = Math.max(11, Math.min(height * 0.3, 30))
   const labelHeight = options.label ? labelFontSize * 1.5 : 0
   const barHeight = Math.max(8, height - labelHeight)
-  const fontSize = Math.max(11, Math.min(barHeight * 0.52, 22))
+  const fontSize = Math.max(11, Math.min(barHeight * 0.52, 40))
   const radius = barHeight / 2
   const fillWidth = Math.round((value / 100) * width)
   const drawnWidth = Math.max(fillWidth, barHeight)

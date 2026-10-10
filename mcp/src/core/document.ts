@@ -83,7 +83,7 @@ export interface NodeSummary {
   headerRow?: boolean
   /** A table's zebra stripes (v34): `true` shades alternating body rows. */
   striped?: boolean
-  /** A table's ink for text and grid lines (v35); a timeline's text colour (v37); absent keeps the defaults. */
+  /** A table's ink for text and grid lines (v35); a timeline's text colour (v37); a chart's or progress's words (v43); absent keeps the defaults. */
   ink?: string
   /** A table's header fill (v35); absent tints the ink. */
   headerFill?: string
@@ -210,6 +210,7 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       ...(node.barMode !== undefined ? { barMode: node.barMode } : {}),
       ...(node.showLegend !== undefined ? { showLegend: node.showLegend } : {}),
       ...(node.showTicks !== undefined ? { showTicks: node.showTicks } : {}),
+      ...(node.ink !== undefined ? { ink: node.ink } : {}),
     }
   }
   if (node.type === 'table') {
@@ -246,6 +247,7 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       ...(node.accent !== undefined ? { accent: node.accent } : {}),
       ...(node.label !== undefined ? { label: node.label } : {}),
       ...(node.trackFill !== undefined ? { trackFill: node.trackFill } : {}),
+      ...(node.ink !== undefined ? { ink: node.ink } : {}),
     }
   }
   if (node.type === 'path') {

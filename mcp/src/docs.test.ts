@@ -86,7 +86,7 @@ describe('dingcard-mcp tool descriptions stay current', () => {
   test('the version constant still pins the document interface', () => {
     // Interpolated claims are only as fresh as this constant; sceneDocument's
     // type tests keep it welded to FreeformDocument['documentVersion'].
-    expect(FREEFORM_DOCUMENT_VERSION).toBe(42)
+    expect(FREEFORM_DOCUMENT_VERSION).toBe(43)
   })
 })
 

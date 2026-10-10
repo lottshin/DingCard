@@ -4,7 +4,7 @@ import type { FreeformDocument } from '../freeform/types'
 
 function validFreeformDocument(): FreeformDocument {
   return {
-    documentVersion: 42,
+    documentVersion: 43,
     activeSlideId: 'slide-1',
     slides: [
       {
@@ -63,7 +63,7 @@ describe('importDraftFromJson', () => {
     if (!outcome.ok) return
     expect(outcome.data.mode).toBe('freeform-slide')
     if (outcome.data.mode !== 'freeform-slide') return
-    expect(outcome.data.document.documentVersion).toBe(42)
+    expect(outcome.data.document.documentVersion).toBe(43)
     expect(outcome.data.document.slides[0].nodes[0].type).toBe('text')
   })
 
@@ -99,7 +99,7 @@ describe('importDraftFromJson', () => {
     const outcome = importDraftFromJson(legacy)
     expect(outcome).toMatchObject({ ok: true })
     if (!outcome.ok || outcome.data.mode !== 'freeform-slide') return
-    expect(outcome.data.document.documentVersion).toBe(42)
+    expect(outcome.data.document.documentVersion).toBe(43)
     expect(outcome.data.document.slides[0].nodes).toHaveLength(1)
   })
 

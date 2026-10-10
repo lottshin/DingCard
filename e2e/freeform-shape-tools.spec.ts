@@ -380,7 +380,7 @@ test('flips a heart left-right and top-bottom from the inspector (v40)', async (
     return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
   })
   expect(stored).not.toBeNull()
-  expect(stored.document.documentVersion).toBe(42)
+  expect(stored.document.documentVersion).toBe(43)
   expect(stored.document.slides[0].nodes[0].flipY).toBe(true)
   expect(stored.document.slides[0].nodes[0].flipX).toBeUndefined()
 })
@@ -420,7 +420,7 @@ test('dashes a rect outline with the exact length and a heart along its own outl
     const drafts = key ? JSON.parse(localStorage.getItem(key) ?? '[]') : []
     return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
   })
-  expect(stored.document.documentVersion).toBe(42)
+  expect(stored.document.documentVersion).toBe(43)
   const nodes = stored.document.slides[0].nodes as Array<Record<string, unknown>>
   expect(nodes.find((node) => node.shape === 'heart')?.strokeDash).toBe(12)
   expect(nodes.find((node) => node.shape === 'rect')?.strokeDash).toBeUndefined()
@@ -450,7 +450,7 @@ test('rounds each rect corner on its own (v42)', async ({ page }) => {
     const drafts = key ? JSON.parse(localStorage.getItem(key) ?? '[]') : []
     return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
   })
-  expect(stored.document.documentVersion).toBe(42)
+  expect(stored.document.documentVersion).toBe(43)
   expect(stored.document.slides[0].nodes[0].cornerRadius).toBeUndefined()
   expect(stored.document.slides[0].nodes[0].cornerRadii).toBeUndefined()
 })

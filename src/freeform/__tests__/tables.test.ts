@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   TABLE_CELL_MAX_CHARS,
   TABLE_COLS_MAX,
+  TABLE_FONT_SIZE_MAX,
   TABLE_ROWS_MAX,
   isValidTableCells,
   isValidTableCols,
@@ -96,6 +97,32 @@ describe('table geometry', () => {
   })
 })
 
+describe('table text size', () => {
+  const cells = ['产品', '价格', '手冲', '18', '冷萃', '20']
+
+  it('grows with the rows up to body copy on a card', () => {
+    // Rows of 80 on a card-sized table: as large as the cap.
+    expect(tableGeometry(900, 240, 3, 2, cells).fontSize).toBe(TABLE_FONT_SIZE_MAX)
+    // Rows of 30: 42% of a row, as small tables always drew.
+    expect(tableGeometry(900, 90, 3, 2, cells).fontSize).toBeCloseTo(12.6, 6)
+  })
+
+  it('shrinks only until every cell fits, never below the old size', () => {
+    const long = ['对比项', '说明', '同步', '支持多设备实时同步', '导出', 'PDF 和 Markdown']
+    const roomy = tableGeometry(900, 240, 3, 2, long)
+    expect(roomy.clipped).toEqual([])
+    // A narrow table keeps every word by taking a smaller size…
+    const narrow = tableGeometry(300, 240, 3, 2, long)
+    expect(narrow.fontSize).toBeLessThan(TABLE_FONT_SIZE_MAX)
+    expect(narrow.clipped).toEqual([])
+    // …and when even the old 14px can't hold a cell, it stays at 14 and the
+    // cut cell is named.
+    const cramped = tableGeometry(160, 120, 3, 2, long)
+    expect(cramped.fontSize).toBe(14)
+    expect(cramped.clipped.length).toBeGreaterThan(0)
+  })
+})
+
 describe('table paste', () => {
   it('reads tab-separated rows, then comma- and space-separated ones', () => {
     expect(parseTablePaste('项目\t本月\t上月\n阅读\t1.2万\t9800')).toEqual({
@@ -155,14 +182,14 @@ describe('table element in the document', () => {
     // Optional flags ride along; wrong-typed ones reject.
     const striped: FreeformTableElement = { ...table, striped: true, headerRow: false }
     const withFlags = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [striped as unknown as FreeformSceneNode] }],
     })
     expect((withFlags!.slides[0].nodes[0] as FreeformTableElement).striped).toBe(true)
     expect((withFlags!.slides[0].nodes[0] as FreeformTableElement).headerRow).toBe(false)
     const bad = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, cells: ['少'] } as unknown as FreeformSceneNode] }],
     })
@@ -172,7 +199,7 @@ describe('table element in the document', () => {
   it('resizes and replaces cells through node/update-content', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -216,7 +243,7 @@ describe('table element in the document', () => {
   it('styles the header and stripes through node/update-style', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -247,7 +274,7 @@ describe('table element in the document', () => {
   it('styles the ink, header fill, and stripe fill through node/update-style', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -291,7 +318,7 @@ describe('table element in the document', () => {
     const v34 = normalizeFreeformDocument({ documentVersion: 34, activeSlideId: slide.id, slides: [tableSlide] })
     expect(v34).toBeNull()
     const badHex = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, ink: 'gray' } as unknown as FreeformSceneNode] }],
     })
@@ -316,7 +343,7 @@ describe('table element in the document', () => {
 
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...base, colWidths: [240, 120, 120] } as unknown as FreeformSceneNode] }],
     }
@@ -366,7 +393,7 @@ describe('table element in the document', () => {
     const v34 = normalizeFreeformDocument({ documentVersion: 34, activeSlideId: slide.id, slides: [tableSlide] })
     expect(v34).toBeNull()
     const badWeights = normalizeFreeformDocument({
-      documentVersion: 42,
+      documentVersion: 43,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, colWidths: [1, 1] } as unknown as FreeformSceneNode] }],
     })
