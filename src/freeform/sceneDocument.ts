@@ -112,7 +112,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -181,6 +181,25 @@ const PROGRESS_NODE_KEYS = new Set([
 ])
 const PROGRESS_OPTIONAL_V38_KEYS = new Set(['accent', 'opacity', 'shadow', 'filter', 'blendMode'])
 const PROGRESS_OPTIONAL_V39_KEYS = new Set(['label', 'trackFill', 'accent', 'opacity', 'shadow', 'filter', 'blendMode'])
+
+const CORNER_RADII_KEYS = new Set(['topLeft', 'topRight', 'bottomRight', 'bottomLeft'])
+
+/** Four corner radii, each within the uniform radius's own range (v42). */
+function isValidCornerRadii(value: unknown): value is import('./types').CornerRadii {
+  if (!isRecord(value) || !hasExactKeys(value, CORNER_RADII_KEYS)) return false
+  return isValidCornerRadius(value.topLeft) && isValidCornerRadius(value.topRight)
+    && isValidCornerRadius(value.bottomRight) && isValidCornerRadius(value.bottomLeft)
+}
+
+function cloneCornerRadii(value: unknown): import('./types').CornerRadii {
+  const radii = value as import('./types').CornerRadii
+  return {
+    topLeft: radii.topLeft,
+    topRight: radii.topRight,
+    bottomRight: radii.bottomRight,
+    bottomLeft: radii.bottomLeft,
+  }
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -406,6 +425,7 @@ const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
 const SHAPE_OPTIONAL_V21_KEYS = new Set([...SHAPE_OPTIONAL_V9_KEYS, 'starInnerRatio', 'bubbleTailX'])
 const SHAPE_OPTIONAL_V40_KEYS = new Set([...SHAPE_OPTIONAL_V21_KEYS, 'flipX', 'flipY'])
 const SHAPE_OPTIONAL_V41_KEYS = new Set([...SHAPE_OPTIONAL_V40_KEYS, 'strokeDash'])
+const SHAPE_OPTIONAL_V42_KEYS = new Set([...SHAPE_OPTIONAL_V41_KEYS, 'cornerRadii'])
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
 const LINE_OPTIONAL_V14_KEYS = new Set([...LINE_OPTIONAL_V13_KEYS, 'points'])
@@ -467,7 +487,12 @@ function optionalKeysFor(
     if (inputVersion >= 20) return TEXT_OPTIONAL_V20_KEYS
     return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
   }
-  if (type === 'shape') return inputVersion >= 41 ? SHAPE_OPTIONAL_V41_KEYS : inputVersion >= 40 ? SHAPE_OPTIONAL_V40_KEYS : inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
+  if (type === 'shape') {
+    if (inputVersion >= 42) return SHAPE_OPTIONAL_V42_KEYS
+    if (inputVersion >= 41) return SHAPE_OPTIONAL_V41_KEYS
+    if (inputVersion >= 40) return SHAPE_OPTIONAL_V40_KEYS
+    return inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
+  }
   if (type === 'qrcode') {
     if (inputVersion >= 30) return QRCODE_OPTIONAL_V30_KEYS
     return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
@@ -875,6 +900,10 @@ function normalizeStrictSceneNode(
     if (inputVersion >= 41) {
       if ('strokeDash' in value && !isValidDash(value.strokeDash)) return null
     }
+    // Per-corner radii are v42-only; older input versions reject them.
+    if (inputVersion >= 42) {
+      if ('cornerRadii' in value && !isValidCornerRadii(value.cornerRadii)) return null
+    }
     const shapeAppearance = cloneStrictAppearance(value, inputVersion)
     if (!shapeAppearance) return null
     return {
@@ -890,6 +919,7 @@ function normalizeStrictSceneNode(
       ...(inputVersion >= 40 && 'flipX' in value ? { flipX: value.flipX as boolean } : {}),
       ...(inputVersion >= 40 && 'flipY' in value ? { flipY: value.flipY as boolean } : {}),
       ...(inputVersion >= 41 && 'strokeDash' in value ? { strokeDash: value.strokeDash as number } : {}),
+      ...(inputVersion >= 42 && 'cornerRadii' in value ? { cornerRadii: cloneCornerRadii(value.cornerRadii) } : {}),
       ...shapeAppearance,
     }
   }
@@ -1232,7 +1262,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 41,
+    documentVersion: 42,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1431,6 +1461,11 @@ export function normalizeFreeformDocumentV40(value: unknown): FreeformDocument |
 /** Strictly validates an already-v41 document (v41 dashes shape outlines). */
 export function normalizeFreeformDocumentV41(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 41)
+}
+
+/** Strictly validates an already-v42 document (v42 rounds rects per corner). */
+export function normalizeFreeformDocumentV42(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 42)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1697,9 +1732,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v41 object. */
+/** Normalize any supported freeform document version to a fresh v42 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 42) return normalizeFreeformDocumentV42(value)
   if (value.documentVersion === 41) return normalizeFreeformDocumentV41(value)
   if (value.documentVersion === 40) return normalizeFreeformDocumentV40(value)
   if (value.documentVersion === 39) return normalizeFreeformDocumentV39(value)
@@ -1789,7 +1825,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 41,
+    documentVersion: 42,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1822,7 +1858,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 41,
+    documentVersion: 42,
     activeSlideId: document.activeSlideId,
     slides,
   }

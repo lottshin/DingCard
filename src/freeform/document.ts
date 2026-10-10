@@ -104,6 +104,7 @@ import type {  FreeformChartSeries,
   FreeformTimelineElement,
   FreeformTimelineItem,
   FreeformProgressElement,
+  CornerRadii,
   ImageFraming,
   LinePoint,
   PathFill,
@@ -160,7 +161,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 41,
+    documentVersion: 42,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -601,6 +602,7 @@ const STYLE_KEYS = new Set([
   'starInnerRatio',
   'bubbleTailX',
   'strokeDash',
+  'cornerRadii',
   'dark',
   'light',
   'ecl',
@@ -648,7 +650,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
   'lineHeight', 'letterSpacing', 'italic', 'vertical', 'opacity', 'shadow', 'filter', 'blendMode',
   'stroke', 'strokeWidth', 'effect',
 ])
-const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'strokeDash', 'opacity', 'shadow', 'filter', 'blendMode'])
+const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'strokeDash', 'cornerRadii', 'opacity', 'shadow', 'filter', 'blendMode'])
 const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZone', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'showTicks', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
@@ -662,6 +664,16 @@ const LINE_APPEARANCE_KEYS = new Set([
 const PATH_APPEARANCE_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'cap', 'join', 'fillRule',
 ])
+
+/** Four corner radii, each within the uniform radius's own range (v42). */
+function validCornerRadii(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const radii = value as Record<string, unknown>
+  const keys = Object.keys(radii)
+  if (keys.length !== 4 || !['topLeft', 'topRight', 'bottomRight', 'bottomLeft'].every((key) => keys.includes(key))) return false
+  return isValidCornerRadius(radii.topLeft) && isValidCornerRadius(radii.topRight)
+    && isValidCornerRadius(radii.bottomRight) && isValidCornerRadius(radii.bottomLeft)
+}
 
 /** The first appearance key whose value rejects, with the rule it broke; null when all pass. */
 function appearanceProblemKey(patch: UnknownRecord, fields: ReadonlySet<string>): string | null {
@@ -685,6 +697,8 @@ function appearanceProblemKey(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && !isValidCornerRadius(value)) return problem('cornerRadius', '必须是 0–2000 的像素圆角（或传 null 恢复直角）')
     } else if (key === 'strokeDash') {
       if (value !== null && !isValidDash(value)) return problem('strokeDash', '必须是 1–500 的虚线长度（或传 null 恢复实线）')
+    } else if (key === 'cornerRadii') {
+      if (value !== null && !validCornerRadii(value)) return problem('cornerRadii', '必须是 { topLeft, topRight, bottomRight, bottomLeft }（各 0–2000，或传 null 恢复统一圆角）')
     } else if (key === 'starInnerRatio') {
       if (value !== null && !isValidStarInnerRatio(value)) return problem('starInnerRatio', '必须是 0.15–0.85 的五角星内径比（或传 null 恢复 0.38）')
     } else if (key === 'bubbleTailX') {
@@ -770,7 +784,9 @@ function withAppearancePatch<T extends object>(
           ? cloneSceneFilter(value, true)
           : key === 'effect'
             ? { ...(value as TextEffect) }
-            : value,
+            : key === 'cornerRadii'
+              ? { ...(value as CornerRadii) }
+              : value,
     }
   }
   return next as T
@@ -1244,6 +1260,7 @@ function applyStylePatch(
       'starInnerRatio',
       'bubbleTailX',
       'strokeDash',
+      'cornerRadii',
       'opacity',
       'shadow',
       'filter',

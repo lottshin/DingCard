@@ -104,7 +104,7 @@ describe('progress element', () => {
     expect('label' in element).toBe(false)
 
     const document: FreeformDocument = {
-      documentVersion: 41,
+      documentVersion: 42,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -139,7 +139,7 @@ describe('progress element', () => {
   it('names and clears the goal through node/update-content', () => {
     const element = createProgressElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 41,
+      documentVersion: 42,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -181,7 +181,7 @@ describe('progress element', () => {
   it('restyles the accent, the kind, and the track colour through node/update-style', () => {
     const element = createProgressElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 41,
+      documentVersion: 42,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -229,7 +229,7 @@ describe('progress element', () => {
   it('carries the goal name and track colour at v39 and rejects them at v38', () => {
     const element = createProgressElement(slide)
     const progressSlide = { ...slide, nodes: [element as unknown as FreeformSceneNode] }
-    const v39 = normalizeFreeformDocument({ documentVersion: 41, activeSlideId: slide.id, slides: [progressSlide] })
+    const v39 = normalizeFreeformDocument({ documentVersion: 42, activeSlideId: slide.id, slides: [progressSlide] })
     expect(v39).not.toBeNull()
     expect((v39!.slides[0].nodes[0] as FreeformProgressElement).value).toBe(65)
     const v38 = normalizeFreeformDocument({ documentVersion: 38, activeSlideId: slide.id, slides: [progressSlide] })
@@ -238,7 +238,7 @@ describe('progress element', () => {
     expect(v37).toBeNull()
     // The v39 fields ride on a v39 document; on a v38 one they reject it.
     const named = normalizeFreeformDocument({
-      documentVersion: 41,
+      documentVersion: 42,
       activeSlideId: slide.id,
       slides: [{
         ...slide,
@@ -272,7 +272,7 @@ describe('progress element', () => {
     expect(trackedAtV38).toBeNull()
     // A bad label or a bad track hex rejects even a v39 document.
     const badLabel = normalizeFreeformDocument({
-      documentVersion: 41,
+      documentVersion: 42,
       activeSlideId: slide.id,
       slides: [{
         ...slide,
@@ -281,7 +281,7 @@ describe('progress element', () => {
     })
     expect(badLabel).toBeNull()
     const badTrackHex = normalizeFreeformDocument({
-      documentVersion: 41,
+      documentVersion: 42,
       activeSlideId: slide.id,
       slides: [{
         ...slide,

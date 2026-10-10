@@ -72,8 +72,34 @@ interface SceneNodeBranchProps extends FreeformSceneNodeViewProps {
   path: ScenePath
   inheritedLocked: boolean
   inheritedHidden: boolean
-  selectedKeys: ReadonlySet<string>
+  selectedKeys: Set<string>
   markerIdPrefix: string
+}
+
+/** A rounded rect with its own radius at each corner, as one SVG path. */
+function dashedRectPath(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radii: { topLeft: number; topRight: number; bottomRight: number; bottomLeft: number },
+): string {
+  const tl = Math.min(radii.topLeft, width / 2, height / 2)
+  const tr = Math.min(radii.topRight, width / 2, height / 2)
+  const br = Math.min(radii.bottomRight, width / 2, height / 2)
+  const bl = Math.min(radii.bottomLeft, width / 2, height / 2)
+  return [
+    `M ${x + tl} ${y}`,
+    `L ${x + width - tr} ${y}`,
+    `A ${tr} ${tr} 0 0 1 ${x + width} ${y + tr}`,
+    `L ${x + width} ${y + height - br}`,
+    `A ${br} ${br} 0 0 1 ${x + width - br} ${y + height}`,
+    `L ${x + bl} ${y + height}`,
+    `A ${bl} ${bl} 0 0 1 ${x} ${y + height - bl}`,
+    `L ${x} ${y + tl}`,
+    `A ${tl} ${tl} 0 0 1 ${x + tl} ${y}`,
+    'Z',
+  ].join(' ')
 }
 
 function SceneLeafContent({
@@ -1021,9 +1047,14 @@ function SceneLeafContent({
               borderWidth: leaf.strokeWidth,
               ...(leaf.strokeDash !== undefined ? { borderStyle: 'dashed' as const } : {}),
             }),
-        ...(leaf.shape === 'rect' && leaf.cornerRadius !== undefined
-          ? { borderRadius: `${leaf.cornerRadius}px` }
-          : {}),
+        ...(leaf.shape === 'rect' && leaf.cornerRadii !== undefined
+          ? {
+              borderRadius: `${leaf.cornerRadii.topLeft}px ${leaf.cornerRadii.topRight}px `
+                + `${leaf.cornerRadii.bottomRight}px ${leaf.cornerRadii.bottomLeft}px`,
+            }
+          : leaf.shape === 'rect' && leaf.cornerRadius !== undefined
+            ? { borderRadius: `${leaf.cornerRadius}px` }
+            : {}),
         ...(parametricClipPath ? { clipPath: parametricClipPath } : {}),
         ...(leaf.shadow
           ? clippedShape
@@ -1043,19 +1074,41 @@ function SceneLeafContent({
           style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
         >
           {leaf.shape === 'rect'
-            ? (
-              <rect
-                x={leaf.strokeWidth / 2}
-                y={leaf.strokeWidth / 2}
-                width={Math.max(1, leaf.width - leaf.strokeWidth)}
-                height={Math.max(1, leaf.height - leaf.strokeWidth)}
-                rx={leaf.cornerRadius !== undefined ? Math.max(0, leaf.cornerRadius - leaf.strokeWidth / 2) : undefined}
-                fill="none"
-                stroke={leaf.stroke}
-                strokeWidth={leaf.strokeWidth}
-                strokeDasharray={`${leaf.strokeDash} ${leaf.strokeDash}`}
-              />
-            )
+            ? leaf.cornerRadii !== undefined
+              ? (
+                // Per-corner radii need a path; a rect element has one rx only.
+                <path
+                  d={dashedRectPath(
+                    leaf.strokeWidth / 2,
+                    leaf.strokeWidth / 2,
+                    Math.max(1, leaf.width - leaf.strokeWidth),
+                    Math.max(1, leaf.height - leaf.strokeWidth),
+                    {
+                      topLeft: Math.max(0, leaf.cornerRadii.topLeft - leaf.strokeWidth / 2),
+                      topRight: Math.max(0, leaf.cornerRadii.topRight - leaf.strokeWidth / 2),
+                      bottomRight: Math.max(0, leaf.cornerRadii.bottomRight - leaf.strokeWidth / 2),
+                      bottomLeft: Math.max(0, leaf.cornerRadii.bottomLeft - leaf.strokeWidth / 2),
+                    },
+                  )}
+                  fill="none"
+                  stroke={leaf.stroke}
+                  strokeWidth={leaf.strokeWidth}
+                  strokeDasharray={`${leaf.strokeDash} ${leaf.strokeDash}`}
+                />
+              )
+              : (
+                <rect
+                  x={leaf.strokeWidth / 2}
+                  y={leaf.strokeWidth / 2}
+                  width={Math.max(1, leaf.width - leaf.strokeWidth)}
+                  height={Math.max(1, leaf.height - leaf.strokeWidth)}
+                  rx={leaf.cornerRadius !== undefined ? Math.max(0, leaf.cornerRadius - leaf.strokeWidth / 2) : undefined}
+                  fill="none"
+                  stroke={leaf.stroke}
+                  strokeWidth={leaf.strokeWidth}
+                  strokeDasharray={`${leaf.strokeDash} ${leaf.strokeDash}`}
+                />
+              )
             : (
               <ellipse
                 cx={leaf.width / 2}

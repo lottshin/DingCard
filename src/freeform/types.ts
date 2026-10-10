@@ -1,5 +1,5 @@
 /** The documentVersion a fresh freeform document carries; older versions migrate to it. */
-export const FREEFORM_DOCUMENT_VERSION = 41
+export const FREEFORM_DOCUMENT_VERSION = 42
 
 export interface FreeformDocument {
   documentVersion: typeof FREEFORM_DOCUMENT_VERSION
@@ -264,10 +264,20 @@ export interface FreeformShapeElement extends FreeformElementBase {
   bubbleTailX?: number
   /** Dashed outline length in px, dash = gap; absent means solid (v41). */
   strokeDash?: number
+  /** Per-corner radii in px for rect shapes (v42); overrides cornerRadius. */
+  cornerRadii?: CornerRadii
   /** Mirror the shape left-right (v40). */
   flipX?: boolean
   /** Mirror the shape top-bottom (v40). */
   flipY?: boolean
+}
+
+/** The four corner radii of a rounded rect, clockwise from the top-left. */
+export interface CornerRadii {
+  topLeft: number
+  topRight: number
+  bottomRight: number
+  bottomLeft: number
 }
 
 /** One endpoint decoration on a line; 'arrow' and 'dot' draw at the endpoint. */
@@ -578,6 +588,8 @@ export interface FreeformNodeStylePatch {
   bubbleTailX?: number | null
   /** Shape outline dash length in px (v41); `null` restores a solid line. */
   strokeDash?: number | null
+  /** Per-corner rect radii (v42); `null` restores the uniform `cornerRadius`. */
+  cornerRadii?: CornerRadii | null
   /** Shape fill, or a path fill (v15; no picture fills on paths). */
   fill?: ShapeFill
   /** Shape/line/path stroke color, or the text outline color; text `null` clears it. */

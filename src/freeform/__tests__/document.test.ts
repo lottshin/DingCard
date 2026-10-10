@@ -75,7 +75,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(41)
+    expect(doc.documentVersion).toBe(42)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -1868,5 +1868,37 @@ describe('document/find-replace', () => {
     const node = replaced.slides[0].nodes[0]
     expect(node.type === 'text' && node.text).toBe('手冲最好喝')
     expect(node.type === 'text' && node.spans).toBeUndefined()
+  })
+})
+
+describe('corner radii (v42)', () => {
+  const shapeDocument = () => {
+    const element = { ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' }
+    return {
+      ...createFreeformDocument(),
+      slides: [{ ...createFreeformDocument().slides[0], nodes: [element as unknown as FreeformSceneNode] }],
+    }
+  }
+  const style = (document: FreeformDocument, patch: Record<string, unknown>) => freeformReducer(document, {
+    type: 'node/update-style',
+    slideId: document.slides[0].id,
+    updates: [{ path: ['shape-1'], patch }],
+  })
+
+  it('rounds each corner and restores the uniform radius', () => {
+    const document = shapeDocument()
+    const rounded = style(document, {
+      cornerRadii: { topLeft: 24, topRight: 0, bottomRight: 48, bottomLeft: 8 },
+    })
+    const node = rounded.slides[0].nodes[0] as unknown as Record<string, unknown>
+    expect(node.cornerRadii).toEqual({ topLeft: 24, topRight: 0, bottomRight: 48, bottomLeft: 8 })
+    // A missing corner or an out-of-range value refuses.
+    const refused = style(rounded, { cornerRadii: { topLeft: 1 } as unknown as Record<string, unknown> })
+    expect(refused).toBe(rounded)
+    const outOfRange = style(rounded, { cornerRadii: { topLeft: -1, topRight: 0, bottomRight: 0, bottomLeft: 0 } })
+    expect(outOfRange).toBe(rounded)
+    // `null` restores the uniform radius.
+    const uniform = style(rounded, { cornerRadii: null })
+    expect('cornerRadii' in (uniform.slides[0].nodes[0] as unknown as Record<string, unknown>)).toBe(false)
   })
 })

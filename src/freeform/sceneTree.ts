@@ -982,6 +982,7 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
   strokeDash: (record) => isValidDash(record.strokeDash),
+  cornerRadii: (record) => isValidSceneCornerRadii(record.cornerRadii),
   flipX: (record) => typeof record.flipX === 'boolean',
   flipY: (record) => typeof record.flipY === 'boolean',
   starInnerRatio: (record) => isValidStarInnerRatio(record.starInnerRatio),
@@ -1091,6 +1092,16 @@ const PATH_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   cap: (record) => isValidLineCap(record.cap),
   join: (record) => isValidLineJoin(record.join),
   fillRule: (record) => isValidFillRule(record.fillRule),
+}
+
+/** Four corner radii, each within the uniform radius's own range (v42). */
+export function isValidSceneCornerRadii(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const radii = value as Record<string, unknown>
+  const keys = Object.keys(radii)
+  if (keys.length !== 4 || !['topLeft', 'topRight', 'bottomRight', 'bottomLeft'].every((key) => keys.includes(key))) return false
+  return isValidCornerRadius(radii.topLeft) && isValidCornerRadius(radii.topRight)
+    && isValidCornerRadius(radii.bottomRight) && isValidCornerRadius(radii.bottomLeft)
 }
 
 export function isValidSceneColorPaint(value: unknown): boolean {
