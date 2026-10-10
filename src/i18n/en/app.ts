@@ -479,4 +479,6 @@ export const app: Record<string, Translation> = {
   '加载更多': 'Load more',
   '水平翻转': 'Flip horizontal',
   '垂直翻转': 'Flip vertical',
+  '实线': 'Solid line',
+  '虚线': 'Dash',
 }

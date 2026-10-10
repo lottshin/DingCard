@@ -373,3 +373,41 @@ test('flips a heart left-right and top-bottom from the inspector (v40)', async (
   expect(stored.document.slides[0].nodes[0].flipY).toBe(true)
   expect(stored.document.slides[0].nodes[0].flipX).toBeUndefined()
 })
+
+test('dashes a rect outline with the exact length and a heart with CSS dashes (v41)', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page, '矩形')
+  await expect(page.locator('.freeform-shape.shape-rect')).toBeVisible()
+
+  // A rect dashed at 18 draws an SVG frame with the exact dasharray.
+  const dashInput = page.getByLabel('虚线', { exact: true })
+  await dashInput.fill('18')
+  await dashInput.press('Enter')
+  const dashFrame = page.locator('.freeform-element .freeform-shape-dash')
+  await expect(dashFrame.locator('rect')).toHaveAttribute('stroke-dasharray', '18 18')
+  // The clear button restores the solid border.
+  await page.getByTestId('shape-dash-clear').click()
+  await expect(dashFrame).toHaveCount(0)
+
+  // A heart dashes through the clipped CSS border.
+  await insertShape(page, '心形')
+  const heart = page.locator('.freeform-shape.shape-heart')
+  await expect(heart).toBeVisible()
+  const heartDash = page.getByLabel('虚线', { exact: true })
+  await heartDash.fill('12')
+  await heartDash.press('Enter')
+  await expect(heart).toHaveCSS('border-style', 'dashed')
+  await expect(page.locator('.freeform-element .freeform-shape-dash')).toHaveCount(0)
+
+  // The stored draft carries v41 with the heart's dash.
+  await expect(page.getByTestId('editor-save-state')).toHaveText(/已保存/)
+  const stored = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    const drafts = key ? JSON.parse(localStorage.getItem(key) ?? '[]') : []
+    return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
+  })
+  expect(stored.document.documentVersion).toBe(41)
+  const nodes = stored.document.slides[0].nodes as Array<Record<string, unknown>>
+  expect(nodes.find((node) => node.shape === 'heart')?.strokeDash).toBe(12)
+  expect(nodes.find((node) => node.shape === 'rect')?.strokeDash).toBeUndefined()
+})

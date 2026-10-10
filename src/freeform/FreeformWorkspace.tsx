@@ -8198,6 +8198,30 @@ export function FreeformWorkspace({
                             </button>
                           ))}
                         </div>
+                        <div className="field-grid with-gap" data-testid="shape-dash-field">
+                          <label title={t('虚线')}>
+                            <InspectorGlyph name="dash" />
+                            <InspectorNumberInput
+                              ariaLabel={t('虚线')}
+                              min={0}
+                              max={500}
+                              resetKey={inspectorNumberResetKey}
+                              value={selectedElement.strokeDash ?? 0}
+                              onCommit={(value) => updateSelectedStyle({
+                                strokeDash: value > 0 ? value : null,
+                              })}
+                            />
+                          </label>
+                          <button
+                            className="ghost"
+                            type="button"
+                            data-testid="shape-dash-clear"
+                            disabled={selectedElement.strokeDash === undefined}
+                            onClick={() => updateSelectedStyle({ strokeDash: null })}
+                          >
+                            {t('实线')}
+                          </button>
+                        </div>
                       </>
                     )}
                   </InspectorSection>
