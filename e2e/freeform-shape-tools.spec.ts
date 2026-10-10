@@ -369,7 +369,7 @@ test('flips a heart left-right and top-bottom from the inspector (v40)', async (
     return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
   })
   expect(stored).not.toBeNull()
-  expect(stored.document.documentVersion).toBe(40)
+  expect(stored.document.documentVersion).toBe(41)
   expect(stored.document.slides[0].nodes[0].flipY).toBe(true)
   expect(stored.document.slides[0].nodes[0].flipX).toBeUndefined()
 })

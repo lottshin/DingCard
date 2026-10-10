@@ -75,7 +75,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(40)
+    expect(doc.documentVersion).toBe(41)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -1771,5 +1771,32 @@ describe('element flips', () => {
       updates: [{ path: ['text-1'], patch: { flipX: true } }],
     })
     expect(text).toBe(deck)
+  })
+})
+
+describe('shape dash (v41)', () => {
+  const shapeDocument = () => {
+    const element = { ...createShapeElement(createSlide(), 'rect'), id: 'shape-1' }
+    return {
+      ...createFreeformDocument(),
+      slides: [{ ...createFreeformDocument().slides[0], nodes: [element as unknown as FreeformSceneNode] }],
+    }
+  }
+  const style = (document: FreeformDocument, patch: Record<string, unknown>) => freeformReducer(document, {
+    type: 'node/update-style',
+    slideId: document.slides[0].id,
+    updates: [{ path: ['shape-1'], patch }],
+  })
+
+  it('dashes the outline and restores the solid line', () => {
+    const document = shapeDocument()
+    const dashed = style(document, { strokeDash: 12 })
+    const node = dashed.slides[0].nodes[0] as unknown as Record<string, unknown>
+    expect(node.strokeDash).toBe(12)
+    // Out of range refuses; null restores the solid line.
+    const refused = style(dashed, { strokeDash: 0 })
+    expect(refused).toBe(dashed)
+    const restored = style(dashed, { strokeDash: null })
+    expect('strokeDash' in (restored.slides[0].nodes[0] as unknown as Record<string, unknown>)).toBe(false)
   })
 })

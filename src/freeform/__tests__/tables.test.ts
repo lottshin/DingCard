@@ -155,14 +155,14 @@ describe('table element in the document', () => {
     // Optional flags ride along; wrong-typed ones reject.
     const striped: FreeformTableElement = { ...table, striped: true, headerRow: false }
     const withFlags = normalizeFreeformDocument({
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [striped as unknown as FreeformSceneNode] }],
     })
     expect((withFlags!.slides[0].nodes[0] as FreeformTableElement).striped).toBe(true)
     expect((withFlags!.slides[0].nodes[0] as FreeformTableElement).headerRow).toBe(false)
     const bad = normalizeFreeformDocument({
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, cells: ['少'] } as unknown as FreeformSceneNode] }],
     })
@@ -172,7 +172,7 @@ describe('table element in the document', () => {
   it('resizes and replaces cells through node/update-content', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -216,7 +216,7 @@ describe('table element in the document', () => {
   it('styles the header and stripes through node/update-style', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -247,7 +247,7 @@ describe('table element in the document', () => {
   it('styles the ink, header fill, and stripe fill through node/update-style', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -291,7 +291,7 @@ describe('table element in the document', () => {
     const v34 = normalizeFreeformDocument({ documentVersion: 34, activeSlideId: slide.id, slides: [tableSlide] })
     expect(v34).toBeNull()
     const badHex = normalizeFreeformDocument({
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, ink: 'gray' } as unknown as FreeformSceneNode] }],
     })
@@ -316,7 +316,7 @@ describe('table element in the document', () => {
 
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...base, colWidths: [240, 120, 120] } as unknown as FreeformSceneNode] }],
     }
@@ -366,7 +366,7 @@ describe('table element in the document', () => {
     const v34 = normalizeFreeformDocument({ documentVersion: 34, activeSlideId: slide.id, slides: [tableSlide] })
     expect(v34).toBeNull()
     const badWeights = normalizeFreeformDocument({
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, colWidths: [1, 1] } as unknown as FreeformSceneNode] }],
     })

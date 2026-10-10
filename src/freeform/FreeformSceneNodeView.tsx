@@ -1013,7 +1013,14 @@ function SceneLeafContent({
       style={{
         ...(imageFill ? {} : shapeFillToStyle(leaf.fill)),
         borderColor: leaf.stroke,
-        borderWidth: leaf.strokeWidth,
+        // Parametric shapes clip their dashed border to the outline; rect and
+        // ellipse draw the exact dash length on an SVG frame instead.
+        ...(leaf.strokeDash !== undefined && (leaf.shape === 'rect' || leaf.shape === 'ellipse')
+          ? { borderWidth: 0 }
+          : {
+              borderWidth: leaf.strokeWidth,
+              ...(leaf.strokeDash !== undefined ? { borderStyle: 'dashed' as const } : {}),
+            }),
         ...(leaf.shape === 'rect' && leaf.cornerRadius !== undefined
           ? { borderRadius: `${leaf.cornerRadius}px` }
           : {}),
@@ -1025,6 +1032,44 @@ function SceneLeafContent({
           : {}),
       }}
     >
+      {leaf.strokeDash !== undefined && (leaf.shape === 'rect' || leaf.shape === 'ellipse') && (
+        <svg
+          className="freeform-shape-dash"
+          data-testid="freeform-shape-dash"
+          viewBox={`0 0 ${Math.max(1, leaf.width)} ${Math.max(1, leaf.height)}`}
+          width="100%"
+          height="100%"
+          aria-hidden="true"
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+        >
+          {leaf.shape === 'rect'
+            ? (
+              <rect
+                x={leaf.strokeWidth / 2}
+                y={leaf.strokeWidth / 2}
+                width={Math.max(1, leaf.width - leaf.strokeWidth)}
+                height={Math.max(1, leaf.height - leaf.strokeWidth)}
+                rx={leaf.cornerRadius !== undefined ? Math.max(0, leaf.cornerRadius - leaf.strokeWidth / 2) : undefined}
+                fill="none"
+                stroke={leaf.stroke}
+                strokeWidth={leaf.strokeWidth}
+                strokeDasharray={`${leaf.strokeDash} ${leaf.strokeDash}`}
+              />
+            )
+            : (
+              <ellipse
+                cx={leaf.width / 2}
+                cy={leaf.height / 2}
+                rx={Math.max(1, (leaf.width - leaf.strokeWidth) / 2)}
+                ry={Math.max(1, (leaf.height - leaf.strokeWidth) / 2)}
+                fill="none"
+                stroke={leaf.stroke}
+                strokeWidth={leaf.strokeWidth}
+                strokeDasharray={`${leaf.strokeDash} ${leaf.strokeDash}`}
+              />
+            )}
+        </svg>
+      )}
       {imageFill && (
         <FramedImage
           logicalSrc={imageFill.src}

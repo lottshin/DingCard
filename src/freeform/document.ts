@@ -160,7 +160,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 40,
+    documentVersion: 41,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -600,6 +600,7 @@ const STYLE_KEYS = new Set([
   'cornerRadius',
   'starInnerRatio',
   'bubbleTailX',
+  'strokeDash',
   'dark',
   'light',
   'ecl',
@@ -647,7 +648,7 @@ const TEXT_APPEARANCE_KEYS = new Set([
   'lineHeight', 'letterSpacing', 'italic', 'vertical', 'opacity', 'shadow', 'filter', 'blendMode',
   'stroke', 'strokeWidth', 'effect',
 ])
-const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'opacity', 'shadow', 'filter', 'blendMode'])
+const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubbleTailX', 'strokeDash', 'opacity', 'shadow', 'filter', 'blendMode'])
 const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZone', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'showTicks', 'barMode', 'opacity', 'shadow', 'filter', 'blendMode'])
@@ -682,6 +683,8 @@ function appearanceProblemKey(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (typeof value !== 'boolean') return problem('vertical', '必须是 true 或 false')
     } else if (key === 'cornerRadius') {
       if (value !== null && !isValidCornerRadius(value)) return problem('cornerRadius', '必须是 0–2000 的像素圆角（或传 null 恢复直角）')
+    } else if (key === 'strokeDash') {
+      if (value !== null && !isValidDash(value)) return problem('strokeDash', '必须是 1–500 的虚线长度（或传 null 恢复实线）')
     } else if (key === 'starInnerRatio') {
       if (value !== null && !isValidStarInnerRatio(value)) return problem('starInnerRatio', '必须是 0.15–0.85 的五角星内径比（或传 null 恢复 0.38）')
     } else if (key === 'bubbleTailX') {
@@ -1240,6 +1243,7 @@ function applyStylePatch(
       'cornerRadius',
       'starInnerRatio',
       'bubbleTailX',
+      'strokeDash',
       'opacity',
       'shadow',
       'filter',

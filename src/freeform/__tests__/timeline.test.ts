@@ -99,7 +99,7 @@ describe('timeline element', () => {
     expect(timelineItemsSame(element.items, element.items.map((item) => ({ ...item })))).toBe(true)
 
     const document: FreeformDocument = {
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -126,7 +126,7 @@ describe('timeline element', () => {
   it('styles the accent, layout, and ink through node/update-style', () => {
     const element = createTimelineElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [element as unknown as FreeformSceneNode] }],
     }
@@ -218,7 +218,7 @@ describe('timeline element', () => {
     const element = createTimelineElement(slide)
     const polished: FreeformTimelineElement = { ...element, horizontal: true, ink: '#1f2937' }
     const v37 = normalizeFreeformDocument({
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [polished as unknown as FreeformSceneNode] }],
     })
@@ -233,13 +233,13 @@ describe('timeline element', () => {
     })
     expect(v36).toBeNull()
     const badBoolean = normalizeFreeformDocument({
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...element, horizontal: 'yes' } as unknown as FreeformSceneNode] }],
     })
     expect(badBoolean).toBeNull()
     const badInk = normalizeFreeformDocument({
-      documentVersion: 40,
+      documentVersion: 41,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...element, ink: 'grey' } as unknown as FreeformSceneNode] }],
     })

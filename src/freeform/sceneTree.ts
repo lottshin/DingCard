@@ -981,6 +981,7 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 
 const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
+  strokeDash: (record) => isValidDash(record.strokeDash),
   flipX: (record) => typeof record.flipX === 'boolean',
   flipY: (record) => typeof record.flipY === 'boolean',
   starInnerRatio: (record) => isValidStarInnerRatio(record.starInnerRatio),

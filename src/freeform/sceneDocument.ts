@@ -112,7 +112,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -405,6 +405,7 @@ const TEXT_OPTIONAL_V20_KEYS = new Set([...TEXT_OPTIONAL_V17_KEYS, 'verticalAlig
 const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
 const SHAPE_OPTIONAL_V21_KEYS = new Set([...SHAPE_OPTIONAL_V9_KEYS, 'starInnerRatio', 'bubbleTailX'])
 const SHAPE_OPTIONAL_V40_KEYS = new Set([...SHAPE_OPTIONAL_V21_KEYS, 'flipX', 'flipY'])
+const SHAPE_OPTIONAL_V41_KEYS = new Set([...SHAPE_OPTIONAL_V40_KEYS, 'strokeDash'])
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
 const LINE_OPTIONAL_V14_KEYS = new Set([...LINE_OPTIONAL_V13_KEYS, 'points'])
@@ -466,7 +467,7 @@ function optionalKeysFor(
     if (inputVersion >= 20) return TEXT_OPTIONAL_V20_KEYS
     return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
   }
-  if (type === 'shape') return inputVersion >= 40 ? SHAPE_OPTIONAL_V40_KEYS : inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
+  if (type === 'shape') return inputVersion >= 41 ? SHAPE_OPTIONAL_V41_KEYS : inputVersion >= 40 ? SHAPE_OPTIONAL_V40_KEYS : inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
   if (type === 'qrcode') {
     if (inputVersion >= 30) return QRCODE_OPTIONAL_V30_KEYS
     return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
@@ -870,6 +871,10 @@ function normalizeStrictSceneNode(
       if ('flipX' in value && typeof value.flipX !== 'boolean') return null
       if ('flipY' in value && typeof value.flipY !== 'boolean') return null
     }
+    // The dashed outline is v41-only; older input versions reject it.
+    if (inputVersion >= 41) {
+      if ('strokeDash' in value && !isValidDash(value.strokeDash)) return null
+    }
     const shapeAppearance = cloneStrictAppearance(value, inputVersion)
     if (!shapeAppearance) return null
     return {
@@ -884,6 +889,7 @@ function normalizeStrictSceneNode(
       ...('bubbleTailX' in value ? { bubbleTailX: value.bubbleTailX as number } : {}),
       ...(inputVersion >= 40 && 'flipX' in value ? { flipX: value.flipX as boolean } : {}),
       ...(inputVersion >= 40 && 'flipY' in value ? { flipY: value.flipY as boolean } : {}),
+      ...(inputVersion >= 41 && 'strokeDash' in value ? { strokeDash: value.strokeDash as number } : {}),
       ...shapeAppearance,
     }
   }
@@ -1226,7 +1232,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 40,
+    documentVersion: 41,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1420,6 +1426,11 @@ export function normalizeFreeformDocumentV39(value: unknown): FreeformDocument |
 /** Strictly validates an already-v40 document (v40 adds mirror flips). */
 export function normalizeFreeformDocumentV40(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 40)
+}
+
+/** Strictly validates an already-v41 document (v41 dashes shape outlines). */
+export function normalizeFreeformDocumentV41(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 41)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1686,9 +1697,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v40 object. */
+/** Normalize any supported freeform document version to a fresh v41 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 41) return normalizeFreeformDocumentV41(value)
   if (value.documentVersion === 40) return normalizeFreeformDocumentV40(value)
   if (value.documentVersion === 39) return normalizeFreeformDocumentV39(value)
   if (value.documentVersion === 38) return normalizeFreeformDocumentV38(value)
@@ -1777,7 +1789,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 40,
+    documentVersion: 41,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1810,7 +1822,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 40,
+    documentVersion: 41,
     activeSlideId: document.activeSlideId,
     slides,
   }
