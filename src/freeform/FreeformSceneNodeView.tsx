@@ -5,7 +5,7 @@ import { FramedImage } from './FramedImage'
 import { PlainTextEditable, type TextSelectionRange } from './PlainTextEditable'
 import { isStyledRun, splitParagraphRuns, textRunStyle, type TextRun } from './richText'
 import { paintFallbackColor, shapeFillToStyle, svgGradientOf, textFillToStyle } from './paint'
-import { bubbleClipPath, starClipPath } from './shapeGeometry'
+import { bubbleClipPath, shapeOutlinePath, starClipPath } from './shapeGeometry'
 import { QR_ECL_DEFAULT, QR_QUIET_ZONE_DEFAULT } from './qrCode'
 import { barChartGeometry, lineChartGeometry, radarChartGeometry, ringChartGeometry, type ChartLegendItem } from './charts'
 import { tableGeometry } from './tables'
@@ -74,32 +74,6 @@ interface SceneNodeBranchProps extends FreeformSceneNodeViewProps {
   inheritedHidden: boolean
   selectedKeys: Set<string>
   markerIdPrefix: string
-}
-
-/** A rounded rect with its own radius at each corner, as one SVG path. */
-function dashedRectPath(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radii: { topLeft: number; topRight: number; bottomRight: number; bottomLeft: number },
-): string {
-  const tl = Math.min(radii.topLeft, width / 2, height / 2)
-  const tr = Math.min(radii.topRight, width / 2, height / 2)
-  const br = Math.min(radii.bottomRight, width / 2, height / 2)
-  const bl = Math.min(radii.bottomLeft, width / 2, height / 2)
-  return [
-    `M ${x + tl} ${y}`,
-    `L ${x + width - tr} ${y}`,
-    `A ${tr} ${tr} 0 0 1 ${x + width} ${y + tr}`,
-    `L ${x + width} ${y + height - br}`,
-    `A ${br} ${br} 0 0 1 ${x + width - br} ${y + height}`,
-    `L ${x + bl} ${y + height}`,
-    `A ${bl} ${bl} 0 0 1 ${x} ${y + height - bl}`,
-    `L ${x} ${y + tl}`,
-    `A ${tl} ${tl} 0 0 1 ${x + tl} ${y}`,
-    'Z',
-  ].join(' ')
 }
 
 function SceneLeafContent({
@@ -1024,29 +998,23 @@ function SceneLeafContent({
     : leaf.shape === 'bubble'
       ? bubbleClipPath(leaf.width, leaf.height, leaf.bubbleTailX ?? 0.5)
       : null
-  // Clipped shapes cannot carry a box shadow: it would draw the rectangle.
-  const clippedShape = leaf.shape === 'triangle'
-    || leaf.shape === 'star'
-    || leaf.shape === 'hexagon'
-    || leaf.shape === 'diamond'
-    || leaf.shape === 'pentagon'
-    || leaf.shape === 'heart'
-    || leaf.shape === 'bubble'
-  return (
+  // Clipped shapes cannot carry a box shadow or a CSS border: both would draw
+  // the rectangle. Their outline and shadow follow the clip instead.
+  const clippedShape = leaf.shape !== 'rect' && leaf.shape !== 'ellipse'
+  // The stroke is drawn on the shape's own outline whenever a CSS border
+  // can't draw it: on every clipped shape, and on a dashed rect or ellipse
+  // (CSS dashes can't be sized). A plain rect or ellipse keeps its border.
+  const outlineStroke = clippedShape
+    ? leaf.strokeWidth > 0 || leaf.strokeDash !== undefined
+    : leaf.strokeDash !== undefined
+  const shape = (
     <div
       className={`${presentationOnly ? 'freeform-preview-shape' : 'freeform-shape'} shape-${leaf.shape}`}
       data-testid={presentationOnly ? undefined : leaf.fill.type === 'image' ? 'freeform-shape-image-fill' : 'freeform-shape'}
       style={{
         ...(imageFill ? {} : shapeFillToStyle(leaf.fill)),
         borderColor: leaf.stroke,
-        // Parametric shapes clip their dashed border to the outline; rect and
-        // ellipse draw the exact dash length on an SVG frame instead.
-        ...(leaf.strokeDash !== undefined && (leaf.shape === 'rect' || leaf.shape === 'ellipse')
-          ? { borderWidth: 0 }
-          : {
-              borderWidth: leaf.strokeWidth,
-              ...(leaf.strokeDash !== undefined ? { borderStyle: 'dashed' as const } : {}),
-            }),
+        borderWidth: outlineStroke || clippedShape ? 0 : leaf.strokeWidth,
         ...(leaf.shape === 'rect' && leaf.cornerRadii !== undefined
           ? {
               borderRadius: `${leaf.cornerRadii.topLeft}px ${leaf.cornerRadii.topRight}px `
@@ -1056,73 +1024,9 @@ function SceneLeafContent({
             ? { borderRadius: `${leaf.cornerRadius}px` }
             : {}),
         ...(parametricClipPath ? { clipPath: parametricClipPath } : {}),
-        ...(leaf.shadow
-          ? clippedShape
-            ? { filter: `drop-shadow(${shadowCss(leaf.shadow)})` }
-            : { boxShadow: shadowCss(leaf.shadow) }
-          : {}),
+        ...(leaf.shadow && !clippedShape ? { boxShadow: shadowCss(leaf.shadow) } : {}),
       }}
     >
-      {leaf.strokeDash !== undefined && (leaf.shape === 'rect' || leaf.shape === 'ellipse') && (
-        <svg
-          className="freeform-shape-dash"
-          data-testid="freeform-shape-dash"
-          viewBox={`0 0 ${Math.max(1, leaf.width)} ${Math.max(1, leaf.height)}`}
-          width="100%"
-          height="100%"
-          aria-hidden="true"
-          style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-        >
-          {leaf.shape === 'rect'
-            ? leaf.cornerRadii !== undefined
-              ? (
-                // Per-corner radii need a path; a rect element has one rx only.
-                <path
-                  d={dashedRectPath(
-                    leaf.strokeWidth / 2,
-                    leaf.strokeWidth / 2,
-                    Math.max(1, leaf.width - leaf.strokeWidth),
-                    Math.max(1, leaf.height - leaf.strokeWidth),
-                    {
-                      topLeft: Math.max(0, leaf.cornerRadii.topLeft - leaf.strokeWidth / 2),
-                      topRight: Math.max(0, leaf.cornerRadii.topRight - leaf.strokeWidth / 2),
-                      bottomRight: Math.max(0, leaf.cornerRadii.bottomRight - leaf.strokeWidth / 2),
-                      bottomLeft: Math.max(0, leaf.cornerRadii.bottomLeft - leaf.strokeWidth / 2),
-                    },
-                  )}
-                  fill="none"
-                  stroke={leaf.stroke}
-                  strokeWidth={leaf.strokeWidth}
-                  strokeDasharray={`${leaf.strokeDash} ${leaf.strokeDash}`}
-                />
-              )
-              : (
-                <rect
-                  x={leaf.strokeWidth / 2}
-                  y={leaf.strokeWidth / 2}
-                  width={Math.max(1, leaf.width - leaf.strokeWidth)}
-                  height={Math.max(1, leaf.height - leaf.strokeWidth)}
-                  rx={leaf.cornerRadius !== undefined ? Math.max(0, leaf.cornerRadius - leaf.strokeWidth / 2) : undefined}
-                  fill="none"
-                  stroke={leaf.stroke}
-                  strokeWidth={leaf.strokeWidth}
-                  strokeDasharray={`${leaf.strokeDash} ${leaf.strokeDash}`}
-                />
-              )
-            : (
-              <ellipse
-                cx={leaf.width / 2}
-                cy={leaf.height / 2}
-                rx={Math.max(1, (leaf.width - leaf.strokeWidth) / 2)}
-                ry={Math.max(1, (leaf.height - leaf.strokeWidth) / 2)}
-                fill="none"
-                stroke={leaf.stroke}
-                strokeWidth={leaf.strokeWidth}
-                strokeDasharray={`${leaf.strokeDash} ${leaf.strokeDash}`}
-              />
-            )}
-        </svg>
-      )}
       {imageFill && (
         <FramedImage
           logicalSrc={imageFill.src}
@@ -1137,8 +1041,40 @@ function SceneLeafContent({
           onDecodeReport={presentationOnly ? undefined : onImageDecodeReport}
         />
       )}
+      {outlineStroke && (
+        <svg
+          className="freeform-shape-stroke"
+          data-testid="freeform-shape-stroke"
+          viewBox={`0 0 ${Math.max(1, leaf.width)} ${Math.max(1, leaf.height)}`}
+          width="100%"
+          height="100%"
+          aria-hidden="true"
+          style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}
+        >
+          {/* Twice the width, centred on the outline: the shape's own clip
+              keeps the inner half, so the stroke sits inside the edge the
+              way a CSS border does. */}
+          <path
+            d={shapeOutlinePath(leaf, Math.max(1, leaf.width), Math.max(1, leaf.height))}
+            fill="none"
+            stroke={leaf.stroke}
+            strokeWidth={leaf.strokeWidth * 2}
+            strokeDasharray={leaf.strokeDash !== undefined ? `${leaf.strokeDash} ${leaf.strokeDash}` : undefined}
+          />
+        </svg>
+      )}
     </div>
   )
+  // A clip cuts away a shadow drawn on the clipped element itself, so the
+  // shadow is drawn around it, following the clipped outline.
+  if (clippedShape && leaf.shadow) {
+    return (
+      <div className="freeform-shape-root" style={{ filter: `drop-shadow(${shadowCss(leaf.shadow)})` }}>
+        {shape}
+      </div>
+    )
+  }
+  return shape
 }
 
 function SceneNodeBranch({

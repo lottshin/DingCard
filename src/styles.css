@@ -1881,6 +1881,14 @@ html.theme-anim * {
   border-style: solid;
 }
 
+/* Holds a clipped shape's shadow, which the clip would otherwise cut away. */
+.freeform-shape-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .freeform-framed-image {
   position: relative;
   width: 100%;
@@ -2213,8 +2221,9 @@ html.theme-anim * {
   border-radius: 16px;
 }
 
+/* Half of each side: a stretched ellipse stays an ellipse, not a capsule. */
 .shape-ellipse {
-  border-radius: 999px;
+  border-radius: 50%;
 }
 
 .shape-triangle {

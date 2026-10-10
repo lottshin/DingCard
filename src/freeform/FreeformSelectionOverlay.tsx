@@ -12,7 +12,7 @@ import {
 } from './sceneTransform'
 import type { Matrix2D, SceneBounds } from './sceneTransform'
 import type { FreeformSceneNode, LinePoint, ScenePath } from './types'
-import { cornerHandlePosition, shapeHandlePosition, shapeParamOf, type ShapeParam } from './shapeGeometry'
+import { bubbleHandlePosition, cornerHandlePosition, shapeHandlePosition, shapeParamOf, type ShapeParam } from './shapeGeometry'
 import { tableColumnEdges } from './tables'
 import { t } from '../i18n'
 
@@ -210,6 +210,10 @@ function buildOverlayFrames(
       localBounds.height,
       renderScale,
     )
+  }
+  // The tail dot keeps clear of the bottom-edge resize handle the same way.
+  if (shapeParamPosition && node.type === 'shape' && node.shape === 'bubble') {
+    shapeParamPosition = bubbleHandlePosition(localBounds.width, localBounds.height, node.bubbleTailX ?? 0.5, renderScale)
   }
   const shapeParam = node.type === 'shape' ? shapeParamOf(node.shape) : null
   const shapeParamHandle = shapeParamPosition && shapeParam

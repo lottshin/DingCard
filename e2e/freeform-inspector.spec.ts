@@ -424,7 +424,12 @@ test('inspector appearance controls style leaves end to end', async ({ page }) =
   await expect(appearance.getByLabel('圆角', { exact: true })).toHaveCount(0)
   await appearance.getByTestId('shadow-add').click()
   const triangleView = page.getByTestId('freeform-element').locator('.freeform-shape.shape-triangle')
-  await expect(triangleView).toHaveCSS('filter', /drop-shadow/)
+  // The clip would cut a shadow drawn on the triangle itself away, so the
+  // shadow sits on its holder and follows the clipped outline.
+  const triangleShadow = page.getByTestId('freeform-element').locator('.freeform-shape-root')
+    .filter({ has: page.locator('.shape-triangle') })
+  await expect(triangleShadow).toHaveCSS('filter', /drop-shadow/)
+  await expect(triangleView).toHaveCSS('filter', 'none')
 
   const triangleElement = page.getByTestId('freeform-element').filter({
     has: page.locator('.shape-triangle'),

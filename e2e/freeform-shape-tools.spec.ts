@@ -385,30 +385,33 @@ test('flips a heart left-right and top-bottom from the inspector (v40)', async (
   expect(stored.document.slides[0].nodes[0].flipX).toBeUndefined()
 })
 
-test('dashes a rect outline with the exact length and a heart with CSS dashes (v41)', async ({ page }) => {
+test('dashes a rect outline with the exact length and a heart along its own outline (v41)', async ({ page }) => {
   await openFreeform(page)
   await insertShape(page, '矩形')
-  await expect(page.locator('.freeform-shape.shape-rect')).toBeVisible()
+  const rect = page.locator('.freeform-shape.shape-rect')
+  await expect(rect).toBeVisible()
 
-  // A rect dashed at 18 draws an SVG frame with the exact dasharray.
+  // A rect dashed at 18 strokes its rounded outline with the exact dasharray.
   const dashInput = page.getByLabel('虚线', { exact: true })
   await dashInput.fill('18')
   await dashInput.press('Enter')
-  const dashFrame = page.locator('.freeform-element .freeform-shape-dash')
-  await expect(dashFrame.locator('rect')).toHaveAttribute('stroke-dasharray', '18 18')
+  const rectStroke = rect.locator('.freeform-shape-stroke path')
+  await expect(rectStroke).toHaveAttribute('stroke-dasharray', '18 18')
+  // The outline keeps the rect's default 16px corners.
+  await expect(rectStroke).toHaveAttribute('d', /^M 16 0 /)
   // The clear button restores the solid border.
   await page.getByTestId('shape-dash-clear').click()
-  await expect(dashFrame).toHaveCount(0)
+  await expect(rect.locator('.freeform-shape-stroke')).toHaveCount(0)
 
-  // A heart dashes through the clipped CSS border.
+  // A heart strokes the outline its fill is clipped to, never the box's border.
   await insertShape(page, '心形')
   const heart = page.locator('.freeform-shape.shape-heart')
   await expect(heart).toBeVisible()
   const heartDash = page.getByLabel('虚线', { exact: true })
   await heartDash.fill('12')
   await heartDash.press('Enter')
-  await expect(heart).toHaveCSS('border-style', 'dashed')
-  await expect(page.locator('.freeform-element .freeform-shape-dash')).toHaveCount(0)
+  await expect(heart.locator('.freeform-shape-stroke path')).toHaveAttribute('stroke-dasharray', '12 12')
+  await expect(heart).toHaveCSS('border-top-width', '0px')
 
   // The stored draft carries v41 with the heart's dash.
   await expect(page.getByTestId('editor-save-state')).toHaveText(/已保存/)
