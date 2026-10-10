@@ -1481,3 +1481,56 @@ describe('applyActions', () => {
     const title = result.document.slides[0].nodes.find((node) => node.id === 'title-1')
     expect(title && title.type === 'text' ? title.text : '').toContain('你好，世界')
   })
+
+  test('applies the v42 corner radii through node/update-style', () => {
+    const withRect = seedDocument()
+    withRect.slides[0].nodes.push({
+      id: 'radii-rect',
+      name: '卡片',
+      locked: false,
+      hidden: false,
+      type: 'shape',
+      x: 500,
+      y: 800,
+      width: 480,
+      height: 320,
+      rotation: 0,
+      scale: 1,
+      shape: 'rect',
+      fill: { type: 'solid', color: '#fef3c7' },
+      stroke: '#c2410c',
+      strokeWidth: 2,
+    })
+    const rounded = applyActions(withRect, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['radii-rect'], patch: { cornerRadii: { topLeft: 48, topRight: 0, bottomRight: 24, bottomLeft: 8 } } }],
+      },
+      // A missing corner refuses with the rule.
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['radii-rect'], patch: { cornerRadii: { topLeft: 1 } } }],
+      },
+    ])
+    expect(rounded.ok).toBe(true)
+    if (!rounded.ok) return
+    expect(rounded.changes).toEqual([true, false])
+    expect(rounded.reasons[0]).toBeNull()
+    expect(rounded.reasons[1]).toContain('topLeft')
+    const rect = rounded.document.slides[0].nodes.find((node) => node.id === 'radii-rect') as unknown as Record<string, unknown>
+    expect(rect.cornerRadii).toEqual({ topLeft: 48, topRight: 0, bottomRight: 24, bottomLeft: 8 })
+    // `null` restores the uniform radius.
+    const uniform = applyActions(rounded.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['radii-rect'], patch: { cornerRadii: null } }],
+      },
+    ])
+    expect(uniform.ok).toBe(true)
+    if (!uniform.ok) return
+    const plain = uniform.document.slides[0].nodes.find((node) => node.id === 'radii-rect') as unknown as Record<string, unknown>
+    expect('cornerRadii' in plain).toBe(false)
+  })
