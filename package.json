@@ -11,7 +11,7 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:server": "npm --prefix server test",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/e2e-guard.mjs",
     "test:acceptance": "playwright test --project=acceptance --no-deps e2e/editor-acceptance.spec.ts",
     "test:e2e:headed": "playwright test --headed",
     "test:integration": "playwright test --config playwright.integration.config.ts",
