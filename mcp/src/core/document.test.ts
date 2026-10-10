@@ -1414,3 +1414,56 @@ describe('applyActions', () => {
     expect('flipX' in plain).toBe(false)
     expect(plain.flipY).toBe(true)
   })
+
+  test('applies the v41 shape dash through node/update-style', () => {
+    const withRect = seedDocument()
+    withRect.slides[0].nodes.push({
+      id: 'rect-1',
+      name: '边框',
+      locked: false,
+      hidden: false,
+      type: 'shape',
+      x: 500,
+      y: 800,
+      width: 360,
+      height: 240,
+      rotation: 0,
+      scale: 1,
+      shape: 'rect',
+      fill: { type: 'solid', color: '#fef3c7' },
+      stroke: '#c2410c',
+      strokeWidth: 6,
+    })
+    const dashed = applyActions(withRect, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['rect-1'], patch: { strokeDash: 18 } }],
+      },
+      // Out of range refuses with the rule.
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['rect-1'], patch: { strokeDash: 0 } }],
+      },
+    ])
+    expect(dashed.ok).toBe(true)
+    if (!dashed.ok) return
+    expect(dashed.changes).toEqual([true, false])
+    expect(dashed.reasons[0]).toBeNull()
+    expect(dashed.reasons[1]).toContain('1–500')
+    const rect = dashed.document.slides[0].nodes.find((node) => node.id === 'rect-1') as unknown as Record<string, unknown>
+    expect(rect.strokeDash).toBe(18)
+    // `null` restores the solid line.
+    const solid = applyActions(dashed.document, [
+      {
+        type: 'node/update-style',
+        slideId: 'slide-1',
+        updates: [{ path: ['rect-1'], patch: { strokeDash: null } }],
+      },
+    ])
+    expect(solid.ok).toBe(true)
+    if (!solid.ok) return
+    const plain = solid.document.slides[0].nodes.find((node) => node.id === 'rect-1') as unknown as Record<string, unknown>
+    expect('strokeDash' in plain).toBe(false)
+  })
