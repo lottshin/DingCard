@@ -1473,11 +1473,14 @@ describe('applyActions', () => {
       { type: 'document/find-replace', find: '你好，叮卡', replace: '你好，世界' },
       // An empty find changes nothing.
       { type: 'document/find-replace', find: '', replace: 'x' },
+      // Nor does a word the deck doesn't have — and the reason says so.
+      { type: 'document/find-replace', find: '不存在的词', replace: 'x' },
     ])
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.changes).toEqual([true, false])
+    expect(result.changes).toEqual([true, false, false])
     expect(result.reasons[1]).toContain('find 为空')
+    expect(result.reasons[2]).toBe('没有找到「不存在的词」')
     const title = result.document.slides[0].nodes.find((node) => node.id === 'title-1')
     expect(title && title.type === 'text' ? title.text : '').toContain('你好，世界')
   })

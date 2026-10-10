@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createChartElement,
   createFreeformDocument,
   createImageElement,
   createLineElement,
   createProgressElement,
+  createTableElement,
+  createTimelineElement,
   describeFreeformActionRejection,
   createPathElement,
   createShapeElement,
@@ -1837,7 +1840,7 @@ describe('document/find-replace', () => {
     expect(replace(document, '', 'x')).toBe(document)
   })
 
-  it('remaps spans the way typing does: inside the edit they drop, after it they shift', () => {
+  it('keeps the style of the words it replaces, and every other character\'s own', () => {
     const nodes = [{
       ...createTextElement(createSlide()),
       id: 'text-0',
@@ -1853,21 +1856,66 @@ describe('document/find-replace', () => {
     const grownNode = grown.slides[0].nodes[0]
     expect(grownNode.type === 'text' && grownNode.text).toBe('冰滴咖啡最好喝')
     expect(grownNode.type === 'text' && grownNode.spans).toEqual([{ start: 4, end: 7, bold: true }])
-    // A span over the replaced words drops, as a plain edit would drop it.
-    const covered = [{
+    // A highlighted word stays highlighted under its new name — twice over,
+    // with the bold words between them untouched.
+    const marked = [{
       ...createTextElement(createSlide()),
       id: 'text-0',
-      text: '拿铁最好喝',
-      spans: [{ start: 0, end: 2, bold: true }],
+      text: '拿铁超好喝，拿铁不贵',
+      spans: [{ start: 0, end: 2, highlight: '#fde047' }, { start: 2, end: 5, bold: true }, { start: 6, end: 8, highlight: '#fde047' }],
     } as unknown as FreeformSceneNode]
-    const coveredDocument = {
+    const markedDocument = {
       ...createFreeformDocument(),
-      slides: [{ ...createFreeformDocument().slides[0], nodes: covered }],
+      slides: [{ ...createFreeformDocument().slides[0], nodes: marked }],
     }
-    const replaced = freeformReducer(coveredDocument, { type: 'document/find-replace', find: '拿铁', replace: '手冲' })
+    const replaced = freeformReducer(markedDocument, { type: 'document/find-replace', find: '拿铁', replace: '美式咖啡' })
     const node = replaced.slides[0].nodes[0]
-    expect(node.type === 'text' && node.text).toBe('手冲最好喝')
-    expect(node.type === 'text' && node.spans).toBeUndefined()
+    expect(node.type === 'text' && node.text).toBe('美式咖啡超好喝，美式咖啡不贵')
+    expect(node.type === 'text' && node.spans).toEqual([
+      { start: 0, end: 4, highlight: '#fde047' },
+      { start: 4, end: 7, bold: true },
+      { start: 8, end: 12, highlight: '#fde047' },
+    ])
+  })
+
+  it('reaches words in groups, tables, timelines, charts and progress names', () => {
+    const slide = createSlide()
+    const grouped = { ...createTextElement(slide), id: 'in-group', text: '组里的拿铁' }
+    const nodes = [
+      { id: 'group-1', name: '组', locked: false, hidden: false, type: 'group', x: 0, y: 0, rotation: 0, scale: 1, children: [grouped] },
+      { ...createTableElement(slide), id: 'table-1', rows: 2, cols: 2, cells: ['饮品', '价格', '拿铁', '22'] },
+      { ...createTimelineElement(slide), id: 'timeline-1', items: [{ label: '拿铁节', text: '上新拿铁' }, { text: '收尾' }] },
+      { ...createChartElement(slide), id: 'chart-1', labels: ['拿铁', '美式', '摩卡', '冷萃'], series: [{ name: '拿铁销量', values: [1, 2, 3, 4], color: '#1d4ed8' }] },
+      { ...createProgressElement(slide), id: 'progress-1', label: '拿铁目标' },
+    ] as unknown as FreeformSceneNode[]
+    const base = createFreeformDocument()
+    const document = { ...base, slides: [{ ...base.slides[0], nodes }] }
+    expect(normalizeFreeformDocument(document)).not.toBeNull()
+    const replaced = freeformReducer(document, { type: 'document/find-replace', find: '拿铁', replace: '燕麦拿铁' })
+    const [group, table, timeline, chart, progress] = replaced.slides[0].nodes
+    expect(group.type === 'group' && group.children[0].type === 'text' && group.children[0].text).toBe('组里的燕麦拿铁')
+    expect(table.type === 'table' && table.cells).toEqual(['饮品', '价格', '燕麦拿铁', '22'])
+    expect(timeline.type === 'timeline' && timeline.items).toEqual([{ label: '燕麦拿铁节', text: '上新燕麦拿铁' }, { text: '收尾' }])
+    expect(chart.type === 'chart' && chart.labels[0]).toBe('燕麦拿铁')
+    expect(chart.type === 'chart' && chart.series[0].name).toBe('燕麦拿铁销量')
+    expect(progress.type === 'progress' && progress.label).toBe('燕麦拿铁目标')
+    // A field the replacement would overfill stays as it was.
+    const long = freeformReducer(document, { type: 'document/find-replace', find: '拿铁', replace: '十二个字的超长饮品名字啊' })
+    const [, , longTimeline] = long.slides[0].nodes
+    expect(longTimeline.type === 'timeline' && longTimeline.items[0].label).toBe('拿铁节')
+    expect(longTimeline.type === 'timeline' && longTimeline.items[0].text).toBe('上新十二个字的超长饮品名字啊')
+    expect(normalizeFreeformDocument(long)).not.toBeNull()
+  })
+
+  it('says why nothing changed', () => {
+    const document = deckWithText(['咖啡节来了'])
+    expect(describeFreeformActionRejection(document, { type: 'document/find-replace', find: '奶茶', replace: '茶' })).toBe('没有找到「奶茶」')
+    const cells = {
+      ...createFreeformDocument(),
+      slides: [{ ...createFreeformDocument().slides[0], nodes: [{ ...createTableElement(createSlide()), rows: 2, cols: 1, cells: ['拿铁', '22'] } as unknown as FreeformSceneNode] }],
+    }
+    expect(describeFreeformActionRejection(cells, { type: 'document/find-replace', find: '拿铁', replace: '一'.repeat(30) }))
+      .toContain('超出字数上限')
   })
 })
 

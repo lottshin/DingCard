@@ -1,3 +1,4 @@
+import { findReplaceDocument } from './findReplace'
 import { randomId } from '../uid'
 import {
   MAX_FREEFORM_SLIDES,
@@ -1727,6 +1728,11 @@ export function describeFreeformActionRejection(
       && (typeof action.slideId !== 'string' || !document.slides.some((slide) => slide.id === action.slideId))) {
       return `找不到这一页：${String(action.slideId)}`
     }
+    const result = findReplaceDocument(document, action.find, action.replace, action.slideId as string | undefined)
+    if (result.replaced === 0 && result.skipped === 0) return `没有找到「${action.find}」`
+    if (result.replaced === 0) {
+      return `找到 ${result.skipped} 处，但换完会超出字数上限（表格每格 24 字、时间线标签 12 字和内容 48 字、图表类目 24 字、系列名和进度名 12 字），一处也没换`
+    }
     return null
   }
   if (
@@ -2196,29 +2202,13 @@ export function reduceFreeformDocument(
       case 'document/restyle':
         return restyleDocument(document, action)
       case 'document/find-replace': {
+        // Every word a reader sees, inside groups and data drawings too;
+        // replaced words keep their style (findReplace.ts).
         const find = isRecord(action) && typeof action.find === 'string' ? action.find : ''
         if (find === '') return document
         const replace = isRecord(action) && typeof action.replace === 'string' ? action.replace : ''
         const only = isRecord(action) && typeof action.slideId === 'string' ? action.slideId : null
-        let changed = false
-        const slides = document.slides.map((slide) => {
-          if (only !== null && slide.id !== only) return slide
-          let slideChanged = false
-          const nodes = slide.nodes.map((leaf) => {
-            if (leaf.type !== 'text' || !leaf.text.includes(find)) return leaf
-            const text = leaf.text.split(find).join(replace)
-            if (text === leaf.text) return leaf
-            slideChanged = true
-            // The spans follow the words they colour, exactly as typing does.
-            const remapped = remapRichTextSpans(leaf.spans, leaf.text, text)
-            const { spans: _previousSpans, ...rest } = leaf
-            return remapped ? { ...rest, text, spans: remapped } : { ...rest, text }
-          })
-          if (!slideChanged) return slide
-          changed = true
-          return { ...slide, nodes }
-        })
-        return changed ? { ...document, slides } : document
+        return findReplaceDocument(document, find, replace, only).document
       }
       case 'slide/update': {
         if (!isRecord(action.patch) || !hasOnlyKeys(action.patch, new Set(['name', 'background']))) {

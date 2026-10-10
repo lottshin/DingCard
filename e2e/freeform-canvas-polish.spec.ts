@@ -2060,10 +2060,15 @@ test('finds and replaces text across the whole deck with one undo', async ({ pag
   await expect(dialog).toBeVisible()
   // Empty find keeps the button disabled.
   await expect(page.getByTestId('find-replace-apply')).toBeDisabled()
+  await page.getByTestId('find-input').fill('奶茶')
+  await expect(page.getByTestId('find-replace-result')).toHaveText('没有找到要替换的文字')
+  await expect(page.getByTestId('find-replace-apply')).toBeDisabled()
+  // The count is live: one hit on each page before anything changes.
   await page.getByTestId('find-input').fill('咖啡')
+  await expect(page.getByTestId('find-replace-result')).toHaveText('找到 2 处')
   await page.getByTestId('replace-input').fill('手冲')
   await page.getByTestId('find-replace-apply').click()
-  await expect(page.getByTestId('find-replace-result')).toHaveText('已替换')
+  await expect(page.getByTestId('find-replace-result')).toHaveText('已替换 2 处')
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
 

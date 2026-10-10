@@ -101,6 +101,7 @@ import { BLEND_MODES, LINE_POINTS_MIN, sceneFilterEquals } from './appearance'
 import { FILTER_PRESETS, FILTER_PRESET_SWATCH, filterPresetCss } from './filterPresets'
 import { FreeformExportMenu } from './FreeformExportMenu'
 import { FreeformFindReplaceDialog } from './FreeformFindReplaceDialog'
+import { countFindMatches, findReplaceDocument } from './findReplace'
 import { FreeformShareDialog } from './FreeformShareDialog'
 import { DraftHistoryDialog } from '../app/DraftHistoryDialog'
 import { FreeformContextToolbar, type ContextToolbarSubject } from './FreeformContextToolbar'
@@ -6852,14 +6853,19 @@ export function FreeformWorkspace({
         <FreeformFindReplaceDialog
           slideCount={doc.slides.length}
           activeSlideName={activeSlide.name}
+          countMatches={(find, scope) => countFindMatches(doc, find, scope === 'slide' ? activeSlide.id : null)}
           onApply={(find, replace, scope) => {
-            const changed = applyAction({
-              type: 'document/find-replace',
-              find,
-              replace,
-              ...(scope === 'slide' ? { slideId: activeSlide.id } : {}),
-            })
-            return changed
+            // The same walk the reducer takes, for the report; the action makes the change.
+            const outcome = findReplaceDocument(doc, find, replace, scope === 'slide' ? activeSlide.id : null)
+            if (outcome.replaced > 0) {
+              applyAction({
+                type: 'document/find-replace',
+                find,
+                replace,
+                ...(scope === 'slide' ? { slideId: activeSlide.id } : {}),
+              })
+            }
+            return { replaced: outcome.replaced, skipped: outcome.skipped }
           }}
           onClose={() => setFindReplaceOpen(false)}
         />

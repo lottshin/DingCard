@@ -1,30 +1,36 @@
 // Find-and-replace across the whole deck (or the active page): two inputs, a
-// scope switch and one button. The count of hits is honest — it comes from
-// the same walk the reducer does — and applying is one undo step.
+// scope switch and one button. The count of hits is live and honest — it
+// comes from the same walk the reducer does (findReplace.ts) — and applying
+// is one undo step.
 
 import { useEffect, useRef, useState } from 'react'
 import { t } from '../i18n'
 
+export type FindReplaceScope = 'deck' | 'slide'
+
 export interface FreeformFindReplaceDialogProps {
   slideCount: number
   activeSlideName: string
-  /** Returns whether anything changed (the reducer's own word). */
-  onApply: (find: string, replace: string, scope: 'deck' | 'slide') => boolean
+  /** How many times `find` shows within the scope. */
+  countMatches: (find: string, scope: FindReplaceScope) => number
+  /** Replace within the scope; how many were replaced and how many had no room. */
+  onApply: (find: string, replace: string, scope: FindReplaceScope) => { replaced: number; skipped: number }
   onClose: () => void
 }
 
 export function FreeformFindReplaceDialog({
   slideCount,
   activeSlideName,
+  countMatches,
   onApply,
   onClose,
 }: FreeformFindReplaceDialogProps) {
   const [find, setFind] = useState('')
   const [replace, setReplace] = useState('')
-  const [scope, setScope] = useState<'deck' | 'slide'>('deck')
-  const [hits, setHits] = useState<number | null>(null)
-  const [applied, setApplied] = useState(false)
+  const [scope, setScope] = useState<FindReplaceScope>('deck')
+  const [result, setResult] = useState<{ replaced: number; skipped: number } | null>(null)
   const findRef = useRef<HTMLInputElement>(null)
+  const hits = find === '' ? null : countMatches(find, scope)
 
   useEffect(() => {
     findRef.current?.focus()
@@ -38,21 +44,14 @@ export function FreeformFindReplaceDialog({
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // The same count the reducer walks: how many text leaves carry the find.
+  // A new search clears the last replacement's report.
   useEffect(() => {
-    if (find === '') {
-      setHits(null)
-      return
-    }
-    setHits(null)
-    setApplied(false)
+    setResult(null)
   }, [find, replace, scope])
 
   const apply = () => {
-    if (find === '') return
-    const changed = onApply(find, replace, scope)
-    setApplied(changed)
-    setHits(changed ? null : 0)
+    if (find === '' || !hits) return
+    setResult(onApply(find, replace, scope))
   }
 
   return (
@@ -116,8 +115,18 @@ export function FreeformFindReplaceDialog({
             {t('仅当前页')}{slideCount > 1 ? `（${activeSlideName}）` : ''}
           </button>
         </div>
-        {applied && <p className="find-replace-result" data-testid="find-replace-result">{t('已替换')}</p>}
-        {hits === 0 && <p className="find-replace-result" data-testid="find-replace-result">{t('没有找到要替换的文字')}</p>}
+        <p className="find-replace-result" data-testid="find-replace-result" aria-live="polite">
+          {result
+            ? [
+                t('已替换 {n} 处', { n: result.replaced }),
+                ...(result.skipped > 0 ? [t('{n} 处换完超出字数上限，没有替换', { n: result.skipped })] : []),
+              ].join(' · ')
+            : hits === null
+              ? ''
+              : hits === 0
+                ? t('没有找到要替换的文字')
+                : t('找到 {n} 处', { n: hits })}
+        </p>
         <div className="modal-actions">
           <button type="button" className="ghost" onClick={onClose}>
             {t('关闭')}
@@ -126,7 +135,7 @@ export function FreeformFindReplaceDialog({
             type="button"
             className="primary"
             data-testid="find-replace-apply"
-            disabled={find === ''}
+            disabled={!hits}
             onClick={apply}
           >
             {t('全部替换')}

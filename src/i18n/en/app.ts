@@ -493,7 +493,9 @@ export const app: Record<string, Translation> = {
   '范围': 'Scope',
   '整套作品': 'Whole deck',
   '仅当前页': 'Current page only',
-  '已替换': 'Replaced',
+  '已替换 {n} 处': plural('Replaced {n} match', 'Replaced {n} matches'),
+  '找到 {n} 处': plural('{n} match', '{n} matches'),
+  '{n} 处换完超出字数上限，没有替换': plural('{n} match would overflow its field and was left as is', '{n} matches would overflow their fields and were left as is'),
   '没有找到要替换的文字': 'No matching text found',
   '全部替换': 'Replace all',
 }

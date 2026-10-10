@@ -130,7 +130,7 @@ const CONTENT_SCHEMA_HINT = `content：{ title: 封面标题, subtitle?: 封面�
 
 
 const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI 完全同一归约器）。常用动作：
-- { type: 'document/find-replace', find, replace, slideId? } 整套（或 slideId 指定的这一页）所有文字里，把 find 的每一次出现都换成 replace，富文本片段跟着文字走（和手动编辑同一套重排规则），一步撤销。find 为空串不改任何内容
+- { type: 'document/find-replace', find, replace, slideId? } 整套（或 slideId 指定的这一页）读者看得到的所有文字里——文字框（组里的也算）、表格格子、时间线的时间和内容、图表类目和系列名、进度名——把 find 的每一次出现都换成 replace，换上的字沿用被换掉那几个字的样式（加粗、颜色、高亮等），其余字不变，一步撤销。换完会超出字数上限的格子（表格每格 24 字等）原样保留；一处都没换时 reasons 里写原因。find 为空串不改任何内容
 - { type: 'slide/add-after-active', slideId? } 在当前页后新增空白页
 - { type: 'slide/duplicate', slideId, duplicateSlideId? } 复制页
 - { type: 'slide/insert', slides: FreeformSlide[], afterSlideId?, replaceSlideId? } 把整页（含 id、name、width、height、background、nodes）插在 afterSlideId 后面（都不给就是当前页后面），或换掉 replaceSlideId 那一页；页 id 不能和文档里的重复，第一页成为当前页。加模板的页用 add_template_pages 更省事
