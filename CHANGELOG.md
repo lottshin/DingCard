@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-10-10
+
+### Added
+
+- 整套查找替换：工具栏新增「查找替换」按钮，对话框里填查找词和替换词、选「整套作品」或「仅当前页」，一键替换所有出现；富文本片段跟着文字走（和手动编辑同一套重排规则），整套替换是一步撤销。文档层面走 `document/find-replace` 动作（`find` / `replace` / 可选 `slideId`），MCP `apply_actions` 同步支持。
+- 本地 e2e 闸门（面向开发流程）：`npm run test:e2e` 现在经过负载与范围检查——本地只放行带 `-g` 的单条用例（自动限 2 个 worker、负载 ≥ 10 拒绝），全量套件只在 CI 的 browser job 显式放行；每次决定记入审计日志 `scripts/.e2e-audit.log`。仓库新增 `AGENTS.md` 常设指令。
+
+### Changed
+
+- 前端与 MCP 版本升至 `0.52.0`；服务端仍为 `0.3.0`。`0.52.0` 镜像随 `v0.52.0` 标签发布；README、Compose 和部署文档固定已发布的 GHCR `0.51.0` 镜像。
+- LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
+
 ## [0.51.0] - 2026-10-10
 
 ### Added
