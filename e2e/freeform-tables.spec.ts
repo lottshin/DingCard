@@ -47,7 +47,7 @@ test('inserts a table that renders its header and cells and saves', async ({ pag
     return draft ?? null
   })
   expect(stored).not.toBeNull()
-  expect(stored.document.documentVersion).toBe(39)
+  expect(stored.document.documentVersion).toBe(40)
   expect(stored.document.slides[0].nodes[0].type).toBe('table')
 
   // The table survives a reload with all its cells.

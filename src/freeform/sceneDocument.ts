@@ -112,7 +112,7 @@ interface MigratedSlideCandidate {
   slide: Omit<FreeformSlide, 'id'>
 }
 
-type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39
+type StrictDocumentVersion = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40
 
 const DOCUMENT_KEYS = new Set(['documentVersion', 'slides', 'activeSlideId'])
 const SLIDE_KEYS = new Set(['id', 'name', 'width', 'height', 'background', 'nodes'])
@@ -399,10 +399,12 @@ const TEXT_OPTIONAL_V9_KEYS = new Set([
 ])
 const IMAGE_OPTIONAL_V28_KEYS = new Set([...BASE_OPTIONAL_V9_KEYS, 'cornerRadius'])
 const IMAGE_OPTIONAL_V29_KEYS = new Set([...IMAGE_OPTIONAL_V28_KEYS, 'stroke', 'strokeWidth'])
+const IMAGE_OPTIONAL_V40_KEYS = new Set([...IMAGE_OPTIONAL_V29_KEYS, 'flipX', 'flipY'])
 const TEXT_OPTIONAL_V17_KEYS = new Set([...TEXT_OPTIONAL_V9_KEYS, 'effect'])
 const TEXT_OPTIONAL_V20_KEYS = new Set([...TEXT_OPTIONAL_V17_KEYS, 'verticalAlign', 'paragraphSpacing', 'list'])
 const SHAPE_OPTIONAL_V9_KEYS = SHAPE_OPTIONAL_V8_KEYS
 const SHAPE_OPTIONAL_V21_KEYS = new Set([...SHAPE_OPTIONAL_V9_KEYS, 'starInnerRatio', 'bubbleTailX'])
+const SHAPE_OPTIONAL_V40_KEYS = new Set([...SHAPE_OPTIONAL_V21_KEYS, 'flipX', 'flipY'])
 const LINE_OPTIONAL_V9_KEYS = LINE_OPTIONAL_V8_KEYS
 const LINE_OPTIONAL_V13_KEYS = new Set([...LINE_OPTIONAL_V9_KEYS, 'startCap', 'endCap'])
 const LINE_OPTIONAL_V14_KEYS = new Set([...LINE_OPTIONAL_V13_KEYS, 'points'])
@@ -418,6 +420,7 @@ const TABLE_OPTIONAL_V35_KEYS = new Set([...TABLE_OPTIONAL_V34_KEYS, 'ink', 'hea
 const PATH_OPTIONAL_V15_KEYS = new Set([
   'opacity', 'shadow', 'filter', 'blendMode', 'dash', 'cap', 'join', 'fillRule',
 ])
+const PATH_OPTIONAL_V40_KEYS = new Set([...PATH_OPTIONAL_V15_KEYS, 'flipX', 'flipY'])
 
 /** Exact required keys plus an optional-key whitelist (null = exact only). */
 function hasKeysWithOptionals(
@@ -463,7 +466,7 @@ function optionalKeysFor(
     if (inputVersion >= 20) return TEXT_OPTIONAL_V20_KEYS
     return inputVersion >= 17 ? TEXT_OPTIONAL_V17_KEYS : TEXT_OPTIONAL_V9_KEYS
   }
-  if (type === 'shape') return inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
+  if (type === 'shape') return inputVersion >= 40 ? SHAPE_OPTIONAL_V40_KEYS : inputVersion >= 21 ? SHAPE_OPTIONAL_V21_KEYS : SHAPE_OPTIONAL_V9_KEYS
   if (type === 'qrcode') {
     if (inputVersion >= 30) return QRCODE_OPTIONAL_V30_KEYS
     return inputVersion >= 25 ? QRCODE_OPTIONAL_V25_KEYS : QRCODE_OPTIONAL_V23_KEYS
@@ -482,10 +485,11 @@ function optionalKeysFor(
     return LINE_OPTIONAL_V9_KEYS
   }
   if (type === 'image') {
+    if (inputVersion >= 40) return IMAGE_OPTIONAL_V40_KEYS
     if (inputVersion >= 29) return IMAGE_OPTIONAL_V29_KEYS
     return inputVersion >= 28 ? IMAGE_OPTIONAL_V28_KEYS : BASE_OPTIONAL_V9_KEYS
   }
-  if (type === 'path') return PATH_OPTIONAL_V15_KEYS
+  if (type === 'path') return inputVersion >= 40 ? PATH_OPTIONAL_V40_KEYS : PATH_OPTIONAL_V15_KEYS
   return null
 }
 
@@ -814,6 +818,11 @@ function normalizeStrictSceneNode(
       if ('stroke' in value && !isHexColor(value.stroke)) return null
       if ('strokeWidth' in value && !isValidTextStrokeWidth(value.strokeWidth)) return null
     }
+    // Mirror flips are v40-only; older input versions reject them.
+    if (inputVersion >= 40) {
+      if ('flipX' in value && typeof value.flipX !== 'boolean') return null
+      if ('flipY' in value && typeof value.flipY !== 'boolean') return null
+    }
     const imageAppearance = cloneStrictAppearance(value, inputVersion)
     if (!imageAppearance) return null
     return {
@@ -828,6 +837,8 @@ function normalizeStrictSceneNode(
       ...('cornerRadius' in value ? { cornerRadius: value.cornerRadius as number } : {}),
       ...('stroke' in value ? { stroke: value.stroke as string } : {}),
       ...('strokeWidth' in value ? { strokeWidth: value.strokeWidth as number } : {}),
+      ...(inputVersion >= 40 && 'flipX' in value ? { flipX: value.flipX as boolean } : {}),
+      ...(inputVersion >= 40 && 'flipY' in value ? { flipY: value.flipY as boolean } : {}),
       ...imageAppearance,
     }
   }
@@ -854,6 +865,11 @@ function normalizeStrictSceneNode(
     } else if ('starInnerRatio' in value || 'bubbleTailX' in value) {
       return null
     }
+    // Mirror flips are v40-only; older input versions reject them.
+    if (inputVersion >= 40) {
+      if ('flipX' in value && typeof value.flipX !== 'boolean') return null
+      if ('flipY' in value && typeof value.flipY !== 'boolean') return null
+    }
     const shapeAppearance = cloneStrictAppearance(value, inputVersion)
     if (!shapeAppearance) return null
     return {
@@ -866,6 +882,8 @@ function normalizeStrictSceneNode(
       ...('cornerRadius' in value ? { cornerRadius: value.cornerRadius as number } : {}),
       ...('starInnerRatio' in value ? { starInnerRatio: value.starInnerRatio as number } : {}),
       ...('bubbleTailX' in value ? { bubbleTailX: value.bubbleTailX as number } : {}),
+      ...(inputVersion >= 40 && 'flipX' in value ? { flipX: value.flipX as boolean } : {}),
+      ...(inputVersion >= 40 && 'flipY' in value ? { flipY: value.flipY as boolean } : {}),
       ...shapeAppearance,
     }
   }
@@ -927,6 +945,11 @@ function normalizeStrictSceneNode(
     if ('cap' in value && !isValidLineCap(value.cap)) return null
     if ('join' in value && !isValidLineJoin(value.join)) return null
     if ('fillRule' in value && !isValidFillRule(value.fillRule)) return null
+    // Mirror flips are v40-only; older input versions reject them.
+    if (inputVersion >= 40) {
+      if ('flipX' in value && typeof value.flipX !== 'boolean') return null
+      if ('flipY' in value && typeof value.flipY !== 'boolean') return null
+    }
     const pathAppearance = cloneStrictAppearance(value, inputVersion)
     if (!pathAppearance) return null
     return {
@@ -941,6 +964,8 @@ function normalizeStrictSceneNode(
       ...('cap' in value ? { cap: value.cap as 'round' | 'butt' | 'square' } : {}),
       ...('join' in value ? { join: value.join as 'round' | 'miter' | 'bevel' } : {}),
       ...('fillRule' in value ? { fillRule: value.fillRule as 'nonzero' | 'evenodd' } : {}),
+      ...(inputVersion >= 40 && 'flipX' in value ? { flipX: value.flipX as boolean } : {}),
+      ...(inputVersion >= 40 && 'flipY' in value ? { flipY: value.flipY as boolean } : {}),
       ...pathAppearance,
     }
   }
@@ -1201,7 +1226,7 @@ function normalizeStrictDocument(
 
   if (!slideIds.has(value.activeSlideId)) return null
   return {
-    documentVersion: 39,
+    documentVersion: 40,
     slides,
     activeSlideId: value.activeSlideId,
   }
@@ -1390,6 +1415,11 @@ export function normalizeFreeformDocumentV38(value: unknown): FreeformDocument |
 /** Strictly validates an already-v39 document (v39 names the goal and tints the track). */
 export function normalizeFreeformDocumentV39(value: unknown): FreeformDocument | null {
   return normalizeStrictDocument(value, 39)
+}
+
+/** Strictly validates an already-v40 document (v40 adds mirror flips). */
+export function normalizeFreeformDocumentV40(value: unknown): FreeformDocument | null {
+  return normalizeStrictDocument(value, 40)
 }
 
 function cloneLegacyBackground(value: unknown): SlideBackground {
@@ -1656,9 +1686,10 @@ export function migrateLegacyFreeformDocumentToV9(value: unknown): FreeformDocum
   return normalizeFreeformDocumentV9(candidate)
 }
 
-/** Normalize any supported freeform document version to a fresh v39 object. */
+/** Normalize any supported freeform document version to a fresh v40 object. */
 export function normalizeFreeformDocument(value: unknown): FreeformDocument | null {
   if (!isRecord(value)) return null
+  if (value.documentVersion === 40) return normalizeFreeformDocumentV40(value)
   if (value.documentVersion === 39) return normalizeFreeformDocumentV39(value)
   if (value.documentVersion === 38) return normalizeFreeformDocumentV38(value)
   if (value.documentVersion === 37) return normalizeFreeformDocumentV37(value)
@@ -1746,7 +1777,7 @@ export function mapFreeformDocumentLeaves(
   mapper: SceneLeafMapper,
 ): FreeformDocument {
   return {
-    documentVersion: 39,
+    documentVersion: 40,
     activeSlideId: document.activeSlideId,
     slides: document.slides.map((slide) => ({
       id: slide.id,
@@ -1779,7 +1810,7 @@ export async function mapFreeformDocumentLeavesAsync(
   })))
 
   return {
-    documentVersion: 39,
+    documentVersion: 40,
     activeSlideId: document.activeSlideId,
     slides,
   }

@@ -1,5 +1,5 @@
 /** The documentVersion a fresh freeform document carries; older versions migrate to it. */
-export const FREEFORM_DOCUMENT_VERSION = 39
+export const FREEFORM_DOCUMENT_VERSION = 40
 
 export interface FreeformDocument {
   documentVersion: typeof FREEFORM_DOCUMENT_VERSION
@@ -244,6 +244,10 @@ export interface FreeformImageElement extends FreeformElementBase {
   stroke?: string
   /** Frame thickness in px; the frame shows when both colour and width are set (v29). */
   strokeWidth?: number
+  /** Mirror the picture left-right (v40). */
+  flipX?: boolean
+  /** Mirror the picture top-bottom (v40). */
+  flipY?: boolean
 }
 
 export interface FreeformShapeElement extends FreeformElementBase {
@@ -258,6 +262,10 @@ export interface FreeformShapeElement extends FreeformElementBase {
   starInnerRatio?: number
   /** Speech-bubble tail position along the bottom edge, 0.05–0.95 (v21). */
   bubbleTailX?: number
+  /** Mirror the shape left-right (v40). */
+  flipX?: boolean
+  /** Mirror the shape top-bottom (v40). */
+  flipY?: boolean
 }
 
 /** One endpoint decoration on a line; 'arrow' and 'dot' draw at the endpoint. */
@@ -324,6 +332,10 @@ export interface FreeformPathElement extends FreeformElementBase {
   join?: 'round' | 'miter' | 'bevel'
   /** How overlapping subpaths fill; absent means nonzero. */
   fillRule?: 'nonzero' | 'evenodd'
+  /** Mirror the drawing left-right (v40). */
+  flipX?: boolean
+  /** Mirror the drawing top-bottom (v40). */
+  flipY?: boolean
 }
 
 /** A QR code's error correction level (v22); absent means M. */
@@ -635,6 +647,10 @@ export interface FreeformNodeGeometryPatch {
   height?: number
   rotation?: number
   scale?: number
+  /** Mirror the element left-right; `false` restores it (v40, image / shape / path). */
+  flipX?: boolean
+  /** Mirror the element top-bottom; `false` restores it (v40, image / shape / path). */
+  flipY?: boolean
 }
 
 export interface FreeformImageCropPatch {

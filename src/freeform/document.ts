@@ -160,7 +160,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 39,
+    documentVersion: 40,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -639,7 +639,7 @@ const STYLE_KEYS = new Set([
   'lineKind',
   'points',
 ])
-const GEOMETRY_KEYS = new Set(['x', 'y', 'width', 'height', 'rotation', 'scale'])
+const GEOMETRY_KEYS = new Set(['x', 'y', 'width', 'height', 'rotation', 'scale', 'flipX', 'flipY'])
 const IMAGE_CROP_ACTION_KEYS = new Set(['type', 'slideId', 'path', 'patch'])
 const IMAGE_CROP_PATCH_KEYS = new Set(['x', 'y', 'width', 'height', 'framing'])
 
@@ -1539,7 +1539,20 @@ function applyGeometryPatch(
   if (node.type === 'group' && keys.some((key) => key === 'width' || key === 'height')) {
     return { ok: false, node, reason: '组没有自己的 width / height（由子节点撑开）' }
   }
-  const values = Object.values(record)
+  // Mirror flips are v40 and only exist on image / shape / path; `false` clears.
+  const flippable = node.type === 'image' || node.type === 'shape' || node.type === 'path'
+  for (const key of ['flipX', 'flipY'] as const) {
+    if (!(key in record)) continue
+    if (!flippable) {
+      return { ok: false, node, reason: `flipX / flipY 只用于 image / shape / path（${node.type} 不能翻转）` }
+    }
+    if (typeof record[key] !== 'boolean') {
+      return { ok: false, node, reason: `${key} 必须是 true / false（true 翻转，false 恢复）` }
+    }
+  }
+  const values = keys
+    .filter((key) => key !== 'flipX' && key !== 'flipY')
+    .map((key) => record[key])
   if (values.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
     return { ok: false, node, reason: '几何值必须都是有限数字' }
   }
@@ -1554,6 +1567,12 @@ function applyGeometryPatch(
       return { ok: false, node, reason: 'width 和 height 必须都大于 0' }
     }
   }
+  // Set or clear the mirrors: `true` keeps the flag, `false` drops it.
+  const flipOf = (key: 'flipX' | 'flipY') => (
+    key in record
+      ? (record[key] ? { [key]: true as const } : { [key]: undefined })
+      : {}
+  )
   const next = {
     ...node,
     ...('x' in patch ? { x: patch.x as number } : {}),
@@ -1562,7 +1581,13 @@ function applyGeometryPatch(
     ...('scale' in patch ? { scale: patch.scale as number } : {}),
     ...(node.type !== 'group' && 'width' in patch ? { width: patch.width as number } : {}),
     ...(node.type !== 'group' && 'height' in patch ? { height: patch.height as number } : {}),
+    ...flipOf('flipX'),
+    ...flipOf('flipY'),
   } as FreeformSceneNode
+  if (flippable) {
+    if ('flipX' in record && !record.flipX) delete (next as Partial<Record<'flipX' | 'flipY', boolean>>).flipX
+    if ('flipY' in record && !record.flipY) delete (next as Partial<Record<'flipX' | 'flipY', boolean>>).flipY
+  }
   // Resizing a polyline stretches its vertices with the box (Figma semantics);
   // a vertex list that no longer fits the new box rejects the whole patch.
   if (

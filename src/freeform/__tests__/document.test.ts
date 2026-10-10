@@ -75,7 +75,7 @@ describe('freeform document', () => {
   it('creates v9 documents and strict leaves with independent image framing', () => {
     const doc = createFreeformDocument()
 
-    expect(doc.documentVersion).toBe(39)
+    expect(doc.documentVersion).toBe(40)
     expect(doc.slides[0].nodes).toEqual([])
     expect(doc.slides[0].background).toEqual({ type: 'solid', color: '#ffffff' })
 
@@ -1722,5 +1722,55 @@ describe('describeFreeformActionRejection', () => {
       slideId,
       updates: [{ path: ['progress-1'], patch: { value: 10 } }, { path: ['progress-1'], patch: { value: 20 } }],
     })).toContain('重复的 path')
+  })
+})
+
+describe('element flips', () => {
+  const slideOf = () => createSlide()
+  const shapeDeck = () => {
+    const element = { ...createShapeElement(slideOf()), id: 'shape-1', shape: 'heart' as const, fill: { type: 'solid' as const, color: '#f59e0b' }, stroke: '#18181b', strokeWidth: 4 }
+    return {
+      ...createFreeformDocument(),
+      slides: [{ ...createFreeformDocument().slides[0], nodes: [element as unknown as FreeformSceneNode] }],
+    }
+  }
+  const textDeck = () => {
+    const element = { ...createTextElement(slideOf()), id: 'text-1' }
+    return {
+      ...createFreeformDocument(),
+      slides: [{ ...createFreeformDocument().slides[0], nodes: [element as unknown as FreeformSceneNode] }],
+    }
+  }
+  const flip = (document: FreeformDocument, patch: Record<string, unknown>) => freeformReducer(document, {
+    type: 'node/update-geometry',
+    slideId: document.slides[0].id,
+    updates: [{ path: ['shape-1'], patch }],
+  })
+
+  it('mirrors a shape and restores it through the geometry patch', () => {
+    const document = shapeDeck()
+    const flipped = flip(document, { flipX: true, flipY: true })
+    const node = flipped.slides[0].nodes[0] as Record<string, unknown>
+    expect(node.flipX).toBe(true)
+    expect(node.flipY).toBe(true)
+    const restored = flip(flipped, { flipX: false, flipY: false })
+    expect('flipX' in (restored.slides[0].nodes[0] as Record<string, unknown>)).toBe(false)
+    expect('flipY' in (restored.slides[0].nodes[0] as Record<string, unknown>)).toBe(false)
+    // A same-state patch is no edit at all.
+    const same = flip(flipped, { flipX: true })
+    expect(same).toBe(flipped)
+  })
+
+  it('rejects flips on elements that cannot mirror and non-boolean values', () => {
+    const document = shapeDeck()
+    const rejected = flip(document, { flipX: 1 as unknown as boolean })
+    expect(rejected).toBe(document)
+    const deck = textDeck()
+    const text = freeformReducer(deck, {
+      type: 'node/update-geometry',
+      slideId: deck.slides[0].id,
+      updates: [{ path: ['text-1'], patch: { flipX: true } }],
+    })
+    expect(text).toBe(deck)
   })
 })

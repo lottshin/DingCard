@@ -365,7 +365,7 @@ describe('dingcard-mcp tool layer', () => {
     }
     expect(created.ok).toBe(true)
     const kept = await call<{ document: { documentVersion: number; slides: unknown[] } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(39)
+    expect(kept.document.documentVersion).toBe(40)
     // Cover and two sections: the outline asked for no closing page.
     expect(kept.document.slides).toHaveLength(3)
     expect(created.summary.slideCount).toBe(3)
@@ -516,7 +516,7 @@ describe('dingcard-mcp tool layer', () => {
     const document = JSON.parse(await readText('dingcard://examples/freeform')) as {
       documentVersion: number
     }
-    expect(document.documentVersion).toBe(39)
+    expect(document.documentVersion).toBe(40)
 
     const envelope = JSON.parse(await readText('dingcard://examples/markdown')) as {
       source: string
@@ -682,7 +682,7 @@ describe('dingcard-mcp tool layer', () => {
     })
     expect(applied).toMatchObject({ ok: true, changes: [true] })
     const kept = await call<{ document: { documentVersion: number; slides: Array<{ nodes: Array<{ id: string; effect?: unknown }> }> } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(39)
+    expect(kept.document.documentVersion).toBe(40)
     expect(kept.document.slides[0].nodes.find((node) => node.id === title.id)?.effect).toEqual(label.patch.effect)
     await client.close()
   })
@@ -703,7 +703,7 @@ describe('dingcard-mcp tool layer', () => {
     })
     expect(applied).toMatchObject({ ok: true, changes: [true] })
     const kept = await call<{ document: { documentVersion: number; slides: Array<{ nodes: Array<{ id: string; filter?: unknown }> }> } }>(client, 'get_document', { documentId: created.documentId })
-    expect(kept.document.documentVersion).toBe(39)
+    expect(kept.document.documentVersion).toBe(40)
     expect(kept.document.slides[0].nodes.find((node) => node.id === title.id)?.filter).toEqual(mono.patch.filter)
 
     // The v18-only keys are rejected on older input versions.

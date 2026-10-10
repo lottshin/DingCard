@@ -981,6 +981,8 @@ const TEXT_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 
 const SHAPE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
+  flipX: (record) => typeof record.flipX === 'boolean',
+  flipY: (record) => typeof record.flipY === 'boolean',
   starInnerRatio: (record) => isValidStarInnerRatio(record.starInnerRatio),
   bubbleTailX: (record) => isValidBubbleTailX(record.bubbleTailX),
   opacity: OPACITY_FIELD_CHECK,
@@ -999,6 +1001,8 @@ const BASE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
 const IMAGE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   ...BASE_OPTIONAL_FIELD_CHECKS,
   cornerRadius: (record) => isValidCornerRadius(record.cornerRadius),
+  flipX: (record) => typeof record.flipX === 'boolean',
+  flipY: (record) => typeof record.flipY === 'boolean',
   stroke: (record) => isHexColor(record.stroke),
   strokeWidth: (record) => isValidTextStrokeWidth(record.strokeWidth),
 }
@@ -1080,6 +1084,8 @@ const PATH_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,
   blendMode: BLEND_FIELD_CHECK,
+  flipX: (record) => typeof record.flipX === 'boolean',
+  flipY: (record) => typeof record.flipY === 'boolean',
   dash: (record) => isValidPathDash(record.dash),
   cap: (record) => isValidLineCap(record.cap),
   join: (record) => isValidLineJoin(record.join),
