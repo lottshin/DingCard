@@ -1359,3 +1359,58 @@ describe('applyActions', () => {
     return applyActions({ documentVersion: 4 }, [])
   }
 })
+
+  test('applies the v40 mirror flips through node/update-geometry', () => {
+    const withHeart = seedDocument()
+    withHeart.slides[0].nodes.push({
+      id: 'heart-1',
+      name: '爱心',
+      locked: false,
+      hidden: false,
+      type: 'shape',
+      x: 500,
+      y: 800,
+      width: 240,
+      height: 240,
+      rotation: 0,
+      scale: 1,
+      shape: 'heart',
+      fill: { type: 'solid', color: '#f59e0b' },
+      stroke: '#18181b',
+      strokeWidth: 4,
+    })
+    const flipped = applyActions(withHeart, [
+      {
+        type: 'node/update-geometry',
+        slideId: 'slide-1',
+        updates: [{ path: ['heart-1'], patch: { flipX: true, flipY: true } }],
+      },
+      // A flip on an element that cannot carry one refuses, with the reason.
+      {
+        type: 'node/update-geometry',
+        slideId: 'slide-1',
+        updates: [{ path: ['title-1'], patch: { flipX: true } }],
+      },
+    ])
+    expect(flipped.ok).toBe(true)
+    if (!flipped.ok) return
+    expect(flipped.changes).toEqual([true, false])
+    expect(flipped.reasons[0]).toBeNull()
+    expect(flipped.reasons[1]).toContain('只用于 image / shape / path')
+    const heart = flipped.document.slides[0].nodes.find((node) => node.id === 'heart-1') as unknown as Record<string, unknown>
+    expect(heart.flipX).toBe(true)
+    expect(heart.flipY).toBe(true)
+    // Flipping back drops the keys again.
+    const restored = applyActions(flipped.document, [
+      {
+        type: 'node/update-geometry',
+        slideId: 'slide-1',
+        updates: [{ path: ['heart-1'], patch: { flipX: false } }],
+      },
+    ])
+    expect(restored.ok).toBe(true)
+    if (!restored.ok) return
+    const plain = restored.document.slides[0].nodes.find((node) => node.id === 'heart-1') as unknown as Record<string, unknown>
+    expect('flipX' in plain).toBe(false)
+    expect(plain.flipY).toBe(true)
+  })
