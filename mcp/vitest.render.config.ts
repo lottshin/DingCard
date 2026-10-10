@@ -8,6 +8,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/render/render.test.ts'],
+    include: ['src/render/render.test.ts', 'src/eval/eval.sheet.ts'],
   },
 })
