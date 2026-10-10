@@ -240,3 +240,33 @@ it('settles a dragged guide on the page centre, an edge or an object, centre fir
   // A hidden object catches nothing.
   expect(snapGuide(slide, [{ ...nodes[0], hidden: true }], 'x', 104, 8)).toEqual({ position: 104, target: null })
 })
+
+it('evens out nearly equal gaps and reports the shared space', () => {
+  // Left 100–300, moving dragged to 360–560 (gap 60), right at 624–824
+  // (gap 64). The equal-gap snap moves to gaps 62/62: dx +2.
+  const left = rect('左卡', 100, 300, 200, 100)
+  const right = rect('右卡', 624, 300, 200, 100)
+  const moving = rect('中间', 200, 200, 200, 100)
+  const nodes = [left, right, moving] as FreeformSceneNode[]
+  const result = snapSceneDrag(
+    { width: 1080, height: 1440 },
+    nodes,
+    [],
+    ['中间'],
+    160,
+    100,
+  )
+  expect(result.dx).toBe(162)
+  expect(result.dy).toBe(100)
+  expect(result.space).toEqual({ gap: 62, axis: 'x', before: '左卡', after: '右卡' })
+  // Already-equal gaps (dx lands at 62/62) stay quiet.
+  const exact = snapSceneDrag(
+    { width: 1080, height: 1440 },
+    [rect('左卡', 100, 300, 200, 100), rect('右卡', 624, 300, 200, 100), moving] as FreeformSceneNode[],
+    [],
+    ['中间'],
+    162,
+    100,
+  )
+  expect(exact.space).toBeUndefined()
+})

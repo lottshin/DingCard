@@ -241,6 +241,7 @@ import {
   type Rect,
 } from './selection'
 import { snapGuide, snapRotationDegrees, snapSceneDrag, type GuideSnap, type SnapLine } from './snapping'
+import type { SpaceGap } from './spacing'
 import {
   measureDragDistances,
   type DragMeasurement,
@@ -1417,6 +1418,7 @@ export function FreeformWorkspace({
   const fileDragDepthRef = useRef(0)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
+  const [spaceGap, setSpaceGap] = useState<SpaceGap | null>(null)
   const [dragMeasurements, setDragMeasurements] = useState<DragMeasurement[]>([])
   const [interactionBadge, setInteractionBadge] = useState<string | null>(null)
   const [viewPrefs, setViewPrefs] = useState<FreeformViewPrefs>(loadViewPrefs)
@@ -4948,6 +4950,7 @@ export function FreeformWorkspace({
         snap.dy,
       )
       setSnapLines(snap.lines)
+      setSpaceGap(snap.space ?? null)
       updateHistory((current) => {
         const next = freeformReducer(current.current, {
           type: 'node/update-geometry',
@@ -4981,6 +4984,7 @@ export function FreeformWorkspace({
       window.removeEventListener('blur', onBlur)
       activeInteractionRef.current = null
       setSnapLines([])
+      setSpaceGap(null)
       setDragMeasurements([])
       setInteractionBadge(null)
       setActiveInteraction(null)
@@ -5829,6 +5833,7 @@ export function FreeformWorkspace({
       window.removeEventListener('blur', onBlur)
       activeInteractionRef.current = null
       setSnapLines([])
+      setSpaceGap(null)
       setInteractionBadge(null)
       setActiveInteraction(null)
     }
@@ -6464,6 +6469,7 @@ export function FreeformWorkspace({
     setClipboard(null)
     setMarquee(null)
     setSnapLines([])
+    setSpaceGap(null)
     updateDraftId(null)
     setSavedAt(null)
     setProjectTitle(title)
@@ -7610,6 +7616,15 @@ export function FreeformWorkspace({
                         style={line.axis === 'x' ? { left: line.position } : { top: line.position }}
                       />
                     ))}
+                    {spaceGap && (
+                      <div
+                        className="freeform-ui-only freeform-space-badge"
+                        data-testid="freeform-space-badge"
+                        data-space-axis={spaceGap.axis}
+                      >
+                        {t('间距 {n}', { n: Math.round(spaceGap.gap) })}
+                      </div>
+                    )}
                     {dragMeasurements.map((measurement, index) => (
                       <div
                         key={`${measurement.axis}-${measurement.side}-${index}`}

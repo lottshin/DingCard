@@ -2094,3 +2094,34 @@ test('finds and replaces text across the whole deck with one undo', async ({ pag
   })
   expect(undone.document.slides[0].nodes.find((node: { type: string }) => node.type === 'text').text).toBe('周一喝咖啡')
 })
+
+test('shows an equal-spacing badge while a drag evens out the gaps', async ({ page }) => {
+  await openFreeform(page)
+  // Two anchored cards and a third dragged between them until its gaps with
+  // the neighbours are almost equal; the snap evens them and shows the gap.
+  await insertShape(page, '矩形')
+  await setSelectedElementBox(page, 80, 300, 200, 150)
+  await insertShape(page, '矩形')
+  await setSelectedElementBox(page, 760, 300, 200, 150)
+  await insertShape(page, '矩形')
+  await setSelectedElementBox(page, 400, 320, 200, 150)
+  const elements = page.locator('[data-testid="freeform-element"]')
+  await expect(elements).toHaveCount(3)
+  const boxOf = async (index: number) => {
+    const box = await elements.nth(index).boundingBox()
+    expect(box).toBeTruthy()
+    return box!
+  }
+  const middleBox = await boxOf(2)
+  const scale = await freeformCanvasScale(page)
+  // Even gaps are 140/140 at x 420 (centre 520, clear of the page centre);
+  // aim 1 page px off so they are 141/139.
+  const targetX = middleBox.x + middleBox.width / 2 + 21 * scale
+  const targetY = middleBox.y + middleBox.height / 2
+  await page.mouse.move(middleBox.x + middleBox.width / 2, targetY)
+  await page.mouse.down()
+  await page.mouse.move(targetX, targetY, { steps: 10 })
+  await expect(page.getByTestId('freeform-space-badge')).toBeVisible()
+  await expect(page.getByTestId('freeform-space-badge')).toHaveText(/^间距 \d+/)
+  await page.mouse.up()
+})

@@ -486,6 +486,7 @@ export const app: Record<string, Translation> = {
   '右下圆角': 'Bottom-right radius',
   '左下圆角': 'Bottom-left radius',
   '统一圆角': 'Uniform radius',
+  '间距 {n}': 'Gap {n}',
   '查找替换': 'Find and replace',
   '查找': 'Find',
   '替换为': 'Replace with',

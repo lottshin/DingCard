@@ -1,4 +1,5 @@
 import { getChildrenAtPath } from './sceneTree'
+import { equalSpaceSnap, type SpaceGap, type SpaceGuideBox } from './spacing'
 import { moveElementsWithinSlide, moveSceneNodesWithinSlide } from './selection'
 import {
   sceneNodeBoundsInParent,
@@ -18,6 +19,8 @@ export interface SnapResult {
   dx: number
   dy: number
   lines: SnapLine[]
+  /** The equal-spacing badge the drag earned, if any (page coordinates). */
+  space?: SpaceGap
 }
 
 export interface SnapOptions {
@@ -244,7 +247,64 @@ export function snapSceneDrag(
   if (ySnap.line && Math.abs(final.dy - ySnap.delta) <= Number.EPSILON * 64) {
     lines.push(ySnap.line)
   }
-  return { dx: final.dx, dy: final.dy, lines }
+  // Equal spacing: when the dragged group's gaps with its two neighbours on
+  // an axis are almost equal, they snap to exactly equal and the badge says
+  // the shared gap. An align snap on an axis wins that axis; the equal-gap
+  // nudge only rides the axes no line claimed.
+  let outDx = final.dx
+  let outDy = final.dy
+  let gap: SpaceGap | undefined
+  const space = equalSpaceDrag(nodes, parentPath, selected, rawBoundsForSpacing(bounds, clamped))
+  if (space) {
+    if (!xSnap.line && space.dx !== 0) outDx = clamped.dx + space.dx
+    if (!ySnap.line && space.dy !== 0) outDy = clamped.dy + space.dy
+    if (outDx !== final.dx || outDy !== final.dy) {
+      const clampedAgain = clampSceneMovement(slide, nodes, parentPath, selectedIds, outDx, outDy)
+      outDx = clampedAgain.dx
+      outDy = clampedAgain.dy
+      gap = space.gap
+    }
+  }
+  return { dx: outDx, dy: outDy, lines, ...(gap ? { space: gap } : {}) }
+}
+
+/** The dragged group as one box at the (snapped) drag offset. */
+function rawBoundsForSpacing(bounds: Bounds, final: Pick<SnapResult, 'dx' | 'dy'>): SpaceGuideBox {
+  return {
+    id: '__dragging__',
+    left: bounds.left + final.dx,
+    top: bounds.top + final.dy,
+    right: bounds.right + final.dx,
+    bottom: bounds.bottom + final.dy,
+  }
+}
+
+/** The equal-gap snap against the group's still neighbours, in page coordinates. */
+function equalSpaceDrag(
+  nodes: readonly FreeformSceneNode[],
+  parentPath: ScenePath,
+  selected: ReadonlySet<string>,
+  moving: SpaceGuideBox,
+): { dx: number; dy: number; gap: SpaceGap } | null {
+  const others: SpaceGuideBox[] = []
+  for (const node of getChildrenAtPath(nodes, parentPath) ?? []) {
+    if (node.hidden || selected.has(node.id)) continue
+    const world = sceneNodeBoundsInWorld(nodes, [...parentPath, node.id])
+    if (!world) continue
+    others.push({
+      id: node.name,
+      left: world.x,
+      top: world.y,
+      right: world.x + world.width,
+      bottom: world.y + world.height,
+    })
+  }
+  if (others.length < 2) return null
+  const snap = equalSpaceSnap(moving, others)
+  if (!snap || (snap.dx === 0 && snap.dy === 0)) return null
+  const [gap] = snap.gaps
+  if (!gap) return null
+  return { dx: snap.dx, dy: snap.dy, gap }
 }
 
 function clampMovement(
