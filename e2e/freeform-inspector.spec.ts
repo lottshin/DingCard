@@ -355,7 +355,7 @@ test('inspector appearance controls style leaves end to end', async ({ page }) =
 
   await insertShape(page)
   const appearance = page.getByTestId('inspector-appearance')
-  const radiusInput = appearance.getByLabel('圆角', { exact: true })
+  const radiusInput = appearance.getByLabel('左上圆角', { exact: true })
   await radiusInput.fill('32')
   await radiusInput.press('Enter')
   const opacityInput = appearance.getByLabel('不透明度 %', { exact: true })
@@ -369,7 +369,7 @@ test('inspector appearance controls style leaves end to end', async ({ page }) =
   const shapeElement = page.getByTestId('freeform-element')
   const shapeView = shapeElement.locator('.freeform-shape')
   await expect(shapeElement).toHaveCSS('opacity', '0.6')
-  await expect(shapeView).toHaveCSS('border-radius', '32px')
+  await expect(shapeView).toHaveCSS('border-radius', '32px 16px 16px')
   await expect(shapeView).toHaveCSS('box-shadow', /0px 8px 40px/)
 
   await appearance.getByTestId('shadow-clear').click()
