@@ -25,7 +25,7 @@ const TEXT_STYLE_KEYS = [
   'strokeWidth',
   'effect',
 ] as const
-const SHAPE_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'cornerRadius', 'starInnerRatio', 'bubbleTailX'] as const
+const SHAPE_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'strokeDash', 'cornerRadius', 'cornerRadii', 'starInnerRatio', 'bubbleTailX'] as const
 const LINE_STYLE_KEYS = ['stroke', 'strokeWidth', 'dash', 'cap'] as const
 const PATH_STYLE_KEYS = ['fill', 'stroke', 'strokeWidth', 'dash', 'cap', 'join', 'fillRule'] as const
 const QRCODE_STYLE_KEYS = ['dark', 'light', 'ecl', 'moduleStyle', 'quietZone'] as const
@@ -53,6 +53,9 @@ export function copyStylePatch(node: FreeformSceneNode): FreeformNodeStylePatch 
     const value = (node as unknown as Record<string, unknown>)[key]
     if (value !== undefined) patch[key] = value
   }
+  // Split corners (v42) override the shared radius, so a rect with one
+  // shared radius carries `null` to unsplit the target's corners too.
+  if (node.type === 'shape' && node.shape === 'rect' && node.cornerRadii === undefined) patch.cornerRadii = null
   // A path measures its stroke in viewBox units; the clipboard holds pixels.
   if (node.type === 'path') {
     const scale = pathStrokeScale(node.viewBox, node.width, node.height)

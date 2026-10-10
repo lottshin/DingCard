@@ -807,7 +807,12 @@ test('nested scene paths update every leaf style family', async ({ page }) => {
   await shapeStrokeWidth.fill('8')
   await shapeStrokeWidth.press('Enter')
   await expect(shapeStrokeWidth).toHaveValue('8')
-  await expect.poll(() => shape.evaluate((node) => getComputedStyle(node).borderWidth)).not.toBe('0px')
+  // A triangle strokes its own outline (a CSS border would draw its box):
+  // twice the width on the outline, the clip keeping the inner half.
+  // (The width is stored in the nested scope's own units, so only its presence is checked.)
+  const outline = shape.locator('.freeform-shape-stroke path')
+  await expect(outline).toHaveAttribute('stroke', '#ef4444')
+  await expect.poll(async () => Number(await outline.getAttribute('stroke-width'))).toBeGreaterThan(0)
 
   await selectLayer('Matrix image')
   const imageNode = page.locator('[data-scene-node-id="matrix-image"]')

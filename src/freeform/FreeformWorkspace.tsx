@@ -5611,7 +5611,8 @@ export function FreeformWorkspace({
       replaceCurrent({
         type: 'node/update-style',
         slideId: startSlide.id,
-        updates: [{ path, patch: { [param]: value } }],
+        // Dragging the radius dot rounds all four corners, split ones (v42) too.
+        updates: [{ path, patch: param === 'cornerRadius' ? { cornerRadius: value, cornerRadii: null } : { [param]: value } }],
       })
     }
 

@@ -439,6 +439,19 @@ test('rounds each rect corner on its own (v42)', async ({ page }) => {
   await page.getByLabel('右下圆角').fill('24')
   await page.keyboard.press('Enter')
   await expect(rect).toHaveCSS('border-radius', '48px 16px 24px')
+  // The radius dot rides the top-left corner as drawn; dragging it rounds all
+  // four corners alike, split ones too.
+  const handle = page.getByTestId('freeform-shape-param-cornerRadius')
+  await expect(handle).toBeVisible()
+  const handleBox = await handle.boundingBox()
+  expect(handleBox).toBeTruthy()
+  await dragCentreTo(page, handle, { x: handleBox!.x + handleBox!.width / 2 + 30, y: handleBox!.y + handleBox!.height / 2 })
+  const uniform = await rect.evaluate((node) => getComputedStyle(node).borderTopLeftRadius === getComputedStyle(node).borderBottomRightRadius
+    && getComputedStyle(node).borderTopRightRadius === getComputedStyle(node).borderBottomLeftRadius
+    && getComputedStyle(node).borderTopLeftRadius === getComputedStyle(node).borderTopRightRadius)
+  expect(uniform).toBe(true)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(rect).toHaveCSS('border-radius', '48px 16px 24px')
   // 统一圆角 restores the single radius.
   await page.getByTestId('corner-radii-reset').click()
   await expect(rect).toHaveCSS('border-radius', '16px')

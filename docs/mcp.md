@@ -168,8 +168,16 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 | `image-failed` | 这一页有图片没加载出来。 |
 | `path-overflow` | 图形画到了自己的框外：`viewBox` 没有包住 `d` 用到的坐标。改法里直接给出正好包住图形的 `viewBox`。 |
 | `empty-path` | 图形既没有填充也没有描边，看不见。 |
+| `tiny-qrcode` / `low-contrast-qrcode` | 二维码小于 120×120，或码点色和背景色对比低于 3:1，手机扫不稳。 |
+| `progress-label-overflow` | 进度条的目标名比元素宽。 |
+| `data-clipped` | 表格的格子、时间线的条目放不下，被省略号截掉了（写明第几行第几列、第几条）。 |
+| `tiny-text` | 正文小于 18px；表格、时间线、图表、进度条里的字小于 18px 也算。 |
+| `low-contrast`（数据元素） | 表格、时间线、图表、进度条的文字颜色（`ink`）和它们底下的颜色（压着的不透明色块或页面背景）对比低于 4.5:1，改法给出该用浅色还是深色。 |
+| `misalignment` | 几个对象的边差 4–10px：文字按它的对齐方式比（左对齐比左边、居中比中线、右对齐比右边），其他对象比左右边和中线；已经在一条线上的、套在卡片里的、模板自己的版式都不算。往模板页上加东西时，以模板的节点为准，只挪加进来的。 |
+| `edge-margin` | 对象离页边只有 2–14px，不像出血也不像留白。 |
+| `too-many-fonts` / `too-many-colors` / `weak-heading` | 一页的字体超过 3 种、文字颜色超过 6 种，或最大的字不到正文的 1.25 倍。 |
 
-每条问题带 `page`、`slideId`、`node`（图层名）、`path`（`apply_actions` 用的节点路径）和中文改法。内置模板原样保留的装饰文字、模板自己采用的配色不算问题，所以报告里只有内容带来的问题。`fix: true` 只自动处理 `text-overflow`（改成 `fitFontSize`），改完再检查一遍，返回 `document`、`fixed` 和剩下的问题；颜色、位置交给客户端用 `apply_actions` 改。
+每条问题带 `page`、`slideId`、`node`（图层名）、`path`（`apply_actions` 用的节点路径）和中文改法。内置模板原样保留的装饰文字、模板自己采用的配色不算问题，所以报告里只有内容带来的问题。`fix: true` 自动处理两类：`text-overflow` 改成 `fitFontSize`（记在 `fixed`），`misalignment` 按报告里的挪法吸齐（记在 `snapped`）；改完再检查一遍并保存（用 `documentId` 时就地更新，返回新的 `version`），附剩下的问题。颜色交给客户端用 `apply_actions` 改。
 
 ## MCP 资源
 
@@ -177,7 +185,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 
 | URI | 内容 |
 | --- | --- |
-| `dingcard://schema/freeform` | 自由画布 v39 文档模型与校验规则说明。 |
+| `dingcard://schema/freeform` | 自由画布当前版本（v43）的文档模型与校验规则说明。 |
 | `dingcard://schema/actions` | `FreeformAction` 动作联合类型说明（`apply_actions` 的入参结构）。 |
 | `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
 | `dingcard://examples/freeform` | 完整自由画布 v39 文档示例（编辑部模板实例）。 |

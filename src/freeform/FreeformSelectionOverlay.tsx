@@ -12,7 +12,7 @@ import {
 } from './sceneTransform'
 import type { Matrix2D, SceneBounds } from './sceneTransform'
 import type { FreeformSceneNode, LinePoint, ScenePath } from './types'
-import { bubbleHandlePosition, cornerHandlePosition, shapeHandlePosition, shapeParamOf, type ShapeParam } from './shapeGeometry'
+import { bubbleHandlePosition, cornerHandlePosition, rectCornerRadii, shapeHandlePosition, shapeParamOf, type ShapeParam } from './shapeGeometry'
 import { tableColumnEdges } from './tables'
 import { t } from '../i18n'
 
@@ -204,8 +204,9 @@ function buildOverlayFrames(
   // The corner-radius dot rides the outline at the arc's top-edge endpoint;
   // the drag base stays the arc-centre anchor, so drawing never shifts it.
   if (shapeParamPosition && node.type === 'shape' && node.shape === 'rect') {
+    // On split corners (v42) the dot rides the top-left corner as drawn.
     shapeParamPosition = cornerHandlePosition(
-      node.cornerRadius ?? 16,
+      rectCornerRadii(localBounds.width, localBounds.height, node).topLeft,
       localBounds.width,
       localBounds.height,
       renderScale,

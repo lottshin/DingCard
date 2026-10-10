@@ -449,12 +449,13 @@ export function FreeformContextToolbar(props: FreeformContextToolbarProps) {
               <ToolbarNumber
                 label={t('转角弧度')}
                 glyph="radius"
-                value={subject.node.cornerRadius ?? 16}
+                // Split corners show their top-left; a value typed here rounds all four.
+                value={subject.node.cornerRadii?.topLeft ?? subject.node.cornerRadius ?? 16}
                 min={0}
                 max={2000}
                 resetKey={resetKey}
                 className="ctx-fold-details"
-                onCommit={(value) => props.onStyle({ cornerRadius: value })}
+                onCommit={(value) => props.onStyle({ cornerRadius: value, cornerRadii: null })}
               />
             )}
             {subject.node.shape === 'star' && (

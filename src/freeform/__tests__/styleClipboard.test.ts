@@ -74,13 +74,22 @@ describe('style clipboard', () => {
     expect(patch).not.toHaveProperty('x')
     expect(patch).not.toHaveProperty('text')
 
+    // A rect with one shared radius also unsplits the target's corners (v42).
     const shapePatch = copyStylePatch(shapeNode)
     expect(shapePatch).toEqual({
       fill: { type: 'solid', color: '#f79009' },
       stroke: '#000000',
       strokeWidth: 1,
       cornerRadius: 12,
+      cornerRadii: null,
     })
+  })
+
+  it('carries a rect\'s split corners and dashed outline (v41, v42)', () => {
+    const split = { ...shapeNode, strokeDash: 14, cornerRadii: { topLeft: 40, topRight: 0, bottomRight: 40, bottomLeft: 0 } } as FreeformSceneNode
+    const patch = copyStylePatch(split)
+    expect(patch).toMatchObject({ strokeDash: 14, cornerRadii: { topLeft: 40, topRight: 0, bottomRight: 40, bottomLeft: 0 } })
+    expect(pasteStylePatch(patch!, 'shape')).toMatchObject({ strokeDash: 14, cornerRadii: { topLeft: 40, topRight: 0, bottomRight: 40, bottomLeft: 0 } })
   })
 
   it('rejects groups and leaves without any style fields', () => {

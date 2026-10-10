@@ -116,8 +116,11 @@ test('edits the share, flips to a ring, and recolors in the inspector', async ({
   await expect(label).toHaveText('读书进度')
   await expect(label).toHaveAttribute('text-anchor', 'start')
   await expect(label).toHaveAttribute('fill', '#3f3f46')
-  await expect(progress.locator('[data-testid="freeform-progress-track"]')).toHaveAttribute('y', '24')
-  await expect(progress.locator('[data-testid="freeform-progress-fill"]')).toHaveAttribute('y', '24')
+  // The name takes 30% of the 96px element (body copy on a card), the bar the rest.
+  for (const part of ['freeform-progress-track', 'freeform-progress-fill']) {
+    const y = Number(await progress.locator(`[data-testid="${part}"]`).getAttribute('y'))
+    expect(y).toBeCloseTo(43.2, 3)
+  }
   await page.getByTestId('progress-label-input').fill('')
   await page.getByTestId('progress-label-input').press('Enter')
   await expect(progress.locator('[data-testid="freeform-progress-label"]')).toHaveCount(0)

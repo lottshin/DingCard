@@ -117,7 +117,7 @@ ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle 
 - group：+ children（非空节点数组；组没有 width/height）
 全文档节点 id 必须唯一。`
 
-const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放进这页文字留出的最大空位，放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId 与角色，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
+const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放在这页文字的下面、沿模板的版心铺满宽度，颜色取这一页的正文色和强调色（没给颜色的系列先用浅的、最后一个用强调色），字号按卡片正文的大小画；放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId 与角色，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
 
 const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "# 总标题"：封面标题；它下面、第一个 "##" 之前的文字是封面副标题。

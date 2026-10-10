@@ -260,12 +260,13 @@ export function shapeHandlePosition(
   shape: FreeformShapeElement['shape'],
   width: number,
   height: number,
-  params: Pick<FreeformShapeElement, 'cornerRadius' | 'starInnerRatio' | 'bubbleTailX'>,
+  params: Pick<FreeformShapeElement, 'cornerRadius' | 'starInnerRatio' | 'bubbleTailX'> & Partial<Pick<FreeformShapeElement, 'cornerRadii'>>,
 ): { x: number; y: number } | null {
   const param = shapeParamOf(shape)
   if (!param) return null
   if (param === 'cornerRadius') {
-    const radius = clamp(params.cornerRadius ?? 16, 0, Math.min(width, height) / 2)
+    // The top-left corner as drawn, split corners (v42) included.
+    const radius = clamp(rectCornerRadii(width, height, params).topLeft, 0, Math.min(width, height) / 2)
     return { x: radius, y: radius }
   }
   if (param === 'starInnerRatio') {

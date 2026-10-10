@@ -117,24 +117,32 @@ test('turns the timeline horizontal in the inspector', async ({ page }) => {
   // The fresh sample runs down a left spine: a tall line beside left-anchored words.
   await expect(page.getByTestId('timeline-direction-vertical')).toHaveAttribute('aria-pressed', 'true')
   const spine = timeline.locator('[data-testid="freeform-timeline-spine"]')
-  await expect(spine).toHaveAttribute('x1', '14')
-  await expect(spine).toHaveAttribute('x2', '14')
+  // The spine's inset grows with the words (a card-sized sample has body-sized ones).
+  const vertical = async () => {
+    const [x1, x2] = await Promise.all([spine.getAttribute('x1'), spine.getAttribute('x2')])
+    expect(x1).toBe(x2)
+    expect(Number(x1)).toBeGreaterThanOrEqual(14)
+    expect(Number(x1)).toBeLessThan(40)
+  }
+  await vertical()
   await expect(timeline.locator('[data-testid="freeform-timeline-label"]').first()).toHaveAttribute('text-anchor', 'start')
 
   // 横排 lays the spine along the top with the entries side by side, centred.
   await page.getByTestId('timeline-direction-horizontal').click()
   await expect(page.getByTestId('timeline-direction-horizontal')).toHaveAttribute('aria-pressed', 'true')
-  await expect(spine).toHaveAttribute('y1', '14')
-  await expect(spine).toHaveAttribute('y2', '14')
+  await expect.poll(async () => (await spine.getAttribute('y1')) === (await spine.getAttribute('y2'))).toBe(true)
+  const spineY = Number(await spine.getAttribute('y1'))
+  expect(spineY).toBeGreaterThanOrEqual(14)
+  expect(spineY).toBeLessThan(40)
   const firstDot = timeline.locator('[data-testid="freeform-timeline-dot"]').first()
   const dotX = Number(await firstDot.getAttribute('cx'))
   expect(dotX).toBeGreaterThan(0)
   await expect(timeline.locator('[data-testid="freeform-timeline-label"]').first()).toHaveAttribute('text-anchor', 'middle')
   // The words stay under the spine, next to their dots.
   const labelY = Number(await timeline.locator('[data-testid="freeform-timeline-label"]').first().getAttribute('y'))
-  expect(labelY).toBeGreaterThan(14)
+  expect(labelY).toBeGreaterThan(spineY)
   // The horizontal switch is one history step: undo returns to the vertical spine.
   await page.getByRole('button', { name: '撤销', exact: true }).click()
-  await expect(spine).toHaveAttribute('x1', '14')
-  await expect(spine).toHaveAttribute('x2', '14')
+  await expect(page.getByTestId('timeline-direction-vertical')).toHaveAttribute('aria-pressed', 'true')
+  await vertical()
 })
