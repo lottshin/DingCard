@@ -6806,3 +6806,14 @@ html.theme-anim * {
   gap: 10px;
   margin-top: 18px;
 }
+
+.freeform-inspector .corner-radii-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.freeform-inspector .corner-radii-grid button {
+  grid-column: 1 / -1;
+}

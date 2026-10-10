@@ -9952,17 +9952,47 @@ export function FreeformWorkspace({
                         <span className="field-suffix" aria-hidden="true">%</span>
                       </label>
                       {isShapeElement(selectedElement) && selectedElement.shape === 'rect' && (
-                        <label title={t('圆角')}>
-                          <InspectorGlyph name="radius" />
-                          <InspectorNumberInput
-                            ariaLabel={t('圆角')}
-                            min={0}
-                            max={2000}
-                            resetKey={inspectorNumberResetKey}
-                            value={selectedElement.cornerRadius ?? 16}
-                            onCommit={(value) => updateSelectedStyle({ cornerRadius: value })}
-                          />
-                        </label>
+                        <div className="corner-radii-grid" data-testid="corner-radii-grid">
+                          {([
+                            ['topLeft', '左上圆角'],
+                            ['topRight', '右上圆角'],
+                            ['bottomRight', '右下圆角'],
+                            ['bottomLeft', '左下圆角'],
+                          ] as const).map(([corner, label]) => (
+                            <label key={corner} title={t(label)}>
+                              <InspectorGlyph name="radius" />
+                              <InspectorNumberInput
+                                ariaLabel={t(label)}
+                                min={0}
+                                max={2000}
+                                resetKey={inspectorNumberResetKey}
+                                value={selectedElement.cornerRadii !== undefined
+                                  ? selectedElement.cornerRadii[corner]
+                                  : selectedElement.cornerRadius ?? 16}
+                                onCommit={(value) => {
+                                  const base = selectedElement.cornerRadii !== undefined
+                                    ? { ...selectedElement.cornerRadii }
+                                    : {
+                                        topLeft: selectedElement.cornerRadius ?? 16,
+                                        topRight: selectedElement.cornerRadius ?? 16,
+                                        bottomRight: selectedElement.cornerRadius ?? 16,
+                                        bottomLeft: selectedElement.cornerRadius ?? 16,
+                                      }
+                                  updateSelectedStyle({ cornerRadii: { ...base, [corner]: value } })
+                                }}
+                              />
+                            </label>
+                          ))}
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="corner-radii-reset"
+                            disabled={selectedElement.cornerRadii === undefined}
+                            onClick={() => updateSelectedStyle({ cornerRadii: null })}
+                          >
+                            {t('统一圆角')}
+                          </button>
+                        </div>
                       )}
                       {isImageElement(selectedElement) && (
                         <label title={t('圆角')}>

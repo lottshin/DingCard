@@ -411,3 +411,32 @@ test('dashes a rect outline with the exact length and a heart with CSS dashes (v
   expect(nodes.find((node) => node.shape === 'heart')?.strokeDash).toBe(12)
   expect(nodes.find((node) => node.shape === 'rect')?.strokeDash).toBeUndefined()
 })
+
+test('rounds each rect corner on its own (v42)', async ({ page }) => {
+  await openFreeform(page)
+  await insertShape(page, '矩形')
+  const rect = page.locator('.freeform-shape.shape-rect')
+  await expect(rect).toBeVisible()
+
+  // The four corner inputs; the default is the uniform 16.
+  const grid = page.getByTestId('corner-radii-grid')
+  await expect(grid).toBeVisible()
+  await page.getByLabel('左上圆角').fill('48')
+  await page.getByLabel('右下圆角').fill('24')
+  await page.keyboard.press('Enter')
+  await expect(rect).toHaveCSS('border-radius', '48px 16px 24px')
+  // 统一圆角 restores the single radius.
+  await page.getByTestId('corner-radii-reset').click()
+  await expect(rect).toHaveCSS('border-radius', '16px')
+
+  // The stored draft carries v42 with the four values.
+  await expect(page.getByTestId('editor-save-state')).toHaveText(/已保存/)
+  const stored = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((value) => value.startsWith('slicer.drafts.'))
+    const drafts = key ? JSON.parse(localStorage.getItem(key) ?? '[]') : []
+    return drafts.find((entry: { mode?: string }) => entry.mode === 'freeform-slide') ?? null
+  })
+  expect(stored.document.documentVersion).toBe(42)
+  expect(stored.document.slides[0].nodes[0].cornerRadius).toBeUndefined()
+  expect(stored.document.slides[0].nodes[0].cornerRadii).toBeUndefined()
+})
