@@ -318,7 +318,7 @@ describe('text on a picture background', () => {
 describe('highlighted words', () => {
   test('need contrast against their highlight, whatever the page behind', () => {
     const document = deck([
-      text('白字黄底', { textFill: { type: 'solid', color: '#ffffff' }, text: '重点在这里', spans: [{ start: 0, end: 2, highlight: '#fef08a' }] }),
+      text('白字黄底', { textFill: { type: 'solid', color: '#ffffff' }, text: '重点在这里', fontSize: 56, spans: [{ start: 0, end: 2, highlight: '#fef08a' }] }),
       text('黑字黄底', { y: 300, text: '重点在这里', spans: [{ start: 0, end: 2, highlight: '#fef08a' }] }),
       text('改了字色', { y: 500, textFill: { type: 'solid', color: '#ffffff' }, text: '重点在这里', spans: [{ start: 0, end: 2, highlight: '#fef08a', color: '#111111' }] }),
     ])
@@ -383,5 +383,87 @@ describe('data element checks', () => {
     expect(kinds(issues)).toEqual(['progress-label-overflow:进度'])
     expect(issues[0].message).toContain('缩短标签')
     expect(kinds(layoutIssues(deck([progress(480, '读书进度')]), measured([], [])))).toEqual([])
+  })
+})
+
+describe('design quality checks', () => {
+  test('near-miss edges report the slip and the snap the fix would apply', () => {
+    // Generated names, not a template's own node names: a pair the template
+    // itself drew is the design, and the check leaves it alone.
+    const document = deck([
+      text('甲文字', { fontSize: 56, x: 100, y: 100 }),
+      text('乙文字', { x: 104, y: 300 }),
+      text('丙文字', { x: 480, y: 300 }),
+    ])
+    const issues = layoutIssues(document, measured([], []))
+    const alignment = issues.find((issue) => issue.kind === 'misalignment')
+    expect(alignment).toBeDefined()
+    expect(alignment?.message).toContain('差 4px')
+    expect(alignment?.alignment).toEqual({
+      axis: 'x',
+      anchorId: '甲文字',
+      moves: [{ path: ['乙文字'], nodeId: '乙文字', from: 104, to: 100 }],
+    })
+  })
+
+  test('a pair of template-named nodes carries the design, not a slip', () => {
+    const document = deck([
+      text('主标题', { fontSize: 56, x: 100, y: 100 }),
+      text('导语', { x: 108, y: 300 }),
+    ])
+    expect(kinds(layoutIssues(document, measured([], [])))).toEqual([])
+  })
+
+  test('aligned edges, deliberate bleeds and roomy margins all stay quiet', () => {
+    const document = deck([
+      text('标题', { fontSize: 56, x: 100, y: 100 }),
+      text('正文', { x: 100, y: 300 }),
+      card('贴边卡', '#f4f4f5', { x: 0, y: 600, width: 300, height: 200 }),
+      card('大边距', '#f4f4f5', { x: 200, y: 900, width: 300, height: 200 }),
+    ])
+    expect(kinds(layoutIssues(document, measured([], [])))).toEqual([])
+  })
+
+  test('a box hovering near a page edge is called out', () => {
+    const document = deck([
+      text('标题', { fontSize: 56, x: 100, y: 100 }),
+      card('贴太近', '#f4f4f5', { x: 8, y: 300, width: 300, height: 200 }),
+    ])
+    const issues = layoutIssues(document, measured([], []))
+    expect(kinds(issues)).toContain('edge-margin:贴太近')
+    expect(issues[0].message).toContain('离左页边')
+  })
+
+  test('tiny body copy, too many fonts and too many colours each get their word', () => {
+    const document = deck([
+      text('标题', { fontSize: 56, x: 100, y: 100 }),
+      text('小字', { x: 100, y: 300, fontSize: 14 }),
+      text('字体一', { x: 100, y: 500, fontFamily: 'Font A' }),
+      text('字体二', { x: 100, y: 700, fontFamily: 'Font B', textFill: { type: 'solid', color: '#ff0000' } }),
+      text('字体三', { x: 100, y: 900, fontFamily: 'Font C', textFill: { type: 'solid', color: '#00ff00' } }),
+      text('字体四', { x: 100, y: 1100, fontFamily: 'Font D', textFill: { type: 'solid', color: '#0000ff' } }),
+      text('颜色多', { x: 100, y: 1240, textFill: { type: 'solid', color: '#ffff00' } }),
+      text('洋红', { x: 600, y: 1240, textFill: { type: 'solid', color: '#ff00ff' } }),
+      text('青色', { x: 600, y: 100, textFill: { type: 'solid', color: '#00ffff' } }),
+    ])
+    const found = kinds(layoutIssues(document, measured([], [])))
+    expect(found).toContain('tiny-text:小字')
+    expect(found.find((kind) => kind.startsWith('too-many-fonts'))).toBeDefined()
+    expect(found.find((kind) => kind.startsWith('too-many-colors'))).toBeDefined()
+  })
+
+  test('a page of equal-sized text is told its heading does not stand', () => {
+    const flat = deck([
+      text('标题', { x: 100, y: 100 }),
+      text('正文', { x: 100, y: 300 }),
+      text('结尾', { x: 100, y: 500 }),
+    ])
+    expect(kinds(layoutIssues(flat, measured([], [])))).toContain('weak-heading:')
+    const layered = deck([
+      text('标题', { fontSize: 72, x: 100, y: 100 }),
+      text('正文', { x: 100, y: 400 }),
+      text('结尾', { x: 100, y: 600 }),
+    ])
+    expect(kinds(layoutIssues(layered, measured([], []))).filter((kind) => kind.startsWith('weak-heading'))).toEqual([])
   })
 })

@@ -25,6 +25,12 @@ export type LayoutIssueKind =
   | 'tiny-qrcode'
   | 'low-contrast-qrcode'
   | 'progress-label-overflow'
+  | 'misalignment'
+  | 'edge-margin'
+  | 'tiny-text'
+  | 'too-many-fonts'
+  | 'too-many-colors'
+  | 'weak-heading'
 
 export interface LayoutIssue {
   page: number
@@ -37,6 +43,12 @@ export interface LayoutIssue {
   message: string
   /** A font size at which an overflowing text fits. */
   fitFontSize?: number
+  /** With 'misalignment': the snap the fix pass would apply. */
+  alignment?: {
+    axis: 'x' | 'y'
+    anchorId: string
+    moves: Array<{ path: ScenePath; nodeId: string; from: number; to: number }>
+  }
 }
 
 interface Rect {
@@ -51,6 +63,44 @@ const OPAQUE = 0.7
 
 /** Below this a QR code is more decoration than something a phone can scan. */
 const QRCODE_MIN_SCAN = 120
+
+/** Edges that differ by this little to this much are slips a reader feels. */
+const SNAP_MIN = 4
+const SNAP_MAX = 10
+/** A box hovering this close to a page edge (without touching it) looks accidental. */
+const EDGE_NEAR = 14
+/** Body copy smaller than this is unreadable on a phone at card size. */
+const TINY_TEXT = 18
+/** What a page's palette can hold before it reads as cluttered. */
+const MAX_FONTS = 3
+const MAX_TEXT_COLORS = 6
+/** A heading has to stand over its body by at least this much. */
+const HEADING_RATIO = 1.25
+/** A little thing under this share of its neighbour hangs off it on purpose. */
+const ORNAMENT_AREA_RATIO = 0.2
+/** The most alignment issues a page reports before the rest feels repetitive. */
+const ALIGNMENT_ISSUES_PER_PAGE = 3
+
+let templateNodeNames: Set<string> | null = null
+
+/**
+ * Every node name the built-in templates draw. A pair whose two names both
+ * come from a template carries the template's own geometry — its near-misses
+ * are the design, not a slip — while anything an agent added keeps its
+ * generated name and stays fair game.
+ */
+function namesOfTemplateNodes(): Set<string> {
+  if (templateNodeNames) return templateNodeNames
+  const names = new Set<string>()
+  for (const template of TEMPLATE_REGISTRY) {
+    if (template.workspace !== 'freeform' || !template.createFreeform) continue
+    for (const slide of template.createFreeform().slides) {
+      walkScene(slide.nodes, (node) => names.add(node.name))
+    }
+  }
+  templateNodeNames = names
+  return names
+}
 
 interface TemplateMarks {
   /**
@@ -264,6 +314,128 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         }
       }
     })
+
+    // Design-quality checks, read off the document itself.
+    type LeafNode = Exclude<FreeformSceneNode, { type: 'group' }>
+    const boxes: Array<{ node: LeafNode; index: number; box: { x: number; y: number; width: number; height: number } }> = []
+    slide.nodes.forEach((node, index) => {
+      if (node.type === 'group' || node.hidden) return
+      if (Math.round(node.rotation) % 360 !== 0) return
+      boxes.push({ node, index, box: { x: node.x, y: node.y, width: node.width, height: node.height } })
+    })
+    // Alignment targets are the substantial things a reader lines up; thin
+    // rules and little ornaments hang off them on purpose.
+    const alignmentTargets = boxes.filter(({ box }) => box.width >= 24 && box.height >= 24)
+    // The texts the page is really made of: its own words, not template ornaments.
+    const ownTexts = boxes
+      .map((entry) => entry.node)
+      .filter((node) => node.type === 'text' && node.text.trim() !== '' && !template.decoration.has(decorationKey(node)))
+      .filter((node): node is Extract<FreeformSceneNode, { type: 'text' }> => node.type === 'text')
+
+    // Near-but-not-touching edges look like a slip; a bleed (touching or
+    // past the edge) is a choice, and so is a roomy margin.
+    for (const { node, box } of boxes) {
+      if (box.width * box.height > 0.4 * slide.width * slide.height) continue
+      const distances: Array<[string, number]> = [
+        ['左', box.x],
+        ['上', box.y],
+        ['右', slide.width - box.x - box.width],
+        ['下', slide.height - box.y - box.height],
+      ]
+      for (const [edge, distance] of distances) {
+        if (distance > 2 && distance < EDGE_NEAR) {
+          issue('edge-margin', node.id, `「${node.name}」离${edge}页边只有 ${Math.round(distance)}px，不上不下看着像失手：要么贴边出血，要么留出 24px 以上的边距。`)
+          break
+        }
+      }
+    }
+
+    // Body copy a phone can barely show.
+    for (const node of ownTexts) {
+      if (node.fontSize < TINY_TEXT) {
+        issue('tiny-text', node.id, `「${short(node.text)}」只有 ${Math.round(node.fontSize)}px，手机上看不清：正文至少 ${TINY_TEXT}px，或把内容删短。`)
+      }
+    }
+
+    // A palette the page can hold, and a heading that stands over its body.
+    if (ownTexts.length > 0) {
+      const fonts = new Set(ownTexts.map((node) => node.fontFamily))
+      if (fonts.size > MAX_FONTS) {
+        issue('too-many-fonts', null, `这一页用了 ${fonts.size} 种字体（${[...fonts].slice(0, 4).map(short).join('、')}${fonts.size > 4 ? '…' : ''}）：两种以内最好，标题一种、正文一种。`)
+      }
+      const colours = new Set<string>()
+      for (const node of ownTexts) {
+        const fill = node.textFill
+        if (fill.type === 'solid') colours.add(fill.color.toLowerCase())
+        else if (fill.type === 'radial-gradient') fill.stops.forEach((stop: { color: string }) => colours.add(stop.color.toLowerCase()))
+        else if (fill.type === 'linear-gradient') {
+          if ('stops' in fill) fill.stops.forEach((stop: { color: string }) => colours.add(stop.color.toLowerCase()))
+          else {
+            colours.add(fill.from.toLowerCase())
+            colours.add(fill.to.toLowerCase())
+          }
+        }
+      }
+      if (colours.size > MAX_TEXT_COLORS) {
+        issue('too-many-colors', null, `这一页的文字用了 ${colours.size} 种颜色：一页 3–4 种以内最好，其余用深浅变化。`)
+      }
+      if (ownTexts.length >= 3) {
+        const sizes = ownTexts.map((node) => node.fontSize).sort((a, b) => b - a)
+        const body = sizes.slice(1)
+        const median = body[Math.floor(body.length / 2)]
+        if (sizes[0] < HEADING_RATIO * median) {
+          issue('weak-heading', null, `这一页最大的字只有 ${Math.round(sizes[0])}px，和正文（约 ${Math.round(median)}px）拉不开：标题放大到 1.4 倍以上，或正文缩小。`)
+        }
+      }
+    }
+
+    // Edges that almost line up: the slips a reader feels, snap-fixable.
+    for (const axis of ['x', 'y'] as const) {
+      const clusters: Array<Array<{ node: LeafNode; index: number; box: { x: number; y: number; width: number; height: number }; edge: number }>> = []
+      const sorted = [...alignmentTargets]
+        .map((entry) => ({ ...entry, edge: axis === 'x' ? entry.box.x : entry.box.y }))
+        .sort((a, b) => a.edge - b.edge)
+      for (const item of sorted) {
+        const last = clusters[clusters.length - 1]
+        if (last && item.edge - last[last.length - 1].edge <= SNAP_MAX) last.push(item)
+        else clusters.push([item])
+      }
+      let reported = 0
+      for (const cluster of clusters) {
+        if (cluster.length < 2) continue
+        const span = cluster[cluster.length - 1].edge - cluster[0].edge
+        if (span < SNAP_MIN) continue
+        if (reported >= ALIGNMENT_ISSUES_PER_PAGE) break
+        // The biggest node leads; the rest snap to its edge. A little thing
+        // hanging off a big one is usually an ornament doing it on purpose.
+        const anchor = [...cluster].sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height)[0]
+        const anchorArea = anchor.box.width * anchor.box.height
+        const templateNames = namesOfTemplateNodes()
+        const clusterWith = cluster.filter((item) => item.node.id === anchor.node.id
+          || (item.box.width * item.box.height >= ORNAMENT_AREA_RATIO * anchorArea
+            && !(templateNames.has(item.node.name) && templateNames.has(anchor.node.name))))
+        const spanWith = clusterWith.length >= 2
+          ? clusterWith[clusterWith.length - 1].edge - clusterWith[0].edge
+          : 0
+        if (spanWith < SNAP_MIN) continue
+        reported += 1
+        const moves = clusterWith
+          .filter((item) => item.node.id !== anchor.node.id && Math.abs(item.edge - anchor.edge) >= SNAP_MIN)
+          .map((item) => ({
+            path: [item.node.id] as ScenePath,
+            nodeId: item.node.id,
+            from: item.edge,
+            to: anchor.edge,
+          }))
+        if (moves.length === 0) continue
+        const away = moves.sort((a, b) => Math.abs(b.to - b.from) - Math.abs(a.to - a.from))[0]
+        const awayNode = cluster.find((item) => item.node.id === away.nodeId)!
+        const word = axis === 'x' ? '左边' : '上边'
+        issue('misalignment', anchor.node.id,
+          `「${awayNode.node.name}」和「${anchor.node.name}」的${word}差 ${Math.round(Math.abs(away.to - away.from))}px：对齐到一起更整齐。`,
+          { alignment: { axis, anchorId: anchor.node.id, moves } })
+      }
+    }
 
     if (!measured) return
     if (measured.imageError) issue('image-failed', null, `${measured.imageError}：检查图片地址是否能打开。`)

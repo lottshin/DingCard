@@ -16,9 +16,11 @@ export interface CheckSuccess {
     issueCount: number
     byKind: Partial<Record<LayoutIssueKind, number>>
   }
-  /** Present with fix: the deck with overflowing text resized, and what changed. */
+  /** Present with fix: the deck with overflowing text resized and near-misses snapped, and what changed. */
   document?: FreeformDocument
   fixed?: Array<{ page: number; slideId: string; node: string | null; fontSize: number }>
+  /** Present with fix: the edges that were snapped onto their neighbours. */
+  snapped?: Array<{ page: number; slideId: string; node: string | null; axis: 'x' | 'y'; from: number; to: number }>
 }
 
 export type CheckResult = CheckSuccess | { ok: false; error: string }
@@ -38,20 +40,53 @@ export async function checkDocument(value: unknown, options: { fix?: boolean } =
 
     let fixedDocument = document
     const fixed: NonNullable<CheckSuccess['fixed']> = []
+    const snapped: NonNullable<CheckSuccess['snapped']> = []
     for (const issue of issues) {
-      if (issue.kind !== 'text-overflow' || !issue.fitFontSize || !issue.path) continue
-      const next = reduceFreeformDocument(fixedDocument, {
-        type: 'node/update-style',
-        slideId: issue.slideId,
-        updates: [{ path: issue.path, patch: { fontSize: issue.fitFontSize } }],
-      })
-      if (next === fixedDocument) continue
-      fixedDocument = next
-      fixed.push({ page: issue.page, slideId: issue.slideId, node: issue.node, fontSize: issue.fitFontSize })
+      if (issue.kind === 'text-overflow' && issue.fitFontSize && issue.path) {
+        const next = reduceFreeformDocument(fixedDocument, {
+          type: 'node/update-style',
+          slideId: issue.slideId,
+          updates: [{ path: issue.path, patch: { fontSize: issue.fitFontSize } }],
+        })
+        if (next === fixedDocument) continue
+        fixedDocument = next
+        fixed.push({ page: issue.page, slideId: issue.slideId, node: issue.node, fontSize: issue.fitFontSize })
+        continue
+      }
+      // Near-miss edges snap onto their neighbour, one axis per move.
+      if (issue.kind === 'misalignment' && issue.alignment) {
+        for (const move of issue.alignment.moves) {
+          const patch = issue.alignment.axis === 'x' ? { x: move.to } : { y: move.to }
+          const next = reduceFreeformDocument(fixedDocument, {
+            type: 'node/update-geometry',
+            slideId: issue.slideId,
+            updates: [{ path: move.path, patch }],
+          })
+          if (next === fixedDocument) continue
+          fixedDocument = next
+          snapped.push({
+            page: issue.page,
+            slideId: issue.slideId,
+            node: move.nodeId,
+            axis: issue.alignment.axis,
+            from: Math.round(move.from),
+            to: Math.round(move.to),
+          })
+        }
+      }
     }
-    if (fixed.length === 0) return { ok: true, issues, summary: summarize(document, issues), document, fixed }
+    if (fixed.length === 0 && snapped.length === 0) {
+      return { ok: true, issues, summary: summarize(document, issues), document, fixed, snapped }
+    }
     const remaining = layoutIssues(fixedDocument, await inspectLayout(fixedDocument))
-    return { ok: true, issues: remaining, summary: summarize(fixedDocument, remaining), document: fixedDocument, fixed }
+    return {
+      ok: true,
+      issues: remaining,
+      summary: summarize(fixedDocument, remaining),
+      document: fixedDocument,
+      fixed,
+      ...(snapped.length > 0 ? { snapped } : {}),
+    }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
