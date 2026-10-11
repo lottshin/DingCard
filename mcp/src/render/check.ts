@@ -33,7 +33,7 @@ function summarize(document: FreeformDocument, issues: LayoutIssue[]): CheckSucc
 
 export async function checkDocument(value: unknown, options: { fix?: boolean } = {}): Promise<CheckResult> {
   const document = normalizeFreeformDocument(value)
-  if (!document) return { ok: false, error: '文档未通过自由画布 v20 校验，先用 validate_document 看原因。' }
+  if (!document) return { ok: false, error: '文档未通过自由画布文档校验，先用 validate_document 看原因。' }
   try {
     const issues = layoutIssues(document, await inspectLayout(document))
     if (!options.fix) return { ok: true, issues, summary: summarize(document, issues) }

@@ -14,6 +14,7 @@ import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformPathElem
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { listIcons } from '../core/icons'
 import { createDocumentFromOutline } from '../core/outline'
+import { composePoster } from '../core/poster'
 import { instantiateTemplate } from '../core/templates'
 import { checkDocument } from './check'
 import { importHtml, renderDocument, renderMarkdownDocument } from './renderer'
@@ -724,20 +725,30 @@ describe('checkDocument', () => {
   test(
     'finds nothing to fix on a composed deck, and finds what an edit broke',
     async () => {
+      // Every page as full as the template's own: a lead, its points and a quote.
       const generated = createDocumentFromOutline(
         `# 一周早餐不重样
 上班族的五分钟早餐清单
 
 ## 周一：燕麦杯
+前一晚泡好，早上拿了就走。
 - 燕麦：前一晚泡好
 - 酸奶：选无糖的
+- 水果：切块铺在最上面
 > 早餐吃好，上午不慌 —— 营养师
 
 ## 周二：鸡蛋三明治
 全麦面包、煎蛋、生菜和番茄，五分钟搞定。
+- 面包：烤到微脆
+- 鸡蛋：单面煎熟
+- 蔬菜：洗好沥干
+> 先煎蛋，再烤面包 —— 早餐店老板
 
 ## 结尾：明天吃什么？
-- 收藏这一套`,
+一周不重样，从明天开始。
+- 收藏这一套
+- 转给每天赶早的同事
+- 周末一次备好料`,
         'editorial-freeform',
       )
       if (!generated.ok) throw new Error(generated.error)
@@ -808,8 +819,10 @@ describe('checkDocument', () => {
 
       const checked = await checkDocument(drawn)
       if (!checked.ok) throw new Error(checked.error)
-      expect(checked.issues.map((issue) => [issue.kind, issue.node])).toEqual([['path-overflow', '溢出']])
-      expect(checked.issues[0].message).toContain('width: 40, height: 40')
+      // The one-point pages are bare on purpose: how full they are is tested apart.
+      const drawingIssues = checked.issues.filter((issue) => issue.kind !== 'empty-band')
+      expect(drawingIssues.map((issue) => [issue.kind, issue.node])).toEqual([['path-overflow', '溢出']])
+      expect(drawingIssues[0].message).toContain('width: 40, height: 40')
     },
     420_000,
   )
@@ -840,9 +853,11 @@ describe('checkDocument', () => {
       if (!plain.ok || !pictured.ok) throw new Error('expected both renders to succeed')
       expect(readFileSync(pictured.files[0].path).equals(readFileSync(plain.files[0].path))).toBe(false)
 
+      // The picture page is the one in question; the one-point page after it is bare on purpose.
+      const onCover = <T extends { page: number }>(issues: T[]) => issues.filter((issue) => issue.page === 1)
       const checked = await checkDocument(marked)
       if (!checked.ok) throw new Error(checked.error)
-      expect(checked.issues).toEqual([])
+      expect(onCover(checked.issues)).toEqual([])
 
       // On a dark picture the template's dark title can't be read: it is measured against the picture.
       const night = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#111827"/></svg>').toString('base64')}`
@@ -864,7 +879,7 @@ describe('checkDocument', () => {
       })
       const failed = await checkDocument(broken)
       if (!failed.ok) throw new Error(failed.error)
-      expect(failed.issues.map((issue) => [issue.page, issue.kind])).toEqual([[1, 'image-failed']])
+      expect(onCover(failed.issues).map((issue) => [issue.page, issue.kind])).toEqual([[1, 'image-failed']])
     },
     420_000,
   )
@@ -921,6 +936,23 @@ describe('checkDocument', () => {
     expect(result.summary.byKind['sample-text']).toBeGreaterThan(5)
     // Its titles' boxes are drawn to their glyphs, so nothing reads as cut.
     expect(result.issues.every((issue) => issue.kind === 'sample-text')).toBe(true)
+  }, 420_000)
+
+  test('reports a page left half empty and a picture\'s place left blank', async () => {
+    // A section page with only its lead: the points and the quote the template keeps room for never came.
+    const deck = createDocumentFromOutline('# 早餐\n\n## 周二：鸡蛋三明治\n全麦面包、煎蛋、生菜和番茄，五分钟搞定。', 'editorial-freeform')
+    if (!deck.ok) throw new Error(deck.error)
+    const sparse = await checkDocument(deck.document)
+    if (!sparse.ok) throw new Error(sparse.error)
+    const band = sparse.issues.find((issue) => issue.page === 2 && issue.kind === 'empty-band')
+    expect(band?.message).toMatch(/页面 \d+–\d+px 这一段是空的（占页高 \d+%）/)
+
+    // A talk poster without its picture keeps a flat block where the photo was.
+    const talk = composePoster('talk-poster-freeform', { title: '独立开发者茶话会', subtitle: '聊聊一个人做一个产品是什么体验', details: ['时间：周六 14:00', '地点：科技园 B1 咖啡'], cta: '扫码报名' })
+    if (!talk.ok) throw new Error(talk.error)
+    const blank = await checkDocument(talk.document)
+    if (!blank.ok) throw new Error(blank.error)
+    expect(blank.issues.filter((issue) => issue.kind === 'empty-frame').map((issue) => issue.node)).toEqual(['主图'])
   }, 420_000)
 
   test('finds nothing but sample copy on any template as it ships', async () => {

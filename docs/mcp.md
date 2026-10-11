@@ -178,6 +178,8 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 | `misalignment` | 几个对象的边差 4–10px：文字按它的对齐方式比（左对齐比左边、居中比中线、右对齐比右边），其他对象比左右边和中线；已经在一条线上的、套在卡片里的、模板自己的版式都不算。往模板页上加东西时，以模板的节点为准，只挪加进来的。 |
 | `edge-margin` | 对象离页边只有 2–14px，不像出血也不像留白。 |
 | `too-many-fonts` / `too-many-colors` / `weak-heading` | 一页的字体超过 3 种、文字颜色超过 6 种，或最大的字不到正文的 1.25 倍。 |
+| `empty-band` | 页面上有一整条横向的空白，高过页高的四分之一，看着像没排完（模板原样的页面最多空到两成出头）。写明从哪到哪、占页高多少。文字按排出来的字行算，其他按画出来的框算；卡片、色块按里面放的东西算，自己不算；横线算它所在的那一行，小点缀和铺满六成以上页面的底色块不算；背景是图片的页不查。 |
+| `empty-frame` | 一块纯色的方块或圆（占页面 5% 以上、不到六成）上面几乎什么都没有，多半是该放图片的位置空着；虚化的光晕、半透明色块和渐变不算。改法给出把它换成图片填充的写法。 |
 
 每条问题带 `page`、`slideId`、`node`（图层名）、`path`（`apply_actions` 用的节点路径）和中文改法。内置模板原样保留的装饰文字、模板自己采用的配色不算问题，所以报告里只有内容带来的问题。`fix: true` 自动处理两类：`text-overflow` 改成 `fitFontSize`（记在 `fixed`），`misalignment` 按报告里的挪法吸齐（记在 `snapped`）；改完再检查一遍并保存（用 `documentId` 时就地更新，返回新的 `version`），附剩下的问题。颜色交给客户端用 `apply_actions` 改。
 
@@ -187,7 +189,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 
 | URI | 内容 |
 | --- | --- |
-| `dingcard://schema/freeform` | 自由画布当前版本（v43）的文档模型与校验规则说明。 |
+| `dingcard://schema/freeform` | 自由画布当前版本（v44）的文档模型与校验规则说明。 |
 | `dingcard://schema/actions` | `FreeformAction` 动作联合类型说明（`apply_actions` 的入参结构）。 |
 | `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
 | `dingcard://examples/freeform` | 完整自由画布 v44 文档示例（编辑部模板实例）。 |

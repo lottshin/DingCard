@@ -35,6 +35,8 @@ export type LayoutIssueKind =
   | 'too-many-fonts'
   | 'too-many-colors'
   | 'weak-heading'
+  | 'empty-band'
+  | 'empty-frame'
 
 export interface LayoutIssue {
   page: number
@@ -84,6 +86,15 @@ const HEADING_RATIO = 1.25
 const ORNAMENT_AREA_RATIO = 0.2
 /** The most alignment issues a page reports before the rest feels repetitive. */
 const ALIGNMENT_ISSUES_PER_PAGE = 3
+/** A band across the page with nothing in it, taller than this share of the page, reads as unfinished. */
+const EMPTY_BAND = 0.25
+/** A shape over this share of the page is the page's ground, not something on it. */
+const BACKDROP_SHARE = 0.6
+/** What is smaller than this share of the page (a dot, a sparkle) doesn't fill a band. */
+const ORNAMENT_SHARE = 0.003
+/** A plain block at least this share of the page, with less than EMPTY_FRAME_COVERED of it under anything, is a place left empty. */
+const EMPTY_FRAME_SHARE = 0.05
+const EMPTY_FRAME_COVERED = 0.15
 
 let templateNodeNames: Set<string> | null = null
 
@@ -671,6 +682,81 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
             ? `文字压在背景图上，和身后那块颜色太接近（对比度 ${ratio.toFixed(1)}:1），看不清：换一个和照片反差大的颜色，或在文字下面垫一块半透明色块。`
             : `文字颜色和底色太接近（对比度 ${ratio.toFixed(1)}:1），手机上看不清：换深一点或浅一点的颜色。`)
       }
+    }
+
+    // What reads as unfinished: a band across the page with nothing in it,
+    // and a plain block (a picture's place) with nothing on it. Things are
+    // taken where the page shows them, words by their lines; a shape with
+    // things set inside it is their card, not something of its own.
+    const pageArea = slide.width * slide.height
+    const wordsOf = new Map(texts.map((text) => [text.nodeId, text.area]))
+    // Judged only off a page measured whole: a node the render left out would read as a hole.
+    const unmeasured = [...nodes.values()].some(({ node, path }) => node.type !== 'group'
+      && !path.some((id) => nodes.get(id)?.node.hidden) && !rectOf.has(node.id))
+    const shown = unmeasured ? [] : measured.nodes.flatMap((entry, z) => {
+      const found = nodes.get(entry.nodeId)
+      if (!found || found.node.type === 'group' || found.path.some((id) => nodes.get(id)?.node.hidden)) return []
+      const node = found.node as LeafNode
+      if (node.type === 'text' && !node.text.trim()) return []
+      const rect = node.type === 'text' ? wordsOf.get(node.id) ?? null : entry.rect
+      return rect && rect.width > 0 && rect.height > 0 ? [{ node, rect, z }] : []
+    })
+    type Shown = (typeof shown)[number]
+    const holdsAbove = (entry: Shown) => shown.some((other) => other.z > entry.z
+      && other.rect.x >= entry.rect.x - 1 && other.rect.y >= entry.rect.y - 1
+      && other.rect.x + other.rect.width <= entry.rect.x + entry.rect.width + 1
+      && other.rect.y + other.rect.height <= entry.rect.y + entry.rect.height + 1)
+    const isPicture = (node: LeafNode) => node.type === 'image' || (node.type === 'shape' && node.fill.type === 'image')
+
+    // A picture page is never blank.
+    if (!unmeasured && slide.background.type !== 'image') {
+      const fills = shown.filter((entry) => {
+        const { node, rect } = entry
+        if (node.type === 'text' || isPicture(node)) return true
+        // A rule fills the row it runs along; an upright one fills none.
+        if (node.type === 'line' || Math.min(rect.width, rect.height) <= 6) return rect.width >= rect.height
+        const share = (rect.width * rect.height) / pageArea
+        if (share >= BACKDROP_SHARE || share < ORNAMENT_SHARE) return false
+        return !((node.type === 'shape' || node.type === 'path') && holdsAbove(entry))
+      })
+      const spans = fills
+        .map(({ rect }) => [Math.max(0, rect.y), Math.min(slide.height, rect.y + rect.height)] as const)
+        .filter(([top, bottom]) => bottom > top)
+        .sort((a, b) => a[0] - b[0])
+      if (spans.length === 0) {
+        issue('empty-band', null, '这一页什么都没有：放上内容，或者删掉这一页。')
+      } else {
+        let gap = { top: 0, bottom: spans[0][0] }
+        let reach = spans[0][1]
+        for (const [top, bottom] of spans.slice(1)) {
+          if (top - reach > gap.bottom - gap.top) gap = { top: reach, bottom: top }
+          reach = Math.max(reach, bottom)
+        }
+        if (slide.height - reach > gap.bottom - gap.top) gap = { top: reach, bottom: slide.height }
+        const share = (gap.bottom - gap.top) / slide.height
+        if (share > EMPTY_BAND) {
+          const top = Math.round(gap.top)
+          const bottom = Math.round(gap.bottom)
+          const [where, move] = gap.top <= 0
+            ? [`页面最上面 ${bottom}px 都是空的`, '把内容往上挪，或者放大']
+            : gap.bottom >= slide.height
+              ? [`页面 ${top}px 以下都是空的`, '把上面的内容放大、往下排开']
+              : [`页面 ${top}–${bottom}px 这一段是空的`, '把下面的内容往上收，或把上面的内容放大']
+          issue('empty-band', null, `${where}（占页高 ${Math.round(share * 100)}%），看着像没排完：${move}，或者在这里放一张图、一个图表。`)
+        }
+      }
+    }
+
+    for (const entry of shown) {
+      const { node, rect } = entry
+      if (node.type !== 'shape' || (node.shape !== 'rect' && node.shape !== 'ellipse')) continue
+      // A glow, a see-through tint or a gradient is decoration, not a place.
+      if (node.fill.type !== 'solid' || (node.opacity ?? 1) < OPAQUE || (node.filter?.blur ?? 0) > 0) continue
+      const area = rect.width * rect.height
+      if (area < EMPTY_FRAME_SHARE * pageArea || area >= BACKDROP_SHARE * pageArea || holdsAbove(entry)) continue
+      const covered = shown.reduce((sum, other) => (other.z > entry.z && other.node.type !== 'line' ? sum + intersection(rect, other.rect) : sum), 0)
+      if (covered >= EMPTY_FRAME_COVERED * area) continue
+      issue('empty-frame', node.id, `「${node.name}」这块色块上什么都没有（占页面 ${Math.round((area / pageArea) * 100)}%），像是留给图片的位置空着：用 node/update-style 把它的 fill 换成图片（{ type: 'image', src, fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } }，图可以用 search_images 找），或者在上面放内容，或者删掉它再把版面收紧。`)
     }
   })
   return issues

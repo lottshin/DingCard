@@ -98,6 +98,7 @@ describe('dingcard-mcp tool descriptions stay current', () => {
         ...text.matchAll(/迁移为 v(\d+)/g),
         ...text.matchAll(/到 v(\d+) 的迁移/g),
         ...text.matchAll(/`documentVersion` 写成 (\d+)/g),
+        ...text.matchAll(/当前版本（v(\d+)）/g),
       ]
       expect(claims.length, `${name} 里没找到版本说明`).toBeGreaterThan(0)
       for (const match of claims) expect(Number(match[1]), `${name}：「${match[0]}」落后了`).toBe(current)

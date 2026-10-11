@@ -97,13 +97,35 @@ function measured(
   }]
 }
 
-const kinds = (issues: ReturnType<typeof layoutIssues>) => issues.map((issue) => `${issue.kind}:${issue.node ?? ''}`)
+// Most pages here are bare on purpose, to test one check at a time; how full
+// a page is (empty-band, empty-frame) has its own tests at the end.
+const HOW_FULL = new Set(['empty-band', 'empty-frame'])
+const apart = (issues: ReturnType<typeof layoutIssues>) => issues.filter((issue) => !HOW_FULL.has(issue.kind))
+const kinds = (issues: ReturnType<typeof layoutIssues>) => apart(issues).map((issue) => `${issue.kind}:${issue.node ?? ''}`)
 
 describe('layout issues', () => {
   test('a clean page has none', () => {
-    const document = deck([text('标题')])
-    const rect = { x: 100, y: 100, width: 400, height: 100 }
-    expect(layoutIssues(document, measured([{ id: '标题', rect }], [{ id: '标题', area: { x: 108, y: 108, width: 200, height: 48 } }]))).toEqual([])
+    // A title, a body, a list and a footer down the page: nothing to fix, nothing left empty.
+    const document = deck([
+      text('标题', { y: 100, height: 140, fontSize: 72 }),
+      text('正文', { y: 380, height: 340 }),
+      text('要点', { y: 760, height: 280 }),
+      text('页脚', { y: 1220, height: 80, fontSize: 28 }),
+    ])
+    expect(layoutIssues(document, measured(
+      [
+        { id: '标题', rect: { x: 100, y: 100, width: 400, height: 140 } },
+        { id: '正文', rect: { x: 100, y: 380, width: 400, height: 340 } },
+        { id: '要点', rect: { x: 100, y: 760, width: 400, height: 280 } },
+        { id: '页脚', rect: { x: 100, y: 1220, width: 400, height: 80 } },
+      ],
+      [
+        { id: '标题', area: { x: 100, y: 112, width: 300, height: 88 } },
+        { id: '正文', area: { x: 100, y: 388, width: 380, height: 320 } },
+        { id: '要点', area: { x: 100, y: 768, width: 360, height: 260 } },
+        { id: '页脚', area: { x: 100, y: 1232, width: 200, height: 34 } },
+      ],
+    ))).toEqual([])
   })
 
   test('overflowing text says the size it fits at', () => {
@@ -112,7 +134,7 @@ describe('layout issues', () => {
       [{ id: '正文', rect: { x: 100, y: 100, width: 400, height: 100 } }],
       [{ id: '正文', area: { x: 108, y: 108, width: 384, height: 84 }, overflowY: 60, fit: 28 }],
     ))
-    expect(issues).toMatchObject([{ kind: 'text-overflow', node: '正文', path: ['正文'], fitFontSize: 28, page: 1 }])
+    expect(apart(issues)).toMatchObject([{ kind: 'text-overflow', node: '正文', path: ['正文'], fitFontSize: 28, page: 1 }])
     expect(issues[0].message).toContain('28')
   })
 
@@ -201,7 +223,7 @@ describe('path issues', () => {
 
     // A drawing inside its box, a little padding included, is fine.
     inspected[0].paths = [{ nodeId: '图形', bounds: { x: 16.7, y: 16.7, width: 166.6, height: 166.6 } }]
-    expect(layoutIssues(document, inspected)).toEqual([])
+    expect(apart(layoutIssues(document, inspected))).toEqual([])
   })
 
   test('a path with neither fill nor stroke cannot be seen', () => {
@@ -280,10 +302,10 @@ describe('path issues', () => {
       text('标题', { ...covered }),
       drawing('荧光笔', { ...covered, fill: { type: 'solid', color: '#ffe14d' }, blendMode: 'multiply' }),
     ])
-    expect(layoutIssues(document, measured(
+    expect(apart(layoutIssues(document, measured(
       [{ id: '标题', rect: covered }, { id: '荧光笔', rect: covered }],
       [{ id: '标题', area: { x: 108, y: 608, width: 384, height: 48 } }],
-    ))).toEqual([])
+    )))).toEqual([])
   })
 })
 
@@ -311,7 +333,7 @@ describe('text on a picture background', () => {
 
     // Without a sample (a picture that couldn't be read), nothing is guessed.
     delete inspected[0].backdrops
-    expect(layoutIssues(document, inspected)).toEqual([])
+    expect(apart(layoutIssues(document, inspected))).toEqual([])
   })
 })
 
@@ -584,5 +606,75 @@ describe('design quality checks', () => {
       text('品牌', { x: 100, y: 800, fontSize: 28 }),
     ])
     expect(kinds(layoutIssues(menu, measured([], []))).filter((kind) => kind.startsWith('weak-heading'))).toEqual([])
+  })
+})
+
+describe('how full a page is', () => {
+  // Every node measured where the document puts it; words by their own box unless given.
+  const onPage = (nodes: FreeformSceneNode[], words: Record<string, { y: number; height: number }> = {}) => ({
+    document: deck(nodes),
+    inspected: measured(
+      nodes.map((node) => ({ id: node.id, rect: { x: node.x, y: node.y, width: (node as { width: number }).width, height: (node as { height: number }).height } })),
+      nodes.flatMap((node) => node.type === 'text'
+        ? [{ id: node.id, area: { x: node.x, y: words[node.id]?.y ?? node.y, width: node.width, height: words[node.id]?.height ?? node.height } }]
+        : []),
+    ),
+  })
+  const found = ({ document, inspected }: { document: FreeformDocument; inspected: InspectedSlide[] }) => (
+    layoutIssues(document, inspected).filter((issue) => HOW_FULL.has(issue.kind))
+  )
+  const rule = (id: string, y: number): FreeformSceneNode => ({
+    id, name: id, locked: false, hidden: false, type: 'line', x: 100, y, width: 880, height: 12, rotation: 0, scale: 1,
+    lineKind: 'line', stroke: '#111111', strokeWidth: 2,
+  })
+  const picture = (id: string, box: { x: number; y: number; width: number; height: number }): FreeformSceneNode => ({
+    id, name: id, locked: false, hidden: false, type: 'image', ...box, rotation: 0, scale: 1,
+    src: 'data:image/png;base64,AAAA', alt: '', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 },
+  })
+
+  test('a band of nothing across the page is called out, with where it runs', () => {
+    const issues = found(onPage([text('标题', { y: 100, height: 120 }), text('页脚', { y: 1300, height: 60 })]))
+    expect(issues).toMatchObject([{ kind: 'empty-band', node: null, path: null, page: 1 }])
+    expect(issues[0].message).toContain('页面 220–1300px 这一段是空的（占页高 75%）')
+  })
+
+  test('so is an empty end of the page, and a page with nothing on it', () => {
+    expect(found(onPage([text('页脚', { y: 1100, height: 240 })]))[0].message).toContain('页面最上面 1100px 都是空的')
+    expect(found(onPage([text('标题', { y: 100, height: 300 })]))[0].message).toContain('页面 400px 以下都是空的')
+    expect(found(onPage([])).map((issue) => issue.message)).toEqual(['这一页什么都没有：放上内容，或者删掉这一页。'])
+  })
+
+  test('rules fill the rows they run along, a card is judged by what it holds, and a picture page is never blank', () => {
+    // A title and a rule every 300px: no band runs a quarter of the page.
+    expect(found(onPage([text('标题', { y: 80, height: 120 }), ...[400, 700, 1000, 1300].map((y, index) => rule(`分隔线${index}`, y))]))).toEqual([])
+
+    // A tall card holding one line of words at its top: the card is the words' ground, the rest of it is empty.
+    const holder = onPage([card('卡片', '#ffffff', { x: 80, y: 80, width: 920, height: 1280 }), text('卡片字', { y: 120, height: 80 })])
+    expect(found(holder).map((issue) => issue.message)).toEqual([expect.stringContaining('页面 200px 以下都是空的')])
+
+    // The same page with a picture behind it is the picture's.
+    const slide = holder.document.slides[0]
+    const pictured: FreeformDocument = { ...holder.document, slides: [{ ...slide, background: { type: 'image', src: 'data:image/png;base64,AAAA', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } }] }
+    expect(found({ document: pictured, inspected: holder.inspected })).toEqual([])
+  })
+
+  test('a plain block with nothing on it is a place left empty; a card with words, a glow and a picture are not', () => {
+    const frames = (nodes: FreeformSceneNode[]) => found(onPage(nodes)).filter((issue) => issue.kind === 'empty-frame')
+    const words = [text('标题', { y: 760, height: 160 }), text('正文', { y: 960, height: 200 }), text('页脚', { y: 1200, height: 120 })]
+    const block = card('主图', '#d8d0c2', { x: 0, y: 0, width: 1080, height: 700 })
+    expect(found(onPage([block, ...words])).map((issue) => `${issue.kind}:${issue.node}`)).toEqual(['empty-frame:主图'])
+    expect(frames([block, ...words])[0].message).toContain('fill 换成图片')
+
+    // Words set inside it make it their card.
+    expect(frames([block, text('标签', { x: 100, y: 300, height: 80 }), ...words])).toEqual([])
+    // A blurred glow is decoration.
+    expect(frames([{ ...block, filter: { blur: 40 } } as FreeformSceneNode, ...words])).toEqual([])
+    // A picture is a picture, and a block with an illustration over most of it is the illustration's ground.
+    expect(frames([{ ...block, fill: { type: 'image', src: 'data:image/png;base64,AAAA', fit: 'cover', framing: { focusX: 0.5, focusY: 0.5, zoom: 1 } } } as FreeformSceneNode, ...words])).toEqual([])
+    expect(frames([block, picture('插画', { x: 200, y: -40, width: 680, height: 780 }), ...words])).toEqual([])
+  })
+
+  test('a page the render did not measure whole is not judged', () => {
+    expect(found({ document: deck([text('标题')]), inspected: measured([], []) })).toEqual([])
   })
 })
