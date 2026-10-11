@@ -61,6 +61,7 @@ import { PLATFORMS, buildConfig, resolveTheme } from '../theme'
 import { store } from '../storage'
 import { createLongImage, longImageScale } from '../exportLongImage'
 import { sliceIntoGrid } from '../exportGrid'
+import { onWhite } from '../exportOpaque'
 import type { HtmlImportNote } from '../freeform/htmlImport'
 import { runHtmlImport, type HtmlImportPayload } from './htmlImportRun'
 import '../styles.css'
@@ -537,14 +538,16 @@ function RenderApp({ document: doc, inspect, output }: { document: FreeformDocum
               : '图片加载失败，渲染已取消')
           }
           await waitForDoubleFrame()
-          // JPEG has no alpha channel: composite on white, as the editor's JPG export does.
-          const draw = (pixelRatio: number) => toCanvas(artboard, {
-            pixelRatio,
-            width: current.width,
-            height: current.height,
-            ...(jpeg ? { backgroundColor: '#ffffff' } : {}),
-            fontEmbedCSS: fontCSS,
-          })
+          // JPEG has no alpha channel: set on white, as the editor's JPG export does.
+          const draw = async (pixelRatio: number) => {
+            const picture = await toCanvas(artboard, {
+              pixelRatio,
+              width: current.width,
+              height: current.height,
+              fontEmbedCSS: fontCSS,
+            })
+            return jpeg ? onWhite(picture) : picture
+          }
           const canvas = await draw(output.scale)
           const encode = (picture: HTMLCanvasElement) => jpeg ? picture.toDataURL('image/jpeg', output.quality) : picture.toDataURL('image/png')
           const dataUrl = encode(canvas)

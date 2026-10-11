@@ -21,6 +21,7 @@ import { ProfileModal } from '../../ProfileModal'
 import { Select } from '../../Select'
 import { downloadZip } from '../../exportZip'
 import { buildPdf, pdfPageFor, type PdfPage } from '../../exportPdf'
+import { onWhite } from '../../exportOpaque'
 import { deriveMarkdownTitle, type Draft, type MarkdownCardDocument } from '../../drafts'
 import { readLastSession, updateLastSession } from '../../lastSession'
 import { GUEST_OWNER_ID, isGuestOwner, storeFor } from '../../storage'
@@ -443,18 +444,17 @@ export function MarkdownWorkspace({
 
   // One PDF page for page `index`: its JPEG at the export ratio, the page as
   // large as the card — the same assembly the freeform editor and the MCP
-  // server use. JPEG has no alpha, so composite on white behind the card.
+  // server use. JPEG has no alpha, so the card is set on white.
   async function renderPagePdfPart(index: number, fontEmbedCSS?: string): Promise<PdfPage | null> {
     const node = await stagePage(index)
     if (!node) return null
-    const canvas = await toCanvas(node, {
+    const canvas = onWhite(await toCanvas(node, {
       pixelRatio: EXPORT_PIXEL_RATIO,
       width: config.width,
       height: config.height,
-      backgroundColor: '#ffffff',
       fontEmbedCSS,
       filter: (el) => !(el instanceof HTMLElement && el.classList.contains('img-handle')),
-    })
+    }))
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
     if (!blob) return null
     return pdfPageFor(new Uint8Array(await blob.arrayBuffer()), config, canvas)

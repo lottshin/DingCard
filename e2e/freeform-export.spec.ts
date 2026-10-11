@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { installOfflineFontRoutes } from './offlineFonts'
+import { colourDistance, firstPdfJpeg, jpegPixel } from './exportPixels'
 
 // PDF keeps every page in one file, each page as large as its card; 拼成一张长图
 // stacks the pages into one tall picture.
@@ -73,4 +74,23 @@ test('拼成一张长图 stacks every page into one picture, at the chosen scale
   const jpeg = await download(page, 'freeform-export-long')
   expect(jpeg.name).toBe(`freeform-long-${today()}.jpg`)
   expect([jpeg.bytes[0], jpeg.bytes[1]]).toEqual([0xff, 0xd8])
+})
+
+test('a JPG, a PDF and a long JPG keep a coloured page\'s own background', async ({ page }) => {
+  // The hiring poster's page is solid blue (#2447e0); JPEG has no transparency, but the page has its own colour.
+  await page.goto('/#/edit/canvas/template/hiring-poster-freeform')
+  await expect(page.getByTestId('freeform-export')).toBeEnabled()
+  const blue = [0x24, 0x47, 0xe0]
+
+  await (await openExportMenu(page)).getByTestId('export-format-jpeg').click()
+  const jpeg = await download(page, 'freeform-primary-export')
+  expect(jpeg.name).toBe('slide-01.jpg')
+  expect(colourDistance(await jpegPixel(page, jpeg.bytes, 12, 12), blue)).toBeLessThan(12)
+  const long = await download(page, 'freeform-export-long')
+  expect(colourDistance(await jpegPixel(page, long.bytes, 12, 12), blue)).toBeLessThan(12)
+
+  await (await openExportMenu(page)).getByTestId('export-format-pdf').click()
+  const pdf = await download(page, 'freeform-primary-export')
+  expect(pdf.name).toBe('slide-01.pdf')
+  expect(colourDistance(await jpegPixel(page, firstPdfJpeg(pdf.bytes), 12, 12), blue)).toBeLessThan(12)
 })

@@ -12,6 +12,7 @@ import { importDraftFromJson, type Draft } from '../drafts'
 import { createLongImage, longImageScale } from '../exportLongImage'
 import { isGridPage, sliceIntoGrid } from '../exportGrid'
 import { buildPdf, pdfPageFor, type PdfPage } from '../exportPdf'
+import { onWhite } from '../exportOpaque'
 import { downloadZip } from '../exportZip'
 import { buildFontEmbedCSS } from '../fontEmbed'
 import { downscaleDataUrl } from '../imageStore'
@@ -6072,13 +6073,12 @@ export function FreeformWorkspace({
     }
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     // html-to-image's toBlob drops the type/quality options, so render to a
-    // canvas and encode it at the caller. JPEG has no alpha channel: composite
-    // on white instead of letting transparent areas turn black.
-    return toCanvas(node, {
+    // canvas and encode it at the caller. JPEG has no alpha channel: set it on
+    // white instead of letting transparent areas turn black.
+    const canvas = await toCanvas(node, {
       pixelRatio,
       width: slide.width,
       height: slide.height,
-      ...(opaque ? { backgroundColor: '#ffffff' } : {}),
       style: {
         transform: 'none',
       },
@@ -6086,6 +6086,7 @@ export function FreeformWorkspace({
       filter: (element) =>
         !(element instanceof HTMLElement && element.classList.contains('freeform-ui-only')),
     })
+    return opaque ? onWhite(canvas) : canvas
   }
 
   async function renderSlideBlob(slide: FreeformSlide, fontEmbedCSS: string): Promise<Blob | null> {

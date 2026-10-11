@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { installOfflineFontRoutes } from './offlineFonts'
+import { colourDistance, firstPdfJpeg, jpegPixel } from './exportPixels'
 
 declare global {
   interface Window {
@@ -569,6 +570,17 @@ test('PDF export packs every page into one file, each page as large as its card'
   await page.getByRole('button', { name: '导出全部 3 页 PDF', exact: true }).click()
   const ctx = await ctxDownload
   expect(ctx.suggestedFilename()).toBe(`cards-${today()}.pdf`)
+})
+
+test('PDF pages keep the theme\'s background', async ({ page }) => {
+  await setDoc(page, '# 深色主题\n\n正文。')
+  await chooseTheme(page, '深空黑')
+  const downloaded = page.waitForEvent('download')
+  await page.getByTestId('markdown-export-pdf').click()
+  const pdf = await readFile((await (await downloaded).path())!)
+  // The card's own #1c1c1e in its left margin (the page is drawn at 3×); only what the card leaves clear turns white.
+  const inside = await jpegPixel(page, firstPdfJpeg(pdf), 60, 300)
+  expect(colourDistance(inside, [0x1c, 0x1c, 0x1e])).toBeLessThan(12)
 })
 
 test('local mode keeps the share entry away', async ({ page }) => {

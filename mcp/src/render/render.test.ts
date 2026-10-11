@@ -161,6 +161,37 @@ async function browserDifference(html: string, files: readonly string[], distDir
   }
 }
 
+/** Each JPEG's colour at a pixel, as a browser decodes it. */
+async function jpegColours(pictures: readonly Buffer[], x: number, y: number): Promise<number[][]> {
+  const browser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const page = await browser.newPage()
+    const colours: number[][] = []
+    for (const picture of pictures) {
+      colours.push(await page.evaluate(async ({ source, x, y }) => {
+        const image = new Image()
+        image.src = source
+        await image.decode()
+        const canvas = document.createElement('canvas')
+        canvas.width = image.width
+        canvas.height = image.height
+        const context = canvas.getContext('2d')!
+        context.drawImage(image, 0, 0)
+        return Array.from(context.getImageData(x, y, 1, 1).data.slice(0, 3))
+      }, { source: `data:image/jpeg;base64,${picture.toString('base64')}`, x, y }))
+    }
+    return colours
+  } finally {
+    await browser.close()
+  }
+}
+
+/** The first page's picture in a PDF the export wrote: the JPEG its image stream holds. */
+function firstPdfJpeg(pdf: Buffer): Buffer {
+  const start = pdf.indexOf(Buffer.from([0xff, 0xd8, 0xff]))
+  return pdf.subarray(start, pdf.indexOf(Buffer.from('\nendstream', 'latin1'), start))
+}
+
 function v20Text(id: string, rect: PixelRect, extra: Partial<FreeformTextElement>): FreeformTextElement {
   return {
     id,
@@ -460,6 +491,34 @@ describe('renderDocument', () => {
       expect(pngIhdr(readFileSync(long.files[0].path))).toEqual({ width: 1080, height: 4320 })
 
       expect(await renderDocument(document, { outputDir, format: 'pdf', long: true })).toMatchObject({ ok: false })
+    },
+    420_000,
+  )
+
+  test(
+    'keeps a coloured page\'s own background in a JPEG, a PDF and a long JPEG, and sets only a clear page on white',
+    async () => {
+      // The hiring poster's page is solid blue: JPEG has no transparency, but the page has its own colour.
+      const instantiation = instantiateTemplate('hiring-poster-freeform')
+      if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
+      const document = instantiation.document
+      const clear: FreeformDocument = { ...document, slides: document.slides.map((slide) => ({ ...slide, background: { type: 'transparent' as const } })) }
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-opaque-'))
+      const jpeg = await renderDocument(document, { outputDir, baseName: 'blue', format: 'jpeg' })
+      const pdf = await renderDocument(document, { outputDir, baseName: 'blue', format: 'pdf' })
+      const long = await renderDocument(document, { outputDir, baseName: 'blue', format: 'jpeg', long: true })
+      const glass = await renderDocument(clear, { outputDir, baseName: 'clear', format: 'jpeg' })
+      if (!jpeg.ok || !pdf.ok || !long.ok || !glass.ok) throw new Error('expected every render to succeed')
+      const [fromJpeg, fromPdf, fromLong, fromClear] = await jpegColours([
+        readFileSync(jpeg.files[0].path),
+        firstPdfJpeg(readFileSync(pdf.files[0].path)),
+        readFileSync(long.files[0].path),
+        readFileSync(glass.files[0].path),
+      ], 12, 12)
+      const distance = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+      for (const colour of [fromJpeg, fromPdf, fromLong]) expect(distance(colour, [0x24, 0x47, 0xe0])).toBeLessThan(12)
+      // A transparent page turns white, not black.
+      expect(distance(fromClear, [255, 255, 255])).toBeLessThan(12)
     },
     420_000,
   )
