@@ -216,13 +216,16 @@ function chartAxis(
   const plotHeight = Math.max(1, height - topPad - bottomPad)
   const tickFont = chartTickFont(height)
   const yAt = (value: number) => height - bottomPad - (value / ceiling) * plotHeight
+  const ticks = [ceiling, ceiling / 2].map((value) => ({
+    y: yAt(value),
+    text: formatChartValue(value),
+  }))
+  // A wide number (20000) pushes the plot right instead of losing its first digits.
+  const widest = Math.max(...ticks.map((tick) => chartLabelWidth(tick.text, tickFont)))
   return {
     max: ceiling,
-    ticks: [ceiling, ceiling / 2].map((value) => ({
-      y: yAt(value),
-      text: formatChartValue(value),
-    })),
-    leftPad: Math.ceil(tickFont * 2.6),
+    ticks,
+    leftPad: Math.ceil(Math.max(tickFont * 2.6, widest + tickFont * 0.6)),
   }
 }
 
@@ -450,8 +453,15 @@ export function lineChartGeometry(
   const scale = axis.max > 0 ? plotHeight / axis.max : 0
   const count = labels.length
   const plotWidth = width - axis.leftPad
-  const slot = count > 1 ? plotWidth / (count - 1) : 0
-  const xAt = (index: number) => (count > 1 ? axis.leftPad + slot * index : axis.leftPad + plotWidth / 2)
+  // The end points sit in from the chart's edges by half their category's
+  // name, so the first and last names under them stay inside the chart.
+  const labelFont = chartLabelFont(height, width, labels, 'line')
+  const reach = count > 1 ? plotWidth / (count - 1) / 2 : 0
+  const halfName = (text: string) => Math.min(reach, chartLabelWidth(text, labelFont) / 2 + 4)
+  const startInset = count > 1 ? Math.max(0, halfName(labels[0]) - axis.leftPad) : 0
+  const endInset = count > 1 ? halfName(labels[count - 1]) : 0
+  const slot = count > 1 ? (plotWidth - startInset - endInset) / (count - 1) : 0
+  const xAt = (index: number) => (count > 1 ? axis.leftPad + startInset + slot * index : axis.leftPad + plotWidth / 2)
   const yAt = (value: number) => height - bottomPad - value * scale
   const fontSize = Math.min(height * 0.07, width / (count * 4), CHART_FONT_SIZE_MAX)
   const lines = series.map((entry) => {
@@ -478,7 +488,7 @@ export function lineChartGeometry(
     labels: labels.map((text, index) => ({
       x: xAt(index),
       y: height - bottomPad + fontSize * 1.4,
-      lines: chartLabelLines(text, (count > 1 ? slot : plotWidth) * 0.94, chartLabelFont(height, width, labels, 'line')),
+      lines: chartLabelLines(text, (count > 1 ? slot : plotWidth) * 0.94, labelFont),
     })),
     baseline: { y: height - bottomPad },
     axis,

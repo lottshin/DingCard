@@ -7,6 +7,7 @@ import {
   barChartGeometry,
   chartLabelFont,
   chartLabelLines,
+  chartTickFont,
   parseChartPaste,
   chartPointColors,
   formatChartValue,
@@ -185,10 +186,12 @@ describe('chart geometry', () => {
     const line = chart.lines[0]
     expect(line.points).toHaveLength(3)
     // The tick labels take the left edge: the slope starts after them and
-    // still ends at the right edge.
+    // ends at the right edge, in from it by half the last category's name.
     expect(line.points[0].x).toBeGreaterThan(0)
     expect(line.points[0].x).toBeLessThan(400 * 0.2)
-    expect(line.points[2].x).toBeCloseTo(400, 3)
+    const nameFont = chartLabelFont(300, 400, ['一', '二', '三'], 'line')
+    expect(line.points[2].x).toBeCloseTo(400 - (nameFont / 2 + 4), 3)
+    expect(chart.labels[2].x + nameFont / 2).toBeLessThanOrEqual(400)
     expect(line.area).toMatch(new RegExp(`^M${chart.axis.leftPad} 252 L${chart.axis.leftPad} 198 `))
     expect(line.dots).toHaveLength(3)
     expect(line.values.map((value) => value.text)).toEqual(['1', '3', '2'])
@@ -537,6 +540,26 @@ describe('chart element in the document', () => {
       updates: [{ path: [base.id], patch: { showLegend: 'no' as unknown as boolean } }],
     })
     expect(bad).toBe(automatic)
+  })
+
+  it('keeps the first and last category names of a line inside the chart', () => {
+    // Ticks off: no pad on the left, so the first point steps in for its name too.
+    const chart = lineChartGeometry(904, 560, ['Q1', 'Q2', 'Q3', 'Q4'], [{ values: [120, 145, 190, 240], color: '#2550d9' }], { showValues: false, showTicks: false })
+    const font = chartLabelFont(560, 904, ['Q1', 'Q2', 'Q3', 'Q4'], 'line')
+    const half = (2 * 0.56 * font) / 2
+    expect(chart.labels[0].x - half).toBeGreaterThanOrEqual(0)
+    expect(chart.labels[3].x + half).toBeLessThanOrEqual(904)
+    expect(chart.lines[0].points.map((point) => point.x)).toEqual(chart.labels.map((label) => label.x))
+  })
+
+  it('keeps the first digits of wide ticks: the plot moves right to hold them', () => {
+    const narrow = barChartGeometry(600, 360, ['一', '二'], [{ values: [30, 80], color: '#2563eb' }], { showValues: false })
+    const wide = barChartGeometry(600, 360, ['一', '二'], [{ values: [3200, 12800], color: '#2563eb' }], { showValues: false })
+    expect(wide.axis!.ticks.map((tick) => tick.text)).toEqual(['20000', '10000'])
+    // Right-aligned 5px left of the pad, the widest tick still starts inside the chart.
+    const tickFont = chartTickFont(360)
+    expect(wide.axis!.leftPad - 5 - 5 * 0.56 * tickFont).toBeGreaterThan(0)
+    expect(wide.axis!.leftPad).toBeGreaterThan(narrow.axis!.leftPad)
   })
 
   it('hides the y-axis ticks at v33 and rejects the switch at v32', () => {
