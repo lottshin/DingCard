@@ -26,6 +26,8 @@ import { createDefaultImageFraming } from '../freeform/imageFraming'
 import { DEFAULT_PROFILE, type Profile } from '../theme'
 import { TIMETABLE_SAMPLE, TIMETABLE_TABLE, tableNodes } from './tables'
 import type {
+  DeckLayoutId,
+  FreeformDeckSeriesId,
   FreeformTemplateSeriesId,
   MarkdownTemplateSeriesId,
   MarkdownTemplateDocument,
@@ -59,7 +61,7 @@ function textNode(
   options: Partial<Pick<FreeformTextElement,
     'fontSize' | 'fontFamily' | 'textFill' | 'align' | 'fontWeight' | 'rotation' | 'name'
     | 'lineHeight' | 'letterSpacing' | 'italic' | 'vertical' | 'opacity' | 'shadow' | 'filter' | 'blendMode'
-    | 'stroke' | 'strokeWidth' | 'effect'
+    | 'stroke' | 'strokeWidth' | 'effect' | 'verticalAlign'
   >> = {},
 ): FreeformTextElement {
   return {
@@ -91,6 +93,7 @@ function textNode(
     ...(options.stroke !== undefined ? { stroke: options.stroke } : {}),
     ...(options.strokeWidth !== undefined ? { strokeWidth: options.strokeWidth } : {}),
     ...(options.effect ? { effect: { ...options.effect } } : {}),
+    ...(options.verticalAlign ? { verticalAlign: options.verticalAlign } : {}),
   }
 }
 
@@ -376,16 +379,15 @@ const SERIF = "'Noto Serif SC', serif"
 const KAI = "'LXGW WenKai TC', cursive"
 const UI = 'system-ui, sans-serif'
 
+const EDITORIAL = { paper: '#f6f3ea', ink: '#1b1a18', red: '#c23a26', redOnInk: '#e5503a', muted: '#5f584e', band: '#e7dfcf', rule: '#d9d1c2' }
+
+const editorialMasthead = (text: string, color: string) => textNode(text, 88, 72, 640, 48, {
+  name: '刊头', fontSize: 24, fontFamily: UI, textFill: solid(color), fontWeight: 'bold', letterSpacing: 6,
+})
+
 function createEditorialDocument(): FreeformDocument {
-  const paper = '#f6f3ea'
-  const ink = '#1b1a18'
-  const red = '#c23a26'
-  const redOnInk = '#e5503a'
-  const muted = '#5f584e'
-  const band = '#e7dfcf'
-  const masthead = (text: string, color: string) => textNode(text, 88, 72, 640, 48, {
-    name: '刊头', fontSize: 24, fontFamily: UI, textFill: solid(color), fontWeight: 'bold', letterSpacing: 6,
-  })
+  const { paper, ink, red, redOnInk, muted, band } = EDITORIAL
+  const masthead = editorialMasthead
   return documentFromSlides([
     slide('封面', solid(paper), [
       lineNode(88, 130, 904, ink, 3, { name: '刊头线' }),
@@ -538,12 +540,10 @@ function createChecklistDocument(): FreeformDocument {
   ])
 }
 
+const SIGNAL = { paper: '#f1efe9', black: '#111111', red: '#d63b24', blue: '#2550d9', yellow: '#f4c542', rule: '#cfcbc2', grey: '#55524c' }
+
 function createSignalDocument(): FreeformDocument {
-  const paper = '#f1efe9'
-  const black = '#111111'
-  const red = '#d63b24'
-  const blue = '#2550d9'
-  const yellow = '#f4c542'
+  const { paper, black, red, blue, yellow } = SIGNAL
   const evidence = (index: number, letter: string, color: string, text: string) => {
     const y = 214 + index * 200
     const names = ['一', '二', '三'][index]
@@ -600,6 +600,192 @@ function createSignalDocument(): FreeformDocument {
       textNode('DINGCARD SIGNAL', 64, 1318, 600, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 4 }),
     ]),
   ])
+}
+
+/** The editorial deck's other inner pages (DeckLayoutId), drawn like its section page. */
+const EDITORIAL_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
+  // A chapter opener: the page number set large, the heading, one paragraph.
+  statement: () => {
+    const { paper, ink, red, muted } = EDITORIAL
+    return slide('观点页', solid(paper), [
+      lineNode(88, 130, 904, ink, 3, { name: '刊头线' }),
+      shapeNode('rect', 88, 892, 132, 12, solid(red), { name: '标题线', cornerRadius: 0 }),
+      lineNode(88, 1294, 904, ink, 2, { name: '页脚线' }),
+      editorialMasthead('THE DINGCARD REVIEW', ink),
+      textNode('02', 792, 72, 200, 48, { name: '页码', fontSize: 28, fontFamily: UI, textFill: solid(red), fontWeight: 'bold', align: 'right', letterSpacing: 2 }),
+      textNode('02', 64, 160, 640, 360, {
+        name: '大页码', fontSize: 340, fontFamily: SERIF, textFill: solid(red), fontWeight: 'bold', lineHeight: 1,
+        effect: { type: 'hollow', amount: 30 },
+      }),
+      textNode('一页只说\n一件事', 80, 556, 920, 300, {
+        name: '标题', fontSize: 112, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.2, letterSpacing: -1,
+      }),
+      textNode('读者翻到这一页，只需要带走一句话。把它写大，其余的留给下一页。', 88, 936, 880, 330, {
+        name: '导语', fontSize: 44, fontFamily: SERIF, textFill: solid(muted), lineHeight: 1.6,
+      }),
+      textNode('阅读顺序 / 02', 88, 1318, 400, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(ink), letterSpacing: 2 }),
+    ])
+  },
+  // Three to five points down the page, each with a line under it.
+  list: () => {
+    const { paper, ink, red, muted, rule } = EDITORIAL
+    const row = (index: number, text: string, note: string) => {
+      const y = 652 + index * 124
+      const n = NUMBERED[index]
+      return [
+        lineNode(88, y + 116, 904, rule, 2, { name: `要点线${n}` }),
+        textNode(String(index + 1).padStart(2, '0'), 88, y + 6, 100, 56, { name: `编号${n}`, fontSize: 36, fontFamily: UI, textFill: solid(red), fontWeight: 'bold', letterSpacing: 2 }),
+        textNode(text, 200, y, 792, 64, { name: `要点${n}`, fontSize: 44, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.3 }),
+        textNode(note, 200, y + 64, 792, 44, { name: `说明${n}`, fontSize: 28, fontFamily: UI, textFill: solid(muted), letterSpacing: 1 }),
+      ]
+    }
+    return slide('要点页', solid(paper), [
+      lineNode(88, 130, 904, ink, 3, { name: '刊头线' }),
+      lineNode(88, 620, 904, ink, 3, { name: '要点顶线' }),
+      lineNode(88, 1294, 904, ink, 2, { name: '页脚线' }),
+      ...row(0, '先写结论', '第一句就说清楚要什么'),
+      ...row(1, '再给依据', '一条依据只说一件事'),
+      ...row(2, '最后给动作', '读完知道下一步做什么'),
+      ...row(3, '删掉重复', '同一句话不说两遍'),
+      ...row(4, '留一句话', '让读者记住的那一句'),
+      editorialMasthead('THE DINGCARD REVIEW', ink),
+      textNode('02', 792, 72, 200, 48, { name: '页码', fontSize: 28, fontFamily: UI, textFill: solid(red), fontWeight: 'bold', align: 'right', letterSpacing: 2 }),
+      textNode('照着这几步\n一项项做', 80, 192, 920, 270, {
+        name: '标题', fontSize: 112, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.2, letterSpacing: -1,
+      }),
+      textNode('一页放三到五条，每条一句话；要补充的写在下面那一行。', 88, 480, 880, 124, {
+        name: '导语', fontSize: 36, fontFamily: SERIF, textFill: solid(muted), lineHeight: 1.6,
+      }),
+      textNode('阅读顺序 / 02', 88, 1318, 400, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(ink), letterSpacing: 2 }),
+    ])
+  },
+  // One drawing across the column, under its heading.
+  data: () => {
+    const { paper, ink, red, muted } = EDITORIAL
+    return slide('数据页', solid(paper), [
+      lineNode(88, 130, 904, ink, 3, { name: '刊头线' }),
+      lineNode(88, 590, 904, ink, 3, { name: '图表顶线' }),
+      lineNode(88, 1294, 904, ink, 2, { name: '页脚线' }),
+      chartNode('bar', ['一月', '二月', '三月', '四月', '五月', '六月'], [{ name: '阅读', values: [32, 51, 46, 84, 97, 128], color: red }], 88, 660, 904, 560, { name: '示例图表', showValues: true }),
+      editorialMasthead('THE DINGCARD REVIEW', ink),
+      textNode('02', 792, 72, 200, 48, { name: '页码', fontSize: 28, fontFamily: UI, textFill: solid(red), fontWeight: 'bold', align: 'right', letterSpacing: 2 }),
+      textNode('数字\n先说话', 80, 192, 920, 260, {
+        name: '标题', fontSize: 96, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.2, letterSpacing: -1,
+      }),
+      textNode('一页只放一张图：读者先看到走势，再读这一句解释。', 88, 456, 880, 110, {
+        name: '导语', fontSize: 34, fontFamily: SERIF, textFill: solid(muted), lineHeight: 1.6,
+      }),
+      textNode('阅读顺序 / 02', 88, 1318, 400, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(ink), letterSpacing: 2 }),
+    ])
+  },
+  closing: () => editorialClosing(),
+}
+
+/** The editorial closing page for an ending that is only a sentence or two: the words in the middle, the stamp under them. */
+function editorialClosing(): FreeformSlide {
+  const { paper, ink, red, redOnInk } = EDITORIAL
+  return slide('结尾', solid(ink), [
+    lineNode(88, 130, 904, paper, 3, { name: '刊头线' }),
+    shapeNode('rect', 806, 1080, 176, 176, solid(red), { name: '印章', cornerRadius: 20, rotation: -8 }),
+    lineNode(88, 1294, 904, '#3b3732', 2, { name: '页脚线' }),
+    editorialMasthead('THE DINGCARD REVIEW · 03', paper),
+    textNode('03', 792, 72, 200, 48, { name: '页码', fontSize: 28, fontFamily: UI, textFill: solid(redOnInk), fontWeight: 'bold', align: 'right', letterSpacing: 2 }),
+    textNode('最后\n留一句话', 80, 192, 920, 300, {
+      name: '标题', fontSize: 112, fontFamily: SERIF, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.2, letterSpacing: -1,
+    }),
+    textNode('写到这里就够了，\n把想让读者记住的那一句留在这里。', 88, 500, 860, 560, {
+      name: '正文', fontSize: 72, fontFamily: SERIF, textFill: solid('#e4ddd0'), fontWeight: 'bold', lineHeight: 1.5, verticalAlign: 'middle',
+    }),
+    textNode('完', 806, 1088, 176, 160, {
+      name: '印章文字', fontSize: 104, fontFamily: SERIF, textFill: solid(paper), fontWeight: 'bold', align: 'center', lineHeight: 1, rotation: -8,
+    }),
+    textNode('THE DINGCARD REVIEW', 88, 1318, 600, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid('#948b7e'), letterSpacing: 6 }),
+  ])
+}
+
+/** The signal closing page for an ending that is only a sentence or two: the yellow band, the heading, the sentence large. */
+function signalClosing(): FreeformSlide {
+  const { paper, black, yellow } = SIGNAL
+  return slide('行动', solid(black), [
+    shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, 196 + TEMPLATE_EDGE_BLEED, solid(yellow), { name: '黄色刊头', cornerRadius: 0 }),
+    shapeNode('ellipse', 820, 342, 196, 196, solid(yellow), { name: '方向符号' }),
+    lineNode(64, 646, 952, '#33312d', 3, { name: '标题线', cap: 'butt' }),
+    lineNode(64, 1294, 952, yellow, 3, { name: '页脚线', cap: 'butt' }),
+    textNode('SIGNAL / 03 / ACTION', 64, 76, 700, 50, { name: '刊头', fontSize: 30, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 4 }),
+    textNode('03', 816, 76, 200, 50, { name: '页码', fontSize: 30, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', align: 'right' }),
+    textNode('最后，\n记住这一句。', 64, 280, 740, 320, { name: '主标题', fontSize: 116, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.18 }),
+    textNode('→', 820, 368, 196, 140, { name: '箭头文字', fontSize: 120, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', align: 'center', lineHeight: 1 }),
+    textNode('能被执行的观点，才会真正留下来。今天就试一次，明天回来看结果。', 64, 700, 952, 560, {
+      name: '收束句', fontSize: 64, textFill: solid(yellow), fontWeight: 'bold', lineHeight: 1.35, verticalAlign: 'middle',
+    }),
+    textNode('DINGCARD SIGNAL', 64, 1318, 600, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 4 }),
+  ])
+}
+
+/** The signal deck's other inner pages (DeckLayoutId), in its blocks of colour. */
+const SIGNAL_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
+  // The cover's claim, made a page: the page number in the red block, the heading, the claim.
+  statement: () => {
+    const { paper, black, red, blue } = SIGNAL
+    return slide('主张页', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 436 + TEMPLATE_EDGE_BLEED, 376 + TEMPLATE_EDGE_BLEED, solid(red), { name: '红色象限', cornerRadius: 0 }),
+      shapeNode('rect', 470, 330, 220, 20, solid(blue), { name: '蓝色坐标轴', cornerRadius: 0 }),
+      lineNode(64, 760, 952, black, 10, { name: '中部网格线', cap: 'butt' }),
+      lineNode(64, 1294, 952, black, 3, { name: '页脚线', cap: 'butt' }),
+      textNode('02', 40, 96, 360, 240, { name: '大页码', fontSize: 230, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: -10, lineHeight: 1 }),
+      textNode('SIGNAL / 02', 470, 72, 546, 44, { name: '刊头', fontSize: 24, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', align: 'right', letterSpacing: 4 }),
+      textNode('ONE POINT →', 470, 252, 546, 64, { name: '英文主张', fontSize: 40, fontFamily: UI, textFill: solid(blue), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('一页\n一个判断', 64, 410, 952, 320, { name: '主标题', fontSize: 120, textFill: solid(black), fontWeight: 'bold', letterSpacing: -4, lineHeight: 1.15 }),
+      textNode('先把判断说出来，理由放到后面几页；这一页只负责让人记住它。', 64, 800, 952, 460, {
+        name: '主张', fontSize: 60, textFill: solid(black), fontWeight: 'bold', lineHeight: 1.35, verticalAlign: 'middle',
+      }),
+      textNode('DINGCARD SIGNAL', 64, 1318, 600, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 4 }),
+    ])
+  },
+  // The section's lettered column, five deep, without the conclusion bar.
+  list: () => {
+    const { paper, black, red, blue, rule } = SIGNAL
+    const point = (index: number, letter: string, color: string, text: string) => {
+      const y = 196 + index * 212
+      const n = NUMBERED[index]
+      return [
+        lineNode(512, y + 182, 504, rule, 2, { name: `证据线${n}` }),
+        textNode(letter, 512, y, 96, 110, { name: `证据编号${n}`, fontSize: 96, fontFamily: UI, textFill: solid(color), fontWeight: 'bold', lineHeight: 1 }),
+        textNode(text, 624, y + 10, 392, 130, { name: `证据${n}`, fontSize: 40, textFill: solid(black), fontWeight: 'bold', lineHeight: 1.35 }),
+      ]
+    }
+    return slide('清单页', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 456 + TEMPLATE_EDGE_BLEED, 1440 + TEMPLATE_EDGE_BLEED * 2, solid(blue), { name: '蓝色分区', cornerRadius: 0 }),
+      lineNode(512, 164, 504, black, 4, { name: '右栏顶线', cap: 'butt' }),
+      lineNode(512, 1294, 504, black, 3, { name: '页脚线', cap: 'butt' }),
+      textNode('HOW', 52, 88, 390, 170, { name: '英文标题', fontSize: 150, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 2, lineHeight: 1 }),
+      textNode('照着顺序\n一条条来', 56, 330, 370, 240, { name: '主标题', fontSize: 88, textFill: solid('#ffffff'), fontWeight: 'bold', lineHeight: 1.2 }),
+      textNode('每一条只说一件事，读者照着做就不会漏掉。', 60, 640, 360, 560, { name: '左栏正文', fontSize: 34, textFill: solid('#d7e0ff'), lineHeight: 1.65 }),
+      textNode('02', 816, 88, 200, 60, { name: '页码', fontSize: 40, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', align: 'right' }),
+      ...point(0, 'A', red, '先把判断写在最前面'),
+      ...point(1, 'B', blue, '每条依据单独一行'),
+      ...point(2, 'C', black, '数字比形容词有力'),
+      ...point(3, 'D', red, '反面的例子也写上'),
+      ...point(4, 'E', blue, '最后一条给出动作'),
+      textNode('SIGNAL / 02', 512, 1318, 400, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 4 }),
+    ])
+  },
+  // A blue head band over one drawing across the page.
+  data: () => {
+    const { paper, black, blue, grey } = SIGNAL
+    return slide('数据页', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, 520 + TEMPLATE_EDGE_BLEED, solid(blue), { name: '蓝色刊头', cornerRadius: 0 }),
+      lineNode(64, 660, 952, black, 4, { name: '图表顶线', cap: 'butt' }),
+      lineNode(64, 1294, 952, black, 3, { name: '页脚线', cap: 'butt' }),
+      chartNode('bar', ['三月', '四月', '五月', '六月'], [{ name: '阅读', values: [32, 51, 84, 128], color: blue }], 64, 700, 952, 560, { name: '示例图表', showValues: true }),
+      textNode('DATA', 52, 72, 600, 150, { name: '英文标题', fontSize: 130, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 2, lineHeight: 1 }),
+      textNode('02', 816, 88, 200, 60, { name: '页码', fontSize: 40, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'right' }),
+      textNode('数字比\n形容词有力', 56, 250, 968, 240, { name: '主标题', fontSize: 88, textFill: solid('#ffffff'), fontWeight: 'bold', lineHeight: 1.2 }),
+      textNode('把最关键的那个数放大：读者先看图，再读这一句解释。', 64, 548, 952, 96, { name: '导语', fontSize: 34, textFill: solid(grey), lineHeight: 1.5 }),
+      textNode('SIGNAL / 02', 64, 1318, 400, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 4 }),
+    ])
+  },
+  closing: () => signalClosing(),
 }
 
 function createNightFlightDocument(): FreeformDocument {
@@ -2274,6 +2460,16 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'polaroid-wall': createPolaroidWallDocument,
   'picks': createPicksDocument,
   'mono-travel': createMonoTravelDocument,
+}
+
+/**
+ * The inner pages a deck draws besides its section page, by series. The
+ * composer picks one by what a page holds (src/templates/slots.ts says where
+ * the words go); the deck's own document keeps its three pages.
+ */
+export const FREEFORM_DECK_LAYOUTS: Partial<Record<FreeformDeckSeriesId, Record<DeckLayoutId, () => FreeformSlide>>> = {
+  editorial: EDITORIAL_LAYOUTS,
+  signal: SIGNAL_LAYOUTS,
 }
 
 const markdownSeriesIds: MarkdownTemplateSeriesId[] = [

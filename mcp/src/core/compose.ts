@@ -20,10 +20,10 @@ import { isValidTimelineItems } from '../../../src/freeform/timeline'
 import { isValidProgressLabel, isValidProgressValue } from '../../../src/freeform/progress'
 import { isHexColor } from '../../../src/freeform/paint'
 import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformSceneNode, type FreeformSlide, type FreeformTextElement } from '../../../src/freeform/types'
-import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots, type SlotItem } from '../../../src/templates/slots'
-import type { FreeformDeckSeriesId } from '../../../src/templates/types'
-import { balancedHeading, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
+import type { DeckLayoutId, FreeformDeckSeriesId } from '../../../src/templates/types'
+import { balancedHeading, balancedSentence, contentsLines, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
 import { blockingBoxes, drawingBox, pagePalette, seriesColors, type PagePalette } from './dataPlacement'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -68,12 +68,20 @@ export interface DeckPage {
   quote?: string
   /** Another deck template whose page this one takes (its section page, or for the ending its closing page). */
   templateId?: string
+  /** The inner page to draw it on; without it the page picks by what it holds (layoutFor). */
+  layout?: DeckPageLayout
   /** One data drawing for the page, placed in the room the words leave; at most one of chart / table / timeline / progress. */
   chart?: DeckChart
   table?: DeckTable
   timeline?: DeckTimeline
   progress?: DeckProgress
 }
+
+/** An inner page: the deck's section page, or one of its other layouts (DeckLayoutId). */
+export type DeckPageLayout = 'section' | DeckLayoutId
+
+/** The inner pages a page may ask for (the closing page is the ending's, picked by what it holds). */
+const PAGE_LAYOUTS: readonly DeckPageLayout[] = ['section', 'statement', 'list', 'data']
 
 export interface DeckContent {
   title: string
@@ -100,7 +108,7 @@ export interface ComposeSuccess {
     slideCount: number
     coverTitle: string
     /** templateId: the template the page's layout came from. */
-    pages: Array<{ slideId: string; page: number; role: 'cover' | 'section' | 'ending'; title: string; templateId: string }>
+    pages: Array<{ slideId: string; page: number; role: 'cover' | 'section' | 'ending'; title: string; templateId: string; layout?: DeckPageLayout }>
     /** Copy that was set smaller to fit its box. */
     shrunk: FontAdjustment[]
     /** Copy that still doesn't fit at the smallest size: shorten it (check_document measures the real layout). */
@@ -221,6 +229,8 @@ function cleanPage(value: unknown, label: string): DeckPage | string {
   const body = clean(record.body)
   const quote = clean(record.quote)
   const templateId = clean(record.templateId)
+  const layout = clean(record.layout)
+  if (layout && !(PAGE_LAYOUTS as readonly string[]).includes(layout)) return `${label}的 layout 只能是 ${PAGE_LAYOUTS.join(' / ')}`
   const data = cleanData(label, record)
   if (typeof data === 'string') return data
   return {
@@ -229,8 +239,34 @@ function cleanPage(value: unknown, label: string): DeckPage | string {
     ...(points.length > 0 ? { points } : {}),
     ...(quote ? { quote } : {}),
     ...(templateId ? { templateId } : {}),
+    ...(layout ? { layout: layout as DeckPageLayout } : {}),
     ...data,
   }
+}
+
+/** A cover's page titles for its lead, broken between titles, never inside one. */
+function coverContents(cover: { slide: FreeformSlide; slots: SlideSlots }, titles: string[]): string {
+  const lead = cover.slots.lead ? textNodeNamed(cover.slide, cover.slots.lead) : null
+  return lead ? contentsLines(lead, titles) : titles.join(' · ')
+}
+
+/** Three or more points make a list; fewer read as a statement. */
+const LIST_POINTS = 3
+
+/**
+ * The inner page that suits a page: the one it asks for, else by what it
+ * holds. A quote keeps the section page (it draws one); a drawing with a
+ * point or two gets the data page; three or more points the list; the rest
+ * (a paragraph, a point or two) the statement. A deck without that page
+ * draws its section page.
+ */
+export function layoutFor(page: DeckPage, available: ReadonlySet<DeckLayoutId>): DeckPageLayout {
+  if (page.layout) return page.layout === 'section' || available.has(page.layout) ? page.layout : 'section'
+  if (page.quote) return 'section'
+  const points = page.points?.length ?? 0
+  if (dataElementOf(page)) return points <= 2 && available.has('data') ? 'data' : 'section'
+  if (points >= LIST_POINTS) return available.has('list') ? 'list' : 'section'
+  return available.has('statement') ? 'statement' : 'section'
 }
 
 /** Check and tidy content from a client: trimmed strings, no empty points. */
@@ -637,6 +673,35 @@ function fillSlide(template: FreeformSlide, slots: SlideSlots, fill: SlideFill):
     return [next]
   })
 
+  // Without its paragraph the page closes the gap: what sat under it moves up into its place.
+  const leadNode = slots.lead && slots.leadFlow && remove.has(slots.lead) ? textNodeNamed(slide, slots.lead) : null
+  if (leadNode) {
+    const pinned = new Set(slots.leadFlow!.pinned ?? [])
+    const below = (node: FreeformSceneNode) => node.type !== 'group' && node.y >= leadNode.y + leadNode.height - 1 && !pinned.has(node.name)
+    const next = Math.min(...nodes.filter(below).map((node) => node.y))
+    const shift = Number.isFinite(next) ? next - leadNode.y : 0
+    if (shift > 0) nodes.forEach((node, index) => { if (below(node)) nodes[index] = { ...node, y: node.y - shift } })
+  }
+
+  // A list page spreads fewer points down the rows it drew, keeping them a list.
+  const used = useItems ? Math.min(shown.length, items.length) : 0
+  if (slots.spreadItems && used >= 2 && used < items.length) {
+    const first = textNodeNamed(slide, items[0].text)
+    const second = textNodeNamed(slide, items[1].text)
+    if (first && second && second.y > first.y) {
+      const pitch = second.y - first.y
+      const spread = Math.min(pitch * 1.6, (pitch * (items.length - 1)) / (used - 1))
+      const offsets = new Map<string, number>()
+      items.slice(0, used).forEach((item, index) => {
+        for (const name of [item.text, item.note, ...(item.extras ?? [])]) if (name) offsets.set(name, Math.round(index * (spread - pitch)))
+      })
+      nodes.forEach((node, index) => {
+        const offset = offsets.get(node.name)
+        if (offset) nodes[index] = { ...node, y: node.y + offset }
+      })
+    }
+  }
+
   const shrunk: FilledSlide['shrunk'] = []
   const overflowing: FilledSlide['overflowing'] = []
   for (const [index, node] of nodes.entries()) {
@@ -660,15 +725,19 @@ function fillSlide(template: FreeformSlide, slots: SlideSlots, fill: SlideFill):
     if (size === null) overflowing.push({ node: node.name, text: fitted.text })
     nodes[index] = { ...fitted, fontSize: size ?? smallest }
   }
-  // Filled-in headings, points and quotes on two or three lines break where the lines come out even.
+  // Filled-in headings, points and quotes on two or three lines break where the lines come out even;
+  // so does a paragraph set at display size (a statement's claim, a closing sentence).
+  const displayLead = slots.lead ? textNodeNamed(slide, slots.lead) : null
   const headings = new Set([
     ...(typeof slots.title === 'string' ? [slots.title] : []),
     ...(slots.items ?? []).map((item) => item.text),
     ...(slots.quote ? [slots.quote.text] : []),
+    ...(displayLead && displayLead.fontSize >= 52 ? [displayLead.name] : []),
   ])
   nodes.forEach((node, index) => {
     if (node.type === 'text' && headings.has(node.name) && texts.has(node.name)) {
-      nodes[index] = { ...node, text: balancedHeading(node, node.text, node.fontSize) }
+      const balance = node.name === displayLead?.name ? balancedSentence : balancedHeading
+      nodes[index] = { ...node, text: balance(node, node.text, node.fontSize) }
     }
   })
   return { slide: { ...slide, nodes }, shrunk, overflowing }
@@ -690,13 +759,28 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
   const total = 1 + content.pages.length + (content.ending ? 1 : 0)
   // A page may take its layout from another deck template; the cover is always the main one's.
   // A fresh instance per page keeps every slide and node id unique.
-  type Layout = { templateId: string; slide: FreeformSlide; slots: SlideSlots }
+  type Layout = { templateId: string; layout?: DeckPageLayout; slide: FreeformSlide; slots: SlideSlots }
   const layoutOf = (page: DeckPage | null, role: 'cover' | 'section' | 'ending'): Layout | null => {
     const id = page?.templateId ?? templateId
     const source = id === templateId ? template : seriesOf(id)
     if (!source) return null
+    const slots = FREEFORM_TEMPLATE_SLOTS[source.series]
+    if (role === 'section' && page) {
+      const drawn = FREEFORM_DECK_LAYOUTS[source.series]
+      const layout = layoutFor(page, new Set(Object.keys(slots.layouts ?? {}) as DeckLayoutId[]))
+      if (layout !== 'section' && drawn && slots.layouts?.[layout]) {
+        return { templateId: id, layout, slide: drawn[layout](), slots: slots.layouts[layout]! }
+      }
+      return { templateId: id, layout: 'section', slide: source.create().slides[1], slots: slots.section }
+    }
+    // An ending that is only a sentence or two gets the closing page drawn for one.
+    const closing = FREEFORM_DECK_LAYOUTS[source.series]?.closing
+    if (role === 'ending' && page && closing && slots.layouts?.closing
+      && !page.points?.length && !page.quote && !dataElementOf(page)) {
+      return { templateId: id, layout: 'closing', slide: closing(), slots: slots.layouts.closing }
+    }
     const index = role === 'cover' ? 0 : role === 'section' ? 1 : 2
-    return { templateId: id, slide: source.create().slides[index], slots: FREEFORM_TEMPLATE_SLOTS[source.series][role] }
+    return { templateId: id, slide: source.create().slides[index], slots: slots[role] }
   }
   const notDeck = (page: DeckPage, label: string): ComposeError => ({
     ok: false,
@@ -718,7 +802,10 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
       layout: cover,
       fill: {
         title: content.title,
-        lead: content.subtitle,
+        // Without a subtitle a cover with no contents of its own lists the pages, as a magazine's cover lines do.
+        lead: content.subtitle ?? (!cover.slots.toc && content.pages.length > 1
+          ? coverContents(cover, content.pages.map((page) => page.title.replace(/\s*\n\s*/g, ' ')))
+          : undefined),
         points: [],
         toc: content.pages.map((page) => page.title),
         page: 1,
@@ -755,7 +842,7 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
     const page = entry.role === 'cover' ? content : entry.role === 'section' ? content.pages[index - 1] : content.ending
     const element = page && dataElementOf(page)
     if (!element) continue
-    const outcome = placeElement(entry.result.slide, element)
+    const outcome = placeElement(entry.result.slide, element, entry.layout.layout === 'data')
     const record = { slideId: entry.result.slide.id, page: index + 1, kind: element.kind }
     if (outcome) placed.push({ ...record, node: outcome.name, ...outcome.box })
     else unplaced.push({ ...record, reason: '这一页的空位放不下它：删短文字或换个版式更松的模板' })
@@ -780,6 +867,7 @@ export function composeDeck(templateId: string, value: unknown): ComposeSuccess 
         role: entry.role,
         title: entry.fill.title,
         templateId: entry.layout.templateId,
+        ...(entry.layout.layout ? { layout: entry.layout.layout } : {}),
       })),
       shrunk: filled.flatMap((entry, index) => entry.result.shrunk.map((item) => ({
         slideId: entry.result.slide.id,
@@ -856,26 +944,30 @@ function drawingWants(
   element: NonNullable<ReturnType<typeof dataElementOf>>,
   width: number,
   room: number,
-): { height: number; minHeight: number; minWidth: number; horizontal?: boolean } {
+  feature = false,
+): { height: number; minHeight: number; minWidth: number; horizontal?: boolean; ring?: boolean } {
   switch (element.kind) {
     case 'chart':
       return element.chart.kind === 'ring' || element.chart.kind === 'radar'
         ? { height: Math.min(width * 0.8, 640), minHeight: 260, minWidth: 280 }
         : { height: width * 0.62, minHeight: 260, minWidth: 360 }
     case 'table': {
+      // A data page gives its rows more room, and so its cells larger words.
       const rows = (element.table.header ? 1 : 0) + element.table.rows.length
-      return { height: rows * 84, minHeight: rows * 44, minWidth: 320 }
+      return { height: rows * (feature ? 96 : 84), minHeight: rows * 44, minWidth: 320 }
     }
     case 'timeline': {
       const items = element.timeline.items.length
       // Down a spine when the page has the height for it, else side by side.
-      const stacked = items * 104
+      const stacked = items * (feature ? 120 : 104)
       if (room >= stacked * 0.8 || items > 5 || width < 600) {
         return { height: stacked, minHeight: items * 56, minWidth: 320 }
       }
       return { height: 300, minHeight: 200, minWidth: 600, horizontal: true }
     }
     case 'progress':
+      // Alone on a data page the goal is a ring, as large as the room allows.
+      if (feature && room >= 360 && width >= 360) return { height: Math.min(width, room - 80, 520), minHeight: 240, minWidth: 240, ring: true }
       return { height: element.progress.label ? 140 : 96, minHeight: 64, minWidth: 280 }
   }
 }
@@ -889,16 +981,21 @@ function drawingWants(
 function placeElement(
   slide: FreeformSlide,
   element: NonNullable<ReturnType<typeof dataElementOf>>,
+  feature = false,
 ): { name: string; box: { x: number; y: number; width: number; height: number } } | null {
   const free = largestFreeRectangleFor(slide.width, slide.height, blockingBoxes(slide))
   let horizontal = false
-  const box = drawingBox(slide, free, (width) => {
-    const wants = drawingWants(element, width, free.height)
+  let ring = false
+  const drawn = drawingBox(slide, free, (width) => {
+    const wants = drawingWants(element, width, free.height, feature)
     horizontal = wants.horizontal === true
+    ring = wants.ring === true
     return wants
-  })
-  if (!box) return null
-  const placed = elementNode(element, slide, box, pagePalette(slide), horizontal)
+  }, feature)
+  if (!drawn) return null
+  // A ring is square, in the middle of the column.
+  const box = ring ? { x: Math.round(drawn.x + (drawn.width - drawn.height) / 2), y: drawn.y, width: drawn.height, height: drawn.height } : drawn
+  const placed = elementNode(element, slide, box, pagePalette(slide), horizontal, ring)
   slide.nodes = [...slide.nodes, placed]
   return { name: placed.name, box }
 }
@@ -910,6 +1007,7 @@ function elementNode(
   box: { x: number; y: number; width: number; height: number },
   palette: PagePalette,
   horizontal: boolean,
+  ring = false,
 ): FreeformSceneNode {
   if (element.kind === 'chart') {
     const chart = element.chart
@@ -967,6 +1065,7 @@ function elementNode(
   return {
     ...node,
     ...box,
+    ...(ring ? { progressKind: 'ring' as const } : {}),
     value: element.progress.value,
     ...(element.progress.label ? { label: element.progress.label } : {}),
     accent: palette.accent,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import type { FreeformDocument, FreeformTextElement } from '../../../src/freeform/types'
-import { composeDeck, largestFreeRectangleFor, normalizeDeckContent, type DeckContent } from './compose'
+import type { FreeformDocument, FreeformLineElement, FreeformTextElement } from '../../../src/freeform/types'
+import { FREEFORM_DECK_LAYOUTS } from '../../../src/templates/registry'
+import { composeDeck, largestFreeRectangleFor, layoutFor, normalizeDeckContent, type DeckContent } from './compose'
 import { templateMarks } from './layoutIssues'
 import { freeformTemplateIds, instantiateTemplate } from './templates'
 
@@ -57,9 +58,10 @@ describe('composeDeck', () => {
   test('keeps every word it was given, somewhere on its page', () => {
     for (const templateId of freeformTemplateIds()) {
       const { document } = compose(templateId)
+      // Lines a heading or a display paragraph was balanced into are read back as one.
       const pages = document.slides.map((slide) => slide.nodes
         .filter((node): node is FreeformTextElement => node.type === 'text')
-        .map((node) => node.text)
+        .map((node) => node.text.replace(/\n/g, ''))
         .join('\n'))
       const words = (text: string) => text.split(/[：:，。、；\s—]+/).filter((part) => CJK.test(part))
       const expectOn = (page: number, text: string) => {
@@ -92,7 +94,8 @@ describe('composeDeck', () => {
   })
 
   test('puts points past the items after them: in the paragraph below, else in the last item', () => {
-    const editorial = compose('editorial-freeform').document.slides[3].nodes
+    const onSection: DeckContent = { ...RICH, pages: RICH.pages.map((page) => ({ ...page, layout: 'section' as const })) }
+    const editorial = compose('editorial-freeform', onSection).document.slides[3].nodes
       .filter((node): node is FreeformTextElement => node.type === 'text')
     // The editorial paragraph sits above its steps, so the fourth point joins the last step.
     expect(editorial.find((node) => node.name === '步骤三')?.text).toBe('03\n一起煮二十分钟；最后焖五分钟')
@@ -111,7 +114,7 @@ describe('composeDeck', () => {
 
   test('lets long copy take the free room below it before shrinking it', () => {
     const long = '牛油果压泥抹在吐司上，撒点黑胡椒和海盐，再加一个溏心蛋。'.repeat(3)
-    const grown = compose('editorial-freeform', { title: '标题', pages: [{ title: '长正文', body: long }] })
+    const grown = compose('editorial-freeform', { title: '标题', pages: [{ title: '长正文', body: long, layout: 'section' }] })
     const lead = grown.document.slides[1].nodes.find((node) => node.name === '导语') as FreeformTextElement
     // The steps and the quote are gone, so the paragraph has the page below it.
     expect(lead.fontSize).toBe(38)
@@ -119,12 +122,12 @@ describe('composeDeck', () => {
     expect(grown.summary.shrunk).toEqual([])
 
     // On a page that keeps its steps there is no room to grow into.
-    const tight = compose('editorial-freeform', { title: '标题', pages: [{ title: '长正文', body: long, points: ['一', '二'] }] })
+    const tight = compose('editorial-freeform', { title: '标题', pages: [{ title: '长正文', body: long, points: ['一', '二'], layout: 'section' }] })
     const squeezed = tight.document.slides[1].nodes.find((node) => node.name === '导语') as FreeformTextElement
     expect(squeezed.fontSize).toBeLessThan(38)
     expect(tight.summary.shrunk.map((item) => item.node)).toContain('导语')
 
-    const huge = compose('editorial-freeform', { title: '标题', pages: [{ title: '太长', body: long.repeat(12) }] })
+    const huge = compose('editorial-freeform', { title: '标题', pages: [{ title: '太长', body: long.repeat(12), layout: 'section' }] })
     expect(huge.summary.overflowing.map((item) => item.node)).toContain('导语')
   })
 
@@ -138,8 +141,11 @@ describe('composeDeck', () => {
       for (const content of [RICH, LONG]) {
         const { document, summary } = compose(templateId, content)
         document.slides.forEach((slide, index) => {
-          const role = summary.pages[index].role
-          const drawn = instance.document.slides[role === 'cover' ? 0 : role === 'section' ? 1 : 2]
+          const { role, layout } = summary.pages[index]
+          const series = templateId.replace(/-freeform$/, '') as keyof typeof FREEFORM_DECK_LAYOUTS
+          const drawn = layout && layout !== 'section'
+            ? FREEFORM_DECK_LAYOUTS[series]![layout]()
+            : instance.document.slides[role === 'cover' ? 0 : role === 'section' ? 1 : 2]
           // Texts the template itself draws over each other are its own choice.
           const untouched = (node: FreeformTextElement) => drawn.nodes.some((other) =>
             other.type === 'text' && other.name === node.name && other.text === node.text
@@ -155,7 +161,8 @@ describe('composeDeck', () => {
   })
 
   test('keeps a long step in its own column, and a sign title off the note under it', () => {
-    const steps = compose('editorial-freeform', LONG).document.slides[1].nodes
+    const onSection: DeckContent = { ...LONG, pages: LONG.pages.map((page) => ({ ...page, layout: 'section' as const })) }
+    const steps = compose('editorial-freeform', onSection).document.slides[1].nodes
       .filter((node): node is FreeformTextElement => node.type === 'text' && node.name.startsWith('步骤'))
     expect(steps.map((node) => node.text)).toEqual(['01\n低角度的暖光：轮廓最清楚', '02\n天空还有颜色，别急着收工', '03\n路灯刚亮的那几分钟最好看'])
     // The columns still start where the template drew them.
@@ -224,6 +231,108 @@ describe('composeDeck', () => {
       .toMatchObject({ ok: false, error: expect.stringContaining('第 1 个小节') })
     expect(composeDeck('editorial-freeform', { title: 'a', pages: [{ title: 'b' }], ending: { title: 'c', templateId: 'nope' } }))
       .toMatchObject({ ok: false, error: expect.stringContaining('结尾页') })
+  })
+
+  test('picks the inner page that suits what a page holds', () => {
+    const all = new Set(['statement', 'list', 'data', 'closing'] as const)
+    const chart = { kind: 'bar' as const, labels: ['一'], series: [{ values: [1] }] }
+    expect(layoutFor({ title: 't', body: '一句话' }, all)).toBe('statement')
+    expect(layoutFor({ title: 't', points: ['一', '二'] }, all)).toBe('statement')
+    expect(layoutFor({ title: 't', body: 'b', points: ['一', '二', '三'] }, all)).toBe('list')
+    expect(layoutFor({ title: 't', chart, points: ['一'] }, all)).toBe('data')
+    // A quote keeps the section page, which draws one; so do a drawing with many points.
+    expect(layoutFor({ title: 't', points: ['一', '二', '三'], quote: 'q' }, all)).toBe('section')
+    expect(layoutFor({ title: 't', chart, points: ['一', '二', '三'] }, all)).toBe('section')
+    // The page's own choice wins; one the deck doesn't draw falls back to the section page.
+    expect(layoutFor({ title: 't', body: 'b', layout: 'list' }, all)).toBe('list')
+    expect(layoutFor({ title: 't', body: 'b' }, new Set())).toBe('section')
+    expect(layoutFor({ title: 't', body: 'b', layout: 'data' }, new Set(['list'] as const))).toBe('section')
+    expect(normalizeDeckContent({ title: 'a', pages: [{ title: 'b', layout: 'grid' }] })).toContain('layout 只能是 section / statement / list / data')
+
+    const { summary } = compose('editorial-freeform')
+    expect(summary.pages.map((page) => page.layout)).toEqual([undefined, 'section', 'statement', 'list', undefined])
+    // A deck without these pages draws its section page.
+    expect(compose('neon-freeform').summary.pages.map((page) => page.layout)).toEqual([undefined, 'section', 'section', 'section', undefined])
+  })
+
+  test('spreads fewer points down a list page, keeping them a list', () => {
+    const rows = (points: string[]) => compose('editorial-freeform', { title: 't', pages: [{ title: '清单', points }] })
+      .document.slides[1].nodes.filter((node): node is FreeformTextElement => node.type === 'text' && node.name.startsWith('要点'))
+    const five = rows(['一', '二', '三', '四', '五'])
+    const three = rows(['一', '二', '三'])
+    expect(five.map((node) => node.text)).toEqual(['一', '二', '三', '四', '五'])
+    const pitch = five[1].y - five[0].y
+    // Three points take the room of more rows, at most 1.6 pitches apart, from the same first row.
+    expect(three[0].y).toBe(five[0].y)
+    expect(three[1].y - three[0].y).toBe(Math.round(pitch * 1.6))
+    const page = compose('editorial-freeform', { title: 't', pages: [{ title: '清单', points: ['一', '二', '三'] }] }).document.slides[1]
+    // A row's number and rule move with its point; unused rows go.
+    expect(page.nodes.find((node) => node.name === '编号二')!.y - three[1].y).toBe(6)
+    expect(page.nodes.some((node) => node.name === '要点四' || node.name === '编号四')).toBe(false)
+  })
+
+  test('sets a data page\'s drawing in the middle of its room, and a goal there as a ring', () => {
+    const composed = compose('editorial-freeform', {
+      title: 't',
+      pages: [
+        { title: '收入', table: { header: ['来源', '金额'], rows: [['广告', '3000'], ['带货', '2000']] } },
+        { title: '年度目标', progress: { value: 62.5, label: '十万粉丝' } },
+      ],
+    })
+    expect(composed.summary.pages.map((page) => page.layout)).toEqual([undefined, 'data', 'data'])
+    const [table, progress] = composed.summary.placed!
+    const rule = composed.document.slides[1].nodes.find((node) => node.name === '图表顶线') as FreeformLineElement
+    const footer = composed.document.slides[1].nodes.find((node) => node.name === '页脚线') as FreeformLineElement
+    // As much room above the table as below it, between the page's rule and its footer.
+    const above = table.y - (rule.y + rule.height)
+    const below = footer.y - (table.y + table.height)
+    expect(Math.abs(above - below)).toBeLessThan(40)
+    expect(table.height).toBe(3 * 96)
+    const ring = composed.document.slides[2].nodes.find((node) => node.type === 'progress')
+    expect(ring).toMatchObject({ progressKind: 'ring', value: 62.5, label: '十万粉丝' })
+    expect(progress.width).toBe(progress.height)
+    // The template's sample chart never stays.
+    expect(composed.document.slides.flatMap((slide) => slide.nodes).some((node) => node.name === '示例图表')).toBe(false)
+  })
+
+  test('gives an ending that is only a sentence its closing page, and a cover without a subtitle the page titles', () => {
+    const composed = compose('signal-freeform', {
+      title: '公众号半年复盘',
+      pages: [{ title: '阅读量翻了两番', body: '一句话。' }, { title: '下半年的打法', body: '月更栏目。' }],
+      ending: { title: '明年见', body: '把节奏放慢，把标准提高。' },
+    })
+    expect(composed.summary.pages.map((page) => [page.role, page.layout])).toEqual([
+      ['cover', undefined], ['section', 'statement'], ['section', 'statement'], ['ending', 'closing'],
+    ])
+    const ending = composed.document.slides[3].nodes.filter((node): node is FreeformTextElement => node.type === 'text')
+    expect(ending.find((node) => node.name === '收束句')?.text).toBe('把节奏放慢，把标准提高。')
+    expect(ending.some((node) => node.name === '行动标题')).toBe(false)
+    const cover = composed.document.slides[0].nodes.filter((node): node is FreeformTextElement => node.type === 'text')
+    expect(cover.find((node) => node.name === '主张')?.text).toBe('阅读量翻了两番 · 下半年的打法')
+    // A longer contents line breaks between titles, never inside one.
+    const many = compose('signal-freeform', { title: 't', pages: ['阅读量翻了两番', '什么内容涨粉', '下半年的打法'].map((title) => ({ title, body: 'b' })) })
+    expect((many.document.slides[0].nodes.find((node) => node.name === '主张') as FreeformTextElement).text)
+      .toBe('阅读量翻了两番 · 什么内容涨粉\n下半年的打法')
+    // A claim on two lines breaks after its comma.
+    const claim = compose('signal-freeform', { title: 't', pages: [{ title: '下半年的打法', body: '把复盘固定成月更栏目，教程做成系列。' }, { title: 'b', body: 'c' }] })
+    expect((claim.document.slides[1].nodes.find((node) => node.name === '主张') as FreeformTextElement).text)
+      .toBe('把复盘固定成月更栏目，\n教程做成系列。')
+    // A subtitle given is the subtitle; an ending with points keeps the ending page.
+    const told = compose('signal-freeform', { title: 't', subtitle: '副标题', pages: [{ title: 'a' }, { title: 'b' }], ending: { title: 'e', points: ['一'] } })
+    expect((told.document.slides[0].nodes.find((node) => node.name === '主张') as FreeformTextElement).text).toBe('副标题')
+    expect(told.summary.pages[3].layout).toBeUndefined()
+  })
+
+  test('closes up an editorial section page that has no paragraph', () => {
+    const page = (content: DeckContent) => compose('editorial-freeform', content).document.slides[1].nodes
+    const withLead = page({ title: 't', pages: [{ title: '周四到周日', body: '提前腌上。', points: ['周四', '周五'], quote: '十分钟出锅 —— 老王家' }] })
+    const without = page({ title: 't', pages: [{ title: '周四到周日', points: ['周四', '周五'], quote: '十分钟出锅 —— 老王家' }] })
+    const y = (nodes: typeof without, name: string) => nodes.find((node) => node.name === name)!.y
+    // The rule, the steps and the quote move up into the paragraph's place; the footer stays.
+    const lead = withLead.find((node) => node.name === '导语')!
+    expect(y(without, '正文分隔线')).toBe(lead.y)
+    expect(y(withLead, '引文底板') - y(without, '引文底板')).toBe(y(withLead, '正文分隔线') - lead.y)
+    expect(y(without, '页脚线')).toBe(y(withLead, '页脚线'))
   })
 
   test('rejects content it cannot place', () => {

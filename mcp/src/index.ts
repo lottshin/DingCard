@@ -117,7 +117,7 @@ ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle 
 - group：+ children（非空节点数组；组没有 width/height）
 全文档节点 id 必须唯一。`
 
-const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放在这页文字的下面、沿模板的版心铺满宽度，颜色取这一页的正文色和强调色（没给颜色的系列先用浅的、最后一个用强调色），字号按卡片正文的大小画；放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId 与角色，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
+const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。编辑部、信号两套模板每页按内容挑版式（summary.pages[].layout）：一段话或一两条要点用观点页（页码放大、标题、正文），三条以上要点用清单页（要点少时在行间匀开），只带一个数据元素（最多一两条要点）用数据页（元素放大摆在中间，进度画成圆环），有引文的用内页；只有一两句话的结尾页用收尾页；page.layout 可以指定 section / statement / list / data，其余模板都用内页。封面没给副标题时，导语位列出各页标题。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放在这页文字的下面、沿模板的版心铺满宽度，颜色取这一页的正文色和强调色（没给颜色的系列先用浅的、最后一个用强调色），字号按卡片正文的大小画；放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId、角色和版式，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
 
 const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "# 总标题"：封面标题；它下面、第一个 "##" 之前的文字是封面副标题。
@@ -126,7 +126,7 @@ const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "## 结尾：标题"：可选的结尾页，内容写法同小节。
 templateId：list_templates 返回的自由画布模板 id（如 "editorial-freeform"），整套卡片沿用该模板的版式与风格。${COMPOSE_HINT}`
 
-const CONTENT_SCHEMA_HINT = `content：{ title: 封面标题, subtitle?: 封面副标题, pages: [{ title, body?: 正文段落, points?: [要点…]（"要点：说明" 冒号后面是这一条的第二行）, quote?: 引文（"引文 —— 出处"）, templateId?: 这一页换用另一个套图模板的内页版式, chart?: { kind: 'bar'|'ring'|'line'|'radar', labels: [类目×1–12], series: [{ name?, values: [≥0 数值×类目数], color? }] }（这一页配一张图表）, table?: { header?: [表头], rows: [[每格 1–24 字]…] }（这一页配一张表格，含表头最多 12 行 6 列）, timeline?: [{ label?: 时间, text: 内容 }]×2–8（这一页配一条时间线）, progress?: { value: 0–100, label?: 目标名 }（这一页配一条进度条） }…], ending?: 结尾页（同 pages 的一项，templateId 换用那个模板的结尾页）}。每页最多带一种数据元素（chart / table / timeline / progress）。templateId：list_templates 返回的自由画布模板 id，封面和没写 templateId 的页都用它；不同页可以用不同的套图模板（kind 为 deck），最后用 document/restyle 把配色、字体统一起来。${COMPOSE_HINT}`
+const CONTENT_SCHEMA_HINT = `content：{ title: 封面标题, subtitle?: 封面副标题, pages: [{ title, body?: 正文段落, points?: [要点…]（"要点：说明" 冒号后面是这一条的第二行）, quote?: 引文（"引文 —— 出处"）, templateId?: 这一页换用另一个套图模板的内页版式, layout?: 'section'|'statement'|'list'|'data'（指定版式，不给按内容挑）, chart?: { kind: 'bar'|'ring'|'line'|'radar', labels: [类目×1–12], series: [{ name?, values: [≥0 数值×类目数], color? }] }（这一页配一张图表）, table?: { header?: [表头], rows: [[每格 1–24 字]…] }（这一页配一张表格，含表头最多 12 行 6 列）, timeline?: [{ label?: 时间, text: 内容 }]×2–8（这一页配一条时间线）, progress?: { value: 0–100, label?: 目标名 }（这一页配一条进度条） }…], ending?: 结尾页（同 pages 的一项，templateId 换用那个模板的结尾页）}。每页最多带一种数据元素（chart / table / timeline / progress）。templateId：list_templates 返回的自由画布模板 id，封面和没写 templateId 的页都用它；不同页可以用不同的套图模板（kind 为 deck），最后用 document/restyle 把配色、字体统一起来。${COMPOSE_HINT}`
 
 
 const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI 完全同一归约器）。常用动作：
@@ -287,6 +287,7 @@ export function createDingcardServer(): McpServer {
     points: z.array(z.string()).optional().describe('要点，一条一项；"要点：说明" 冒号后面是第二行'),
     quote: z.string().optional().describe('引文；"引文 —— 出处" 会把出处放在下面'),
     templateId: z.string().optional().describe('这一页换用另一个套图模板（kind 为 deck）的版式；不给就用整套的 templateId'),
+    layout: z.enum(['section', 'statement', 'list', 'data']).optional().describe('版式：section 内页、statement 观点页、list 清单页、data 数据页；不给按内容挑，模板没有这种版式时用内页'),
     chart: z.object({
       kind: z.enum(['bar', 'ring', 'line', 'radar']).describe('图表类型：柱状 / 环形 / 折线 / 雷达'),
       labels: z.array(z.string()).min(1).describe('类目名，1–12 个，每个 1–24 字'),

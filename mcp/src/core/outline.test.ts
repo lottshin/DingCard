@@ -68,14 +68,15 @@ describe('createDocumentFromOutline', () => {
 
     const [cover, first, second, , ending] = result.document.slides
     expect(texts(cover).find((node) => node.name === '导语')?.text).toBe('每周五十分钟写完')
+    // Two points make a statement page: the page number large, the points under the heading.
+    expect(result.summary.pages.map((page) => page.layout)).toEqual([undefined, 'statement', 'section', 'statement', undefined])
     expect(texts(first).map((node) => node.text)).toEqual(expect.arrayContaining([
       '收集素材',
-      '01\n每天 5 分钟记录',
-      '02\n只记事实：别写感受',
+      '· 每天 5 分钟记录\n· 只记事实：别写感受',
       '阅读顺序 / 02',
     ]))
-    // An item with no point and the quote with no words go, with their backing card.
-    expect(first.nodes.map((node) => node.name)).not.toEqual(expect.arrayContaining(['步骤三', '引文', '引文底板']))
+    expect(texts(first).find((node) => node.name === '大页码')?.text).toBe('02')
+    // A paragraph with a quote keeps the section page; the steps with no point go.
     expect(texts(second).find((node) => node.name === '引文')?.text).toBe('“写完再改”')
     expect(texts(second).find((node) => node.name === '引文注释')?.text).toBe('老编辑')
     expect(second.nodes.map((node) => node.name)).not.toContain('步骤一')

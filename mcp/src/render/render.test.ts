@@ -11,8 +11,9 @@ import { reduceFreeformDocument } from '../../../src/freeform/document'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { FILTER_PRESETS } from '../../../src/freeform/filterPresets'
 import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformPathElement, type FreeformTextElement } from '../../../src/freeform/types'
-import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { listIcons } from '../core/icons'
+import { composeDeck } from '../core/compose'
 import { createDocumentFromOutline } from '../core/outline'
 import { composePoster } from '../core/poster'
 import { instantiateTemplate } from '../core/templates'
@@ -940,7 +941,7 @@ describe('checkDocument', () => {
 
   test('reports a page left half empty and a picture\'s place left blank', async () => {
     // A section page with only its lead: the points and the quote the template keeps room for never came.
-    const deck = createDocumentFromOutline('# 早餐\n\n## 周二：鸡蛋三明治\n全麦面包、煎蛋、生菜和番茄，五分钟搞定。', 'editorial-freeform')
+    const deck = composeDeck('editorial-freeform', { title: '早餐', pages: [{ title: '周二：鸡蛋三明治', body: '全麦面包、煎蛋、生菜和番茄，五分钟搞定。', layout: 'section' }] })
     if (!deck.ok) throw new Error(deck.error)
     const sparse = await checkDocument(deck.document)
     if (!sparse.ok) throw new Error(sparse.error)
@@ -956,10 +957,14 @@ describe('checkDocument', () => {
   }, 420_000)
 
   test('finds nothing but sample copy on any template as it ships', async () => {
-    // Every page of every freeform template, checked in one document.
-    const pages = TEMPLATE_REGISTRY
-      .filter((template) => template.workspace === 'freeform')
-      .flatMap((template) => template.createFreeform!().slides.map((slide) => ({ template: template.id, slide })))
+    // Every page of every freeform template, and every other page a deck draws, checked in one document.
+    const pages = [
+      ...TEMPLATE_REGISTRY
+        .filter((template) => template.workspace === 'freeform')
+        .flatMap((template) => template.createFreeform!().slides.map((slide) => ({ template: template.id, slide }))),
+      ...Object.entries(FREEFORM_DECK_LAYOUTS).flatMap(([series, layouts]) => Object.entries(layouts!)
+        .map(([layout, create]) => ({ template: `${series}-freeform:${layout}`, slide: create() }))),
+    ]
     const document: FreeformDocument = { documentVersion: FREEFORM_DOCUMENT_VERSION, activeSlideId: pages[0].slide.id, slides: pages.map((page) => page.slide) }
     const result = await checkDocument(document)
     if (!result.ok) throw new Error(result.error)

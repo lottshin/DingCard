@@ -17,6 +17,14 @@ export type FreeformDeckSeriesId =
   | 'soft'
   | 'blueprint'
 
+/**
+ * Pages a deck can draw besides its section and closing pages, picked by what
+ * a page holds: a paragraph or a point or two (statement), three or more
+ * points (list), a chart, table, timeline or progress (data); and a closing
+ * page that is only a sentence (closing).
+ */
+export type DeckLayoutId = 'statement' | 'list' | 'data' | 'closing'
+
 /** Freeform templates that make one page: posters, covers, cards and flyers. */
 export type FreeformPosterSeriesId =
   | 'talk-poster'

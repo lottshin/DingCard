@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FreeformSlide } from '../freeform/types'
-import { TEMPLATE_REGISTRY } from './registry'
+import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from './registry'
 import {
   FREEFORM_POSTER_SLOTS,
   FREEFORM_TEMPLATE_SLOTS,
@@ -9,8 +9,9 @@ import {
   slotNodeNames,
   slotSampleNames,
   type SlideSlots,
+  type TemplateSlots,
 } from './slots'
-import type { FreeformDeckSeriesId, FreeformPosterSeriesId, FreeformTemplateSeriesId } from './types'
+import type { DeckLayoutId, FreeformDeckSeriesId, FreeformPosterSeriesId, FreeformTemplateSeriesId } from './types'
 
 const CJK = /[㐀-鿿]/
 const STANDALONE_TWO_DIGITS = /(?<!\d)\d{2}(?!\d)/
@@ -44,12 +45,17 @@ function topNames(slide: FreeformSlide): string[] {
   return slide.nodes.map((node) => node.name)
 }
 
-function roles(document: { slides: FreeformSlide[] }, slots: { cover: SlideSlots; section: SlideSlots; ending: SlideSlots }) {
-  return [
+function roles(document: { slides: FreeformSlide[] }, slots: TemplateSlots, series: FreeformDeckSeriesId) {
+  const pages: Array<{ role: string; slide: FreeformSlide; slots: SlideSlots }> = [
     { role: 'cover', slide: document.slides[0], slots: slots.cover },
     { role: 'section', slide: document.slides[1], slots: slots.section },
     { role: 'ending', slide: document.slides[2], slots: slots.ending },
-  ] as const
+  ]
+  // The deck's other pages, each with its own spec.
+  for (const [id, create] of Object.entries(FREEFORM_DECK_LAYOUTS[series] ?? {}) as Array<[DeckLayoutId, () => FreeformSlide]>) {
+    pages.push({ role: id, slide: create(), slots: slots.layouts![id]! })
+  }
+  return pages
 }
 
 describe('template slots', () => {
@@ -58,10 +64,17 @@ describe('template slots', () => {
     expect(Object.keys(FREEFORM_TEMPLATE_SLOTS).sort()).toEqual(series)
   })
 
+  it('give every page a deck draws besides its three a spec, and every spec a page', () => {
+    for (const series of Object.keys(FREEFORM_TEMPLATE_SLOTS) as FreeformDeckSeriesId[]) {
+      expect(Object.keys(FREEFORM_TEMPLATE_SLOTS[series].layouts ?? {}).sort(), series)
+        .toEqual(Object.keys(FREEFORM_DECK_LAYOUTS[series] ?? {}).sort())
+    }
+  })
+
   it('point at nodes that exist, once each, on the slide they describe', () => {
     for (const { series, document } of freeformTemplates()) {
       expect(document.slides).toHaveLength(3)
-      for (const { role, slide, slots } of roles(document, FREEFORM_TEMPLATE_SLOTS[series])) {
+      for (const { role, slide, slots } of roles(document, FREEFORM_TEMPLATE_SLOTS[series], series)) {
         const names = topNames(slide)
         for (const name of slotNodeNames(slots)) {
           expect(names.filter((candidate) => candidate === name), `${series} ${role}: ${name}`).toHaveLength(1)
@@ -72,7 +85,7 @@ describe('template slots', () => {
 
   it('only mark texts with a page number as page numbers', () => {
     for (const { series, document } of freeformTemplates()) {
-      for (const { role, slide, slots } of roles(document, FREEFORM_TEMPLATE_SLOTS[series])) {
+      for (const { role, slide, slots } of roles(document, FREEFORM_TEMPLATE_SLOTS[series], series)) {
         for (const name of slots.numbers ?? []) {
           const node = slide.nodes.find((candidate) => candidate.name === name)
           expect(node?.type, `${series} ${role}: ${name}`).toBe('text')
@@ -85,7 +98,7 @@ describe('template slots', () => {
   it('account for every Chinese sample text, so none survives a filled deck', () => {
     for (const { series, document } of freeformTemplates()) {
       const kept = KEPT_DECORATION[series] ?? []
-      for (const { role, slide, slots } of roles(document, FREEFORM_TEMPLATE_SLOTS[series])) {
+      for (const { role, slide, slots } of roles(document, FREEFORM_TEMPLATE_SLOTS[series], series)) {
         const handled = new Set([...slotSampleNames(slots), ...(slots.numbers ?? [])])
         for (const node of slide.nodes) {
           if (node.type !== 'text' || !CJK.test(node.text)) continue

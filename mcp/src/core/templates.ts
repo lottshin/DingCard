@@ -8,6 +8,7 @@ import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { templateFormat } from '../../../src/templates/formats'
 import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, type SlideSlots } from '../../../src/templates/slots'
 import type {
+  DeckLayoutId,
   FreeformPosterSeriesId,
   MarkdownTemplateDocument,
   TemplateKind,
@@ -18,6 +19,8 @@ import { TIMELINE_ITEMS_MAX } from '../../../src/freeform/timeline'
 
 /** How much content a freeform template's pages hold before it spills over. */
 export interface TemplateCapacity {
+  /** The pages the deck draws besides its cover, section and ending, picked by what a page holds. */
+  layouts?: DeckLayoutId[]
   coverSubtitle: boolean
   /** The cover lists the first page titles (a contents block). */
   coverContents: number
@@ -72,7 +75,9 @@ function pointRoom(slots: SlideSlots): number {
 function capacityOf(series: string): TemplateCapacity | undefined {
   const slots = FREEFORM_TEMPLATE_SLOTS[series as keyof typeof FREEFORM_TEMPLATE_SLOTS]
   if (!slots) return undefined
+  const layouts = Object.keys(slots.layouts ?? {}) as DeckLayoutId[]
   return {
+    ...(layouts.length > 0 ? { layouts } : {}),
     coverSubtitle: Boolean(slots.cover.lead),
     coverContents: slots.cover.toc?.items?.length ?? (slots.cover.toc?.list ? 4 : 0),
     sectionPoints: pointRoom(slots.section),

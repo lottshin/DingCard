@@ -6,7 +6,7 @@
 
 import type { ColorPaint } from '../freeform/types'
 import { TIMETABLE_SAMPLE, TIMETABLE_TABLE, tableCellNames, type TableLayout } from './tables'
-import type { FreeformDeckSeriesId, FreeformPosterSeriesId } from './types'
+import type { DeckLayoutId, FreeformDeckSeriesId, FreeformPosterSeriesId } from './types'
 
 /** One fillable text, with the shapes, lines and labels that only make sense beside it. */
 export interface SlotItem {
@@ -23,12 +23,16 @@ export interface SlideSlots {
   /** The paragraph: cover subtitle, page body, closing sentence. */
   lead?: string
   leadExtras?: readonly string[]
+  /** Without a paragraph, what sits under its place moves up into it (the pinned names stay). */
+  leadFlow?: { pinned?: readonly string[] }
   /** One point per item, in order; unused items go with their extras. */
   items?: readonly SlotItem[]
   /** Decoration for the item block as a whole, removed when no item is shown. */
   itemsExtras?: readonly string[]
   /** Items show their two-digit number on the first line ("01\n要点"). */
   numberedItems?: boolean
+  /** Fewer points than items spread down the items' span, up to 1.6 times their pitch (a list page). */
+  spreadItems?: boolean
   /** A single text that takes all points, one per line. */
   list?: string
   listExtras?: readonly string[]
@@ -45,6 +49,8 @@ export interface TemplateSlots {
   cover: SlideSlots
   section: SlideSlots
   ending: SlideSlots
+  /** The deck's other inner pages (FREEFORM_DECK_LAYOUTS in registry.ts). */
+  layouts?: Partial<Record<DeckLayoutId, SlideSlots>>
 }
 
 const steps = (names: readonly [string, string, string]): SlotItem[] => names.map((text) => ({ text }))
@@ -60,6 +66,7 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
     section: {
       title: '标题',
       lead: '导语',
+      leadFlow: { pinned: ['页脚线', '页脚'] },
       items: steps(['步骤一', '步骤二', '步骤三']),
       itemsExtras: ['正文分隔线'],
       numberedItems: true,
@@ -72,6 +79,33 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       list: '结尾清单',
       listExtras: ['正文线'],
       numbers: ['刊头', '页码'],
+    },
+    layouts: {
+      statement: {
+        title: '标题',
+        lead: '导语',
+        leadExtras: ['标题线'],
+        numbers: ['页码', '大页码', '页脚'],
+      },
+      list: {
+        title: '标题',
+        lead: '导语',
+        items: (['一', '二', '三', '四', '五'] as const).map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`编号${n}`, `要点线${n}`] })),
+        itemsExtras: ['要点顶线'],
+        spreadItems: true,
+        numbers: ['页码', '页脚'],
+      },
+      data: {
+        title: '标题',
+        lead: '导语',
+        numbers: ['页码', '页脚'],
+        remove: [{ text: '示例图表' }],
+      },
+      closing: {
+        title: '标题',
+        lead: '正文',
+        numbers: ['刊头', '页码'],
+      },
     },
   },
   checklist: {
@@ -133,6 +167,31 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       lead: '收束句',
       items: [{ text: '行动标题', note: '行动说明', extras: ['行动底板'] }],
       numbers: ['刊头', '页码'],
+    },
+    layouts: {
+      statement: {
+        title: '主标题',
+        lead: '主张',
+        numbers: ['大页码', '刊头'],
+      },
+      list: {
+        title: '主标题',
+        lead: '左栏正文',
+        items: (['一', '二', '三', '四', '五'] as const).map((n) => ({ text: `证据${n}`, extras: [`证据编号${n}`, `证据线${n}`] })),
+        spreadItems: true,
+        numbers: ['页码', '页脚'],
+      },
+      data: {
+        title: '主标题',
+        lead: '导语',
+        numbers: ['页码', '页脚'],
+        remove: [{ text: '示例图表' }],
+      },
+      closing: {
+        title: '主标题',
+        lead: '收束句',
+        numbers: ['刊头', '页码'],
+      },
     },
   },
   'night-flight': {

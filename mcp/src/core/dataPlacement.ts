@@ -201,6 +201,7 @@ export function drawingBox(
   slide: FreeformSlide,
   free: Box,
   want: (width: number) => { height: number; minHeight: number; minWidth: number },
+  centred = false,
 ): Box | null {
   const column = contentColumn(slide, free)
   // The column's edges, kept inside the free room.
@@ -217,5 +218,8 @@ export function drawingBox(
   const top = free.y + Math.min(GAP_ABOVE, Math.max(0, free.height - minHeight))
   const room = free.y + free.height - top
   if (room < minHeight) return null
-  return { x: Math.round(left), y: Math.round(top), width, height: Math.round(Math.min(height, room)) }
+  const fitted = Math.min(height, room)
+  // A page drawn for the drawing sets it in the middle of its room.
+  const y = centred ? top + (room - fitted) / 2 : top
+  return { x: Math.round(left), y: Math.round(y), width, height: Math.round(fitted) }
 }

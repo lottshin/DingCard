@@ -7,10 +7,10 @@ import { progressGeometry } from '../../../src/freeform/progress'
 import { chartLabelFont } from '../../../src/freeform/charts'
 import { tableGeometry } from '../../../src/freeform/tables'
 import { timelineGeometry } from '../../../src/freeform/timeline'
-import type { FreeformDocument, FreeformSceneNode, ScenePath } from '../../../src/freeform/types'
-import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
-import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, posterSampleNames, slotSampleNames } from '../../../src/templates/slots'
-import type { FreeformDeckSeriesId, FreeformPosterSeriesId } from '../../../src/templates/types'
+import type { FreeformDocument, FreeformSceneNode, FreeformSlide, ScenePath } from '../../../src/freeform/types'
+import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, posterSampleNames, slotSampleNames, type SlideSlots } from '../../../src/templates/slots'
+import type { DeckLayoutId, FreeformDeckSeriesId, FreeformPosterSeriesId } from '../../../src/templates/types'
 import { emWidth } from './textFit'
 import type { InspectedSlide } from '../render/renderer'
 
@@ -113,8 +113,18 @@ function namesOfTemplateNodes(): Set<string> {
       walkScene(slide.nodes, (node) => names.add(node.name))
     }
   }
+  for (const slide of deckLayoutSlides()) walkScene(slide.slide.nodes, (node) => names.add(node.name))
   templateNodeNames = names
   return names
+}
+
+/** The decks' other inner pages, each with the slot spec that fills it. */
+function deckLayoutSlides(): Array<{ slide: FreeformSlide; slots: SlideSlots }> {
+  return (Object.entries(FREEFORM_DECK_LAYOUTS) as Array<[FreeformDeckSeriesId, Record<DeckLayoutId, () => FreeformSlide>]>)
+    .flatMap(([series, layouts]) => (Object.entries(layouts) as Array<[DeckLayoutId, () => FreeformSlide]>).flatMap(([id, create]) => {
+      const slots = FREEFORM_TEMPLATE_SLOTS[series].layouts?.[id]
+      return slots ? [{ slide: create(), slots }] : []
+    }))
 }
 
 interface TemplateMarks {
@@ -150,35 +160,37 @@ export function templateMarks(): TemplateMarks {
     const pages: string[][] = deck
       ? [deck.cover, deck.section, deck.ending].map(slotSampleNames)
       : poster ? [posterSampleNames(poster, { labels: false })] : []
-    document.slides.forEach((slide, index) => {
-      const names = new Set(pages[index] ?? [])
-      slide.nodes.forEach((node, order) => {
-        if (node.type !== 'text') return
-        if (names.has(node.name) && node.text.trim()) {
-          const carriers = result.samples.get(node.text.trim()) ?? new Set<string>()
-          carriers.add(node.name)
-          result.samples.set(node.text.trim(), carriers)
-        }
-        else result.decoration.add(decorationKey(node))
-        // Words that read off their own label or outline don't make their colours a pair to keep.
-        if (node.effect?.type === 'background' || node.effect?.type === 'outline') return
-        const colour = solidColor(node.textFill)
-        if (!colour) return
-        const centre = { x: node.x + node.width / 2, y: node.y + node.height / 2 }
-        // What the words sit on: a shape or a filled drawing (a badge), else the page.
-        const under = slide.nodes.slice(0, order).reverse().find((candidate) => (
-          (candidate.type === 'shape' || (candidate.type === 'path' && candidate.fill.type !== 'transparent'))
-          && (candidate.opacity ?? 1) >= OPAQUE
-          && centre.x >= candidate.x && centre.x <= candidate.x + candidate.width
-          && centre.y >= candidate.y && centre.y <= candidate.y + candidate.height
-        ))
-        const background = under?.type === 'shape' || under?.type === 'path' ? solidColor(under.fill) : solidColor(slide.background)
-        if (background) result.colourPairs.add(colourKey(colour, background))
-      })
-    })
+    document.slides.forEach((slide, index) => mark(slide, new Set(pages[index] ?? [])))
   }
+  for (const { slide, slots } of deckLayoutSlides()) mark(slide, new Set(slotSampleNames(slots)))
   marks = result
   return result
+
+  function mark(slide: FreeformSlide, names: ReadonlySet<string>) {
+    slide.nodes.forEach((node, order) => {
+      if (node.type !== 'text') return
+      if (names.has(node.name) && node.text.trim()) {
+        const carriers = result.samples.get(node.text.trim()) ?? new Set<string>()
+        carriers.add(node.name)
+        result.samples.set(node.text.trim(), carriers)
+      }
+      else result.decoration.add(decorationKey(node))
+      // Words that read off their own label or outline don't make their colours a pair to keep.
+      if (node.effect?.type === 'background' || node.effect?.type === 'outline') return
+      const colour = solidColor(node.textFill)
+      if (!colour) return
+      const centre = { x: node.x + node.width / 2, y: node.y + node.height / 2 }
+      // What the words sit on: a shape or a filled drawing (a badge), else the page.
+      const under = slide.nodes.slice(0, order).reverse().find((candidate) => (
+        (candidate.type === 'shape' || (candidate.type === 'path' && candidate.fill.type !== 'transparent'))
+        && (candidate.opacity ?? 1) >= OPAQUE
+        && centre.x >= candidate.x && centre.x <= candidate.x + candidate.width
+        && centre.y >= candidate.y && centre.y <= candidate.y + candidate.height
+      ))
+      const background = under?.type === 'shape' || under?.type === 'path' ? solidColor(under.fill) : solidColor(slide.background)
+      if (background) result.colourPairs.add(colourKey(colour, background))
+    })
+  }
 }
 
 function intersection(a: Rect, b: Rect): number {

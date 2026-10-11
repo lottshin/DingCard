@@ -185,3 +185,39 @@ export function balancedHeading(node: FreeformTextElement, text: string, fontSiz
   }
   return best
 }
+
+/**
+ * A paragraph set at display size (a statement's claim, a closing sentence):
+ * on two lines it breaks after the pause nearest its middle when both halves
+ * fit a line, as a reader would read it out; otherwise as a heading breaks.
+ */
+export function balancedSentence(node: FreeformTextElement, text: string, fontSize: number): string {
+  if (text.includes('\n') || node.vertical) return text
+  if (measureText(node, text, fontSize, true).lines !== 2) return balancedHeading(node, text, fontSize)
+  const available = (node.width - PADDING * 2) / WIDTH_SAFETY
+  const spacing = node.letterSpacing ?? 0
+  const width = (part: string) => [...part].reduce((sum, char) => sum + glyphEm(char) * fontSize + spacing, 0)
+  const chars = [...text]
+  let best: { at: number; distance: number } | null = null
+  for (let index = 0; index < chars.length - 1; index += 1) {
+    if (!/[，、；：。！？,;:!?]/.test(chars[index])) continue
+    const first = chars.slice(0, index + 1).join('')
+    const second = chars.slice(index + 1).join('').trim()
+    if (!second || NO_LINE_START.test(second) || width(first) > available || width(second) > available) continue
+    const distance = Math.abs(index + 1 - chars.length / 2)
+    if (!best || distance < best.distance) best = { at: index + 1, distance }
+  }
+  return best ? `${chars.slice(0, best.at).join('')}\n${chars.slice(best.at).join('').trim()}` : balancedHeading(node, text, fontSize)
+}
+
+/** Titles joined with " · ", a line broken only between titles where the next would not fit. */
+export function contentsLines(node: FreeformTextElement, titles: readonly string[]): string {
+  const lines: string[] = []
+  for (const title of titles) {
+    const joined = lines.length > 0 ? `${lines[lines.length - 1]} · ${title}` : title
+    if (lines.length > 0 && measureText(node, joined, node.fontSize, true).lines <= 1) lines[lines.length - 1] = joined
+    else lines.push(title)
+  }
+  return lines.join('\n')
+}
+
