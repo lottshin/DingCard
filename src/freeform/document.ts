@@ -77,7 +77,20 @@ import {
 import { isValidPathData } from './pathData'
 import { QR_DARK_DEFAULT, QR_LIGHT_DEFAULT, isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload, isValidQrQuietZone } from './qrCode'
 import { CHART_ACCENT_DEFAULT, CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
-import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
+import {
+  TABLE_GRIDS,
+  TABLE_LINE_WIDTH_MAX,
+  TABLE_LINE_WIDTH_MIN,
+  TABLE_SET_FONT_SIZE_MAX,
+  TABLE_SET_FONT_SIZE_MIN,
+  isTableGrid,
+  isValidTableCells,
+  isValidTableColWidths,
+  isValidTableCols,
+  isValidTableFontSize,
+  isValidTableLineWidth,
+  isValidTableRows,
+} from './tables'
 import { isValidTimelineItems, timelineItemsSame } from './timeline'
 import { isProgressKind, isValidProgressLabel, isValidProgressValue } from './progress'
 import { isValidTextEffect, textEffectsEqual } from './textEffects'
@@ -162,7 +175,7 @@ export function createSlide(input: CreateSlideInput = {}): FreeformSlide {
 export function createFreeformDocument(): FreeformDocument {
   const slide = createSlide()
   return {
-    documentVersion: 43,
+    documentVersion: 44,
     activeSlideId: slide.id,
     slides: [slide],
   }
@@ -621,6 +634,9 @@ const STYLE_KEYS = new Set([
   'ink',
   'headerFill',
   'stripeFill',
+  'grid',
+  'lineColor',
+  'lineWidth',
   'horizontal',
   'barMode',
   'trackFill',
@@ -655,7 +671,7 @@ const SHAPE_APPEARANCE_KEYS = new Set(['cornerRadius', 'starInnerRatio', 'bubble
 const IMAGE_APPEARANCE_KEYS = new Set(['cornerRadius', 'stroke', 'strokeWidth', 'opacity', 'shadow', 'filter', 'blendMode'])
 const QRCODE_APPEARANCE_KEYS = new Set(['ecl', 'moduleStyle', 'logoSrc', 'quietZone', 'opacity', 'shadow', 'filter', 'blendMode'])
 const CHART_APPEARANCE_KEYS = new Set(['showValues', 'showLegend', 'showTicks', 'barMode', 'ink', 'opacity', 'shadow', 'filter', 'blendMode'])
-const TABLE_APPEARANCE_KEYS = new Set(['headerRow', 'striped', 'ink', 'headerFill', 'stripeFill', 'opacity', 'shadow', 'filter', 'blendMode'])
+const TABLE_APPEARANCE_KEYS = new Set(['headerRow', 'striped', 'ink', 'headerFill', 'stripeFill', 'grid', 'lineColor', 'lineWidth', 'fontSize', 'opacity', 'shadow', 'filter', 'blendMode'])
 const TIMELINE_APPEARANCE_KEYS = new Set(['accent', 'horizontal', 'ink', 'opacity', 'shadow', 'filter', 'blendMode'])
 const PROGRESS_APPEARANCE_KEYS = new Set(['progressKind', 'accent', 'trackFill', 'ink', 'opacity', 'shadow', 'filter', 'blendMode'])
 const LINE_APPEARANCE_KEYS = new Set([
@@ -730,8 +746,15 @@ function appearanceProblemKey(patch: UnknownRecord, fields: ReadonlySet<string>)
       if (value !== null && typeof value !== 'boolean') return problem(key, '必须是 true / false（或传 null 恢复默认）')
     } else if (key === 'horizontal') {
       if (value !== null && typeof value !== 'boolean') return problem('horizontal', '必须是 true / false（或传 null / false 恢复竖排）')
-    } else if (key === 'ink' || key === 'headerFill' || key === 'stripeFill' || key === 'trackFill') {
+    } else if (key === 'ink' || key === 'headerFill' || key === 'stripeFill' || key === 'trackFill' || key === 'lineColor') {
       if (value !== null && !isHexColor(value)) return problem(key, '必须是 #RRGGBB（或传 null 恢复默认）')
+    } else if (key === 'grid') {
+      if (value !== null && !isTableGrid(value)) return problem('grid', `必须是 ${TABLE_GRIDS.join(' / ')} 之一（或传 null 恢复全框）`)
+    } else if (key === 'lineWidth') {
+      if (value !== null && !isValidTableLineWidth(value)) return problem('lineWidth', `必须是 ${TABLE_LINE_WIDTH_MIN}–${TABLE_LINE_WIDTH_MAX} 的像素线宽（或传 null 恢复 1）`)
+    } else if (key === 'fontSize') {
+      // Only the table's fields carry this key here: a text's size is checked with its layout.
+      if (value !== null && !isValidTableFontSize(value)) return problem('fontSize', `必须是 ${TABLE_SET_FONT_SIZE_MIN}–${TABLE_SET_FONT_SIZE_MAX} 的像素字号（或传 null 按行高自动）`)
     } else if (key === 'barMode') {
       if (value !== null && !isValidChartBarMode(value)) return problem('barMode', `必须是 ${['grouped', 'stacked', 'percent'].join(' / ')} 之一（或传 null 恢复并排）`)
     } else if (key === 'filter') {

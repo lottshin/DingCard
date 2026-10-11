@@ -69,10 +69,16 @@ import { CHART_POINTS_MAX, CHART_SERIES_MAX, isValidChartSeries, parseChartPaste
 import {
   TABLE_CELL_MAX_CHARS,
   TABLE_COLS_MAX,
+  TABLE_GRIDS,
+  TABLE_LINE_WIDTH_MAX,
+  TABLE_LINE_WIDTH_MIN,
   TABLE_ROWS_MAX,
+  TABLE_SET_FONT_SIZE_MAX,
+  TABLE_SET_FONT_SIZE_MIN,
   isValidTableCellText,
   parseTablePaste,
   tableColumnEdges,
+  tableFontSize,
 } from './tables'
 import {
   TIMELINE_ITEMS_MAX,
@@ -268,6 +274,7 @@ import type {
   FreeformQrCodeElement,
   FreeformChartElement,
   FreeformTableElement,
+  FreeformTableGrid,
   FreeformTimelineElement,
   FreeformProgressElement,
   FreeformSceneNode,
@@ -989,6 +996,12 @@ const CHART_KIND_LABELS = { bar: '柱状图', ring: '环形图', line: '折线�
 /** Legend rules (v31): automatic from two named series, always on, never. */
 const CHART_LEGEND_MODES = ['auto', 'on', 'off'] as const
 const CHART_LEGEND_MODE_LABELS = { auto: '自动', on: '显示', off: '隐藏' } as const
+const TABLE_GRID_LABELS: Record<FreeformTableGrid, string> = {
+  all: '全框',
+  rows: '横线',
+  'three-line': '三线表',
+  none: '无',
+}
 
 /** One-tap series colour sets: each series takes the next colour in order. */
 const CHART_PALETTES = [
@@ -9035,6 +9048,77 @@ export function FreeformWorkspace({
                         >
                           {t('隐藏')}
                         </button>
+                      </div>
+                      <div className="field-label with-gap">{t('格线')}</div>
+                      <div className="seg stretch" role="group" aria-label={t('格线')}>
+                        {TABLE_GRIDS.map((grid) => (
+                          <button
+                            key={grid}
+                            type="button"
+                            className={(selectedElement.grid ?? 'all') === grid ? 'seg-btn on' : 'seg-btn'}
+                            aria-pressed={(selectedElement.grid ?? 'all') === grid}
+                            data-testid={`table-grid-${grid}`}
+                            onClick={() => updateSelectedStyle({ grid: grid === 'all' ? null : grid })}
+                          >
+                            {t(TABLE_GRID_LABELS[grid])}
+                          </button>
+                        ))}
+                      </div>
+                      {selectedElement.grid !== 'none' && (
+                        <div className="paint-row with-gap" data-testid="table-lines">
+                          <ColorPickerButton
+                            label={t('格线颜色')}
+                            color={selectedElement.lineColor ?? selectedElement.ink ?? '#3f3f46'}
+                            testId="table-line-color"
+                            onChange={(lineColor) => updateSelectedStyle({ lineColor })}
+                          />
+                          <InspectorNumberInput
+                            ariaLabel={t('格线粗细')}
+                            min={TABLE_LINE_WIDTH_MIN}
+                            max={TABLE_LINE_WIDTH_MAX}
+                            resetKey={inspectorNumberResetKey}
+                            value={selectedElement.lineWidth ?? 1}
+                            onCommit={(lineWidth) => updateSelectedStyle({ lineWidth })}
+                          />
+                          {(selectedElement.lineColor !== undefined || selectedElement.lineWidth !== undefined) && (
+                            <button
+                              type="button"
+                              className="ghost"
+                              data-testid="table-line-reset"
+                              onClick={() => updateSelectedStyle({ lineColor: null, lineWidth: null })}
+                            >
+                              {t('恢复默认')}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <div className="field-label with-gap">{t('格子字号')}</div>
+                      <div className="paint-row" data-testid="table-font-size">
+                        <InspectorNumberInput
+                          ariaLabel={t('格子字号')}
+                          min={TABLE_SET_FONT_SIZE_MIN}
+                          max={TABLE_SET_FONT_SIZE_MAX}
+                          resetKey={inspectorNumberResetKey}
+                          value={selectedElement.fontSize ?? tableFontSize(
+                            selectedElement.width,
+                            selectedElement.height,
+                            selectedElement.rows,
+                            selectedElement.cols,
+                            selectedElement.cells,
+                            selectedElement.colWidths,
+                          )}
+                          onCommit={(fontSize) => updateSelectedStyle({ fontSize })}
+                        />
+                        {selectedElement.fontSize !== undefined && (
+                          <button
+                            type="button"
+                            className="ghost"
+                            data-testid="table-font-size-auto"
+                            onClick={() => updateSelectedStyle({ fontSize: null })}
+                          >
+                            {t('自动')}
+                          </button>
+                        )}
                       </div>
                       <div className="field-label with-gap">{t('颜色')}</div>
                       <div className="paint-row" data-testid="table-colors">

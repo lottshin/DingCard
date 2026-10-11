@@ -109,11 +109,12 @@ test('compare-table opens with its colored, weighted columns', async ({ page }) 
   await expect(table.locator('[data-testid="freeform-table-stripe"]').first()).toHaveAttribute('fill', '#f2faf8')
   await expect(table.locator('[data-testid="freeform-table-cell"]').first()).toHaveAttribute('fill', '#1f2937')
 
-  // The label column takes 1.4 of the 3.4 shares: its border sits past a third of the width.
+  // The label column takes 1.4 of the 3.4 shares: its border sits past a
+  // third of the width (the frame's sides sit half a line inside the box).
   const edges = await table.locator('line').evaluateAll((lines) =>
     lines
       .map((line) => ({ x1: Number(line.getAttribute('x1')), x2: Number(line.getAttribute('x2')) }))
-      .filter(({ x1, x2 }) => x1 === x2 && x1 > 0 && x1 < 800)
+      .filter(({ x1, x2 }) => x1 === x2 && x1 > 1 && x1 < 799)
       .map(({ x1 }) => x1)
       .sort((a, b) => a - b),
   )

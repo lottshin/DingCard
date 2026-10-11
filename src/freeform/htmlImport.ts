@@ -24,6 +24,7 @@ import {
   hexOf,
   individualTransform,
   isBoldWeight,
+  isSansStack,
   isTranslation,
   listMarkerText,
   multiplyAffine,
@@ -39,6 +40,7 @@ import {
 } from './htmlImportCss'
 import { type CornerRadii, ellipsePath, parsePoints, polylinePath, roundedRectPath, svgRectPath, transformPathData } from './htmlImportPaths'
 import { pathDataBounds } from './pathData'
+import { TABLE_LINE_WIDTH_MAX, TABLE_LINE_WIDTH_MIN, isValidTableFontSize, tableColumnEdges, wrapCellLines } from './tables'
 import { listIndentEm } from './textLayout'
 import type {
   BlendMode,
@@ -49,6 +51,7 @@ import type {
   FreeformImageElement,
   FreeformProgressElement,
   FreeformTableElement,
+  FreeformTableGrid,
   FreeformLineElement,
   FreeformPathElement,
   FreeformSceneNode,
@@ -1946,22 +1949,39 @@ class PageReader {
 
   /**
    * Whether a `<table>` can become one table element without changing how it
-   * looks, and with what: one text colour (the ink), a header row of `<th>`
-   * on one background (or none), body rows plain or striped every second row,
-   * column widths. A table the element can't draw that way — spans, mixed
-   * text colours or weights, per-cell fills, more than 12 rows or 6 columns,
-   * a cell longer than 24 characters, one row — stays words and shapes, laid
-   * out as the browser drew it. Null then.
+   * looks, and with what: one text colour (the ink), one sans text size, a
+   * header row of `<th>` on one background (or none), body rows plain or
+   * striped every second row, column widths, and grid lines the element
+   * draws (every line, a rule under every row, a three-line table, or none,
+   * in one colour). Its rows must be evenly tall and every cell's words sit
+   * where the element puts them — in the middle of the cell, on as many
+   * lines. A table the element can't draw that way — spans, mixed text
+   * colours, sizes or weights, per-cell fills, other borders, words aligned
+   * elsewhere, more than 12 rows or 6 columns, a cell longer than 24
+   * characters, one row — stays words and shapes, laid out as the browser
+   * drew it. Null then.
    */
   private tableElementRead(element: Element): (HtmlTableRead & {
     ink: string
     headerFill?: string
     stripeFill?: string
     colWidths?: number[]
+    grid?: FreeformTableGrid
+    lineColor?: string
+    lineWidth?: number
+    fontSize: number
   }) | null {
     if (this.tableReads.has(element)) return this.tableReads.get(element) ?? null
     const decide = () => {
-      if (element.querySelector('table')) return null
+      if (element.querySelector('table, caption')) return null
+      // Row groups and columns paint nothing the element would miss.
+      for (const part of Array.from(element.querySelectorAll('thead, tbody, tfoot, colgroup, col'))) {
+        if (part.closest('table') !== element) continue
+        const style = this.style(part)
+        const paint = this.color(style.backgroundColor)
+        if ((paint && paint.a > 0) || style.backgroundImage !== 'none') return null
+        if (['top', 'right', 'bottom', 'left'].some((side) => (Number.parseFloat(style.getPropertyValue(`border-${side}-width`)) || 0) > 0)) return null
+      }
       const rows = Array.from(element.querySelectorAll('tr'))
         .filter((row) => row.closest('table') === element)
         .map((row) => Array.from(row.children).filter((cell) => cell.tagName === 'TD' || cell.tagName === 'TH') as HTMLTableCellElement[])
@@ -1970,20 +1990,31 @@ class PageReader {
       const cells = rows.flat()
       if (cells.some((cell) => cell.colSpan > 1 || cell.rowSpan > 1)) return null
       if (Math.max(...rows.map((row) => row.length)) > TABLE_MAX_COLS) return null
+      // Every row as wide as the others: the element draws every cell.
+      if (rows.some((row) => row.length !== rows[0].length)) return null
       const read = readHtmlTable(rows)
       if (read.cutChars > 0) return null
-      // One ink for every word, however deep it sits in its cell.
+      // One ink and one size for every word, however deep it sits in its
+      // cell, in an upright, unspaced sans the element draws as well.
       const inks = new Set<string>()
+      const sizes = new Set<number>()
       for (const cell of cells) {
         for (const holder of [cell, ...Array.from(cell.querySelectorAll('*'))]) {
           if (!Array.from(holder.childNodes).some((child) => child.nodeType === Node.TEXT_NODE && child.textContent?.trim())) continue
-          const color = this.color(this.style(holder).color)
+          const style = this.style(holder)
+          const color = this.color(style.color)
           if (!color || color.a < 1) return null
           inks.add(hexOf(color))
+          sizes.add(Math.round(Number.parseFloat(style.fontSize) * 4) / 4)
+          if (style.fontStyle !== 'normal' || style.textDecorationLine !== 'none') return null
+          if (style.letterSpacing !== 'normal' && Number.parseFloat(style.letterSpacing) !== 0) return null
+          if (!isSansStack(style.fontFamily)) return null
         }
       }
-      if (inks.size > 1) return null
+      if (inks.size > 1 || sizes.size > 1) return null
       const ink = [...inks][0] ?? hexOf(this.color(this.style(element).color) ?? { r: 63, g: 63, b: 70, a: 1 })
+      const fontSize = [...sizes][0] ?? Number.parseFloat(this.style(element).fontSize)
+      if (!isValidTableFontSize(fontSize)) return null
       const bold = (cell: Element) => isBoldWeight(this.style(cell).fontWeight)
       const header = read.headerRow
       const body = header ? rows.slice(1) : rows
@@ -2012,26 +2043,169 @@ class PageReader {
       if (shaded.size > 1) return null
       const stripeFill = [...shaded][0] as string | undefined
       if (stripeFill && bodyFills.some((fill, index) => index % 2 === 1 && fill !== stripeFill)) return null
+      // Spaced-out cells show the ground between their fills; the element's fills run on.
+      const tableStyle = this.style(element)
+      const spacing = tableStyle.borderCollapse === 'collapse'
+        ? 0
+        : Math.max(...tableStyle.borderSpacing.split(/\s+/).map((part) => Number.parseFloat(part) || 0))
+      if (spacing > 0.5 && (headerFill || stripeFill)) return null
+      const lines = this.tableGridRead(element, rows, read.cols, header)
+      if (!lines) return null
+      // The element's own geometry: column edges where the browser put the
+      // borders between cells, rows evenly tall.
+      const box = element.getBoundingClientRect()
+      const edges = [0, ...rows[0].slice(1).map((cell) => cell.getBoundingClientRect().left - box.left), box.width]
+      const widths = edges.slice(1).map((edge, index) => edge - edges[index])
+      if (widths.some((width) => width <= 0)) return null
+      // Columns within half a pixel of an even split are even; anything
+      // further keeps its weights, so the words line up with their columns.
+      const total = box.width
+      const even = widths.every((width) => Math.abs(width - total / widths.length) <= 0.5)
+      const colWidths = !even && total > 0 ? widths.map((width) => Math.round((width / total) * 1000) / 1000) : undefined
+      const rowHeight = box.height / read.rows
+      const rowSlack = Math.max(2.5, (lines.lineWidth ?? 0) * 0.75, rowHeight * 0.04)
+      for (let row = 1; row < read.rows; row += 1) {
+        const top = rows[row][0].getBoundingClientRect().top - box.top
+        if (Math.abs(top - row * rowHeight) > rowSlack) return null
+      }
+      // Every cell's words in the middle of its cell and on as many lines as the element wraps them to.
+      const placed = tableColumnEdges(box.width, read.cols, colWidths)
+      const padding = fontSize * 0.32
+      const maxLines = Math.max(1, Math.floor((rowHeight - padding) / (fontSize * 1.22)))
+      const slackX = Math.max(3, fontSize * 0.2)
+      const slackY = Math.max(3, fontSize * 0.25)
+      for (const [rowIndex, row] of rows.entries()) {
+        for (const [colIndex, cell] of row.entries()) {
+          const text = read.cells[rowIndex * read.cols + colIndex]
+          if (!text) continue
+          const range = this.doc.createRange()
+          range.selectNodeContents(cell)
+          const words = range.getBoundingClientRect()
+          const tops = Array.from(range.getClientRects()).filter((rect) => rect.width > 0).map((rect) => rect.top).sort((a, b) => a - b)
+          const lineCount = tops.reduce((count, top, index) => (index === 0 || top - tops[index - 1] > fontSize * 0.5 ? count + 1 : count), 0)
+          const wrapped = wrapCellLines(text, fontSize, placed[colIndex + 1] - placed[colIndex] - padding * 2).length
+          if (wrapped > maxLines || wrapped !== lineCount) return null
+          const centerX = words.left + words.width / 2 - box.left
+          const centerY = words.top + words.height / 2 - box.top
+          if (Math.abs(centerX - (placed[colIndex] + placed[colIndex + 1]) / 2) > slackX) return null
+          if (Math.abs(centerY - (rowIndex + 0.5) * rowHeight) > slackY) return null
+        }
+      }
       // The header's own colour, or the ground under the table so the
       // element's default header tint doesn't appear where the page had none.
       const ground = this.groundColor(element)
-      const widths = rows[0].map((cell) => cell.getBoundingClientRect().width)
-      const total = widths.reduce((sum, width) => sum + width, 0)
-      const even = widths.every((width) => Math.abs(width - total / widths.length) <= total * 0.02)
       return {
         ...read,
         ink,
+        fontSize,
         ...(header && headerFill ? { headerFill } : header && ground ? { headerFill: ground } : {}),
         ...(stripeFill ? { stripeFill } : {}),
-        ...(!even && widths.length === read.cols && total > 0
-          ? { colWidths: widths.map((width) => Math.round((width / total) * 1000) / 1000) }
-          : {}),
+        ...(colWidths ? { colWidths } : {}),
+        ...lines,
       }
     }
     const read = decide()
     this.tableReads.set(element, read)
-    if (!read) this.note(element, '<table> 的样式（合并单元格、多种文字颜色或底色、超过 12 行 6 列、格子超过 24 字或只有一行）表格元素画不出来，按网页原样导成了文字和色块')
+    if (!read) this.note(element, '<table> 的样式（合并单元格、多种文字颜色、字号或底色、表格元素画不出的边框、没有居中的格子文字、超过 12 行 6 列、格子超过 24 字或只有一行）表格元素画不出来，按网页原样导成了文字和色块')
     return read
+  }
+
+  /**
+   * The grid a `<table>` draws, as a table element's lines: every line, a
+   * rule under every row, a three-line table (top and bottom rules twice as
+   * wide as the one under the header), or none — solid, in one colour. Only
+   * cells and rows draw lines here, and only collapsed into one grid; a
+   * table with its own border, or spaced-out cells with borders of their
+   * own, the element can't draw. Null then.
+   */
+  private tableGridRead(
+    table: Element,
+    rows: HTMLTableCellElement[][],
+    cols: number,
+    header: boolean,
+  ): { grid?: FreeformTableGrid; lineColor?: string; lineWidth?: number } | null {
+    type Rule = { width: number; color: string } | null
+    const SIDES = ['top', 'right', 'bottom', 'left'] as const
+    // A side's rule; undefined for one the element can't draw (dashed, see-through).
+    const ruleOf = (element: Element, side: typeof SIDES[number]): Rule | undefined => {
+      const style = this.style(element)
+      const width = Number.parseFloat(style.getPropertyValue(`border-${side}-width`)) || 0
+      const kind = style.getPropertyValue(`border-${side}-style`)
+      if (width <= 0 || kind === 'none' || kind === 'hidden') return null
+      if (kind !== 'solid') return undefined
+      const color = this.color(style.getPropertyValue(`border-${side}-color`))
+      if (!color || color.a < 1) return undefined
+      return { width, color: hexOf(color) }
+    }
+    if (SIDES.some((side) => ruleOf(table, side) !== null)) return null
+    const separate = this.style(table).borderCollapse !== 'collapse'
+    // Every segment of the grid: across[b][col] under row b - 1, down[b][row] right of column b - 1.
+    const across: Rule[][] = Array.from({ length: rows.length + 1 }, () => Array.from({ length: cols }, () => null))
+    const down: Rule[][] = Array.from({ length: cols + 1 }, () => Array.from({ length: rows.length }, () => null))
+    // Collapsed borders meet: the wider rule wins, two as wide in different colours don't resolve.
+    let clash = false
+    const meet = (current: Rule, next: Rule | undefined): Rule => {
+      if (next === undefined) {
+        clash = true
+        return current
+      }
+      if (!next) return current
+      if (!current || next.width > current.width) return next
+      if (next.width === current.width && next.color !== current.color) clash = true
+      return current
+    }
+    for (const [rowIndex, row] of rows.entries()) {
+      const tr = row[0].parentElement
+      if (tr) {
+        for (let col = 0; col < cols; col += 1) {
+          across[rowIndex][col] = meet(across[rowIndex][col], ruleOf(tr, 'top'))
+          across[rowIndex + 1][col] = meet(across[rowIndex + 1][col], ruleOf(tr, 'bottom'))
+        }
+        down[0][rowIndex] = meet(down[0][rowIndex], ruleOf(tr, 'left'))
+        down[cols][rowIndex] = meet(down[cols][rowIndex], ruleOf(tr, 'right'))
+      }
+      for (const [col, cell] of row.entries()) {
+        across[rowIndex][col] = meet(across[rowIndex][col], ruleOf(cell, 'top'))
+        across[rowIndex + 1][col] = meet(across[rowIndex + 1][col], ruleOf(cell, 'bottom'))
+        down[col][rowIndex] = meet(down[col][rowIndex], ruleOf(cell, 'left'))
+        down[col + 1][rowIndex] = meet(down[col + 1][rowIndex], ruleOf(cell, 'right'))
+      }
+    }
+    if (clash) return null
+    const drawn = [...across.flat(), ...down.flat()].filter((rule): rule is NonNullable<Rule> => rule !== null)
+    if (drawn.length === 0) return { grid: 'none' }
+    // Spaced-out cells each draw their own borders: doubled where they meet.
+    if (separate) return null
+    const colors = new Set(drawn.map((rule) => rule.color))
+    if (colors.size > 1) return null
+    const lineColor = [...colors][0]
+    const same = (a: number, b: number) => Math.abs(a - b) < 0.01
+    const full = (segments: Rule[], width?: number) => segments.every((rule) => rule !== null && (width === undefined || same(rule.width, width)))
+    const empty = (segments: Rule[]) => segments.every((rule) => rule === null)
+    const width = drawn[0].width
+    const uniform = drawn.every((rule) => same(rule.width, width))
+    const fit = (lineWidth: number) => (lineWidth >= TABLE_LINE_WIDTH_MIN && lineWidth <= TABLE_LINE_WIDTH_MAX ? lineWidth : null)
+    if (uniform && across.every((segments) => full(segments)) && down.every((segments) => full(segments))) {
+      const lineWidth = fit(width)
+      return lineWidth === null ? null : { lineColor, lineWidth }
+    }
+    if (!down.every(empty)) return null
+    const last = rows.length
+    if (uniform && empty(across[0]) && across.slice(1).every((segments) => full(segments))) {
+      const lineWidth = fit(width)
+      return lineWidth === null ? null : { grid: 'rows', lineColor, lineWidth }
+    }
+    // Three lines: heavy top and bottom, a light one under the header (none without one).
+    const outer = across[0][0]?.width ?? 0
+    if (outer > 0 && full(across[0], outer) && full(across[last], outer)) {
+      const inner = across.slice(1, last)
+      const ruled = header && last > 1
+        ? full(inner[0], outer / 2) && inner.slice(1).every(empty)
+        : inner.every(empty)
+      const lineWidth = fit(outer / 2)
+      if (ruled && lineWidth !== null) return { grid: 'three-line', lineColor, lineWidth }
+    }
+    return null
   }
 
   /** The solid colour painted under `element`: its own background, else the nearest ancestor's. */
@@ -2066,6 +2240,10 @@ class PageReader {
       ...(read.headerFill ? { headerFill: read.headerFill } : {}),
       ...(read.stripeFill ? { striped: true, stripeFill: read.stripeFill } : {}),
       ...(read.colWidths ? { colWidths: read.colWidths } : {}),
+      ...(read.grid ? { grid: read.grid } : {}),
+      ...(read.lineColor ? { lineColor: read.lineColor } : {}),
+      ...(read.lineWidth !== undefined ? { lineWidth: read.lineWidth } : {}),
+      fontSize: read.fontSize,
     }
     return [node]
   }
@@ -2697,7 +2875,7 @@ export async function importHtmlDocument(doc: Document, prepared: PreparedHtml, 
   for (const { element, message } of prepared.notes) addNote(pageOf(element), describe(element), message, element)
   for (const family of prepared.replacedFonts) addNote(0, family, `没有 ${family} 这款字体，换成了相近的内置字体`)
   return {
-    document: { documentVersion: 43, slides, activeSlideId: slides[0].id },
+    document: { documentVersion: 44, slides, activeSlideId: slides[0].id },
     notes: Array.from(notes.values(), ({ targets, ...note }) => (targets.size > 1 ? { ...note, message: `${note.message}（${targets.size} 处）` } : note)),
   }
 }

@@ -259,6 +259,7 @@ function recolorNode(node: FreeformSceneNode, recolor: Recolor): FreeformSceneNo
         ...(node.ink !== undefined ? { ink: recolor(node.ink) } : {}),
         ...(node.headerFill !== undefined ? { headerFill: recolor(node.headerFill) } : {}),
         ...(node.stripeFill !== undefined ? { stripeFill: recolor(node.stripeFill) } : {}),
+        ...(node.lineColor !== undefined ? { lineColor: recolor(node.lineColor) } : {}),
         shadow: recolorShadow(node.shadow, recolor),
       })
     // A timeline's accent and ink are optional: absent keeps the blue and the grey.

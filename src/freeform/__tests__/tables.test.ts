@@ -4,10 +4,14 @@ import {
   TABLE_CELL_MAX_CHARS,
   TABLE_COLS_MAX,
   TABLE_FONT_SIZE_MAX,
+  TABLE_GRIDS,
   TABLE_ROWS_MAX,
+  isTableGrid,
   isValidTableCells,
   isValidTableCols,
   isValidTableColWidths,
+  isValidTableFontSize,
+  isValidTableLineWidth,
   isValidTableRows,
   parseTablePaste,
   tableColumnEdges,
@@ -15,9 +19,9 @@ import {
   tableHeaderVisible,
   tableStriped,
 } from '../tables'
-import { createTableElement, freeformReducer } from '../document'
+import { createTableElement, createTextElement, freeformReducer } from '../document'
 import { normalizeFreeformDocument } from '../sceneDocument'
-import type { FreeformDocument, FreeformSceneNode, FreeformTableElement, FreeformSlide } from '../types'
+import type { FreeformDocument, FreeformSceneNode, FreeformTableElement, FreeformSlide, FreeformTextElement } from '../types'
 
 describe('table data validation', () => {
   it('accepts 2–12 rows, 1–6 cols, and short cells', () => {
@@ -53,16 +57,28 @@ describe('table geometry', () => {
 
   it('draws an even grid with a bold header by default', () => {
     const table = tableGeometry(480, 320, 3, 3, cells)
-    // Outer border plus 2 inner verticals and 2 inner horizontals.
+    // Outer border plus 2 inner verticals and 2 inner horizontals, 1px each;
+    // the outer four sit inside the box so their whole width shows.
     expect(table.lines).toHaveLength(8)
+    expect(table.lines.every((line) => line.width === 1)).toBe(true)
+    expect(table.lines.slice(0, 4)).toEqual([
+      { x1: 0, y1: 0.5, x2: 480, y2: 0.5, width: 1 },
+      { x1: 0, y1: 319.5, x2: 480, y2: 319.5, width: 1 },
+      { x1: 0.5, y1: 0, x2: 0.5, y2: 320, width: 1 },
+      { x1: 479.5, y1: 0, x2: 479.5, y2: 320, width: 1 },
+    ])
     expect(table.header).toEqual({ x: 0, y: 0, width: 480, height: 320 / 3 })
     expect(table.stripes).toEqual([])
     expect(table.cells).toHaveLength(9)
     expect(table.cells[0]).toMatchObject({ bold: true })
     expect(table.cells[3]).toMatchObject({ bold: false })
-    // Every cell centres inside its column.
+    // Every cell centres inside its column, its words' em box in the middle
+    // of the row: one 32px line in a 320 / 3 row sets its baseline 0.38em
+    // below the row's middle.
     expect(table.cells[1].x).toBe(240)
     expect(table.cells[2].x).toBe(400)
+    expect(table.fontSize).toBe(32)
+    expect(table.cells[0].y).toBeCloseTo(320 / 6 + 32 * 0.38, 6)
   })
 
   it('drops the header on demand and shades every second body row when striped', () => {
@@ -182,14 +198,14 @@ describe('table element in the document', () => {
     // Optional flags ride along; wrong-typed ones reject.
     const striped: FreeformTableElement = { ...table, striped: true, headerRow: false }
     const withFlags = normalizeFreeformDocument({
-      documentVersion: 43,
+      documentVersion: 44,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [striped as unknown as FreeformSceneNode] }],
     })
     expect((withFlags!.slides[0].nodes[0] as FreeformTableElement).striped).toBe(true)
     expect((withFlags!.slides[0].nodes[0] as FreeformTableElement).headerRow).toBe(false)
     const bad = normalizeFreeformDocument({
-      documentVersion: 43,
+      documentVersion: 44,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, cells: ['少'] } as unknown as FreeformSceneNode] }],
     })
@@ -199,7 +215,7 @@ describe('table element in the document', () => {
   it('resizes and replaces cells through node/update-content', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 43,
+      documentVersion: 44,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -243,7 +259,7 @@ describe('table element in the document', () => {
   it('styles the header and stripes through node/update-style', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 43,
+      documentVersion: 44,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -274,7 +290,7 @@ describe('table element in the document', () => {
   it('styles the ink, header fill, and stripe fill through node/update-style', () => {
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 43,
+      documentVersion: 44,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
     }
@@ -318,7 +334,7 @@ describe('table element in the document', () => {
     const v34 = normalizeFreeformDocument({ documentVersion: 34, activeSlideId: slide.id, slides: [tableSlide] })
     expect(v34).toBeNull()
     const badHex = normalizeFreeformDocument({
-      documentVersion: 43,
+      documentVersion: 44,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, ink: 'gray' } as unknown as FreeformSceneNode] }],
     })
@@ -333,17 +349,18 @@ describe('table element in the document', () => {
     expect(isValidTableColWidths('wide', 3)).toBe(false)
     expect(tableColumnEdges(480, 3, [2, 1, 1])).toEqual([0, 240, 360, 480])
 
-    // The geometry follows the edges: verticals and cell centers sit on them.
+    // The geometry follows the edges: verticals and cell centers sit on
+    // them, the outer two inside the box by half their width.
     const geometry = tableGeometry(480, 320, 2, 3, ['项目', 'A', 'B', '一月', '10', '20'], { colWidths: [2, 1, 1] })
     const verticals = geometry.lines.filter((line) => line.x1 === line.x2).map((line) => line.x1).sort((a, b) => a - b)
-    expect(verticals).toEqual([0, 240, 360, 480])
+    expect(verticals).toEqual([0.5, 240, 360, 479.5])
     expect(geometry.cells[0].x).toBe(120)
     expect(geometry.cells[1].x).toBe(300)
     expect(geometry.cells[2].x).toBe(420)
 
     const base = createTableElement(slide)
     const document: FreeformDocument = {
-      documentVersion: 43,
+      documentVersion: 44,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...base, colWidths: [240, 120, 120] } as unknown as FreeformSceneNode] }],
     }
@@ -393,10 +410,143 @@ describe('table element in the document', () => {
     const v34 = normalizeFreeformDocument({ documentVersion: 34, activeSlideId: slide.id, slides: [tableSlide] })
     expect(v34).toBeNull()
     const badWeights = normalizeFreeformDocument({
-      documentVersion: 43,
+      documentVersion: 44,
       activeSlideId: slide.id,
       slides: [{ ...slide, nodes: [{ ...table, colWidths: [1, 1] } as unknown as FreeformSceneNode] }],
     })
     expect(badWeights).toBeNull()
+  })
+})
+
+describe('table grid lines and text size (v44)', () => {
+  const cells = ['项目', '本月', '上月', '阅读', '1.2万', '9800', '涨粉', '320', '210']
+  const rowLines = (lines: ReturnType<typeof tableGeometry>['lines']) => lines.filter((line) => line.y1 === line.y2)
+  const colLines = (lines: ReturnType<typeof tableGeometry>['lines']) => lines.filter((line) => line.x1 === line.x2)
+
+  it('validates the grid style, the line width, and a set text size', () => {
+    expect(TABLE_GRIDS).toEqual(['all', 'rows', 'three-line', 'none'])
+    for (const grid of TABLE_GRIDS) expect(isTableGrid(grid)).toBe(true)
+    expect(isTableGrid('dotted')).toBe(false)
+    expect(isTableGrid(null)).toBe(false)
+    expect(isValidTableLineWidth(0.5)).toBe(true)
+    expect(isValidTableLineWidth(24)).toBe(true)
+    expect(isValidTableLineWidth(0.4)).toBe(false)
+    expect(isValidTableLineWidth(25)).toBe(false)
+    expect(isValidTableLineWidth(Number.NaN)).toBe(false)
+    expect(isValidTableFontSize(8)).toBe(true)
+    expect(isValidTableFontSize(96)).toBe(true)
+    expect(isValidTableFontSize(7.5)).toBe(false)
+    expect(isValidTableFontSize(97)).toBe(false)
+    expect(isValidTableFontSize('20')).toBe(false)
+  })
+
+  it('draws a rule under every row, a three-line table, or no lines', () => {
+    // Rules under the rows: the two between rows, centred, and the last
+    // one along the bottom, inside the box; nothing down the columns.
+    const rows = tableGeometry(480, 300, 3, 3, cells, { grid: 'rows', lineWidth: 4 })
+    expect(colLines(rows.lines)).toEqual([])
+    expect(rowLines(rows.lines).map((line) => [line.y1, line.width])).toEqual([[100, 4], [200, 4], [298, 4]])
+
+    // Three lines: top and bottom twice as heavy, a light rule under the header.
+    const three = tableGeometry(480, 300, 3, 3, cells, { grid: 'three-line', lineWidth: 2 })
+    expect(colLines(three.lines)).toEqual([])
+    expect(rowLines(three.lines).map((line) => [line.y1, line.width])).toEqual([[2, 4], [100, 2], [298, 4]])
+    // With the header off there's no header to rule off.
+    const headless = tableGeometry(480, 300, 3, 3, cells, { grid: 'three-line', headerRow: false })
+    expect(rowLines(headless.lines).map((line) => [line.y1, line.width])).toEqual([[1, 2], [299, 2]])
+
+    expect(tableGeometry(480, 300, 3, 3, cells, { grid: 'none' }).lines).toEqual([])
+
+    // Every line at a set width: inner lines centre on the cell borders.
+    const thick = tableGeometry(480, 300, 3, 3, cells, { lineWidth: 6 })
+    expect(colLines(thick.lines).map((line) => line.x1)).toEqual([3, 477, 160, 320])
+    expect(thick.lines.every((line) => line.width === 6)).toBe(true)
+  })
+
+  it('draws the cells at a set text size, ellipsising what it no longer fits', () => {
+    const fitted = tableGeometry(480, 300, 3, 3, cells)
+    expect(fitted.fontSize).toBe(32)
+    const set = tableGeometry(480, 300, 3, 3, cells, { fontSize: 20 })
+    expect(set.fontSize).toBe(20)
+    expect(set.clipped).toEqual([])
+    // Poster type in a small table: the long cells end in an ellipsis and report it.
+    const big = tableGeometry(240, 120, 3, 3, cells, { fontSize: 48 })
+    expect(big.fontSize).toBe(48)
+    expect(big.clipped.length).toBeGreaterThan(0)
+  })
+
+  const slide: FreeformSlide = {
+    id: 'slide-1',
+    name: '第一页',
+    width: 1080,
+    height: 1440,
+    background: { type: 'solid', color: '#ffffff' },
+    nodes: [],
+  }
+
+  it('styles the grid, its colour and width, and the text size through node/update-style', () => {
+    const base = createTableElement(slide)
+    const document: FreeformDocument = {
+      documentVersion: 44,
+      activeSlideId: slide.id,
+      slides: [{ ...slide, nodes: [base as unknown as FreeformSceneNode] }],
+    }
+    const styled = freeformReducer(document, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { grid: 'three-line', lineColor: '#111827', lineWidth: 2, fontSize: 28 } }],
+    })
+    const styledTable = styled.slides[0].nodes[0] as FreeformTableElement
+    expect(styledTable).toMatchObject({ grid: 'three-line', lineColor: '#111827', lineWidth: 2, fontSize: 28 })
+    // null restores every line, the ink tint, 1px and the fitted size.
+    const restored = freeformReducer(styled, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { grid: null, lineColor: null, lineWidth: null, fontSize: null } }],
+    })
+    const restoredTable = restored.slides[0].nodes[0] as FreeformTableElement
+    for (const key of ['grid', 'lineColor', 'lineWidth', 'fontSize']) expect(key in restoredTable).toBe(false)
+    // A same-value patch is no edit at all.
+    expect(freeformReducer(styled, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [base.id], patch: { grid: 'three-line' } }],
+    })).toBe(styled)
+    // Bad values reject the patch and keep the table as-is.
+    for (const patch of [{ grid: 'dotted' }, { lineColor: 'grey' }, { lineWidth: 0.1 }, { lineWidth: 30 }, { fontSize: 4 }, { fontSize: 200 }]) {
+      expect(freeformReducer(restored, {
+        type: 'node/update-style',
+        slideId: slide.id,
+        updates: [{ path: [base.id], patch: patch as never }],
+      })).toBe(restored)
+    }
+    // A text's size never takes null: that's a table's way back to the fitted size.
+    const text: FreeformTextElement = createTextElement(slide)
+    const withText: FreeformDocument = { ...document, slides: [{ ...slide, nodes: [text as unknown as FreeformSceneNode] }] }
+    expect(freeformReducer(withText, {
+      type: 'node/update-style',
+      slideId: slide.id,
+      updates: [{ path: [text.id], patch: { fontSize: null } }],
+    })).toBe(withText)
+  })
+
+  it('carries the grid and the text size at v44 and rejects them at v43', () => {
+    const table: FreeformTableElement = { ...createTableElement(slide), grid: 'rows', lineColor: '#cbd5e1', lineWidth: 2, fontSize: 30 }
+    const tableSlide = { ...slide, nodes: [table as unknown as FreeformSceneNode] }
+    const v44 = normalizeFreeformDocument({ documentVersion: 44, activeSlideId: slide.id, slides: [tableSlide] })
+    expect(v44).not.toBeNull()
+    expect(v44!.slides[0].nodes[0]).toMatchObject({ grid: 'rows', lineColor: '#cbd5e1', lineWidth: 2, fontSize: 30 })
+    for (const key of ['grid', 'lineColor', 'lineWidth', 'fontSize'] as const) {
+      const { grid, lineColor, lineWidth, fontSize, ...plain } = table
+      const one = { ...plain, [key]: { grid, lineColor, lineWidth, fontSize }[key] }
+      expect(normalizeFreeformDocument({ documentVersion: 43, activeSlideId: slide.id, slides: [{ ...slide, nodes: [one as unknown as FreeformSceneNode] }] })).toBeNull()
+    }
+    for (const bad of [{ grid: 'dashed' }, { lineColor: 'grey' }, { lineWidth: 0 }, { fontSize: 7 }]) {
+      expect(normalizeFreeformDocument({
+        documentVersion: 44,
+        activeSlideId: slide.id,
+        slides: [{ ...slide, nodes: [{ ...table, ...bad } as unknown as FreeformSceneNode] }],
+      })).toBeNull()
+    }
   })
 })

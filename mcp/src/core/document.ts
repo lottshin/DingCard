@@ -91,6 +91,12 @@ export interface NodeSummary {
   stripeFill?: string
   /** A table's relative column weights (v35), one per column; absent splits evenly. */
   colWidths?: number[]
+  /** A table's grid lines (v44): 'rows', 'three-line' or 'none'; absent (or 'all') draws every line. */
+  grid?: 'all' | 'rows' | 'three-line' | 'none'
+  /** A table's grid line colour (v44); absent tints the ink. */
+  lineColor?: string
+  /** A table's grid line width in px (v44); absent is 1. */
+  lineWidth?: number
   /** A timeline's entries (v36): 2–8 of them, each an optional short label and its text. */
   items?: Array<{ label?: string; text: string }>
   /** A timeline's spine and dot colour (v36), a progress's done colour (v38); absent keeps the blue accent. */
@@ -225,6 +231,10 @@ function summarizeNode(node: FreeformSceneNode): NodeSummary {
       ...(node.headerFill !== undefined ? { headerFill: node.headerFill } : {}),
       ...(node.stripeFill !== undefined ? { stripeFill: node.stripeFill } : {}),
       ...(node.colWidths !== undefined ? { colWidths: [...node.colWidths] } : {}),
+      ...(node.grid !== undefined ? { grid: node.grid } : {}),
+      ...(node.lineColor !== undefined ? { lineColor: node.lineColor } : {}),
+      ...(node.lineWidth !== undefined ? { lineWidth: node.lineWidth } : {}),
+      ...(node.fontSize !== undefined ? { fontSize: node.fontSize } : {}),
     }
   }
   if (node.type === 'timeline') {

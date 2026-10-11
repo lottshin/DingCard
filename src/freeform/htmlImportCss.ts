@@ -628,6 +628,12 @@ export function chooseFont(stack: string): FontChoice {
   return { fontFamily: kind === 'serif' ? NOTO_SERIF : kind === 'script' ? WENKAI : SANS, replaced }
 }
 
+/** Whether a stack lands on one of our sans fonts, the kind a data element draws its words in. */
+export function isSansStack(stack: string): boolean {
+  const { fontFamily } = chooseFont(stack)
+  return fontFamily === SANS || fontFamily === NOTO_SANS || fontFamily === SYSTEM
+}
+
 export function applyTextTransform(text: string, transform: string): string {
   if (transform === 'uppercase') return text.toUpperCase()
   if (transform === 'lowercase') return text.toLowerCase()

@@ -355,7 +355,7 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
     walkScene(slide.nodes, (node) => {
       if (node.hidden) return
       if (node.type === 'table') {
-        const geometry = tableGeometry(node.width, node.height, node.rows, node.cols, node.cells, { headerRow: node.headerRow, striped: node.striped, colWidths: node.colWidths })
+        const geometry = tableGeometry(node.width, node.height, node.rows, node.cols, node.cells, { headerRow: node.headerRow, striped: node.striped, colWidths: node.colWidths, fontSize: node.fontSize })
         dataWords(node, '格子文字', geometry.fontSize, node.ink ?? '#3f3f46')
         if (geometry.clipped.length > 0) {
           const where = geometry.clipped.slice(0, 3).map((index) => `第 ${Math.floor(index / node.cols) + 1} 行第 ${index % node.cols + 1} 列`).join('、')

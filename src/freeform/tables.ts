@@ -3,6 +3,8 @@
 // renderer draws — fills, grid lines and wrapped cell texts — comes from
 // here, so the canvas, thumbnails and exports stay pixel-identical.
 
+import type { FreeformTableGrid } from './types'
+
 export const TABLE_ROWS_MAX = 12
 export const TABLE_COLS_MAX = 6
 export const TABLE_CELL_MAX_CHARS = 24
@@ -35,6 +37,31 @@ export function tableStriped(striped: boolean | undefined): boolean {
   return striped === true
 }
 
+/** Which grid lines a table draws (v44); absent draws them all. */
+export const TABLE_GRIDS: readonly FreeformTableGrid[] = ['all', 'rows', 'three-line', 'none']
+
+export function isTableGrid(value: unknown): value is FreeformTableGrid {
+  return typeof value === 'string' && (TABLE_GRIDS as readonly string[]).includes(value)
+}
+
+/** Grid line widths (v44): a hairline up to a bold rule; absent keeps 1px. */
+export const TABLE_LINE_WIDTH_MIN = 0.5
+export const TABLE_LINE_WIDTH_MAX = 24
+
+export function isValidTableLineWidth(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+    && value >= TABLE_LINE_WIDTH_MIN && value <= TABLE_LINE_WIDTH_MAX
+}
+
+/** A cell text size set outright (v44): small print up to poster type. */
+export const TABLE_SET_FONT_SIZE_MIN = 8
+export const TABLE_SET_FONT_SIZE_MAX = 96
+
+export function isValidTableFontSize(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+    && value >= TABLE_SET_FONT_SIZE_MIN && value <= TABLE_SET_FONT_SIZE_MAX
+}
+
 /** Column weights (v35): one positive weight per column, relative to their sum. */
 export function isValidTableColWidths(value: unknown, cols: number): value is number[] {
   return Array.isArray(value)
@@ -64,8 +91,12 @@ export interface TableGeometry {
   header: { x: number; y: number; width: number; height: number } | null
   /** The shaded body rows (every second one after the header). */
   stripes: Array<{ x: number; y: number; width: number; height: number }>
-  /** Every grid line drawn, outer border and inner separators alike. */
-  lines: Array<{ x1: number; y1: number; x2: number; y2: number }>
+  /**
+   * Every grid line drawn, at its own width: rules along the outside sit
+   * inside the box so their whole width shows (as a browser draws a
+   * collapsed table border); inner ones centre on the border between cells.
+   */
+  lines: Array<{ x1: number; y1: number; x2: number; y2: number; width: number }>
   /** One entry per cell, row-major: wrapped lines and the header's boldness. */
   cells: Array<{ x: number; y: number; lines: string[]; bold: boolean }>
   /** The cell text size every cell is drawn at. */
@@ -140,28 +171,47 @@ export function tableGeometry(
   rows: number,
   cols: number,
   cells: readonly string[],
-  options: { headerRow?: boolean; striped?: boolean; colWidths?: number[] } = {},
+  options: {
+    headerRow?: boolean
+    striped?: boolean
+    colWidths?: number[]
+    grid?: FreeformTableGrid
+    lineWidth?: number
+    fontSize?: number
+  } = {},
 ): TableGeometry {
   const header = tableHeaderVisible(options.headerRow)
   const striped = tableStriped(options.striped)
   const edges = tableColumnEdges(width, cols, options.colWidths)
   const rowHeight = height / rows
-  const fontSize = tableFontSize(width, height, rows, cols, cells, options.colWidths)
+  const fontSize = options.fontSize ?? tableFontSize(width, height, rows, cols, cells, options.colWidths)
   const lineHeight = fontSize * 1.22
   const padding = fontSize * 0.32
 
   const lines: TableGeometry['lines'] = []
-  // The outer border plus the inner separators: verticals between columns,
-  // horizontals between rows.
-  lines.push({ x1: 0, y1: 0, x2: width, y2: 0 })
-  lines.push({ x1: 0, y1: height, x2: width, y2: height })
-  lines.push({ x1: 0, y1: 0, x2: 0, y2: height })
-  lines.push({ x1: width, y1: 0, x2: width, y2: height })
-  for (let col = 1; col < cols; col += 1) {
-    lines.push({ x1: edges[col], y1: 0, x2: edges[col], y2: height })
-  }
-  for (let row = 1; row < rows; row += 1) {
-    lines.push({ x1: 0, y1: row * rowHeight, x2: width, y2: row * rowHeight })
+  const grid = options.grid ?? 'all'
+  const lineWidth = options.lineWidth ?? 1
+  const across = (y: number, ruleWidth: number) => lines.push({ x1: 0, y1: y, x2: width, y2: y, width: ruleWidth })
+  const down = (x: number, ruleWidth: number) => lines.push({ x1: x, y1: 0, x2: x, y2: height, width: ruleWidth })
+  if (grid === 'all') {
+    // The outer border plus the inner separators: verticals between
+    // columns, horizontals between rows.
+    across(lineWidth / 2, lineWidth)
+    across(height - lineWidth / 2, lineWidth)
+    down(lineWidth / 2, lineWidth)
+    down(width - lineWidth / 2, lineWidth)
+    for (let col = 1; col < cols; col += 1) down(edges[col], lineWidth)
+    for (let row = 1; row < rows; row += 1) across(row * rowHeight, lineWidth)
+  } else if (grid === 'rows') {
+    // A rule under every row, the last one along the bottom.
+    for (let row = 1; row < rows; row += 1) across(row * rowHeight, lineWidth)
+    across(height - lineWidth / 2, lineWidth)
+  } else if (grid === 'three-line') {
+    // The three-line table: heavy rules along the top and bottom, a light
+    // one under the header.
+    across(lineWidth, lineWidth * 2)
+    if (header) across(rowHeight, lineWidth)
+    across(height - lineWidth, lineWidth * 2)
   }
 
   const stripes: TableGeometry['stripes'] = []
@@ -189,7 +239,9 @@ export function tableGeometry(
       const centerY = row * rowHeight + rowHeight / 2
       cellTexts.push({
         x: edges[col] + colWidth / 2,
-        y: centerY - blockHeight / 2 + fontSize * 0.88,
+        // The first baseline: a CJK em box (0.88 of it above the baseline)
+        // sits in the middle of its line, as a browser centres a cell's words.
+        y: centerY - blockHeight / 2 + (lineHeight - fontSize) / 2 + fontSize * 0.88,
         lines: linesShown,
         bold: header && row === 0,
       })

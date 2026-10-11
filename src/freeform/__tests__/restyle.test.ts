@@ -103,14 +103,16 @@ describe('restyleDocument', () => {
     // The template's unset ink keeps its absence; its header fill maps too when set.
     const withFills = {
       ...withInk,
-      slides: [{ ...slide, nodes: slide.nodes.map((node) => node.id === table.id ? { ...table, ink: '#334155', headerFill: '#e2e8f0', stripeFill: '#f1f5f9' } : node) }],
+      slides: [{ ...slide, nodes: slide.nodes.map((node) => node.id === table.id ? { ...table, ink: '#334155', headerFill: '#e2e8f0', stripeFill: '#f1f5f9', lineColor: '#94a3b8' } : node) }],
     }
-    const fills = restyleDocument(withFills, { colors: { '#334155': '#0f766e', '#e2e8f0': '#ccfbf1', '#f1f5f9': '#f0fdfa' } })
+    const fills = restyleDocument(withFills, { colors: { '#334155': '#0f766e', '#e2e8f0': '#ccfbf1', '#f1f5f9': '#f0fdfa', '#94a3b8': '#5eead4' } })
     const refilled = fills.slides[0].nodes.find((node) => node.id === table.id)
     if (!refilled || refilled.type !== 'table') throw new Error('table lost in restyle')
     expect(refilled.ink).toBe('#0f766e')
     expect(refilled.headerFill).toBe('#ccfbf1')
     expect(refilled.stripeFill).toBe('#f0fdfa')
+    // The grid's own colour (v44) maps with the rest.
+    expect(refilled.lineColor).toBe('#5eead4')
   })
 
   it('recolors a chart\'s ink (v43) with its series', () => {

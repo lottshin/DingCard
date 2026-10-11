@@ -715,12 +715,16 @@ function SceneLeafContent({
 
   if (leaf.type === 'table') {
     // The table draws in one ink like the charts' axis text; the v35 overrides
-    // paint the header and stripes outright while absent keeps the ink tints.
+    // paint the header and stripes outright while absent keeps the ink tints,
+    // and so does the v44 line colour for the grid.
     const inkColor = leaf.ink ?? '#3f3f46'
     const table = tableGeometry(leaf.width, leaf.height, leaf.rows, leaf.cols, leaf.cells, {
       headerRow: leaf.headerRow,
       striped: leaf.striped,
       colWidths: leaf.colWidths,
+      grid: leaf.grid,
+      lineWidth: leaf.lineWidth,
+      fontSize: leaf.fontSize,
     })
     const cellFontSize = table.fontSize
     return (
@@ -737,9 +741,14 @@ function SceneLeafContent({
         {table.stripes.map((stripe, index) => (
           <rect key={index} data-testid="freeform-table-stripe" x={stripe.x} y={stripe.y} width={stripe.width} height={stripe.height} fill={leaf.stripeFill ?? inkColor} opacity={leaf.stripeFill ? 1 : 0.045} />
         ))}
-        {table.lines.map((line, index) => (
-          <line key={index} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={inkColor} strokeWidth={1} opacity={0.28} />
-        ))}
+        {table.lines.length > 0 && (
+          // One opacity for the whole grid, so crossing lines don't darken.
+          <g data-testid="freeform-table-grid" opacity={leaf.lineColor ? 1 : 0.28}>
+            {table.lines.map((line, index) => (
+              <line key={index} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={leaf.lineColor ?? inkColor} strokeWidth={line.width} />
+            ))}
+          </g>
+        )}
         {table.cells.map((cell, index) =>
           cell.lines.length > 0 ? (
             <text

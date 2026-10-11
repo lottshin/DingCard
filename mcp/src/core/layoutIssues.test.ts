@@ -72,7 +72,7 @@ function drawing(id: string, overrides: Partial<FreeformPathElement> = {}): Free
 
 function deck(nodes: FreeformSceneNode[]): FreeformDocument {
   return {
-    documentVersion: 43,
+    documentVersion: 44,
     activeSlideId: 'page',
     slides: [{ id: 'page', name: '第 1 页', width: 1080, height: 1440, background: { type: 'solid', color: '#ffffff' }, nodes }],
   }
@@ -426,6 +426,16 @@ describe('words inside data drawings', () => {
     const cut = layoutIssues(onGround('#ffffff', [table({ width: 200, height: 160, cells: ['门店', '营收', '这一格写得特别特别长放不下', '128', '福田', '96', '前海', '73'] })]), measured([], []))
     expect(kinds(cut)).toContain('data-clipped:表格')
     expect(cut.find((issue) => issue.kind === 'data-clipped')!.message).toContain('第 2 行第 1 列')
+  })
+
+  test('a set text size (v44) is the size it judges', () => {
+    // A roomy table set in small print is small print…
+    const small = layoutIssues(onGround('#ffffff', [table({ fontSize: 12 })]), measured([], []))
+    expect(kinds(small)).toEqual(['tiny-text:表格'])
+    expect(small[0].message).toContain('12px')
+    // …and poster type in the same box cuts its cells short.
+    const big = layoutIssues(onGround('#ffffff', [table({ width: 300, fontSize: 64 })]), measured([], []))
+    expect(kinds(big)).toContain('data-clipped:表格')
   })
 
   test('a white card under a drawing is its ground', () => {

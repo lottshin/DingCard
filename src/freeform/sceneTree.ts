@@ -36,7 +36,15 @@ import {
 } from './appearance'
 import { isValidQrEcl, isValidQrLogoSrc, isValidQrModuleStyle, isValidQrPayload, isValidQrQuietZone } from './qrCode'
 import { CHART_POINTS_MAX, isValidChartBarMode, isValidChartKind, isValidChartLabel, isValidChartSeriesList } from './charts'
-import { isValidTableCells, isValidTableColWidths, isValidTableCols, isValidTableRows } from './tables'
+import {
+  isTableGrid,
+  isValidTableCells,
+  isValidTableColWidths,
+  isValidTableCols,
+  isValidTableFontSize,
+  isValidTableLineWidth,
+  isValidTableRows,
+} from './tables'
 import { isValidTimelineItems } from './timeline'
 import { isProgressKind, isValidProgressLabel, isValidProgressValue } from './progress'
 import { isValidPathData } from './pathData'
@@ -1045,6 +1053,10 @@ const TABLE_OPTIONAL_FIELD_CHECKS: Record<string, NodeFieldCheck> = {
   stripeFill: (record) => isHexColor(record.stripeFill),
   colWidths: (record) => Array.isArray(record.colWidths)
     && record.colWidths.every((weight) => typeof weight === 'number' && Number.isFinite(weight) && weight > 0),
+  grid: (record) => isTableGrid(record.grid),
+  lineColor: (record) => isHexColor(record.lineColor),
+  lineWidth: (record) => isValidTableLineWidth(record.lineWidth),
+  fontSize: (record) => isValidTableFontSize(record.fontSize),
   opacity: OPACITY_FIELD_CHECK,
   shadow: SHADOW_FIELD_CHECK,
   filter: FILTER_FIELD_CHECK,

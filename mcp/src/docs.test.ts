@@ -3,6 +3,8 @@
 // whenever the descriptions fall behind the code, so a version bump that
 // forgets the docs cannot ship.
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -83,10 +85,33 @@ describe('dingcard-mcp tool descriptions stay current', () => {
     expect(total).toBeLessThan(40000)
   })
 
+  test('the docs name the current version wherever they claim one', () => {
+    // Feature notes ("v34 表格元素") stay as history; what the docs say the
+    // editor writes, reads, validates and renders must follow the constant.
+    const current = FREEFORM_DOCUMENT_VERSION
+    for (const name of ['docs/mcp.md', 'docs/backend-plan.md', 'docs/freeform-editor.md']) {
+      const text = readFileSync(path.resolve(__dirname, '../..', name), 'utf8')
+      const claims = [
+        ...text.matchAll(/"?documentVersion"?`?: (\d+)/g),
+        ...text.matchAll(/v(\d+) 文档/g),
+        ...text.matchAll(/v(\d+) 场景树契约/g),
+        ...text.matchAll(/迁移为 v(\d+)/g),
+        ...text.matchAll(/到 v(\d+) 的迁移/g),
+        ...text.matchAll(/`documentVersion` 写成 (\d+)/g),
+      ]
+      expect(claims.length, `${name} 里没找到版本说明`).toBeGreaterThan(0)
+      for (const match of claims) expect(Number(match[1]), `${name}：「${match[0]}」落后了`).toBe(current)
+      // A migration range ends at the current version, or the one before it.
+      for (const match of text.matchAll(/v1–v(\d+)/g)) {
+        expect([current - 1, current], `${name}：「${match[0]}」落后了`).toContain(Number(match[1]))
+      }
+    }
+  })
+
   test('the version constant still pins the document interface', () => {
     // Interpolated claims are only as fresh as this constant; sceneDocument's
     // type tests keep it welded to FreeformDocument['documentVersion'].
-    expect(FREEFORM_DOCUMENT_VERSION).toBe(43)
+    expect(FREEFORM_DOCUMENT_VERSION).toBe(44)
   })
 })
 

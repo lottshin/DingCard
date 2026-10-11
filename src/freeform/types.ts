@@ -1,5 +1,5 @@
 /** The documentVersion a fresh freeform document carries; older versions migrate to it. */
-export const FREEFORM_DOCUMENT_VERSION = 43
+export const FREEFORM_DOCUMENT_VERSION = 44
 
 export interface FreeformDocument {
   documentVersion: typeof FREEFORM_DOCUMENT_VERSION
@@ -449,7 +449,22 @@ export interface FreeformTableElement extends FreeformElementBase {
   stripeFill?: string
   /** Relative column weights, one per column (v35); absent splits evenly. */
   colWidths?: number[]
+  /**
+   *  Which grid lines are drawn (v44): absent or 'all' every line, 'rows' a
+   *  rule under every row, 'three-line' heavy top and bottom rules with a
+   *  light one under the header, 'none' no lines.
+   */
+  grid?: FreeformTableGrid
+  /** The grid lines' colour (v44); absent tints the ink like the sample table. */
+  lineColor?: string
+  /** The grid lines' width in px, 0.5–24 (v44); absent keeps 1px. */
+  lineWidth?: number
+  /** The cell text size in px, 8–96 (v44); absent fits the text to the rows. */
+  fontSize?: number
 }
+
+/** A table's grid lines (v44). */
+export type FreeformTableGrid = 'all' | 'rows' | 'three-line' | 'none'
 
 /** One entry on a timeline: an optional short label (a date, a step) and its text. */
 export interface FreeformTimelineItem {
@@ -552,7 +567,8 @@ export interface FreeformNodeContentPatch {
 export interface FreeformNodeStylePatch {
   /** A text's effect (v17); `null` removes it. */
   effect?: TextEffect | null
-  fontSize?: number
+  /** A text's size, or a table's cell text size (v44, `null` refits it to the rows). */
+  fontSize?: number | null
   fontFamily?: string
   textFill?: ColorPaint
   align?: TextAlign
@@ -655,6 +671,12 @@ export interface FreeformNodeStylePatch {
   headerFill?: string | null
   /** Table stripe fill (v35); `null` restores the ink tint. */
   stripeFill?: string | null
+  /** Table grid lines (v44); `null` restores every line. */
+  grid?: FreeformTableGrid | null
+  /** Table grid line colour (v44); `null` restores the ink tint. */
+  lineColor?: string | null
+  /** Table grid line width (v44); `null` restores 1px. */
+  lineWidth?: number | null
   /** Timeline entries side by side (v37); `null`/`false` restores the vertical spine. */
   horizontal?: boolean | null
   /** A progress element's track colour (v39); `null` restores the accent tint. */

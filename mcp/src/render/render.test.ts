@@ -986,6 +986,10 @@ describe('importHtml', () => {
         headerRow: true,
         ink: '#ffffff',
         headerFill: '#0f172a',
+        // The page's 2px slate borders and 30px words, as the page drew them (v44).
+        lineColor: '#475569',
+        lineWidth: 2,
+        fontSize: 30,
       })
       expect(table && table.type === 'table' && table.width).toBeGreaterThan(250)
       const progress = leaves(two.nodes).find((node) => node.type === 'progress')
@@ -1008,12 +1012,12 @@ describe('importHtml', () => {
 
       const differences = await browserDifference(POSTER_HTML, rendered.files.map((file) => file.path), rendered.distDir, { width: 1080, height: 1440 })
       expect(differences).toHaveLength(2)
-      for (const difference of differences) {
-        // Antialiasing, the approximated shadow and the table element's own
-        // grid (an HTML table's cell borders can't follow its ink) differ
-        // diffusely; a misplaced word or box would trip the far share below.
-        expect(difference.mean).toBeLessThan(6)
-        expect(difference.far).toBeLessThan(0.03)
+      for (const [index, difference] of differences.entries()) {
+        // Antialiasing and the approximated shadow differ by a hair; a
+        // misplaced word or box would not. The table element draws the
+        // page's borders and words where the page drew them.
+        expect(difference.mean, `第 ${index + 1} 页的平均差`).toBeLessThan(4)
+        expect(difference.far, `第 ${index + 1} 页差得远的像素`).toBeLessThan(0.03)
       }
     },
     420_000,
@@ -1045,6 +1049,53 @@ describe('importHtml', () => {
       expect(result.notes.filter((note) => note.message.includes('<table>')).map((note) => note.message)).toEqual([expect.stringContaining('（2 处）')])
 
       const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-html-table-'))
+      const rendered = await renderDocument(result.document, { outputDir, baseName: 'converted' })
+      if (!rendered.ok) throw new Error(rendered.error)
+      const [difference] = await browserDifference(html, rendered.files.map((file) => file.path), rendered.distDir, { width: 1080, height: 1080 })
+      expect(difference.mean).toBeLessThan(4)
+      expect(difference.far).toBeLessThan(0.03)
+    },
+    420_000,
+  )
+
+  test(
+    'draws row rules, three-line tables and unruled tables as table elements, as the browser drew them',
+    async () => {
+      const html = `<!doctype html><html><head><style>
+        body { margin: 0; }
+        section { width: 1080px; height: 1080px; background: #ffffff; color: #1f2937; padding: 80px; box-sizing: border-box; font-family: "Noto Sans SC", sans-serif; }
+        table { border-collapse: collapse; font-size: 32px; margin-bottom: 48px; }
+        th, td { padding: 14px 28px; text-align: center; }
+        .rows th { background: #f3f4f6; }
+        .rows th, .rows td { border-bottom: 2px solid #d1d5db; }
+        .three thead th { border-top: 4px solid #111827; border-bottom: 2px solid #111827; }
+        .three tbody tr:last-child td { border-bottom: 4px solid #111827; }
+        .plain th { background: #e5e7eb; }
+        .plain tr:nth-child(odd) td { background: #f9fafb; }
+        .wide { width: 100%; }
+        .wide th, .wide td { text-align: left; border: 1px solid #9ca3af; }
+      </style></head><body><section>
+        <table class="rows"><thead><tr><th>城市</th><th>人数</th></tr></thead><tbody><tr><td>上海</td><td>120</td></tr><tr><td>杭州</td><td>86</td></tr></tbody></table>
+        <table class="three"><thead><tr><th>指标</th><th>本月</th><th>上月</th></tr></thead><tbody><tr><td>阅读</td><td>1.2万</td><td>9800</td></tr><tr><td>涨粉</td><td>320</td><td>210</td></tr></tbody></table>
+        <table class="plain"><tr><th>品名</th><th>价格</th></tr><tr><td>拿铁</td><td>28</td></tr><tr><td>美式</td><td>22</td></tr><tr><td>摩卡</td><td>32</td></tr></table>
+        <table class="wide"><tr><th>周一</th><th>周二</th></tr><tr><td>跑步</td><td>游泳</td></tr></table>
+      </section></body></html>`
+      const result = await importHtml(html)
+      if (!result.ok) throw new Error(result.error)
+      const tables = leaves(result.document.slides[0].nodes).filter((node) => node.type === 'table')
+      // Each grid as the page ruled it, in its colour and width, at the page's size…
+      expect(tables).toEqual([
+        expect.objectContaining({ cells: ['城市', '人数', '上海', '120', '杭州', '86'], grid: 'rows', lineColor: '#d1d5db', lineWidth: 2, fontSize: 32, headerFill: '#f3f4f6' }),
+        expect.objectContaining({ rows: 3, cols: 3, grid: 'three-line', lineColor: '#111827', lineWidth: 2, fontSize: 32 }),
+        expect.objectContaining({ rows: 4, cols: 2, grid: 'none', striped: true, stripeFill: '#f9fafb', fontSize: 32 }),
+      ])
+      expect(tables[2]).not.toHaveProperty('lineColor')
+      // …while a left-aligned table across the page stays words in their places.
+      const words = leaves(result.document.slides[0].nodes).flatMap((node) => node.type === 'text' ? [node.text] : [])
+      for (const word of ['周一', '周二', '跑步', '游泳']) expect(words).toContain(word)
+      expect(result.notes.filter((note) => note.message.includes('<table>'))).toHaveLength(1)
+
+      const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-html-grids-'))
       const rendered = await renderDocument(result.document, { outputDir, baseName: 'converted' })
       if (!rendered.ok) throw new Error(rendered.error)
       const [difference] = await browserDifference(html, rendered.files.map((file) => file.path), rendered.distDir, { width: 1080, height: 1080 })

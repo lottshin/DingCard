@@ -47,7 +47,7 @@ test('inserts a table that renders its header and cells and saves', async ({ pag
     return draft ?? null
   })
   expect(stored).not.toBeNull()
-  expect(stored.document.documentVersion).toBe(43)
+  expect(stored.document.documentVersion).toBe(44)
   expect(stored.document.slides[0].nodes[0].type).toBe('table')
 
   // The table survives a reload with all its cells.
@@ -191,11 +191,12 @@ test('drags a column border to rebalance the columns', async ({ page }) => {
   await expect(page.getByTestId('freeform-table-col-handle-1')).toBeVisible()
   await expect(page.getByTestId('freeform-table-col-handle-2')).toHaveCount(0)
 
-  // The inner vertical grid lines, in the table's own pixels.
+  // The inner vertical grid lines, in the table's own pixels (the frame's
+  // sides sit half a line inside the box).
   const innerEdges = async () => table.locator('line').evaluateAll((lines) =>
     lines
       .map((line) => ({ x1: Number(line.getAttribute('x1')), x2: Number(line.getAttribute('x2')) }))
-      .filter(({ x1, x2 }) => x1 === x2 && x1 > 0 && x1 < 480)
+      .filter(({ x1, x2 }) => x1 === x2 && x1 > 1 && x1 < 479)
       .map(({ x1 }) => x1)
       .sort((a, b) => a - b),
   )
@@ -219,4 +220,63 @@ test('drags a column border to rebalance the columns', async ({ page }) => {
   // One drag is one undo step: the columns come back even.
   await page.getByRole('button', { name: '撤销', exact: true }).click()
   await expect(await innerEdges()).toEqual([160, 320])
+})
+
+test('rules the grid, colours and thickens its lines, and sets the cell text size', async ({ page }) => {
+  await openFreeform(page)
+  await insertTable(page)
+  const table = page.getByTestId('freeform-table')
+  const rules = () => table.locator('[data-testid="freeform-table-grid"] line').evaluateAll((lines) => lines.map((line) => ({
+    across: line.getAttribute('y1') === line.getAttribute('y2'),
+    width: Number(line.getAttribute('stroke-width')),
+  })))
+
+  // Every line by default: the frame and the inner lines of the 3×3 sample.
+  await expect(page.getByTestId('table-grid-all')).toHaveAttribute('aria-pressed', 'true')
+  expect(await rules()).toHaveLength(8)
+
+  // A rule under every row, nothing down the columns.
+  await page.getByTestId('table-grid-rows').click()
+  expect(await rules()).toEqual(Array.from({ length: 3 }, () => ({ across: true, width: 1 })))
+
+  // Three lines: heavy top and bottom, a light rule under the header.
+  await page.getByTestId('table-grid-three-line').click()
+  expect((await rules()).map((rule) => rule.width)).toEqual([2, 1, 2])
+
+  // The line colour paints the grid outright; the width thickens every rule.
+  await page.getByRole('button', { name: '格线颜色', exact: true }).click()
+  const lineHex = page.getByLabel('格线颜色 自定义 HEX', { exact: true })
+  await lineHex.fill('#111827')
+  await lineHex.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(table.getByTestId('freeform-table-grid')).toHaveAttribute('opacity', '1')
+  await expect(table.locator('[data-testid="freeform-table-grid"] line').first()).toHaveAttribute('stroke', '#111827')
+  const lineWidth = page.getByLabel('格线粗细', { exact: true })
+  await lineWidth.fill('3')
+  await lineWidth.press('Enter')
+  expect((await rules()).map((rule) => rule.width)).toEqual([6, 3, 6])
+
+  // 恢复默认 takes the grid back to the ink's tint at 1px; 无 draws no lines
+  // and hides their controls.
+  await page.getByTestId('table-line-reset').click()
+  await expect(table.getByTestId('freeform-table-grid')).toHaveAttribute('opacity', '0.28')
+  expect((await rules()).map((rule) => rule.width)).toEqual([2, 1, 2])
+  await page.getByTestId('table-grid-none').click()
+  await expect(table.getByTestId('freeform-table-grid')).toHaveCount(0)
+  await expect(page.getByTestId('table-lines')).toHaveCount(0)
+
+  // A set text size draws every cell at it; 自动 fits the text to the rows again.
+  const cell = table.locator('[data-testid="freeform-table-cell"]').first()
+  const fitted = await cell.getAttribute('font-size')
+  const fontSize = page.getByLabel('格子字号', { exact: true })
+  await expect(fontSize).toHaveValue(String(Number(fitted)))
+  await fontSize.fill('20')
+  await fontSize.press('Enter')
+  await expect(cell).toHaveAttribute('font-size', '20')
+  await page.getByTestId('table-font-size-auto').click()
+  await expect(cell).toHaveAttribute('font-size', fitted!)
+
+  // Each change was one step: undo brings the set size back.
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  await expect(cell).toHaveAttribute('font-size', '20')
 })
