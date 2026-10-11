@@ -447,8 +447,10 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         const sizes = ownTexts.map((node) => node.fontSize).sort((a, b) => b - a)
         const body = sizes.slice(1)
         const median = body[Math.floor(body.length / 2)]
-        if (sizes[0] < HEADING_RATIO * median) {
-          issue('weak-heading', null, `这一页最大的字只有 ${Math.round(sizes[0])}px，和正文（约 ${Math.round(median)}px）拉不开：标题放大到 1.4 倍以上，或正文缩小。`)
+        // A title the template drew, kept word for word (a menu's 今日菜单), still heads the page.
+        const heading = Math.max(sizes[0], ...boxes.flatMap(({ node }) => node.type === 'text' && node.text.trim() ? [node.fontSize] : []))
+        if (heading < HEADING_RATIO * median) {
+          issue('weak-heading', null, `这一页最大的字只有 ${Math.round(heading)}px，和正文（约 ${Math.round(median)}px）拉不开：标题放大到 1.4 倍以上，或正文缩小。`)
         }
       }
     }

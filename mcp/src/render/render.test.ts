@@ -10,7 +10,8 @@ import { describe, expect, test } from 'vitest'
 import { reduceFreeformDocument } from '../../../src/freeform/document'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { FILTER_PRESETS } from '../../../src/freeform/filterPresets'
-import type { FreeformDocument, FreeformPathElement, FreeformTextElement } from '../../../src/freeform/types'
+import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformPathElement, type FreeformTextElement } from '../../../src/freeform/types'
+import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { listIcons } from '../core/icons'
 import { createDocumentFromOutline } from '../core/outline'
 import { instantiateTemplate } from '../core/templates'
@@ -920,6 +921,21 @@ describe('checkDocument', () => {
     expect(result.summary.byKind['sample-text']).toBeGreaterThan(5)
     // Its titles' boxes are drawn to their glyphs, so nothing reads as cut.
     expect(result.issues.every((issue) => issue.kind === 'sample-text')).toBe(true)
+  }, 420_000)
+
+  test('finds nothing but sample copy on any template as it ships', async () => {
+    // Every page of every freeform template, checked in one document.
+    const pages = TEMPLATE_REGISTRY
+      .filter((template) => template.workspace === 'freeform')
+      .flatMap((template) => template.createFreeform!().slides.map((slide) => ({ template: template.id, slide })))
+    const document: FreeformDocument = { documentVersion: FREEFORM_DOCUMENT_VERSION, activeSlideId: pages[0].slide.id, slides: pages.map((page) => page.slide) }
+    const result = await checkDocument(document)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.summary.slideCount).toBe(pages.length)
+    const problems = result.issues
+      .filter((issue) => issue.kind !== 'sample-text')
+      .map((issue) => `${pages[issue.page - 1].template}/${pages[issue.page - 1].slide.name} ${issue.kind} ${issue.node ?? ''}: ${issue.message}`)
+    expect(problems).toEqual([])
   }, 420_000)
 
   test('refuses invalid documents without a browser', async () => {

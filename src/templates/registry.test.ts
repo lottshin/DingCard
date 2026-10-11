@@ -166,6 +166,22 @@ describe('template registry', () => {
     expect(seamRisks).toEqual([])
   })
 
+  it('keeps every word of every freeform template on its page', () => {
+    // A layout drawn for another page size leaves its words below the edge (the 拍立得墙 once did).
+    const outside: string[] = []
+    for (const template of templatesForWorkspace('freeform')) {
+      for (const slide of template.createFreeform!().slides) {
+        for (const node of sceneLeaves(slide.nodes)) {
+          if (node.type !== 'text' || !node.text.trim()) continue
+          if (node.x < 0 || node.y < 0 || node.x + node.width > slide.width || node.y + node.height > slide.height) {
+            outside.push(`${template.id}/${slide.name}/${node.name}`)
+          }
+        }
+      }
+    }
+    expect(outside).toEqual([])
+  })
+
   it('shows off the appearance features across the freeform templates, three or more in each', () => {
     const capabilities = new Set<string>()
     for (const template of templatesForWorkspace('freeform')) {

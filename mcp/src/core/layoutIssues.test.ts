@@ -574,4 +574,15 @@ describe('design quality checks', () => {
     ])
     expect(kinds(layoutIssues(layered, measured([], []))).filter((kind) => kind.startsWith('weak-heading'))).toEqual([])
   })
+
+  test('a title the template drew, kept word for word, still heads the page', () => {
+    // The menu's 今日菜单 is the template's own words (a menu may well keep them), so it is not among the page's own texts.
+    const menu = deck([
+      text('标题', { text: '今日菜单', fontSize: 140, width: 760, height: 180, x: 100, y: 170 }),
+      text('副标题', { x: 100, y: 400, fontSize: 34 }),
+      text('正文', { x: 100, y: 600, fontSize: 30 }),
+      text('品牌', { x: 100, y: 800, fontSize: 28 }),
+    ])
+    expect(kinds(layoutIssues(menu, measured([], []))).filter((kind) => kind.startsWith('weak-heading'))).toEqual([])
+  })
 })

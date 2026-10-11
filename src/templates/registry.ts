@@ -1922,7 +1922,7 @@ function createSkillRadarDocument(): FreeformDocument {
       shapeNode('rect', 80, 560, 920, 780, solid('#ffffff'), { name: '图表卡', cornerRadius: 48, shadow: { color: '#0a0d24', blur: 40, offsetX: 0, offsetY: 18 } }),
       textNode('SKILL RADAR', 80, 104, 400, 60, {
         name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
-        effect: { type: 'background', color: indigo, amount: 44, radius: 8 },
+        effect: { type: 'background', color: '#5558e3', amount: 44, radius: 8 },
       }),
       textNode('我的能力雷达', 80, 204, 920, 160, { name: '标题', fontSize: 92, textFill: solid(cream), fontWeight: 'bold', letterSpacing: 2 }),
       textNode('六个维度，看这一年的成长', 80, 436, 920, 64, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
@@ -2004,7 +2004,7 @@ function createBirthdayCardDocument(): FreeformDocument {
       lineNode(440, 376, 200, '#f9a8d4', 4, { name: '分隔线', cap: 'round' }),
       textNode('HAPPY BIRTHDAY', 80, 84, 400, 56, {
         name: '角标', fontSize: 28, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4,
-        effect: { type: 'background', color: pink, amount: 44, radius: 8 },
+        effect: { type: 'background', color: '#db2777', amount: 44, radius: 8 },
       }),
       textNode('生日快乐', 80, 156, 920, 116, { name: '标题', fontSize: 96, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 8, align: 'center' }),
       textNode('愿新的一岁，事事顺遂', 80, 292, 920, 52, { name: '副标题', fontSize: 36, textFill: solid(rose), align: 'center' }),
@@ -2046,35 +2046,35 @@ function createPolaroidWallDocument(): FreeformDocument {
   const muted = '#7a6f61'
   const caption = (index: number, text: string): FreeformSceneNode => {
     const n = NUMBERED[index]
-    return textNode(text, 96 + index * 6, 1428 + index * 4, 640, 56, {
-      name: `手记${n}`, fontSize: 34, textFill: solid(muted), lineHeight: 1.3,
+    return textNode(text, 96, 1144 + index * 52, 888, 48, {
+      name: `手记${n}`, fontSize: 32, textFill: solid(muted), lineHeight: 1.3,
     }) as FreeformSceneNode
   }
   return documentFromSlides([
     slide('拍立得墙', solid(paper), [
-      photoNode('主图', '/templates/editorial-building.webp', 96, 168, 560, 660, {
+      photoNode('主图', '/templates/editorial-building.webp', 96, 164, 480, 560, {
         alt: '一栋街角老房子的照片', rotation: -3, cornerRadius: 6,
         frame: { color: '#ffffff', width: 18 },
         filter: { sepia: 0.15, brightness: 1.04 },
       }),
-      decorationNode('tape', 84, 148, 220, { rotation: -36 }),
-      decorationNode('tape', 660, 196, 200, { rotation: 30, color: '#b9d3ea' }),
-      photoNode('副图一', '/templates/poster-coffee.svg', 648, 216, 360, 440, {
+      decorationNode('tape', 96, 178, 150, { rotation: -36 }),
+      decorationNode('tape', 640, 172, 180, { rotation: 30, color: '#b9d3ea' }),
+      photoNode('副图一', '/templates/poster-coffee.svg', 624, 196, 340, 380, {
         alt: '一杯拿铁的插画', rotation: 4, cornerRadius: 6,
         frame: { color: '#ffffff', width: 14 },
       }),
-      photoNode('副图二', '/templates/poster-pottery.svg', 604, 700, 420, 500, {
+      photoNode('副图二', '/templates/poster-pottery.svg', 600, 524, 340, 380, {
         alt: '三件手作陶器的插画', rotation: -5, cornerRadius: 6,
         frame: { color: '#ffffff', width: 14 },
       }),
       caption(0, '巷口的老房子，下午四点'),
       caption(1, '咖啡到手，先拍一张'),
       caption(2, '陶器店的架子，看了一个下午'),
-      textNode('周末观察手记', 90, 1612, 920, 150, { name: '标题', fontSize: 96, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
-      textNode('拍立得模式的 city walk，三个瞬间', 96, 1752, 900, 56, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
-      textNode('VOL.03', 96, 88, 300, 60, { name: '角标', fontSize: 32, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 6, effect: { type: 'background', color: '#c96f4a', amount: 52, radius: 10 } }),
-      lineNode(96, 1788, 500, '#d8cfbd', 2, { name: '分隔线', cap: 'round' }),
-      textNode('@叮卡手记', 96, 1836, 600, 52, { name: '品牌', fontSize: 30, textFill: solid(muted), fontWeight: 'bold' }),
+      textNode('周末观察手记', 90, 948, 920, 120, { name: '标题', fontSize: 92, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('拍立得模式的 city walk，三个瞬间', 96, 1068, 900, 52, { name: '副标题', fontSize: 36, textFill: solid(muted) }),
+      textNode('VOL.03', 96, 64, 300, 60, { name: '角标', fontSize: 32, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 6, effect: { type: 'background', color: '#a24f2d', amount: 52, radius: 10 } }),
+      lineNode(96, 1320, 500, '#d8cfbd', 2, { name: '分隔线', cap: 'round' }),
+      textNode('@叮卡手记', 96, 1340, 600, 48, { name: '品牌', fontSize: 28, textFill: solid(muted), fontWeight: 'bold' }),
     ]),
   ])
 }
@@ -2086,24 +2086,24 @@ function createPicksDocument(): FreeformDocument {
   const muted = '#7c7265'
   return documentFromSlides([
     slide('好物安利', solid(paper), [
-      textNode('本月好物', 90, 96, 900, 130, { name: '标题', fontSize: 88, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
-      textNode('用过才知道的两件小物', 96, 232, 880, 56, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
-      textNode('PICKS', 96, 88, 300, 56, { name: '角标', fontSize: 28, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 8, effect: { type: 'background', color: clay, amount: 44, radius: 8 } }),
-      photoNode('主图', '/templates/poster-bottle.svg', 96, 372, 420, 560, {
+      textNode('本月好物', 90, 160, 900, 120, { name: '标题', fontSize: 88, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('用过才知道的两件小物', 96, 288, 880, 56, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      textNode('PICKS', 96, 80, 300, 56, { name: '角标', fontSize: 28, fontFamily: UI, textFill: solid(paper), fontWeight: 'bold', letterSpacing: 8, effect: { type: 'background', color: clay, amount: 44, radius: 8 } }),
+      photoNode('主图', '/templates/poster-bottle.svg', 96, 392, 420, 520, {
         alt: '一瓶植物精华水的插画', cornerRadius: 28,
       }),
-      photoNode('副图', '/templates/poster-coffee.svg', 564, 372, 420, 560, {
+      photoNode('副图', '/templates/poster-coffee.svg', 564, 392, 420, 520, {
         alt: '一杯拿铁的插画', cornerRadius: 28,
         filter: { sepia: 0.2, brightness: 1.03 },
       }),
-      textNode('植物精华水', 96, 984, 420, 64, { name: `标签一`, fontSize: 44, textFill: solid(ink), fontWeight: 'bold' }),
-      textNode('回购第 3 瓶，湿敷不刺激', 96, 1056, 420, 120, { name: `信息一`, fontSize: 34, textFill: solid(muted), lineHeight: 1.4 }),
-      textNode('冷萃咖啡液', 564, 984, 420, 64, { name: `标签二`, fontSize: 44, textFill: solid(ink), fontWeight: 'bold' }),
-      textNode('办公室常备，比店里便宜一半', 564, 1056, 420, 120, { name: `信息二`, fontSize: 34, textFill: solid(muted), lineHeight: 1.4 }),
-      lineNode(90, 1240, 900, '#e2dccd', 2, { name: '分隔线', cap: 'butt' }),
-      textNode('完整清单放在评论区', 90, 1288, 700, 64, { name: '按钮文字', fontSize: 40, textFill: solid(paper), fontWeight: 'bold', align: 'center' }),
-      shapeNode('rect', 90, 1276, 620, 92, solid(clay), { name: '按钮底板', cornerRadius: 46 }),
-      textNode('@叮卡选物', 96, 1408, 600, 52, { name: '品牌', fontSize: 30, textFill: solid(muted), fontWeight: 'bold' }),
+      textNode('植物精华水', 96, 948, 420, 64, { name: `标签一`, fontSize: 44, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode('回购第 3 瓶，湿敷不刺激', 96, 1016, 420, 108, { name: `信息一`, fontSize: 34, textFill: solid(muted), lineHeight: 1.4 }),
+      textNode('冷萃咖啡液', 564, 948, 420, 64, { name: `标签二`, fontSize: 44, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode('办公室常备，比店里便宜一半', 564, 1016, 420, 108, { name: `信息二`, fontSize: 34, textFill: solid(muted), lineHeight: 1.4 }),
+      lineNode(90, 1164, 900, '#e2dccd', 2, { name: '分隔线', cap: 'butt' }),
+      shapeNode('rect', 90, 1196, 620, 92, solid(clay), { name: '按钮底板', cornerRadius: 46 }),
+      textNode('完整清单放在评论区', 90, 1210, 620, 64, { name: '按钮文字', fontSize: 40, textFill: solid(paper), fontWeight: 'bold', align: 'center' }),
+      textNode('@叮卡选物', 96, 1336, 600, 52, { name: '品牌', fontSize: 30, textFill: solid(muted), fontWeight: 'bold' }),
     ]),
   ])
 }
