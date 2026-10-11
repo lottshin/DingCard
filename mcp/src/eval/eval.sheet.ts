@@ -1,7 +1,8 @@
 // The browser half of the release eval: every brief composes (proved offline
-// by eval.test.ts), then check_document counts its issues and every page of
-// each result lands on one row of a contact sheet — a deck's charts and
-// tables live on its inner pages, not its cover. Run it with
+// by eval.test.ts), then check_document counts its issues, what the generator
+// left off the page is counted with them, and every page of each result lands
+// on one row of a contact sheet — a deck's charts and tables live on its
+// inner pages, not its cover. Run it with
 // `npm run eval` inside mcp/ (a built dist/ and system Chrome are needed);
 // it writes report.json and sheet.html into mcp/eval-out/.
 
@@ -14,9 +15,9 @@ import { composeDeck } from '../core/compose'
 import { createDocumentFromOutline } from '../core/outline'
 import { composePoster } from '../core/poster'
 import type { FreeformDocument } from '../../../src/freeform/types'
-import { EVAL_PROMPTS, type EvalPrompt } from './prompts'
+import { EVAL_PROMPTS, droppedFrom, type EvalPrompt } from './prompts'
 
-function composeOf(prompt: EvalPrompt): { ok: true; document: FreeformDocument } {
+function composeOf(prompt: EvalPrompt): { ok: true; document: FreeformDocument; dropped: string[] } {
   const composed = prompt.kind === 'deck'
     ? composeDeck(prompt.templateId, prompt.content)
     : prompt.kind === 'outline'
@@ -24,7 +25,7 @@ function composeOf(prompt: EvalPrompt): { ok: true; document: FreeformDocument }
       : composePoster(prompt.templateId, prompt.content)
   expect(composed.ok).toBe(true)
   if (!composed.ok) throw new Error(composed.error)
-  return { ok: true, document: composed.document }
+  return { ok: true, document: composed.document, dropped: droppedFrom(composed.summary) }
 }
 
 test(
@@ -39,10 +40,12 @@ test(
       pages: number
       issueCount: number
       byKind: Record<string, number>
+      /** What the generator left off the page (see droppedFrom). */
+      dropped: string[]
       thumbs: string[]
     }> = []
     for (const prompt of EVAL_PROMPTS) {
-      const { document } = composeOf(prompt)
+      const { document, dropped } = composeOf(prompt)
       const checked = await checkDocument(document)
       expect(checked.ok).toBe(true)
       if (!checked.ok) throw new Error(checked.error)
@@ -55,15 +58,17 @@ test(
         pages: document.slides.length,
         issueCount: checked.issues.length,
         byKind: Object.fromEntries(Object.entries(checked.summary.byKind)),
+        dropped,
         thumbs: previews.map((preview) => preview.dataUrl),
       })
     }
     const totalIssues = rows.reduce((sum, row) => sum + row.issueCount, 0)
-    writeFileSync(path.join(outDir, 'report.json'), `${JSON.stringify({ generatedAt: new Date().toISOString(), items: rows.map(({ thumbs, ...rest }) => rest), totalIssues }, null, 2)}\n`)
+    const totalDropped = rows.reduce((sum, row) => sum + row.dropped.length, 0)
+    writeFileSync(path.join(outDir, 'report.json'), `${JSON.stringify({ generatedAt: new Date().toISOString(), items: rows.map(({ thumbs, ...rest }) => rest), totalIssues, totalDropped }, null, 2)}\n`)
     const tiles = rows.map((row) => `
       <figure class="tile">
         <div class="pages">${row.thumbs.map((thumb, index) => `<img src="${thumb}" alt="${row.id} 第 ${index + 1} 页">`).join('')}</div>
-        <figcaption><b>${row.id}</b><span>${row.pages} 页 · ${row.issueCount} 个问题${row.issueCount > 0 ? `（${Object.entries(row.byKind).map(([kind, count]) => `${kind} ${count}`).join('、')}）` : ''}</span></figcaption>
+        <figcaption><b>${row.id}</b><span>${row.pages} 页 · ${row.issueCount} 个问题${row.issueCount > 0 ? `（${Object.entries(row.byKind).map(([kind, count]) => `${kind} ${count}`).join('、')}）` : ''}${row.dropped.length > 0 ? ` · 丢了 ${row.dropped.length} 处（${row.dropped.join('、')}）` : ''}</span></figcaption>
       </figure>`).join('')
     writeFileSync(path.join(outDir, 'sheet.html'), `<!doctype html><html><head><meta charset="utf-8"><title>叮卡评测总表</title><style>
       body { font-family: -apple-system, "PingFang SC", sans-serif; margin: 24px; background: #f6f6f7; }
@@ -76,7 +81,7 @@ test(
       .tile span { color: #71717a; }
     </style></head><body>
       <h1>叮卡评测总表</h1>
-      <p class="meta">${rows.length} 个题目 · 共 ${totalIssues} 个问题（check_document）</p>
+      <p class="meta">${rows.length} 个题目 · 共 ${totalIssues} 个问题（check_document）· 丢了 ${totalDropped} 处内容</p>
       <div class="grid">${tiles}</div>
     </body></html>\n`)
     // The point of the run is the artefacts; the assertion keeps the count honest.

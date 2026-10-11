@@ -15,7 +15,7 @@ import {
 } from '../../../src/freeform/timeline'
 import type { FreeformDocument, FreeformSceneNode, FreeformTextElement } from '../../../src/freeform/types'
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
-import { FREEFORM_POSTER_SLOTS, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
+import { FREEFORM_POSTER_SLOTS, type PosterDetail, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
 import { tableNodes, tableShape } from '../../../src/templates/tables'
 import type { FreeformPosterSeriesId } from '../../../src/templates/types'
 import { balancedHeading, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
@@ -57,10 +57,19 @@ export interface PosterSuccess {
     shrunk: Array<{ node: string; from: number; to: number }>
     /** Copy that still doesn't fit at the smallest size: shorten it. */
     overflowing: Array<{ node: string; text: string }>
-    /** Information lines beyond the rows the template has, timeline entries beyond eight, and table cells beyond the rows and columns it can draw. */
+    /** Information lines beyond the rows the template has (and the room to continue them), timeline entries beyond eight, and table cells beyond the rows and columns it can draw. */
     unplaced: string[]
-    /** Content the template has no place for. */
+    /** Content the template has no place for, not even a free slot of a similar kind. */
     unused: Array<keyof PosterContent>
+    /**
+     * Content put somewhere the template didn't mean it: a line continuing
+     * the information rows, or words in a free slot of a similar kind (a
+     * sign-off in an empty information row, a body in the subtitle's place).
+     * `node` names the layer that holds it.
+     */
+    moved: Array<{ content: keyof PosterContent; text: string; node: string }>
+    /** What to do about anything left out; absent when everything is on the poster. */
+    hint?: string
   }
 }
 
@@ -70,6 +79,84 @@ export interface PosterError {
 }
 
 const LABEL_SEPARATOR = /\s*[：:]\s*/
+
+/** A badge's few words may shrink further than copy: they have to stay inside the badge. */
+const TAG_MIN_FIT_SCALE = 0.5
+
+/** Slots that take other content's words when their own is missing, by kind. */
+type FreeSlotKind = 'row' | 'subtitle' | 'body' | 'brand'
+const MOVES: Partial<Record<keyof PosterContent, readonly FreeSlotKind[]>> = {
+  recipient: ['subtitle'],
+  body: ['subtitle'],
+  subtitle: ['body', 'row'],
+  cta: ['row', 'brand', 'subtitle'],
+  brand: ['row', 'subtitle'],
+  tag: ['row'],
+}
+/** Content names in the hint for what didn't fit. */
+const CONTENT_NAMES: Partial<Record<keyof PosterContent, string>> = {
+  subtitle: '副标题',
+  body: '正文',
+  recipient: '获得者',
+  cta: '按钮',
+  tag: '角标',
+  brand: '署名',
+  details: '信息行',
+  image: '图片',
+  chart: '图表',
+  table: '表格',
+}
+const NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'] as const
+
+interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** A node's box on the page; a group's spans its children. */
+function boxOf(node: FreeformSceneNode, offset = { x: 0, y: 0 }): Box | null {
+  if (node.type !== 'group') return { x: offset.x + node.x, y: offset.y + node.y, width: node.width, height: node.height }
+  const inner = node.children.map((child) => boxOf(child, { x: offset.x + node.x, y: offset.y + node.y })).filter((box): box is Box => box !== null)
+  if (inner.length === 0) return null
+  const left = Math.min(...inner.map((box) => box.x))
+  const top = Math.min(...inner.map((box) => box.y))
+  return {
+    x: left,
+    y: top,
+    width: Math.max(...inner.map((box) => box.x + box.width)) - left,
+    height: Math.max(...inner.map((box) => box.y + box.height)) - top,
+  }
+}
+
+function union(boxes: readonly Box[]): Box {
+  const left = Math.min(...boxes.map((box) => box.x))
+  const top = Math.min(...boxes.map((box) => box.y))
+  return {
+    x: left,
+    y: top,
+    width: Math.max(...boxes.map((box) => box.x + box.width)) - left,
+    height: Math.max(...boxes.map((box) => box.y + box.height)) - top,
+  }
+}
+
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+const encloses = (outer: Box, inner: Box) => outer.x <= inner.x && outer.y <= inner.y
+  && outer.x + outer.width >= inner.x + inner.width && outer.y + outer.height >= inner.y + inner.height
+
+/** The next row's layer name: the row number counts on (信息三 → 信息四), else it is appended. */
+function nextRowName(name: string, index: number): string {
+  const numeral = NUMERALS[index] ?? String(index + 1)
+  return /[一二三四五六七八九十]+$/.test(name) ? name.replace(/[一二三四五六七八九十]+$/, numeral) : `${name}${index + 1}`
+}
+
+/** A line's label and value: "标签：内容" splits at the colon when both sides have words. */
+function splitLine(line: string): { label: string; value: string } | null {
+  const match = LABEL_SEPARATOR.exec(line)
+  if (match === null || match.index === 0 || match.index + match[0].length >= line.length) return null
+  return { label: line.slice(0, match.index), value: line.slice(match.index + match[0].length) }
+}
 
 function clean(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim() : ''
@@ -226,33 +313,33 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     ['tag', slots.tag],
     ['brand', slots.brand],
   ]
+  // Slots with nothing of their own may take other words (see MOVES) before they go.
+  const freeSlots = new Map<Exclude<FreeSlotKind, 'row'>, SlotItem>()
   for (const [key, slot] of optional) {
     const text = content[key] as string | undefined
     if (slot && text) texts.set(slot.text, text)
+    else if (slot && (key === 'subtitle' || key === 'body' || key === 'brand')) freeSlots.set(key, slot)
     else if (slot) dropItem(slot)
     else if (text) unused.push(key)
   }
 
   const rows = slots.details ?? []
   const lines = content.details ?? []
-  rows.forEach((row, index) => {
-    const line = lines[index]
-    if (line === undefined) {
-      if (row.label) remove.add(row.label)
-      remove.add(row.value)
-      row.extras?.forEach((name) => remove.add(name))
-      return
-    }
-    const match = LABEL_SEPARATOR.exec(line)
-    const hasLabel = match !== null && match.index > 0 && match.index + match[0].length < line.length
-    if (row.label && hasLabel) {
-      texts.set(row.label, line.slice(0, match.index))
-      texts.set(row.value, line.slice(match.index + match[0].length))
+  // A line in a row: its label in the row's label when both have one, else the whole line.
+  const fillRow = (row: PosterDetail, line: string) => {
+    const split = splitLine(line)
+    if (row.label && split) {
+      texts.set(row.label, split.label)
+      texts.set(row.value, split.value)
     } else {
       if (row.label) remove.add(row.label)
       texts.set(row.value, line)
     }
+  }
+  rows.forEach((row, index) => {
+    if (lines[index] !== undefined) fillRow(row, lines[index])
   })
+  const freeRows = rows.slice(lines.length)
   // A timeline takes the detail lines as its entries when the template draws
   // no detail rows: the part before the colon becomes the time label.
   const timelined = new Map<string, FreeformSceneNode>()
@@ -262,17 +349,15 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       timelined.set(node.name, {
         ...node,
         items: lines.slice(0, TIMELINE_ITEMS_MAX).map((line) => {
-          const match = LABEL_SEPARATOR.exec(line)
-          const hasLabel = match !== null && match.index > 0 && match.index + match[0].length < line.length
-          const label = hasLabel ? line.slice(0, match.index).slice(0, TIMELINE_LABEL_MAX_CHARS) : undefined
-          const text = (hasLabel ? line.slice(match.index + match[0].length) : line).slice(0, TIMELINE_TEXT_MAX_CHARS)
+          const split = splitLine(line)
+          const label = split ? split.label.slice(0, TIMELINE_LABEL_MAX_CHARS) : undefined
+          const text = (split ? split.value : line).slice(0, TIMELINE_TEXT_MAX_CHARS)
           return { ...(label !== undefined ? { label } : {}), text }
         }),
       })
     }
   }
   if (lines.length > 0 && rows.length === 0 && timelined.size === 0) unused.push('details')
-  if (lines.length === 0) slots.detailsExtras?.forEach((name) => remove.add(name))
   slots.remove?.forEach(dropItem)
 
   const pictured = new Map<string, FreeformSceneNode>()
@@ -336,10 +421,11 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
 
   const shrunk: PosterSuccess['summary']['shrunk'] = []
   const overflowing: PosterSuccess['summary']['overflowing'] = []
-  const unplaced = lines.slice(timelined.size > 0 ? Math.min(lines.length, TIMELINE_ITEMS_MAX) : rows.length)
+  const unplaced: string[] = []
 
   // A table is drawn again at the content's own size: as many rows and columns as given, filling the same space.
   let tableAt = -1
+  let tableAnchor: FreeformSceneNode | null = null
   const tableCells: FreeformSceneNode[] = []
   if (slots.tableElement) {
     const node = slide.nodes.find((candidate) => candidate.name === slots.tableElement!.node)
@@ -384,6 +470,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     }))
     const prefixes = [`${layout.name}字 `, `${layout.name}格 `]
     tableAt = slide.nodes.findIndex((node) => prefixes.some((prefix) => node.name.startsWith(prefix)))
+    tableAnchor = slide.nodes[tableAt] ?? null
     for (const cell of tableNodes(layout, cells)) {
       if (cell.type !== 'text' || textFits(cell, cell.text, cell.fontSize)) {
         tableCells.push(cell)
@@ -400,8 +487,120 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     unused.push('table')
   }
 
-  const nodes: FreeformSceneNode[] = slide.nodes.flatMap((node, index): FreeformSceneNode[] => {
-    if (index === tableAt) return tableCells
+  // What the template has no place for goes where the poster has room:
+  // lines beyond the rows continue them (as far as the page leaves room),
+  // then words take a free slot of a similar kind; what still finds none
+  // is left out and reported.
+  const moved: PosterSuccess['summary']['moved'] = []
+  let leftLines = timelined.size > 0 ? lines.slice(TIMELINE_ITEMS_MAX) : lines.slice(rows.length)
+  const working = [...slide.nodes]
+  if (leftLines.length > 0 && timelined.size === 0 && rows.length > 0) {
+    const last = rows[rows.length - 1]
+    const rowNames = (row: PosterDetail) => [row.label, row.value, ...(row.extras ?? [])].filter((name): name is string => Boolean(name))
+    // The last row as the template drew it, label included even when this
+    // row's own line had none: a later line may well have one.
+    const lastNodes = working.filter((node) => rowNames(last).includes(node.name))
+    const valueOf = (row: PosterDetail) => working.find((node) => node.name === row.value)
+    const lastValue = valueOf(last)
+    const previousValue = rows.length > 1 ? valueOf(rows[rows.length - 2]) : undefined
+    const lastBoxes = lastNodes.map((node) => boxOf(node)).filter((box): box is Box => box !== null)
+    // Only rows stacked down the page continue (a certificate's scattered lines don't).
+    const stacked = !previousValue || (lastValue !== undefined && lastValue.y > previousValue.y)
+    if (lastValue && lastBoxes.length > 0 && stacked) {
+      const pitch = previousValue ? lastValue.y - previousValue.y : (boxOf(lastValue)?.height ?? 0) * 1.3
+      const row = union(lastBoxes)
+      const allRows = new Set(rows.flatMap(rowNames))
+      // What a new row must keep clear of: everything left on the page
+      // (free slots included, they may still take words), but not the
+      // page's backdrop or the panel the rows sit on — the new row stays
+      // inside that panel instead.
+      const grounds: Box[] = []
+      const blockers: Box[] = []
+      for (const node of working) {
+        if (remove.has(node.name) || allRows.has(node.name)) continue
+        const box = boxOf(node)
+        if (!box) continue
+        if ((node.type === 'shape' || node.type === 'path' || node.type === 'image') && box.width * box.height >= 0.6 * slide.width * slide.height) continue
+        if (node.type === 'shape' && encloses(box, row)) grounds.push(box)
+        else blockers.push(box)
+      }
+      const bottom = slide.height - Math.max(32, Math.round(slide.height * 0.025))
+      const insertAt = Math.max(...lastNodes.map((node) => working.indexOf(node))) + 1
+      const added: FreeformSceneNode[] = []
+      let placedLines = 0
+      for (const [index, line] of leftLines.entries()) {
+        const by = pitch * (index + 1)
+        const next = { ...row, y: row.y + by }
+        if (next.y + next.height > bottom || blockers.some((box) => overlaps(box, next)) || !grounds.every((box) => encloses(box, next))) break
+        const rowIndex = rows.length + index
+        const names = new Map(rowNames(last).map((name) => [name, nextRowName(name, rowIndex)]))
+        for (const node of lastNodes) {
+          added.push({ ...structuredClone(node), id: crypto.randomUUID(), name: names.get(node.name) ?? node.name, y: Math.round((node.y + by) * 10) / 10 } as FreeformSceneNode)
+        }
+        fillRow({ ...(last.label ? { label: names.get(last.label) } : {}), value: names.get(last.value)! }, line)
+        moved.push({ content: 'details', text: line, node: names.get(last.value)! })
+        placedLines += 1
+      }
+      working.splice(insertAt, 0, ...added)
+      leftLines = leftLines.slice(placedLines)
+    }
+  }
+  const rowsTaken: PosterDetail[] = []
+  // `below`: only slots under that line of the page, so lines still read in order.
+  const takeSlot = (kinds: readonly FreeSlotKind[], text: string, content: keyof PosterContent, below?: number): boolean => {
+    for (const kind of kinds) {
+      if (below !== undefined && !slotBelow(kind, below)) continue
+      if (kind === 'row') {
+        const row = freeRows.find((candidate) => !rowsTaken.includes(candidate))
+        if (!row) continue
+        rowsTaken.push(row)
+        fillRow(row, text)
+        moved.push({ content, text, node: row.value })
+        return true
+      }
+      const item = freeSlots.get(kind)
+      if (!item) continue
+      freeSlots.delete(kind)
+      texts.set(item.text, text)
+      moved.push({ content, text, node: item.text })
+      return true
+    }
+    return false
+  }
+  const slotBelow = (kind: FreeSlotKind, y: number) => {
+    if (kind === 'row') return false
+    const item = freeSlots.get(kind)
+    const node = item && working.find((candidate) => candidate.name === item.text)
+    return node !== undefined && node.y >= y
+  }
+  // Lines the rows couldn't continue take a free slot under the lowest row
+  // (a timeline's keep to the timeline).
+  const rowBoxes = timelined.size > 0
+    ? []
+    : working.filter((node) => (texts.has(node.name) && rows.some((row) => row.value === node.name)) || moved.some((entry) => entry.node === node.name))
+      .map((node) => boxOf(node)).filter((box): box is Box => box !== null)
+  const rowsEnd = rowBoxes.length > 0 ? Math.max(...rowBoxes.map((box) => box.y + box.height)) : null
+  if (rowsEnd !== null) leftLines = leftLines.filter((line) => !takeSlot(['brand', 'body', 'subtitle'], line, 'details', rowsEnd))
+  for (const key of [...unused]) {
+    const text = content[key]
+    const kinds = MOVES[key]
+    if (typeof text !== 'string' || !kinds) continue
+    if (takeSlot(kinds, text, key)) unused.splice(unused.indexOf(key), 1)
+  }
+  // Whatever stayed free goes, with what only frames it.
+  for (const item of freeSlots.values()) dropItem(item)
+  for (const row of freeRows) {
+    if (rowsTaken.includes(row)) continue
+    if (row.label) remove.add(row.label)
+    remove.add(row.value)
+    row.extras?.forEach((name) => remove.add(name))
+  }
+  const filledRows = Math.min(rows.length, lines.length) + rowsTaken.length
+  if (filledRows === 0) slots.detailsExtras?.forEach((name) => remove.add(name))
+  unplaced.unshift(...leftLines)
+
+  const nodes: FreeformSceneNode[] = working.flatMap((node): FreeformSceneNode[] => {
+    if (node === tableAnchor) return tableCells
     if (remove.has(node.name)) return []
     const picture = pictured.get(node.name)
     if (picture) return [picture]
@@ -418,8 +617,9 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     let next: FreeformTextElement = { ...node, text }
     delete next.spans
     if (!textFits(next, text, next.fontSize, node.text)) {
-      const size = fittingFontSize(next, text, node.text)
-      const smallest = Math.max(10, Math.floor(next.fontSize * MIN_FIT_SCALE))
+      const scale = node.name === slots.tag?.text ? TAG_MIN_FIT_SCALE : MIN_FIT_SCALE
+      const size = fittingFontSize(next, text, node.text, scale)
+      const smallest = Math.max(10, Math.floor(next.fontSize * scale))
       shrunk.push({ node: node.name, from: next.fontSize, to: size ?? smallest })
       if (size === null) overflowing.push({ node: node.name, text })
       next = { ...next, fontSize: size ?? smallest }
@@ -428,9 +628,13 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     return [next]
   })
 
-  const placed = settle(nodes, slide.nodes, slots, lines.length)
+  const placed = settle(nodes, slide.nodes, slots, filledRows)
   const document = normalizeFreeformDocument({ documentVersion: made.documentVersion, activeSlideId: slide.id, slides: [{ ...slide, nodes: placed }] })
-  if (!document) return { ok: false, error: '生成的海报没有通过 v20 校验。' }
+  if (!document) return { ok: false, error: '生成的海报没有通过文档校验，请反馈。' }
+  const left = [
+    ...unused.map((key) => `${CONTENT_NAMES[key] ?? key}${typeof content[key] === 'string' && key !== 'image' ? `「${content[key]}」` : ''}`),
+    ...unplaced.map((line) => `「${line}」`),
+  ]
   return {
     ok: true,
     document,
@@ -443,6 +647,10 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       overflowing,
       unplaced,
       unused,
+      moved,
+      ...(left.length > 0
+        ? { hint: `海报上没有放下：${left.join('、')}。换一个有这些位置的模板（看 list_templates 的 posterCapacity），或生成后用 apply_actions 加上。` }
+        : {}),
     },
   }
 }

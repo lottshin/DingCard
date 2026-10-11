@@ -27,6 +27,22 @@ export interface PosterEvalPrompt {
 
 export type EvalPrompt = DeckEvalPrompt | OutlineEvalPrompt | PosterEvalPrompt
 
+/**
+ * What a composed brief left off its pages, from the generator's own summary:
+ * a poster's content with no place (unused) and lines or cells beyond what it
+ * draws (unplaced), a deck's data drawings that found no room. Words the
+ * generator moved to a free slot are on the page, so they don't count.
+ */
+export function droppedFrom(summary: unknown): string[] {
+  if (typeof summary !== 'object' || summary === null) return []
+  const record = summary as { unused?: unknown; unplaced?: unknown }
+  const unused = Array.isArray(record.unused) ? record.unused.map((key) => `unused:${String(key)}`) : []
+  const unplaced = Array.isArray(record.unplaced)
+    ? record.unplaced.map((entry) => (typeof entry === 'string' ? `unplaced:${entry}` : `unplaced:${String((entry as { kind?: unknown }).kind)}`))
+    : []
+  return [...unused, ...unplaced]
+}
+
 export const EVAL_PROMPTS: EvalPrompt[] = [
   // ── Whole decks from structured content ────────────────────────────────
   {

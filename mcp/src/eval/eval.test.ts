@@ -6,9 +6,9 @@ import { describe, expect, test } from 'vitest'
 import { composeDeck } from '../core/compose'
 import { createDocumentFromOutline } from '../core/outline'
 import { composePoster } from '../core/poster'
-import { EVAL_PROMPTS, type EvalPrompt } from './prompts'
+import { EVAL_PROMPTS, droppedFrom, type EvalPrompt } from './prompts'
 
-function composeOf(prompt: EvalPrompt): { ok: boolean; error?: string; document?: unknown } {
+function composeOf(prompt: EvalPrompt): { ok: boolean; error?: string; document?: unknown; summary?: unknown } {
   if (prompt.kind === 'deck') return composeDeck(prompt.templateId, prompt.content)
   if (prompt.kind === 'outline') return createDocumentFromOutline(prompt.outline, prompt.templateId)
   return composePoster(prompt.templateId, prompt.content)
@@ -43,5 +43,16 @@ describe('the release eval set', () => {
       if (!composed.ok) broken.push(`${prompt.id}: ${composed.error}`)
     }
     expect(broken).toEqual([])
+  })
+
+  test('no brief loses its words', () => {
+    // A generator that drops what a client wrote (a line beyond the
+    // template's rows, a sign-off it has no place for) fails here, before
+    // the browser half would only count it.
+    const dropped = EVAL_PROMPTS.flatMap((prompt) => {
+      const composed = composeOf(prompt)
+      return droppedFrom(composed.summary).map((item) => `${prompt.id}: ${item}`)
+    })
+    expect(dropped).toEqual([])
   })
 })

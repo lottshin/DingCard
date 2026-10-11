@@ -179,12 +179,68 @@ describe('composePoster', () => {
     expect(named(compose('product-card-freeform', { title: '新品' }), '主图')).toBeUndefined()
   })
 
-  test('shrinks long copy into its box, and reports what it could not place', () => {
+  test('shrinks long copy into its box, places what has no slot where it can, and reports the rest', () => {
     const long = compose('quote-card-freeform', { title: '把复杂的事情说得简单一些，再简单一些，是一种很难得、需要长期练习的能力。' })
     expect(long.summary.shrunk.map((item) => item.node)).toContain('标题')
     const extra = compose('quote-card-freeform', { title: '一句', details: ['第一行', '第二行'], cta: '按钮', image: 'https://example.com/a.png' })
-    expect(extra.summary.unplaced).toEqual(['第二行'])
-    expect(extra.summary.unused).toEqual(['cta', 'image'])
+    // The second line continues the one row under it; the button's words take the free sign-off.
+    expect(extra.summary.unplaced).toEqual([])
+    expect(extra.summary.moved).toEqual([
+      { content: 'details', text: '第二行', node: '信息二' },
+      { content: 'cta', text: '按钮', node: '品牌' },
+    ])
+    expect((named(extra, '品牌') as FreeformTextElement).text).toBe('按钮')
+    // A picture has nowhere to go on a quote card: it is left out, and the hint says what to do.
+    expect(extra.summary.unused).toEqual(['image'])
+    expect(extra.summary.hint).toContain('图片')
+    expect(extra.summary.hint).toContain('posterCapacity')
+    expect(compose('quote-card-freeform', { title: '一句' }).summary.hint).toBeUndefined()
+  })
+
+  test('continues the information rows where the page has room, in the last row\'s look', () => {
+    const lines = ['时间：周六 10:00', '地点：二楼', '费用：免费', '报名：扫码', '咨询：前台']
+    const result = compose('flyer-freeform', { title: '开放日', details: lines })
+    const node = (name: string) => named(result, name) as FreeformTextElement
+    expect(result.summary.unplaced).toEqual([])
+    expect(result.summary.moved).toEqual([
+      { content: 'details', text: '报名：扫码', node: '信息四' },
+      { content: 'details', text: '咨询：前台', node: '信息五' },
+    ])
+    // Label before the colon, same size, one row further down each time.
+    expect([node('标签四').text, node('信息四').text]).toEqual(['报名', '扫码'])
+    const pitch = node('信息三').y - node('信息二').y
+    expect(node('信息四').y - node('信息三').y).toBeCloseTo(pitch, 0)
+    expect(node('信息五').y - node('信息四').y).toBeCloseTo(pitch, 0)
+    expect(node('信息四').fontSize).toBe(node('信息三').fontSize)
+    // The rows keep clear of the button: on the sale poster the line under them takes the free sign-off.
+    const sale = compose('sale-poster-freeform', { title: '周年庆', details: ['会员双倍积分', '满额赠帆布袋', '当天有效'], cta: '到店领取' })
+    expect(sale.summary.moved).toEqual([{ content: 'details', text: '当天有效', node: '品牌' }])
+    expect(named(sale, '信息三')).toBeUndefined()
+  })
+
+  test('words without their own slot take a free one of a similar kind', () => {
+    // A certificate's date line in its empty information row, a birthday sign-off under the title.
+    const certificate = compose('certificate-freeform', { title: '最佳新人奖', recipient: '小林', cta: '颁奖日期：12 月 31 日' })
+    expect(certificate.summary.moved).toEqual([{ content: 'cta', text: '颁奖日期：12 月 31 日', node: '信息一' }])
+    expect((named(certificate, '信息一') as FreeformTextElement).text).toBe('颁奖日期：12 月 31 日')
+    const birthday = compose('birthday-card-freeform', { title: '生日快乐', recipient: '阿澄', brand: '爱你的大家' })
+    expect(birthday.summary.unused).toEqual([])
+    expect((named(birthday, '副标题') as FreeformTextElement).text).toBe('爱你的大家')
+    // A card that says 生日快乐 is not a template left as it was.
+    expect(templateMarks().samples.has('生日快乐')).toBe(false)
+    // With the subtitle taken, the sign-off has nowhere to go.
+    const full = compose('birthday-card-freeform', { title: '生日快乐', subtitle: '又长大一岁', brand: '爱你的大家' })
+    expect(full.summary.unused).toEqual(['brand'])
+    expect(full.summary.hint).toContain('署名「爱你的大家」')
+  })
+
+  test('shrinks a badge\'s words further than copy so they stay inside it', () => {
+    const result = compose('product-card-freeform', { title: '珐琅小奶锅', tag: '新品 9 折' })
+    const tag = named(result, '角标') as FreeformTextElement
+    // Below the 72% copy may go, inside the badge, nothing left overflowing.
+    expect(tag.fontSize).toBeLessThan(110 * 0.72)
+    expect(tag.fontSize).toBeGreaterThanOrEqual(55)
+    expect(result.summary.overflowing).toEqual([])
   })
 
   test('fills a menu line by line, item before the colon and price after, and keeps generic words checkable', () => {
@@ -194,7 +250,9 @@ describe('composePoster', () => {
     expect(text('菜品一')).toBe('美式')
     expect(text('价格一')).toBe('18')
     expect(text('菜品八')).toBe('芝士蛋糕')
-    expect(result.summary.unplaced).toEqual(['多出来的一项：10'])
+    // No ninth row fits the card: the ninth item takes the free closing words under the list.
+    expect(result.summary.unplaced).toEqual([])
+    expect(result.summary.moved).toEqual([{ content: 'details', text: '多出来的一项：10', node: '正文' }])
     // A menu may well be called 今日菜单 and cost 18: those are not left-over samples.
     const samples = templateMarks().samples
     expect(samples.has('今日菜单')).toBe(false)
@@ -212,7 +270,9 @@ describe('composePoster', () => {
     const anonymous = compose('certificate-freeform', { title: '结业证书' })
     expect(named(anonymous, '获得者')).toBeUndefined()
     expect(named(anonymous, '姓名线')).toBeUndefined()
-    expect(compose('talk-poster-freeform', { title: '讲座', recipient: '某人' }).summary.unused).toEqual(['recipient'])
+    // Without a name line, a name takes the free subtitle, or is left out when that is taken too.
+    expect(compose('talk-poster-freeform', { title: '讲座', recipient: '某人' }).summary.moved).toEqual([{ content: 'recipient', text: '某人', node: '副标题' }])
+    expect(compose('talk-poster-freeform', { title: '讲座', subtitle: '一场分享', recipient: '某人' }).summary.unused).toEqual(['recipient'])
   })
 
   test('draws a timetable at the size given, one colour per subject, and lists what it cannot fit', () => {

@@ -611,6 +611,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     tag: { text: '角标' },
     body: { text: '正文' },
     recipient: { text: '名字' },
+    // 生日快乐 is what most birthday cards say.
+    generic: ['标题'],
   },
   'growth-timeline': {
     title: '标题',
