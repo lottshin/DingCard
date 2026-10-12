@@ -77,9 +77,11 @@ export function blockingBoxes(slide: FreeformSlide): Box[] {
 export function contentColumn(slide: FreeformSlide, free: Box): { left: number; right: number } | null {
   const all = leaves(slide.nodes)
   const overlap = (box: Box) => Math.min(box.x + box.width, free.x + free.width) - Math.max(box.x, free.x)
-  // Rules and the panels the template lays its words on mark its grid.
+  // Rules and the panels the template lays its words on mark its grid; a
+  // band bled past the page's edges is decoration, not a column.
+  const inside = (box: Box) => box.x >= 0 && box.x + box.width <= slide.width
   const rules = all
-    .filter(({ node, box }) => (node.type === 'line' || ((node.type === 'shape' || node.type === 'path') && !isBackdrop(node, box, slide) && box.height >= 48))
+    .filter(({ node, box }) => (node.type === 'line' || ((node.type === 'shape' || node.type === 'path') && !isBackdrop(node, box, slide) && box.height >= 48 && inside(box)))
       && box.width >= slide.width * 0.3 && overlap(box) >= box.width * 0.8)
     .sort((a, b) => overlap(b.box) - overlap(a.box))
   if (rules.length > 0) return { left: rules[0].box.x, right: rules[0].box.x + rules[0].box.width }

@@ -313,6 +313,12 @@ describe('composeDeck', () => {
     const many = compose('signal-freeform', { title: 't', pages: ['阅读量翻了两番', '什么内容涨粉', '下半年的打法'].map((title) => ({ title, body: 'b' })) })
     expect((many.document.slides[0].nodes.find((node) => node.name === '主张') as FreeformTextElement).text)
       .toBe('阅读量翻了两番 · 什么内容涨粉\n下半年的打法')
+    // A cover lists as many titles as its lead holds, not every page.
+    const seven = compose('editorial-freeform', { title: 't', pages: ['为什么要自己冲', '准备这五样', '粉水比决定浓淡', '三种烘焙怎么选', '一杯咖啡的四分钟', '我的练习进度', '最容易犯的错'].map((title) => ({ title, body: 'b' })) })
+    const listed = (seven.document.slides[0].nodes.find((node) => node.name === '导语') as FreeformTextElement).text
+    expect(listed.startsWith('为什么要自己冲 · 准备这五样')).toBe(true)
+    expect(listed).not.toContain('最容易犯的错')
+    expect(seven.summary.overflowing).toEqual([])
     // A claim on two lines breaks after its comma.
     const claim = compose('signal-freeform', { title: 't', pages: [{ title: '下半年的打法', body: '把复盘固定成月更栏目，教程做成系列。' }, { title: 'b', body: 'c' }] })
     expect((claim.document.slides[1].nodes.find((node) => node.name === '主张') as FreeformTextElement).text)
@@ -426,6 +432,7 @@ describe('deck data elements', () => {
       title: '清单',
       pages: [
         { title: '排片表', table: { rows: [['9:00', '开幕式'], ['10:00', '圆桌']] } },
+        { title: '流程', timeline: [{ text: '第一步' }, { text: '第二步' }, { text: '第三步' }], layout: 'section' },
         { title: '流程', timeline: [{ text: '第一步' }, { text: '第二步' }, { text: '第三步' }] },
       ],
     })
@@ -434,11 +441,14 @@ describe('deck data elements', () => {
     const nodes = composed.document.slides.flatMap((slide) => slide.nodes)
     const table = nodes.find((node) => node.type === 'table')
     expect(table).toMatchObject({ rows: 2, cols: 2, headerRow: false })
-    const timeline = nodes.find((node) => node.type === 'timeline')
-    if (!timeline || timeline.type !== 'timeline') throw new Error('no timeline')
-    // The page has the height for three entries stacked, body-sized.
-    expect(timeline.horizontal).toBeUndefined()
-    expect(timeline.height).toBeGreaterThanOrEqual(3 * 104 * 0.8)
+    const [stacked, across] = nodes.filter((node) => node.type === 'timeline')
+    if (stacked?.type !== 'timeline' || across?.type !== 'timeline') throw new Error('no timelines')
+    // Under a section page's words there is the height for three entries stacked, body-sized;
+    // a data page gives each entry more of it.
+    expect(stacked.horizontal).toBeUndefined()
+    expect(stacked.height).toBeGreaterThanOrEqual(3 * 104 * 0.8)
+    expect(across.horizontal).toBeUndefined()
+    expect(across.height).toBe(3 * 120)
   })
 
   test('takes the page column and the page colours', () => {

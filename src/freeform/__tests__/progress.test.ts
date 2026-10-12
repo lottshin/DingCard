@@ -91,14 +91,16 @@ describe('progress element', () => {
     expect(bar.bar!.fill!.height).toBeCloseTo(52.8, 6)
     expect(bar.bar!.percent.y).toBeCloseTo(79.48416, 6)
     // Under the ring's share: the percent-and-name stack centres on the
-    // ring's middle, both grown with the ring.
+    // ring's middle, both grown with the ring, the name's full height clear
+    // of the digits.
     const ring = progressGeometry(240, 240, 'ring', 75, { label: true })
     expect(ring.label!.x).toBe(120)
     expect(ring.label!.fontSize).toBeCloseTo(30.2064, 6)
-    expect(ring.label!.y).toBeCloseTo(150.62424, 6)
+    expect(ring.label!.y).toBeCloseTo(154.05528, 6)
     expect(ring.ring!.fontSize).toBeCloseTo(48.72, 6)
     expect(ring.ring!.percent.x).toBe(120)
-    expect(ring.ring!.percent.y).toBeCloseTo(123.47976, 6)
+    expect(ring.ring!.percent.y).toBeCloseTo(120.04872, 6)
+    expect(ring.label!.y - ring.label!.fontSize * 0.9).toBeGreaterThan(ring.ring!.percent.y)
     // Without a name the geometry is the plain v38 layout.
     expect(progressGeometry(480, 96, 'bar', 65, {}).label).toBeNull()
   })

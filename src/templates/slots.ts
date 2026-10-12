@@ -90,6 +90,7 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       list: {
         title: '标题',
         lead: '导语',
+        leadFlow: { pinned: ['页脚线', '页脚'] },
         items: (['一', '二', '三', '四', '五'] as const).map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`编号${n}`, `要点线${n}`] })),
         itemsExtras: ['要点顶线'],
         spreadItems: true,
@@ -98,6 +99,7 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       data: {
         title: '标题',
         lead: '导语',
+        leadFlow: { pinned: ['页脚线', '页脚'] },
         numbers: ['页码', '页脚'],
         remove: [{ text: '示例图表' }],
       },

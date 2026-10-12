@@ -244,10 +244,22 @@ function cleanPage(value: unknown, label: string): DeckPage | string {
   }
 }
 
-/** A cover's page titles for its lead, broken between titles, never inside one. */
-function coverContents(cover: { slide: FreeformSlide; slots: SlideSlots }, titles: string[]): string {
+/** The most page titles a cover lists. */
+const COVER_LINES = 4
+
+/**
+ * A cover's page titles for its lead, broken between titles, never inside
+ * one: as many of the first titles as the lead holds at its smallest size
+ * (a cover lists its cover lines, not every page); none when not even two do.
+ */
+function coverContents(cover: { slide: FreeformSlide; slots: SlideSlots }, titles: string[]): string | undefined {
   const lead = cover.slots.lead ? textNodeNamed(cover.slide, cover.slots.lead) : null
-  return lead ? contentsLines(lead, titles) : titles.join(' · ')
+  if (!lead) return titles.join(' · ')
+  for (let count = Math.min(titles.length, COVER_LINES); count >= 2; count -= 1) {
+    const text = contentsLines(lead, titles.slice(0, count))
+    if (textFits(lead, text, Math.floor(lead.fontSize * MIN_FIT_SCALE), lead.text)) return text
+  }
+  return undefined
 }
 
 /** Three or more points make a list; fewer read as a statement. */
@@ -734,9 +746,11 @@ function fillSlide(template: FreeformSlide, slots: SlideSlots, fill: SlideFill):
     ...(slots.quote ? [slots.quote.text] : []),
     ...(displayLead && displayLead.fontSize >= 52 ? [displayLead.name] : []),
   ])
+  // Points, quotes and display paragraphs prefer a break after a pause ("要点：说明"); titles break evenly.
+  const titles = new Set(typeof slots.title === 'string' ? [slots.title] : [])
   nodes.forEach((node, index) => {
     if (node.type === 'text' && headings.has(node.name) && texts.has(node.name)) {
-      const balance = node.name === displayLead?.name ? balancedSentence : balancedHeading
+      const balance = titles.has(node.name) ? balancedHeading : balancedSentence
       nodes[index] = { ...node, text: balance(node, node.text, node.fontSize) }
     }
   })

@@ -67,8 +67,10 @@ export function progressGeometry(
     const labelFontSize = Math.max(10, Math.min(fontSize * 0.62, 40))
     // With a name under the share, centre the percent-and-name stack on the
     // ring's middle; without one, keep the percent at its optical centre.
-    const labelGap = 6
-    const stackHalf = (fontSize * 0.7 + labelGap + labelFontSize * 0.7) / 2
+    // Digits stand 0.7em above their baseline, a CJK name 0.9em: the stack
+    // leaves the name its full height so the two never touch.
+    const labelGap = Math.max(6, fontSize * 0.14)
+    const stackHalf = (fontSize * 0.7 + labelGap + labelFontSize * 0.9) / 2
     // Start at the top, sweep clockwise to the done share of the circle; a
     // full share draws the whole ring as two arcs (a closed arc renders none).
     const angle = (value / 100) * Math.PI * 2
