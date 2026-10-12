@@ -306,6 +306,21 @@ function paintMask(drawing: SVGPathElement, width: number, height: number): stri
 }
 
 /**
+ * How far a vertical text's columns run past its box. Its scroll width
+ * counts the font's whole ascent and descent standing out of each column
+ * (more than the line height a tight title sets), where CJK glyphs never
+ * draw; the paragraph blocks are just their columns.
+ */
+function columnsOverflow(box: HTMLElement): number {
+  const style = getComputedStyle(box)
+  const room = box.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
+  const blocks = Array.from(box.children).map((child) => child.getBoundingClientRect()).filter((rect) => rect.width > 0)
+  if (blocks.length === 0) return 0
+  const used = Math.max(...blocks.map((rect) => rect.right)) - Math.min(...blocks.map((rect) => rect.left))
+  return Math.max(0, used - room)
+}
+
+/**
  * The line boxes a text's words fill: the rects of the words themselves (the
  * paragraph blocks around them span the whole box), and before each list
  * item's first line the indent its marker sits in.
@@ -354,21 +369,24 @@ function inspectArtboard(artboard: HTMLElement, slideId: string, imageError: str
     }
     const box = element.querySelector<HTMLElement>(':scope > .freeform-preview-textbox')
     if (!box) continue
-    // Upright horizontal text is judged by what its glyphs lose; the rest by its line boxes.
-    const byInk = drawnUpright(element, artboard) && getComputedStyle(box).writingMode === 'horizontal-tb'
+    // Upright horizontal text is judged by what its glyphs lose; the rest by its line boxes,
+    // a vertical text's columns by their blocks.
+    const horizontal = getComputedStyle(box).writingMode === 'horizontal-tb'
+    const byInk = drawnUpright(element, artboard) && horizontal
     const overflowDown = () => {
       const lines = Math.max(0, box.scrollHeight - box.clientHeight)
       return byInk && lines > 1 ? clippedInk(box) : lines
     }
+    const overflowAcross = () => (horizontal ? Math.max(0, box.scrollWidth - box.clientWidth) : columnsOverflow(box))
     const overflowY = overflowDown()
-    const overflowX = Math.max(0, box.scrollWidth - box.clientWidth)
+    const overflowX = overflowAcross()
     let fitFontSize: number | null = null
     if (overflowY > 1 || overflowX > 1) {
       const original = box.style.fontSize
       const start = Math.floor(Number.parseFloat(getComputedStyle(box).fontSize))
       for (let size = start - 1; size >= 8; size -= 1) {
         box.style.fontSize = `${size}px`
-        if (overflowDown() <= 1 && box.scrollWidth <= box.clientWidth + 1) {
+        if (overflowDown() <= 1 && overflowAcross() <= 1) {
           fitFontSize = size
           break
         }

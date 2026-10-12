@@ -97,6 +97,37 @@ describe('buildFontEmbedCSS', () => {
     expect(requestedUrls).not.toContain(regularUrl)
   })
 
+  it('embeds the nearest weight a one-weight family has, so bold words keep their face', async () => {
+    const href =
+      'https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap&test=nearest-weight'
+    const regularUrl = 'https://fonts.test/archivo-black-regular.woff2'
+    const css = `@font-face { font-family: 'Archivo Black'; font-weight: 400; src: url(${regularUrl}); }`
+    const fetchMock = vi.fn(async (url: string) =>
+      url === href
+        ? { ok: true, text: async () => css }
+        : { ok: true, blob: async () => new Blob(['font']) },
+    )
+    class TestFileReader {
+      result: string | null = null
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+
+      readAsDataURL() {
+        this.result = 'data:font/woff2;base64,Zm9udA=='
+        queueMicrotask(() => this.onload?.())
+      }
+    }
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('FileReader', TestFileReader)
+    vi.stubGlobal('document', {
+      querySelectorAll: () => [{ href }],
+    })
+
+    const embedded = await buildFontEmbedCSS('BOLD', "'Archivo Black', sans-serif", ['bold'])
+    expect(fetchMock.mock.calls.map(([url]) => url)).toContain(regularUrl)
+    expect(embedded).toContain('data:font/woff2;base64,Zm9udA==')
+  })
+
   it('reuses an accessible loaded Google Fonts stylesheet without fetching it again', async () => {
     const href =
       'https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400&display=swap&test=cssom'

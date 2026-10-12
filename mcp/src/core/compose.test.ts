@@ -160,7 +160,7 @@ describe('composeDeck', () => {
     }
   })
 
-  test('keeps a long step in its own column, and a sign title off the note under it', () => {
+  test('keeps a long step in its own column', () => {
     const onSection: DeckContent = { ...LONG, pages: LONG.pages.map((page) => ({ ...page, layout: 'section' as const })) }
     const steps = compose('editorial-freeform', onSection).document.slides[1].nodes
       .filter((node): node is FreeformTextElement => node.type === 'text' && node.name.startsWith('步骤'))
@@ -169,15 +169,6 @@ describe('composeDeck', () => {
     expect(steps.map((node) => node.x)).toEqual([88, 400, 712])
     expect(steps[0].x + steps[0].width).toBeLessThanOrEqual(steps[1].x)
     expect(steps[1].x + steps[1].width).toBeLessThanOrEqual(steps[2].x)
-
-    const neon = compose('neon-freeform', LONG).document.slides[2].nodes
-    const title = neon.find((node) => node.name === '灯牌标题二') as FreeformTextElement
-    const note = neon.find((node) => node.name === '灯牌注释二') as FreeformTextElement
-    const card = neon.find((node) => node.name === '灯牌底板二')!
-    // The point's own words, its two lines broken evenly.
-    expect([title.text.replace(/\n/g, ''), note.text]).toEqual(['把最亮的招牌拍成一整页的主角', '注释说明一下为什么'])
-    expect(title.y + title.height).toBeLessThanOrEqual(note.y)
-    expect(title.y).toBeGreaterThanOrEqual(card.y)
   })
 
   test('keeps points in the items when they fit the room the items can grow into', () => {
@@ -206,21 +197,21 @@ describe('composeDeck', () => {
       title: '一周早餐不重样',
       pages: [
         { title: '周一：燕麦杯', body: '前一晚泡好。' },
-        { title: '周二：鸡蛋三明治', body: '五分钟搞定。', templateId: 'neon-freeform' },
+        { title: '周二：鸡蛋三明治', body: '五分钟搞定。', templateId: 'night-flight-freeform' },
       ],
       ending: { title: '明天吃什么？', body: '把这一周存下来。', templateId: 'checklist-freeform' },
     })
     expect(mixed.summary.pages.map((page) => [page.role, page.templateId])).toEqual([
       ['cover', 'editorial-freeform'],
       ['section', 'editorial-freeform'],
-      ['section', 'neon-freeform'],
+      ['section', 'night-flight-freeform'],
       ['ending', 'checklist-freeform'],
     ])
     // Each page looks like the template it came from, filled with its own words.
-    const neon = instantiateTemplate('neon-freeform')
+    const flight = instantiateTemplate('night-flight-freeform')
     const checklist = instantiateTemplate('checklist-freeform')
-    if (neon.workspace !== 'freeform' || checklist.workspace !== 'freeform') throw new Error('expected freeform templates')
-    expect(mixed.document.slides[2].background).toEqual(neon.document.slides[1].background)
+    if (flight.workspace !== 'freeform' || checklist.workspace !== 'freeform') throw new Error('expected freeform templates')
+    expect(mixed.document.slides[2].background).toEqual(flight.document.slides[1].background)
     expect(mixed.document.slides[3].background).toEqual(checklist.document.slides[2].background)
     const words = (index: number) => mixed.document.slides[index].nodes.flatMap((node) => (node.type === 'text' ? [node.text.replace(/\n/g, '')] : []))
     expect(words(2)).toContain('周二：鸡蛋三明治')
@@ -252,7 +243,7 @@ describe('composeDeck', () => {
     const { summary } = compose('editorial-freeform')
     expect(summary.pages.map((page) => page.layout)).toEqual([undefined, 'section', 'statement', 'list', undefined])
     // A deck without these pages draws its section page.
-    expect(compose('neon-freeform').summary.pages.map((page) => page.layout)).toEqual([undefined, 'section', 'section', 'section', undefined])
+    expect(compose('night-flight-freeform').summary.pages.map((page) => page.layout)).toEqual([undefined, 'section', 'section', 'section', undefined])
   })
 
   test('spreads fewer points down a list page, keeping them a list', () => {
@@ -452,7 +443,7 @@ describe('deck data elements', () => {
   })
 
   test('takes the page column and the page colours', () => {
-    const composed = composeDeck('neon-freeform', {
+    const composed = composeDeck('night-flight-freeform', {
       title: '复盘',
       pages: [
         { title: '季度营收', chart: { kind: 'bar', labels: ['Q1', 'Q2'], series: [{ name: '去年', values: [3, 4] }, { name: '今年', values: [4, 6] }] } },

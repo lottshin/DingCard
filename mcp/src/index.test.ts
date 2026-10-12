@@ -415,6 +415,19 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
+  test('fills a poster\'s chart through the server, in the kind it asks for', async () => {
+    const client = await connect()
+    const poster = await call<{ ok: boolean; documentId: string }>(client, 'create_poster_from_content', {
+      templateId: 'data-roundup-freeform',
+      content: { title: '技能自测', chart: { kind: 'radar', labels: ['前端', '后端', '设计'], series: [{ name: '熟练度', values: [8, 6, 9] }] } },
+    })
+    expect(poster.ok).toBe(true)
+    const fetched = await call<{ ok: boolean; document: { slides: Array<{ nodes: Array<{ type: string; chartKind?: string; labels?: string[] }> }> } }>(client, 'get_document', { documentId: poster.documentId })
+    const chart = fetched.document.slides[0].nodes.find((node) => node.type === 'chart')
+    expect(chart).toMatchObject({ chartKind: 'radar', labels: ['前端', '后端', '设计'] })
+    await client.close()
+  })
+
   test('mixes templates in one document: template pages, a page in another layout, a poster as a page', async () => {
     const client = await connect()
     const deck = await call<{ ok: boolean; documentId: string; summary: { pages: Array<{ slideId: string; templateId: string }> } }>(client, 'create_document_from_content', {

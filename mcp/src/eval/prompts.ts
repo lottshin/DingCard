@@ -87,9 +87,9 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     },
   },
   {
-    id: 'deck-neon-table',
+    id: 'deck-night-flight-table',
     kind: 'deck',
-    templateId: 'neon-freeform',
+    templateId: 'night-flight-freeform',
     content: {
       title: '市集摊位价目',
       pages: [
@@ -111,9 +111,9 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     },
   },
   {
-    id: 'deck-soft-progress',
+    id: 'deck-checklist-progress',
     kind: 'deck',
-    templateId: 'soft-freeform',
+    templateId: 'checklist-freeform',
     content: {
       title: '年度读书计划',
       pages: [
@@ -182,9 +182,9 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
 对着清单再点一次名`,
   },
   {
-    id: 'deck-soft-long-body',
+    id: 'deck-brutalist-long-body',
     kind: 'deck',
-    templateId: 'soft-freeform',
+    templateId: 'brutalist-freeform',
     content: {
       title: '关于耐心的三件小事',
       pages: [
@@ -305,10 +305,46 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     content: { title: '两款热门奶瓶横评', table: [['维度', 'A 款', 'B 款'], ['防胀气', '优秀', '良好'], ['清洗难度', '易', '中等'], ['价格', '89', '129']], body: '按需选择，都不踩坑。' },
   },
   {
-    id: 'poster-skill-radar',
+    id: 'poster-data-radar',
     kind: 'poster',
-    templateId: 'skill-radar-freeform',
-    content: { title: '全栈技能自测', chart: { labels: ['前端', '后端', '数据库', '运维', '设计', '沟通'], series: [{ name: '熟练度', values: [85, 70, 60, 45, 55, 90] }] }, body: '补齐运维，就是明年目标。' },
+    templateId: 'data-roundup-freeform',
+    content: { title: '全栈技能自测', subtitle: '补齐运维，就是明年目标。', tag: '2026', chart: { kind: 'radar', labels: ['前端', '后端', '数据库', '运维', '设计', '沟通'], series: [{ name: '熟练度', values: [85, 70, 60, 45, 55, 90] }] } },
+  },
+  {
+    id: 'poster-exhibition',
+    kind: 'poster',
+    templateId: 'exhibition-poster-freeform',
+    content: { title: '纸上的山水', body: '六十件宋元山水画的高清复制品，第一次在城市里集中展出。', details: ['展期：2026.12.01 — 2027.02.28', '地点：东湖美术馆 一层', '票价：免费，需预约'], brand: '东湖美术馆', tag: 'No.08' },
+  },
+  {
+    id: 'poster-launch',
+    kind: 'poster',
+    templateId: 'launch-poster-freeform',
+    content: { title: '新一代降噪耳机', subtitle: '预约开启', body: '轻了 20%，续航 40 小时。预约用户首发价立减 200 元。', details: ['12 月 12 日 10:00 正式开售'], cta: '立即预约', tag: '12.12', brand: 'HUSH AUDIO' },
+  },
+  {
+    id: 'poster-dessert-menu',
+    kind: 'poster',
+    templateId: 'dessert-menu-freeform',
+    content: { title: '冬日热饮', subtitle: '每天下午两点开始供应', details: ['热可可：28', '姜汁撞奶：22', '桂花酒酿：18', '红枣桂圆茶：20', '抹茶拿铁：32'], body: '所有热饮都可以换燕麦奶。', brand: '巷口小馆 · 每日 14:00 – 22:00' },
+  },
+  {
+    id: 'poster-wedding',
+    kind: 'poster',
+    templateId: 'wedding-invitation-freeform',
+    content: { title: '周舟 & 林夏', subtitle: '我们要结婚了', details: ['2027.05.20', '星期四 · 中午十二点', '西湖国宾馆 · 紫薇厅'], body: '诚邀您来喝一杯喜酒', cta: '敬请回复', brand: '周家 · 林家 敬邀' },
+  },
+  {
+    id: 'poster-solar-term',
+    kind: 'poster',
+    templateId: 'solar-term-freeform',
+    content: { title: '立冬', subtitle: '水始冰　地始冻', details: ['11 月 7 日', '冬天从今天开始。'], tag: '节气', brand: '山间书房 · 二十四节气' },
+  },
+  {
+    id: 'poster-pitch',
+    kind: 'poster',
+    templateId: 'pitch-cover-freeform',
+    content: { title: '出海计划', subtitle: '2027 战略汇报\nStrategy Review', details: ['汇报人：周舟', '2027 年 1 月 · 管理层会议'], brand: 'HUSH AUDIO' },
   },
   {
     id: 'poster-birthday',

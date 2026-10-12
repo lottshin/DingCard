@@ -282,10 +282,10 @@ test('font listbox exposes active options and isolates keyboard navigation from 
   await expectActiveOption(1)
   await page.keyboard.press('Home')
   await expectActiveOption(0)
-  // The seven fonts, then 导入字体… last.
+  // The seven fonts and the five display faces, then 导入字体… last.
   await page.keyboard.press('End')
-  await expectActiveOption(7)
-  await expect(options.nth(7)).toHaveText('导入字体…')
+  await expectActiveOption(12)
+  await expect(options.nth(12)).toHaveText('导入字体…')
   await trigger.dispatchEvent('keydown', {
     key: '思',
     bubbles: true,

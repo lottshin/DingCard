@@ -155,6 +155,27 @@ function normalizeFontWeight(weight: string | number): string {
   return normalized
 }
 
+/**
+ * The weights to embed for the ones a card asks for: each one the family has,
+ * else the nearest it has (the heavier on a tie), the face the browser draws
+ * with when it synthesizes bold from a one-weight font.
+ */
+function weightsToEmbed(wanted: Set<string>, faces: string[]): Set<string> {
+  const available = [...new Set(faces.map((block) => normalizeFontWeight(pick('font-weight', block) ?? '400')))]
+    .map(Number)
+    .filter(Number.isFinite)
+  if (available.length === 0) return wanted
+  return new Set([...wanted].map((weight) => {
+    const target = Number(weight)
+    if (!Number.isFinite(target) || available.includes(target)) return weight
+    const nearest = available.reduce((best, candidate) => {
+      const gap = Math.abs(candidate - target) - Math.abs(best - target)
+      return gap < 0 || (gap === 0 && candidate > best) ? candidate : best
+    })
+    return String(nearest)
+  }))
+}
+
 async function buildFontEmbedCSSUncached(
   family: string,
   codepoints: Set<number>,
@@ -168,14 +189,16 @@ async function buildFontEmbedCSSUncached(
   const kept: string[] = []
   const fetches: Array<Promise<void>> = []
 
-  for (const block of fontFaceBlocks(allCss)) {
+  // Only the selected family.
+  const faces = fontFaceBlocks(allCss).filter((block) => {
     const famRaw = pick('font-family', block)
-    if (!famRaw) continue
-    const fam = famRaw.replace(/^['"]|['"]$/g, '')
-    if (fam.toLowerCase() !== family.toLowerCase()) continue // only the selected family
+    return famRaw !== null && famRaw.replace(/^['"]|['"]$/g, '').toLowerCase() === family.toLowerCase()
+  })
+  const weights = fontWeights && weightsToEmbed(fontWeights, faces)
 
+  for (const block of faces) {
     const blockWeight = pick('font-weight', block)
-    if (fontWeights && blockWeight && !fontWeights.has(normalizeFontWeight(blockWeight))) continue
+    if (weights && blockWeight && !weights.has(normalizeFontWeight(blockWeight))) continue
 
     const range = pick('unicode-range', block)
     // Keep a face if it has no range (whole font) or its range covers used chars.

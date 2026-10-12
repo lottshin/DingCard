@@ -6,7 +6,7 @@
 import { primaryFamily } from '../fontEmbed'
 import { t } from '../i18n'
 import type { SelectOption } from '../Select'
-import { FONTS } from '../theme'
+import { FREEFORM_FONTS } from '../theme'
 import { importedFontStack } from './fontFiles'
 import type { ImportedFont } from './fontLibrary'
 
@@ -14,11 +14,11 @@ import type { ImportedFont } from './fontLibrary'
 export const IMPORT_FONT_OPTION = '__import-font__'
 
 /** The built-in font a family value names: the exact stack, or the one its first family is. */
-export function builtInFont(fontFamily: string): (typeof FONTS)[number] | undefined {
-  const exact = FONTS.find((font) => font.id === fontFamily)
+export function builtInFont(fontFamily: string): (typeof FREEFORM_FONTS)[number] | undefined {
+  const exact = FREEFORM_FONTS.find((font) => font.id === fontFamily)
   if (exact) return exact
   const first = primaryFamily(fontFamily).toLowerCase()
-  return FONTS.find((font) => primaryFamily(font.id).toLowerCase() === first)
+  return FREEFORM_FONTS.find((font) => primaryFamily(font.id).toLowerCase() === first)
 }
 
 /** The name to show for a family value: a built-in font's label, else the first family it lists. */
@@ -42,7 +42,7 @@ export function fontOptions(
   { current, withImport = false }: { current?: string; withImport?: boolean } = {},
 ): SelectOption[] {
   const options: SelectOption[] = [
-    ...FONTS.map((font) => ({ id: font.id, label: t(font.label) })),
+    ...FREEFORM_FONTS.map((font) => ({ id: font.id, label: t(font.label) })),
     ...imported.map((font) => ({ id: importedFontStack(font.family), label: font.family })),
   ]
   if (current !== undefined) {

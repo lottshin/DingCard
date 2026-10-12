@@ -98,7 +98,9 @@ describe('html import css values', () => {
     expect(chooseFont('"Microsoft YaHei", sans-serif')).toEqual({ fontFamily: 'PingFang SC, Microsoft YaHei, system-ui, sans-serif', replaced: null })
     expect(chooseFont('Georgia, serif')).toEqual({ fontFamily: `'Noto Serif SC', serif`, replaced: 'Georgia' })
     expect(chooseFont('Inter, sans-serif')).toEqual({ fontFamily: 'PingFang SC, Microsoft YaHei, system-ui, sans-serif', replaced: 'Inter' })
-    expect(chooseFont('"Ma Shan Zheng", cursive').fontFamily).toBe(`'LXGW WenKai TC', cursive`)
+    expect(chooseFont('"Zhi Mang Xing", cursive').fontFamily).toBe(`'LXGW WenKai TC', cursive`)
+    expect(chooseFont('"Ma Shan Zheng", cursive')).toEqual({ fontFamily: `'Ma Shan Zheng', cursive`, replaced: null })
+    expect(chooseFont('"Playfair Display", Georgia, serif')).toEqual({ fontFamily: `'Playfair Display', serif`, replaced: null })
     expect(chooseFont('serif').replaced).toBeNull()
   })
 

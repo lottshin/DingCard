@@ -84,7 +84,7 @@ export function HomePage({
     ? (flight.document.slides[0]?.nodes ?? []).slice(-4).reverse().map(nodeLabel)
     : []
   const picks = useMemo(
-    () => ['public-theatre-markdown', 'soft-freeform', 'issue-cover-markdown', 'signal-freeform']
+    () => ['public-theatre-markdown', 'autumn-market-freeform', 'issue-cover-markdown', 'signal-freeform']
       .map((id) => TEMPLATE_REGISTRY.find((template) => template.id === id))
       .filter((template): template is TemplateDefinition => Boolean(template)),
     [],

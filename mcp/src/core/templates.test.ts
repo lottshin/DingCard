@@ -20,10 +20,10 @@ describe('listTemplates', () => {
       'checklist-freeform',
       'signal-freeform',
       'night-flight-freeform',
-      'neon-freeform',
       'brutalist-freeform',
-      'soft-freeform',
       'blueprint-freeform',
+      'exhibition-poster-freeform',
+      'portfolio-cover-freeform',
     ]))
     for (const template of templates) {
       expect(template.title.length).toBeGreaterThan(0)
@@ -33,9 +33,9 @@ describe('listTemplates', () => {
     }
   })
 
-  test('freeform template ids cover the eight decks, poster ids the twenty-nine posters', () => {
-    expect(freeformTemplateIds()).toHaveLength(8)
-    expect(posterTemplateIds()).toHaveLength(29)
+  test('freeform template ids cover the six decks, poster ids the thirty posters', () => {
+    expect(freeformTemplateIds()).toHaveLength(6)
+    expect(posterTemplateIds()).toHaveLength(30)
   })
 
   test('says what each template makes and the size it is drawn at, and what a poster has room for', () => {
@@ -52,7 +52,7 @@ describe('listTemplates', () => {
     expect(templates.find((template) => template.id === 'compare-table-freeform')!.posterCapacity!.table).toEqual({ maxRows: 12, maxColumns: 6 })
     expect(templates.find((template) => template.id === 'menu-freeform')!.posterCapacity!.details).toBe(8)
     expect(templates.find((template) => template.id === 'data-roundup-freeform')!.posterCapacity!.chart).toBe(true)
-    expect(templates.find((template) => template.id === 'growth-timeline-freeform')!.posterCapacity).toMatchObject({ details: 8, chart: false, timeline: true })
+    expect(templates.find((template) => template.id === 'growth-timeline-freeform')!.posterCapacity).toMatchObject({ details: 5, chart: false, timeline: false })
     expect(templates.find((template) => template.id === 'moments-grid-freeform')).toMatchObject({ format: { id: 'moments-grid', width: 3240, height: 3240 } })
     const editorial = templates.find((template) => template.id === 'editorial-freeform')!
     expect(editorial).toMatchObject({ kind: 'deck', format: { id: 'xhs', width: 1080, height: 1440 } })

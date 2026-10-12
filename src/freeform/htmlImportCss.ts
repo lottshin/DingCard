@@ -5,7 +5,7 @@
 // turns them into what a freeform document can hold. Nothing here touches
 // the DOM, so it is tested on its own.
 
-import { FONTS } from '../theme'
+import { DISPLAY_FONTS, FONTS } from '../theme'
 import type { BlendMode, ColorPaint, GradientStop, SceneFilter } from './types'
 
 export interface Rgba {
@@ -542,6 +542,7 @@ const WENKAI = FONTS[3].id
 const XIAOWEI = FONTS[4].id
 const SONGTI = FONTS[5].id
 const SYSTEM = FONTS[6].id
+const [PLAYFAIR, ARCHIVO_BLACK, GREAT_VIBES, HUANGYOU, MA_SHAN_ZHENG] = DISPLAY_FONTS.map((font) => font.id)
 
 const KNOWN_FAMILIES: Record<string, string> = {
   'pingfang sc': SANS,
@@ -571,6 +572,13 @@ const KNOWN_FAMILIES: Record<string, string> = {
   'system-ui': SYSTEM,
   '-apple-system': SYSTEM,
   blinkmacsystemfont: SYSTEM,
+  'playfair display': PLAYFAIR,
+  'archivo black': ARCHIVO_BLACK,
+  'great vibes': GREAT_VIBES,
+  'zcool qingke huangyou': HUANGYOU,
+  站酷庆科黄油体: HUANGYOU,
+  'ma shan zheng': MA_SHAN_ZHENG,
+  马善政毛笔楷书: MA_SHAN_ZHENG,
 }
 
 // Families that read the same as one we have: swapped without a word.

@@ -11,7 +11,7 @@ import { t, useLang } from '../i18n'
 
 const SHOWCASE_IDS = [
   'editorial-archive-markdown',
-  'neon-freeform',
+  'portfolio-cover-freeform',
   'issue-cover-markdown',
   'night-flight-freeform',
   'public-theatre-markdown',

@@ -316,7 +316,7 @@ export function createDingcardServer(): McpServer {
     `把你写的 HTML/CSS 网页转成在叮卡里能逐个修改的自由画布文档（v${FREEFORM_DOCUMENT_VERSION}）。适合模板排不出来的版式：直接用网页写法排版，叮卡在浏览器里排好后，把每个色块、文字、图片和 SVG 图形读成形状、文字框、图片和图形节点，位置、字号、行高、字距、颜色、圆角、边框、阴影、渐变、透明度、混合模式、滤镜和旋转都照网页来，层叠顺序按 CSS（含 z-index）。
 写法：
 - 每页一个 <section>，放在 <body> 下面，用 CSS 写死宽高（px），如 1080×1440（小红书 3:4）、1080×1920（9:16）、1080×1080；没有 section 时整个 body 是一页，尺寸用 width / height。100vw、100vh 就是 width × height。
-- 字体用内置的：苹方 "PingFang SC"、思源黑体 "Noto Sans SC"、思源宋体 "Noto Serif SC"、霞鹜文楷 "LXGW WenKai TC"、站酷小薇 "ZCOOL XiaoWei"、系统宋体 "Songti SC"；别的字体换成同类的内置字体（notes 里会写）。字重只有常规和粗体，600 及以上算粗体。
+- 字体用内置的：苹方 "PingFang SC"、思源黑体 "Noto Sans SC"、思源宋体 "Noto Serif SC"、霞鹜文楷 "LXGW WenKai TC"、站酷小薇 "ZCOOL XiaoWei"、系统宋体 "Songti SC"；标题大字还能用西文的 "Playfair Display"、"Archivo Black"、"Great Vibes" 和站酷黄油体 "ZCOOL QingKe HuangYou"、马善政毛笔 "Ma Shan Zheng"；别的字体换成同类的内置字体（notes 里会写）。字重只有常规和粗体，600 及以上算粗体。
 - 图片用 <img> 或 CSS background-image，object-fit、object-position、圆角和圆形裁切都照着来；src 写本机路径（相对路径按 htmlPath 所在目录或当前目录找）、http(s) URL 或 data URL，本机图片和本机样式表会嵌进来。
 - 图标和图形写成内联 <svg>（path、rect、circle、ellipse、line、polyline、polygon），每个变成一个图形节点，一个 svg 里有几个就成一个组合；长短不一的虚线（环形进度条）照画出来的样子描成线段，SVG 里的 <text> 变成单行文字框，<use> 引用不转。
 - <table> 能照原样画成表格元素时就变成一个可逐格编辑的表格（一种文字颜色和字号、<th> 表头一种底色或没有、正文行不铺色或隔行铺一种色、border-collapse: collapse 的实线格线是全框、每行下一条横线、三线表或没有线且一种颜色、行一样高、格子里的字居中或列宽正好包住字、2–12 行 1–6 列、每格 24 字以内、没有合并单元格），文字颜色和字号、表头底色、斑马纹、格线和列宽照网页来；画不出来的照网页原样导成文字和色块，notes 里会说。<progress> 变成进度条，颜色取 accent-color，aria-label 作图层名（网页上不显示，所以进度条上也不画）。
@@ -386,7 +386,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_poster_from_content',
-    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、讲座、促销、招聘、节日、邀请函、金句、商品主图、视频封面、公众号首图、宣传单、联系卡、数据盘点、对比表、关注引导、成长记录），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色；对比表也放 table（第一行是表头），换成 v34 表格元素本身，最多 12 行 6 列、每格 24 字，参差的行按最宽的行补齐、只有一行时补一个空行，超出 12 行 6 列的格子列在 summary.unplaced，模板的配色和列宽比例保留（加列时新列均分），没给 table 时模板的示例表格原样保留；数据盘点放 chart（{ labels?: 类目数组, series: [{ name?, values: 数值数组, color? }] }，替换模板图表的类目和系列，颜色缺省沿用模板的，类型和堆叠方式跟模板走）；成长记录放 details（一条一行，冒号前是时间标签，如 "3 月：接到第一单商单"，最多 8 条、每条文字 48 字、超宽自动折行，整体换掉模板时间线的条目，标签可省略，超出 8 条的列在 summary.unplaced，没给时模板的示例条目原样保留）。信息比模板的行多时，页面有空就照最后一行的样子接着往下排，没空就放进下面空着的署名、正文或副标题位；模板没有位置的文字放进空着的同类位置（按钮、署名放进空着的信息行，正文、获得者放进空着的副标题），放到哪里写在 summary.moved；还放不下的信息和画不下的表格格子列在 summary.unplaced，没有位置的内容列在 summary.unused，这时 summary.hint 说明怎么办。缩小的文字在 summary.shrunk（角标最多缩到 50%，其余 72%），还放不下的在 summary.overflowing。给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。',
+    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、九宫格、课程表、各种海报、请柬、贺卡、封面、宣传单、数据盘点、对比表、成长记录等），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色；对比表也放 table（第一行是表头），换成 v34 表格元素本身，最多 12 行 6 列、每格 24 字，参差的行按最宽的行补齐、只有一行时补一个空行，超出 12 行 6 列的格子列在 summary.unplaced，模板的配色和列宽比例保留（加列时新列均分），没给 table 时模板的示例表格原样保留；数据盘点放 chart（{ kind?: "bar" | "ring" | "line" | "radar", labels?: 类目数组, series: [{ name?, values: 数值数组, color? }] }，替换模板图表的类目和系列，颜色缺省沿用模板的，kind 换图表类型，不给时跟模板走，堆叠方式跟模板走）；成长记录放 details（一条一个节点，冒号前是时间，如 "3 月：接到第一单商单"，最多 5 条）；这两张的 tag 是顶上的大年份，如 "2026"。信息比模板的行多时，页面有空就照最后一行的样子接着往下排，没空就放进下面空着的署名、正文或副标题位；模板没有位置的文字放进空着的同类位置（按钮、署名放进空着的信息行，正文、获得者放进空着的副标题），放到哪里写在 summary.moved；还放不下的信息和画不下的表格格子列在 summary.unplaced，没有位置的内容列在 summary.unused，这时 summary.hint 说明怎么办。缩小的文字在 summary.shrunk（角标最多缩到 50%，其余 72%），还放不下的在 summary.overflowing。给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。',
     {
       templateId: z.string().describe('list_templates 里 kind 为 poster 的模板 id，如 "talk-poster-freeform"'),
       content: z.object({
@@ -396,6 +396,11 @@ export function createDingcardServer(): McpServer {
         recipient: z.string().optional().describe('证书上的姓名（模板有获得者位时）'),
         details: z.array(z.string()).optional().describe('信息行，一条一行，如 "时间：10 月 18 日 14:00"、"地点：…"，冒号前是标签；菜单、价目表写 "拿铁：28"；成长记录一条一个节点，如 "3 月：接到第一单商单"'),
         table: z.array(z.array(z.string())).optional().describe('表格（课程表）：第一行是表头，如 ["节次", "周一", …]，之后每行第一格是节次，如 ["第 1 节\\n8:00", "语文", …]'),
+        chart: z.object({
+          kind: z.enum(['bar', 'ring', 'line', 'radar']).optional(),
+          labels: z.array(z.string()).optional(),
+          series: z.array(z.object({ name: z.string().optional(), values: z.array(z.number()), color: z.string().optional() })).min(1),
+        }).optional().describe('图表（数据盘点），写法见上'),
         cta: z.string().optional().describe('按钮文字，如 "扫码报名"'),
         tag: z.string().optional().describe('角标：活动类型、价格、期数等短词'),
         brand: z.string().optional().describe('主办方、品牌或落款'),

@@ -66,6 +66,23 @@ export const FONTS = [
   { id: 'system-ui, sans-serif', label: '系统默认' },
 ]
 
+/**
+ * Display faces the freeform editor adds for titles and posters (Google Fonts,
+ * OFL): a Didone serif, a black grotesque, a script, a heavy Chinese display
+ * face and a brush face. The Markdown editor keeps to FONTS; these suit a
+ * headline, not a page of text. Each has one weight but Playfair Display.
+ */
+export const DISPLAY_FONTS = [
+  { id: "'Playfair Display', serif", label: 'Playfair Display' },
+  { id: "'Archivo Black', sans-serif", label: 'Archivo Black' },
+  { id: "'Great Vibes', cursive", label: 'Great Vibes' },
+  { id: "'ZCOOL QingKe HuangYou', sans-serif", label: '站酷黄油体' },
+  { id: "'Ma Shan Zheng', cursive", label: '马善政毛笔' },
+]
+
+/** What the freeform font pickers offer: the shared fonts, then the display faces. */
+export const FREEFORM_FONTS = [...FONTS, ...DISPLAY_FONTS]
+
 // Inner padding of the card content area (CSS px at display scale).
 export const CARD_PADDING = 22
 

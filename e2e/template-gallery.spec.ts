@@ -127,8 +127,8 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(37)
-  await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(38)
+  await expect(dialog.locator('.template-tile')).toHaveCount(36)
+  await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(37)
   await expect(dialog.locator('.template-freeform-artboard .freeform-preview-element').first()).toBeVisible()
 
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
@@ -176,28 +176,28 @@ test('favorites shortlist templates and follow the browser across reloads', asyn
   await page.goto('/#/edit/canvas')
   await openFreeformTemplateGallery(page)
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(37)
+  await expect(dialog.locator('.template-tile')).toHaveCount(36)
 
   // A heart favorites its tile without picking it; the list itself stays whole.
-  await page.getByTestId('template-favorite-skill-radar-freeform').click()
-  await expect(page.getByTestId('template-favorite-skill-radar-freeform')).toHaveClass(/on/)
-  await page.getByTestId('template-favorite-picks-freeform').click()
-  await expect(dialog.locator('.template-tile')).toHaveCount(37)
+  await page.getByTestId('template-favorite-podcast-cover-freeform').click()
+  await expect(page.getByTestId('template-favorite-podcast-cover-freeform')).toHaveClass(/on/)
+  await page.getByTestId('template-favorite-autumn-market-freeform').click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(36)
 
   // The 收藏 filter narrows to the hearts, in registry order.
   await page.getByTestId('template-filter-favorites').click()
   await expect(page.getByTestId('template-filter-favorites')).toHaveAttribute('aria-pressed', 'true')
   await expect(dialog.locator('.template-tile')).toHaveCount(2)
-  await expect(dialog.locator('.template-tile h3')).toHaveText(['好物安利', '能力雷达'])
+  await expect(dialog.locator('.template-tile h3')).toHaveText(['秋日市集', '播客封面'])
 
   // A keyword combines with the favorites filter like it does with a size.
-  await page.getByTestId('template-search').fill('雷达')
+  await page.getByTestId('template-search').fill('包豪斯')
   await expect(dialog.locator('.template-tile')).toHaveCount(1)
   await page.getByTestId('template-search').fill('')
 
   // Turning the filter off brings the whole list back.
   await page.getByTestId('template-filter-favorites').click()
-  await expect(dialog.locator('.template-tile')).toHaveCount(37)
+  await expect(dialog.locator('.template-tile')).toHaveCount(36)
 
   // The hearts live in this browser: a reload keeps the shortlist.
   await page.reload()
@@ -207,9 +207,9 @@ test('favorites shortlist templates and follow the browser across reloads', asyn
   await expect(dialog.locator('.template-tile')).toHaveCount(2)
 
   // Unfavoriting both hearts empties the shortlist with the filter still on.
-  await page.getByTestId('template-favorite-picks-freeform').click()
+  await page.getByTestId('template-favorite-autumn-market-freeform').click()
   await expect(dialog.locator('.template-tile')).toHaveCount(1)
-  await page.getByTestId('template-favorite-skill-radar-freeform').click()
+  await page.getByTestId('template-favorite-podcast-cover-freeform').click()
   await expect(dialog.locator('.template-tile')).toHaveCount(0)
   await expect(page.getByTestId('template-search-empty')).toBeVisible()
 })
@@ -219,15 +219,15 @@ test('gallery search narrows the list by keyword and combines with the size filt
   await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(37)
+  await expect(dialog.locator('.template-tile')).toHaveCount(36)
 
   const search = dialog.getByTestId('template-search')
 
   // A keyword leaves the templates whose tags, titles, or descriptions
-  // carry it (the picks template mentions 小红书 in its description).
+  // carry it (the photo collage mentions 小红书 in its description).
   await search.fill('小红书')
-  await expect(dialog.locator('.template-tile')).toHaveCount(3)
-  await expect(dialog.locator('.template-tile h3')).toContainText(['干货笔记', '图片拼贴', '好物安利'])
+  await expect(dialog.locator('.template-tile')).toHaveCount(2)
+  await expect(dialog.locator('.template-tile h3')).toContainText(['干货笔记', '图片拼贴'])
 
   // Words from the description count too.
   await search.fill('柱状图')
@@ -235,7 +235,7 @@ test('gallery search narrows the list by keyword and combines with the size filt
   await expect(dialog.locator('.template-tile h3')).toHaveText('数据盘点')
 
   // The keyword combines with a size filter; a miss explains itself.
-  await search.fill('名片')
+  await search.fill('包豪斯')
   await expect(dialog.locator('.template-tile')).toHaveCount(1)
   await dialog.getByTestId('template-format-story').click()
   await expect(dialog.locator('.template-tile')).toHaveCount(0)
@@ -245,7 +245,7 @@ test('gallery search narrows the list by keyword and combines with the size filt
   await search.click()
   await page.keyboard.press('Escape')
   await expect(search).toHaveValue('')
-  await expect(dialog.locator('.template-tile')).toHaveCount(12)
+  await expect(dialog.locator('.template-tile')).toHaveCount(13)
 
   // A second Escape closes the gallery.
   await page.keyboard.press('Escape')
@@ -290,8 +290,9 @@ test('Freeform template exports keep full-bleed corners sealed', async ({ page }
       templateIndex: 3,
       slides: [{ slideIndex: 2, pixels: [[0, 0, [14, 24, 36, 255]], [1079, 0, [14, 24, 36, 255]]] }],
     },
+    // Brutalist's closing sidebar.
     {
-      templateIndex: 5,
+      templateIndex: 4,
       slides: [{ slideIndex: 2, pixels: [[0, 0, [13, 13, 13, 255]], [0, 1439, [13, 13, 13, 255]]] }],
     },
   ]
@@ -373,7 +374,7 @@ test('templates come from the repository only; the editors offer no way to save 
   await insertFreeformText(page)
   await openFreeformTemplateGallery(page)
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(gallery.locator('.template-tile')).toHaveCount(37)
+  await expect(gallery.locator('.template-tile')).toHaveCount(36)
   await expect(gallery.getByText('我的模板')).toHaveCount(0)
   await expect(gallery.getByRole('button', { name: '删除此模板' })).toHaveCount(0)
   await gallery.getByRole('button', { name: '使用这套模板', exact: true }).click()

@@ -913,6 +913,23 @@ describe('checkDocument', () => {
   )
 
   test(
+    'judges a vertical text by its columns, not the font standing out of them',
+    async () => {
+      const checked = await checkDocument(v20Page([
+        // One column a little narrower than the font's ascent and descent: nothing is cut.
+        v20Text('竖排标题', { x: 800, y: 100, width: 190, height: 760 }, { text: '五月甜品', fontSize: 154, lineHeight: 1.1, letterSpacing: 16, vertical: true, fontFamily: "'Noto Serif SC', serif", fontWeight: 'bold' }),
+        // Too long for one column: it wraps into a second the box has no room for.
+        v20Text('竖排长句', { x: 300, y: 100, width: 190, height: 760 }, { text: '冬日的热饮和甜点', fontSize: 154, lineHeight: 1.1, letterSpacing: 16, vertical: true, fontFamily: "'Noto Serif SC', serif", fontWeight: 'bold' }),
+      ]))
+      if (!checked.ok) throw new Error(checked.error)
+      const overflows = checked.issues.filter((issue) => issue.kind === 'text-overflow')
+      expect(overflows.map((issue) => issue.node)).toEqual(['竖排长句'])
+      expect(overflows[0].fitFontSize).toBeLessThan(154)
+    },
+    420_000,
+  )
+
+  test(
     'measures a list text by its words and markers, not the paragraph blocks across its box',
     async () => {
       const checked = await checkDocument(v20Page([

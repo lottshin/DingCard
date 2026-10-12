@@ -27,37 +27,24 @@ const clear = (series: string, a: string, b: string) => {
 }
 
 describe('template placement', () => {
-  it('squares the QR code inside its card with breathing room', () => {
-    inside('contact-card', '二维码', '二维码卡', 24)
-    inside('follow-card', '二维码', '二维码卡', 24)
-    clear('contact-card', '二维码卡', '姓名')
-    clear('contact-card', '二维码卡', '职位')
-    clear('follow-card', '二维码卡', '标题')
-    clear('follow-card', '二维码卡', '爱心一')
-    clear('follow-card', '二维码卡', '爱心二')
-    clear('follow-card', '二维码卡', '气泡')
+  it('centres the button copy on its plate', () => {
+    // The copy shares the plate's width and centres itself, as price-list does.
+    inside('launch-poster', '按钮文字', '按钮底板', 0, 16)
+    inside('wedding-invitation', '按钮文字', '按钮底板', 0, 16)
+    inside('talk-poster', '按钮文字', '按钮底板', 0, 16)
   })
 
-  it('keeps the chart and its caption inside the white card', () => {
-    inside('data-roundup', '图表', '图表卡', 40)
-    inside('data-roundup', '图表标注', '图表卡', 40)
-    clear('data-roundup', '图表卡', '标题')
-    clear('data-roundup', '图表卡', '副标题')
-    clear('data-roundup', '图表卡', '信息一')
-    clear('data-roundup', '图表卡', '信息二')
-    clear('data-roundup', '图表卡', '信息三')
-  })
-
-  it('centres the button copy on its plate and keeps the page clear of the edge', () => {
-    // The copy shares the plate's box and centres itself, as price-list does.
-    inside('follow-card', '按钮文字', '按钮底板', 0, 16)
-    for (const series of ['contact-card', 'data-roundup', 'follow-card']) {
-      for (const leaf of doc(series).slides[0].nodes as Array<{ x: number; y: number; width: number; height: number }>) {
-        expect(leaf.x, `${series} left edge`).toBeGreaterThanOrEqual(0)
-        expect(leaf.y, `${series} top edge`).toBeGreaterThanOrEqual(0)
-        const size = { 'contact-card': 1080, 'data-roundup': 1920, 'follow-card': 1080 }[series]!
-        expect(leaf.y + leaf.height, `${series} bottom edge`).toBeLessThanOrEqual(size)
-      }
-    }
+  it('keeps the words clear of the pictures, the chart and the table', () => {
+    clear('data-roundup', '角标', '标题')
+    clear('data-roundup', '图表', '信息一')
+    clear('data-roundup', '图表', '标签三')
+    clear('compare-table', '对比表', '结论')
+    clear('compare-table', '刊头色块', '对比表')
+    clear('exhibition-poster', '英文标语', '标题')
+    clear('dessert-menu', '主图', '菜品一')
+    clear('dessert-menu', '花束', '价格八')
+    clear('dessert-menu', '花束', '品牌')
+    clear('portfolio-cover', '英文标语', '标题')
+    clear('solar-term', '标题', '副标题')
   })
 })

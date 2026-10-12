@@ -20,14 +20,14 @@ test('the gallery filters templates by size, and a poster opens as one page at i
 
   await dialog.getByTestId('template-format-story').click()
   await expect(dialog.getByTestId('template-format-story')).toHaveAttribute('aria-pressed', 'true')
-  await expect(dialog.locator('.template-tile')).toHaveCount(12)
+  await expect(dialog.locator('.template-tile')).toHaveCount(13)
   await expect(dialog.locator('.template-detail-series')).toHaveText('价目表')
   // The preview keeps the 9:16 page's proportions.
   const preview = await dialog.locator('.template-tile').first().locator('.template-freeform-preview').boundingBox()
   expect(preview!.height / preview!.width).toBeCloseTo(16 / 9, 1)
 
   await dialog.getByTestId('template-format-landscape').click()
-  await expect(dialog.locator('.template-tile')).toHaveCount(1)
+  await expect(dialog.locator('.template-tile')).toHaveCount(2)
   await expect(dialog.locator('.template-detail-copy h3')).toHaveText('横版封面 · 1920×1080')
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
   await expect(page.locator('.freeform-thumb')).toHaveCount(1)
@@ -89,8 +89,11 @@ for (const [templateId, size, words] of [
   ['certificate-freeform', 'A4 横 · 1754×1240px', ['荣誉证书', '林一']],
   ['menu-freeform', 'A4 · 1240×1754px', ['今日菜单', '燕麦拿铁']],
   ['note-cover-freeform', '3:4 · 1080×1440px', ['干货分享']],
-  ['compare-table-freeform', '9:16 · 1080×1920px', ['怎么选，看这张表', '12 元/月']],
-  ['growth-timeline-freeform', '9:16 · 1080×1920px', ['这一年，慢慢长大', '接到第一单商单合作']],
+  ['compare-table-freeform', '9:16 · 1080×1920px', ['看这张表', '12 元/月']],
+  ['growth-timeline-freeform', '9:16 · 1080×1920px', ['这一年，慢慢长大', '接到第一单商单合作', '12 月']],
+  ['exhibition-poster-freeform', '9:16 · 1080×1920px', ['exhibition.', '光与影的漫游']],
+  ['dessert-menu-freeform', 'A4 · 1240×1754px', ['五月甜品', '栗子蛋糕']],
+  ['pitch-cover-freeform', '16:9 · 1920×1080px', ['增长计划']],
 ] as const) {
   test(`${templateId} opens at its size with its words`, async ({ page }) => {
     await page.goto(`/#/edit/canvas/template/${templateId}`)
@@ -104,36 +107,19 @@ test('compare-table opens with its colored, weighted columns', async ({ page }) 
   const table = page.getByTestId('freeform-table')
   await expect(table).toBeVisible()
 
-  // The template's v35 colors paint the header, the stripes, and the text.
-  await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('fill', '#e7f6f3')
-  await expect(table.locator('[data-testid="freeform-table-stripe"]').first()).toHaveAttribute('fill', '#f2faf8')
-  await expect(table.locator('[data-testid="freeform-table-cell"]').first()).toHaveAttribute('fill', '#1f2937')
+  // The template's colors paint the header, the rules and the text; the body rows stay plain.
+  await expect(table.locator('[data-testid="freeform-table-header"]')).toHaveAttribute('fill', '#dbe2fb')
+  await expect(table.locator('[data-testid="freeform-table-stripe"]')).toHaveCount(0)
+  await expect(table.locator('[data-testid="freeform-table-grid"] line').first()).toHaveAttribute('stroke', '#c9c4b8')
+  await expect(table.locator('[data-testid="freeform-table-cell"]').first()).toHaveAttribute('fill', '#171717')
 
-  // The label column takes 1.4 of the 3.4 shares: its border sits past a
-  // third of the width (the frame's sides sit half a line inside the box).
-  const edges = await table.locator('line').evaluateAll((lines) =>
-    lines
-      .map((line) => ({ x1: Number(line.getAttribute('x1')), x2: Number(line.getAttribute('x2')) }))
-      .filter(({ x1, x2 }) => x1 === x2 && x1 > 1 && x1 < 799)
-      .map(({ x1 }) => x1)
-      .sort((a, b) => a - b),
-  )
-  expect(edges[0]).toBeCloseTo((800 * 1.4) / 3.4, 0)
-  expect(edges[1]).toBeCloseTo(800 - (800 * 1) / 3.4, 0)
-})
+  // A rule under each row and none down the columns.
+  const upright = await table.locator('line').evaluateAll((lines) => lines.filter((line) => line.getAttribute('x1') === line.getAttribute('x2')).length)
+  expect(upright).toBe(0)
 
-test('growth-timeline opens with its green timeline, one dot an entry', async ({ page }) => {
-  await page.goto('/#/edit/canvas/template/growth-timeline-freeform')
-  const timeline = page.getByTestId('freeform-timeline')
-  await expect(timeline).toBeVisible()
-
-  // Five entries: five dots and five time labels on one spine, all in the template's green.
-  await expect(timeline.locator('[data-testid="freeform-timeline-spine"]')).toHaveCount(1)
-  await expect(timeline.locator('[data-testid="freeform-timeline-dot"]')).toHaveCount(5)
-  await expect(timeline.locator('[data-testid="freeform-timeline-label"]')).toHaveCount(5)
-  await expect(timeline.locator('[data-testid="freeform-timeline-text"]')).toHaveCount(5)
-  await expect(timeline.locator('[data-testid="freeform-timeline-dot"]').first()).toHaveAttribute('fill', '#0f766e')
-  await expect(timeline.locator('[data-testid="freeform-timeline-label"]').first()).toHaveAttribute('fill', '#0f766e')
-  await expect(timeline).toContainText('1 月')
-  await expect(timeline).toContainText('工作室成立，全职做内容')
+  // The label column takes 1.3 of the 3.3 shares: the header words sit at the columns' centres.
+  const centres = await table.locator('[data-testid="freeform-table-cell"]').evaluateAll((cells) => cells.slice(0, 3).map((cell) => Number(cell.getAttribute('x'))))
+  expect(centres[0]).toBeCloseTo((952 * 1.3) / 3.3 / 2, 0)
+  expect(centres[1]).toBeCloseTo((952 * 1.8) / 3.3, 0)
+  expect(centres[2]).toBeCloseTo((952 * 2.8) / 3.3, 0)
 })

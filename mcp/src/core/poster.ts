@@ -39,11 +39,15 @@ export interface PosterContent {
   chart?: PosterChartContent
 }
 
-/** A chart as poster content: labels name the categories, each series one value per label. */
+/** A chart as poster content: labels name the categories, each series one value per label; `kind` redraws it as another chart. */
 export interface PosterChartContent {
+  kind?: PosterChartKind
   labels?: string[]
   series: Array<{ name?: string; values: number[]; color?: string }>
 }
+
+const CHART_KINDS = ['bar', 'ring', 'line', 'radar'] as const
+export type PosterChartKind = (typeof CHART_KINDS)[number]
 
 export interface PosterSuccess {
   ok: true
@@ -166,6 +170,9 @@ function clean(value: unknown): string {
 function normalizeChartContent(value: unknown): PosterChartContent | string {
   if (typeof value !== 'object' || value === null) return 'content.chart 需要是对象：{ labels?: string[], series: [{ name?, values: number[], color? }] }'
   const record = value as Record<string, unknown>
+  if (record.kind !== undefined && !CHART_KINDS.includes(record.kind as PosterChartKind)) {
+    return 'content.chart.kind 只能是 bar、ring、line 或 radar（柱状、环形、折线、雷达）'
+  }
   const labels = record.labels === undefined ? undefined : record.labels as unknown
   if (labels !== undefined && (!Array.isArray(labels) || !labels.every((label) => typeof label === 'string'))) {
     return 'content.chart.labels 需要是字符串数组'
@@ -198,7 +205,11 @@ function normalizeChartContent(value: unknown): PosterChartContent | string {
       ...(color !== undefined ? { color } : {}),
     })
   }
-  return { ...(Array.isArray(labels) ? { labels: labels.map(String) } : {}), series }
+  return {
+    ...(record.kind !== undefined ? { kind: record.kind as PosterChartKind } : {}),
+    ...(Array.isArray(labels) ? { labels: labels.map(String) } : {}),
+    series,
+  }
 }
 
 /** Check and tidy poster content from a client: trimmed strings, no empty lines. */
@@ -403,6 +414,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
         const templateColors = node.series.map((entry) => entry.color)
         charted.set(node.name, {
           ...node,
+          chartKind: content.chart.kind ?? node.chartKind,
           labels: [...labels],
           series: content.chart.series.map((entry, index) => ({
             ...(entry.name !== undefined ? { name: entry.name } : {}),

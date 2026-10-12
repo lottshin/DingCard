@@ -12,9 +12,7 @@ export type FreeformDeckSeriesId =
   | 'checklist'
   | 'signal'
   | 'night-flight'
-  | 'neon'
   | 'brutalist'
-  | 'soft'
   | 'blueprint'
 
 /**
@@ -44,18 +42,19 @@ export type FreeformPosterSeriesId =
   | 'certificate'
   | 'moments-grid'
   | 'timetable'
-  | 'contact-card'
   | 'data-roundup'
-  | 'compare-table'
-  | 'follow-card'
-  | 'trend-compare'
-  | 'polaroid-wall'
-  | 'picks'
-  | 'mono-travel'
-  | 'skill-radar'
-  | 'time-split'
   | 'birthday-card'
   | 'growth-timeline'
+  | 'compare-table'
+  | 'exhibition-poster'
+  | 'launch-poster'
+  | 'solar-term'
+  | 'podcast-cover'
+  | 'pitch-cover'
+  | 'portfolio-cover'
+  | 'dessert-menu'
+  | 'wedding-invitation'
+  | 'autumn-market'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

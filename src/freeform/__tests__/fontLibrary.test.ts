@@ -92,7 +92,10 @@ describe('font library', () => {
     expect(options.slice(-3).map((option) => option.label)).toEqual(['Smiley Sans', 'Elsewhere', '导入字体…'])
     expect(options[options.length - 3].id).toBe("'Smiley Sans', sans-serif")
     expect(options[options.length - 1].id).toBe(IMPORT_FONT_OPTION)
+    // The display faces follow the shared fonts.
+    expect(fontOptions([]).slice(7).map((option) => option.label)).toEqual(['Playfair Display', 'Archivo Black', 'Great Vibes', '站酷黄油体', '马善政毛笔'])
+    expect(fontLabel('"Ma Shan Zheng", cursive')).toBe('马善政毛笔')
     // A family the list already has adds nothing.
-    expect(fontOptions([], { current: 'PingFang SC, Microsoft YaHei, system-ui, sans-serif' })).toHaveLength(7)
+    expect(fontOptions([], { current: 'PingFang SC, Microsoft YaHei, system-ui, sans-serif' })).toHaveLength(12)
   })
 })

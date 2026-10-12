@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { FreeformImageElement, FreeformShapeElement, FreeformTableElement, FreeformTextElement, FreeformTimelineElement } from '../../../src/freeform/types'
+import type { FreeformImageElement, FreeformShapeElement, FreeformTableElement, FreeformTextElement } from '../../../src/freeform/types'
 import { composePoster, normalizePosterContent } from './poster'
 import { templateMarks } from './layoutIssues'
 import { posterTemplateIds } from './templates'
@@ -67,7 +67,7 @@ describe('composePoster', () => {
     expect(chart.series.map((entry) => entry.name)).toEqual(['图文', '视频'])
     expect(chart.series[0].values).toEqual([12, 18, 15, 24])
     // The colour the content leaves out keeps the template's; the given one lands.
-    expect(chart.series[0].color).toBe('#94a3b8')
+    expect(chart.series[0].color).toBe('#d9442a')
     expect(chart.series[1].color).toBe('#e11d48')
     // The template's stacking and kind stay as drawn.
     expect(chart.chartKind).toBe('bar')
@@ -86,81 +86,57 @@ describe('composePoster', () => {
     expect(unused.summary.unused).toContain('chart')
   })
 
-  test('fills the radar chart and its keyword chips on the skill poster', () => {
-    const result = compose('skill-radar-freeform', {
+  test('redraws the chart as the kind the content asks for, keeping the template colours', () => {
+    const radar = compose('data-roundup-freeform', {
       title: '产品能力雷达',
       chart: {
+        kind: 'radar',
         labels: ['洞察', '方案', '落地', '沟通', '数据', '复盘'],
         series: [
           { name: '入职', values: [4, 5, 3, 6, 4, 5] },
           { name: '现在', values: [8, 7, 9, 7, 8, 6] },
         ],
       },
-      details: ['洞察用户', '推动落地', '数据说话'],
-      body: '下一站：把复盘变成团队的习惯',
     })
-    const chart = result.document.slides[0].nodes.find((node) => node.type === 'chart')
+    const chart = radar.document.slides[0].nodes.find((node) => node.type === 'chart')
     if (!chart || chart.type !== 'chart') throw new Error('Expected a chart')
     expect(chart.chartKind).toBe('radar')
     expect(chart.labels).toEqual(['洞察', '方案', '落地', '沟通', '数据', '复盘'])
     expect(chart.series.map((entry) => entry.name)).toEqual(['入职', '现在'])
-    // The template's own series colours carry over in order.
-    expect(chart.series.map((entry) => entry.color)).toEqual(['#94a3b8', '#6366f1'])
-    // The keyword chips fill with their boards still behind them.
-    expect(named(result, '词条一')?.type).toBe('text')
-    expect(named(result, '词条底板一')?.type).toBe('shape')
-    expect((named(result, '词条一') as FreeformTextElement | undefined)?.text).toBe('洞察用户')
+    // The template's one series colour carries over; a second series takes the default.
+    expect(chart.series.map((entry) => entry.color)).toEqual(['#d9442a', '#1d4ed8'])
 
-    // Without details the chips go with their boards, and the radar stays as drawn.
-    const bare = compose('skill-radar-freeform', { title: '能力雷达' })
-    expect(named(bare, '词条一')).toBeUndefined()
-    expect(named(bare, '词条底板一')).toBeUndefined()
-    const keptChart = bare.document.slides[0].nodes.find((node) => node.type === 'chart')
-    expect(keptChart && keptChart.type === 'chart' ? keptChart.labels : []).toEqual(['设计', '写作', '摄影', '剪辑', '运营', '表达'])
-  })
-
-  test('fills the ring chart and the hour stats on the time-split poster', () => {
-    const result = compose('time-split-freeform', {
+    const ring = compose('data-roundup-freeform', {
       title: '这一周的时间去哪了',
-      chart: {
-        labels: ['睡觉', '上班', '读书', '健身', '发呆'],
-        series: [{ values: [56, 50, 12, 6, 10] }],
-      },
+      chart: { kind: 'ring', labels: ['睡觉', '上班', '读书', '健身', '发呆'], series: [{ values: [56, 50, 12, 6, 10] }] },
       details: ['睡觉：56 小时', '上班：50 小时', '读书：12 小时'],
-      brand: '@叮卡时间账本',
     })
-    const chart = result.document.slides[0].nodes.find((node) => node.type === 'chart')
-    if (!chart || chart.type !== 'chart') throw new Error('Expected a chart')
-    expect(chart.chartKind).toBe('ring')
-    expect(chart.labels).toEqual(['睡觉', '上班', '读书', '健身', '发呆'])
-    expect(chart.series).toHaveLength(1)
-    expect(chart.series[0].values).toEqual([56, 50, 12, 6, 10])
-    // The template's own series colour carries over.
-    expect(chart.series[0].color).toBe('#0f766e')
-    // The hour stats split on the colon into their label and value nodes.
-    expect((named(result, '标签一') as FreeformTextElement | undefined)?.text).toBe('睡觉')
-    expect((named(result, '信息一') as FreeformTextElement | undefined)?.text).toBe('56 小时')
-    expect((named(result, '信息三') as FreeformTextElement | undefined)?.text).toBe('12 小时')
+    const ringChart = ring.document.slides[0].nodes.find((node) => node.type === 'chart')
+    expect(ringChart?.type === 'chart' ? ringChart.chartKind : null).toBe('ring')
+    // The stats split on the colon into their label and value nodes.
+    expect((named(ring, '标签一') as FreeformTextElement | undefined)?.text).toBe('睡觉')
+    expect((named(ring, '信息三') as FreeformTextElement | undefined)?.text).toBe('12 小时')
 
-    // Without details the ungiven rows go with their labels.
-    const bare = compose('time-split-freeform', { title: '时间分配' })
-    expect(named(bare, '标签一')).toBeUndefined()
-    expect(named(bare, '信息一')).toBeUndefined()
+    // A kind the chart element doesn't draw is turned away.
+    expect(normalizePosterContent({ title: 'a', chart: { kind: 'pie', series: [{ values: [1] }] } })).toContain('kind')
+    // Without a kind the template's chart kind stays.
+    const bare = compose('data-roundup-freeform', { title: '盘点', chart: { series: [{ values: [1, 2, 3, 4, 5, 6] }] } })
+    const bareChart = bare.document.slides[0].nodes.find((node) => node.type === 'chart')
+    expect(bareChart?.type === 'chart' ? bareChart.chartKind : null).toBe('bar')
   })
 
-  test('fills the birthday card and keeps its patterned page', () => {
+  test('fills the birthday card and keeps its confetti', () => {
     const result = compose('birthday-card-freeform', {
       title: '生日快乐',
-      subtitle: '愿新的一岁，事事顺遂',
       body: '愿你保持好奇，睡饱吃好，把日子过成自己喜欢的样子。',
       recipient: '小叮',
+      brand: '— 爱你的大家',
     })
     expect((named(result, '正文') as FreeformTextElement | undefined)?.text).toContain('把日子过成自己喜欢的样子')
     expect((named(result, '名字') as FreeformTextElement | undefined)?.text).toBe('小叮')
-    // The patterned page (v32) survives the fill untouched.
-    expect(result.document.slides[0].background).toEqual({
-      type: 'pattern', color: '#fdf2f8', patternColor: '#fbcfe8', pattern: 'dots', size: 24,
-    })
+    expect((named(result, '署名') as FreeformTextElement | undefined)?.text).toBe('— 爱你的大家')
+    // The confetti is the design, not a sample: it stays.
+    expect(result.document.slides[0].nodes.filter((node) => node.name.startsWith('彩纸'))).toHaveLength(18)
     // Without a recipient the name line goes with its slot.
     const bare = compose('birthday-card-freeform', { title: '生日快乐' })
     expect(named(bare, '名字')).toBeUndefined()
@@ -219,19 +195,19 @@ describe('composePoster', () => {
   })
 
   test('words without their own slot take a free one of a similar kind', () => {
-    // A certificate's date line in its empty information row, a birthday sign-off under the title.
+    // A certificate's date line in its empty information row, a birthday card's subtitle in its message.
     const certificate = compose('certificate-freeform', { title: '最佳新人奖', recipient: '小林', cta: '颁奖日期：12 月 31 日' })
     expect(certificate.summary.moved).toEqual([{ content: 'cta', text: '颁奖日期：12 月 31 日', node: '信息一' }])
     expect((named(certificate, '信息一') as FreeformTextElement).text).toBe('颁奖日期：12 月 31 日')
-    const birthday = compose('birthday-card-freeform', { title: '生日快乐', recipient: '阿澄', brand: '爱你的大家' })
+    const birthday = compose('birthday-card-freeform', { title: '生日快乐', recipient: '阿澄', subtitle: '又长大一岁' })
     expect(birthday.summary.unused).toEqual([])
-    expect((named(birthday, '副标题') as FreeformTextElement).text).toBe('爱你的大家')
+    expect((named(birthday, '正文') as FreeformTextElement).text).toBe('又长大一岁')
     // A card that says 生日快乐 is not a template left as it was.
     expect(templateMarks().samples.has('生日快乐')).toBe(false)
-    // With the subtitle taken, the sign-off has nowhere to go.
-    const full = compose('birthday-card-freeform', { title: '生日快乐', subtitle: '又长大一岁', brand: '爱你的大家' })
-    expect(full.summary.unused).toEqual(['brand'])
-    expect(full.summary.hint).toContain('署名「爱你的大家」')
+    // With the message taken, the subtitle has nowhere to go.
+    const full = compose('birthday-card-freeform', { title: '生日快乐', subtitle: '又长大一岁', body: '愿望都灵' })
+    expect(full.summary.unused).toEqual(['subtitle'])
+    expect(full.summary.hint).toContain('副标题「又长大一岁」')
   })
 
   test('shrinks a badge\'s words further than copy so they stay inside it', () => {
@@ -314,21 +290,22 @@ describe('composePoster', () => {
     expect(element.rows).toBe(3)
     expect(element.cols).toBe(3)
     expect(element.cells).toEqual(['对比项', '自己装', '找师傅', '费用', '0 元', '150 元', '耗时', '一整天', '两小时'])
-    // The template's stripes and default header stay as drawn, and its colors
-    // and column weights ride along into the filled table.
-    expect(element.striped).toBe(true)
+    // The template's rules and default header stay as drawn, and its colors,
+    // type size and column weights ride along into the filled table.
+    expect(element.grid).toBe('rows')
     expect(element.headerRow).toBeUndefined()
-    expect(element.ink).toBe('#1f2937')
-    expect(element.headerFill).toBe('#e7f6f3')
-    expect(element.colWidths).toEqual([1.4, 1, 1])
+    expect(element.ink).toBe('#171717')
+    expect(element.headerFill).toBe('#dbe2fb')
+    expect(element.fontSize).toBe(38)
+    expect(element.colWidths).toEqual([1.3, 1, 1])
 
     // A narrower table remaps the template's column weights; its colors stay.
     const twoCols = compose('compare-table-freeform', { title: '对比', table: [['只有一行', '两格'], ['第二行', '两格']] })
     const twoColsElement = named(twoCols, '对比表') as FreeformTableElement
     expect(twoColsElement.cols).toBe(2)
-    expect(twoColsElement.colWidths).toEqual([1.4, 1])
-    expect(twoColsElement.ink).toBe('#1f2937')
-    expect(twoColsElement.stripeFill).toBe('#f2faf8')
+    expect(twoColsElement.colWidths).toEqual([1.3, 1])
+    expect(twoColsElement.ink).toBe('#171717')
+    expect(twoColsElement.lineColor).toBe('#c9c4b8')
 
     // Ragged rows fill out to the widest row, and a middle row of blanks keeps its place.
     const ragged = compose('compare-table-freeform', { title: '对比', table: [['只有一行', '两格'], [], ['第三行']] })
@@ -353,52 +330,26 @@ describe('composePoster', () => {
     expect(keptElement.cells).toContain('12 元/月')
   })
 
-  test('fills the growth poster\'s timeline from details lines, label before the colon', () => {
+  test('fills the growth poster\'s steps from details lines, label before the colon', () => {
     const result = compose('growth-timeline-freeform', {
       title: '这一年，慢慢长大',
       subtitle: '五个节点，把一年的变化串起来',
-      tag: 'GROWING LOG',
+      tag: '2026',
       body: '明年，把画画捡回来',
       brand: '@叮卡成长记录',
       details: ['3 月：注册账号，发出第一篇笔记', '6 月：接到第一单商单合作', '9 月：粉丝破万，开始做系列内容'],
     })
-    const element = named(result, '时间线') as FreeformTimelineElement
-    // Whole-set replacement: the template's five sample entries give way to the three lines.
-    expect(element.items).toEqual([
-      { label: '3 月', text: '注册账号，发出第一篇笔记' },
-      { label: '6 月', text: '接到第一单商单合作' },
-      { label: '9 月', text: '粉丝破万，开始做系列内容' },
-    ])
-    // The template's accent rides along, and nothing goes unused or unplaced.
-    expect(element.accent).toBe('#0f766e')
+    const text = (name: string) => (named(result, name) as FreeformTextElement | undefined)?.text
+    expect([text('标签一'), text('信息一')]).toEqual(['3 月', '注册账号，发出第一篇笔记'])
+    expect([text('标签三'), text('信息三')]).toEqual(['9 月', '粉丝破万，开始做系列内容'])
+    // Steps it wasn't given go with their dots; the three spread down the spine.
+    expect(named(result, '信息四')).toBeUndefined()
+    expect(named(result, '节点四')).toBeUndefined()
+    expect(named(result, '节点三')).toBeDefined()
+    const gap = (named(result, '信息二')!.y - named(result, '信息一')!.y)
+    expect(gap).toBeGreaterThan(186)
     expect(result.summary.unused).toEqual([])
     expect(result.summary.unplaced).toEqual([])
-
-    // A line without a colon is its own text, label omitted.
-    const bare = compose('growth-timeline-freeform', { title: '成长', details: ['注册账号，发出第一篇笔记', '接到第一单商单合作'] })
-    expect((named(bare, '时间线') as FreeformTimelineElement).items).toEqual([
-      { text: '注册账号，发出第一篇笔记' },
-      { text: '接到第一单商单合作' },
-    ])
-
-    // Entries past eight land in unplaced.
-    const over = compose('growth-timeline-freeform', {
-      title: '成长',
-      details: Array.from({ length: 10 }, (_, index) => `第${index + 1} 月：第 ${index + 1} 件事`),
-    })
-    const overElement = named(over, '时间线') as FreeformTimelineElement
-    expect(overElement.items).toHaveLength(8)
-    expect(over.summary.unplaced).toEqual(['第9 月：第 9 件事', '第10 月：第 10 件事'])
-
-    // A single line cannot feed a timeline: the template's entries stay and the line goes unused.
-    const lone = compose('growth-timeline-freeform', { title: '成长', details: ['只有一条'] })
-    const loneElement = named(lone, '时间线') as FreeformTimelineElement
-    expect(loneElement.items.some((item) => item.label === '1 月')).toBe(true)
-    expect(lone.summary.unused).toEqual(['details'])
-
-    // Without details the template's own entries stay, like a kept illustration.
-    const kept = compose('growth-timeline-freeform', { title: '这一年，慢慢长大' })
-    expect((named(kept, '时间线') as FreeformTimelineElement).items).toHaveLength(5)
   })
 
   test('keeps the list card only with lines on it, and an illustration that is the design itself', () => {

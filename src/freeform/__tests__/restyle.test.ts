@@ -202,7 +202,7 @@ describe('restyleDocument', () => {
   })
 
   it('leaves the document alone for a request it cannot use, and says why', () => {
-    const document = template('neon-freeform')
+    const document = template('night-flight-freeform')
     expect(restyleDocument(document, { palette: 'nope' })).toBe(document)
     expect(restyleRequestProblem({ palette: 'nope' })).toContain('palette')
     expect(restyleRequestProblem({ fontSet: 'nope' })).toContain('fontSet')

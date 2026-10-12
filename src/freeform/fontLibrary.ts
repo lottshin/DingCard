@@ -6,7 +6,7 @@
 
 import { randomId } from '../uid'
 import { useSyncExternalStore } from 'react'
-import { FONTS } from '../theme'
+import { FREEFORM_FONTS } from '../theme'
 import {
   cleanFontName,
   fontFileFormat,
@@ -143,7 +143,7 @@ export function createDocumentFontRegistry(): FontRegistry {
 }
 
 const BUILT_IN_FAMILIES = new Set(
-  FONTS.flatMap((font) => font.id.split(',')).map((family) => family.trim().replace(/^['"]|['"]$/g, '').toLowerCase()),
+  FREEFORM_FONTS.flatMap((font) => font.id.split(',')).map((family) => family.trim().replace(/^['"]|['"]$/g, '').toLowerCase()),
 )
 
 function firstFamily(fontFamily: string): string {
