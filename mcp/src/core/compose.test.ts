@@ -99,7 +99,7 @@ describe('composeDeck', () => {
       .filter((node): node is FreeformTextElement => node.type === 'text')
     // The editorial paragraph sits above its steps, so the fourth point joins the last step.
     expect(editorial.find((node) => node.name === '步骤三')?.text).toBe('03\n一起煮二十分钟；最后焖五分钟')
-    const blueprint = compose('blueprint-freeform').document.slides[3].nodes
+    const blueprint = compose('blueprint-freeform', onSection).document.slides[3].nodes
       .filter((node): node is FreeformTextElement => node.type === 'text')
     expect(blueprint.find((node) => node.name === '装配步骤')?.text).toContain('最后焖五分钟')
   })
@@ -185,8 +185,10 @@ describe('composeDeck', () => {
       .find((node) => node.name === name) as FreeformTextElement).text
     expect(heading('editorial-freeform', 0, '主标题')).toBe('30 天养成\n早起习惯')
     expect(heading('editorial-freeform', 1, '标题')).toBe('先把睡眠时间\n固定下来')
-    // A heading that fits one line keeps it.
-    expect(heading('night-flight-freeform', 1, '页标题')).toBe('先把睡眠时间固定下来')
+    // A heading that fits one line keeps it (the night flight's section page draws one).
+    const onSection = { ...content, pages: content.pages.map((page) => ({ ...page, layout: 'section' as const })) }
+    expect((compose('night-flight-freeform', onSection).document.slides[1].nodes
+      .find((node) => node.name === '页标题') as FreeformTextElement).text).toBe('先把睡眠时间固定下来')
     // A title drawn as two texts splits where the two set most evenly, not at the first space.
     expect(heading('signal-freeform', 0, '标题上')).toBe('30 天养成')
     expect(heading('signal-freeform', 0, '标题下')).toBe('早起习惯')
@@ -242,8 +244,10 @@ describe('composeDeck', () => {
 
     const { summary } = compose('editorial-freeform')
     expect(summary.pages.map((page) => page.layout)).toEqual([undefined, 'section', 'statement', 'list', undefined])
-    // A deck without these pages draws its section page.
-    expect(compose('night-flight-freeform').summary.pages.map((page) => page.layout)).toEqual([undefined, 'section', 'section', 'section', undefined])
+    // Every deck draws these pages, so the same content takes the same pages on each.
+    for (const templateId of ['checklist-freeform', 'signal-freeform', 'night-flight-freeform', 'brutalist-freeform', 'blueprint-freeform']) {
+      expect(compose(templateId).summary.pages.map((page) => page.layout), templateId).toEqual([undefined, 'section', 'statement', 'list', undefined])
+    }
   })
 
   test('spreads fewer points down a list page, keeping them a list', () => {

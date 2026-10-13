@@ -54,6 +54,8 @@ export interface TemplateSlots {
 }
 
 const steps = (names: readonly [string, string, string]): SlotItem[] => names.map((text) => ({ text }))
+/** The five rows a list page draws, named 一 to 五. */
+const FIVE = ['一', '二', '三', '四', '五'] as const
 
 export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots> = {
   editorial: {
@@ -91,7 +93,7 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
         title: '标题',
         lead: '导语',
         leadFlow: { pinned: ['页脚线', '页脚'] },
-        items: (['一', '二', '三', '四', '五'] as const).map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`编号${n}`, `要点线${n}`] })),
+        items: FIVE.map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`编号${n}`, `要点线${n}`] })),
         itemsExtras: ['要点顶线'],
         spreadItems: true,
         numbers: ['页码', '页脚'],
@@ -145,6 +147,32 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       ],
       numbers: ['刊头', '完成进度'],
     },
+    layouts: {
+      statement: {
+        title: '标题',
+        lead: '导语',
+        leadExtras: ['批注底板'],
+        numbers: ['刊头', '大页码'],
+      },
+      list: {
+        title: '标题',
+        lead: '导语',
+        items: FIVE.map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`复选框${n}`, `要点线${n}`] })),
+        spreadItems: true,
+        numbers: ['刊头'],
+      },
+      data: {
+        title: '标题',
+        lead: '导语',
+        numbers: ['刊头'],
+        remove: [{ text: '示例图表' }],
+      },
+      closing: {
+        title: '标题',
+        lead: '结论',
+        numbers: ['刊头', '完成进度'],
+      },
+    },
   },
   signal: {
     cover: {
@@ -179,7 +207,7 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       list: {
         title: '主标题',
         lead: '左栏正文',
-        items: (['一', '二', '三', '四', '五'] as const).map((n) => ({ text: `证据${n}`, extras: [`证据编号${n}`, `证据线${n}`] })),
+        items: FIVE.map((n) => ({ text: `证据${n}`, extras: [`证据编号${n}`, `证据线${n}`] })),
         spreadItems: true,
         numbers: ['页码', '页脚'],
       },
@@ -219,6 +247,31 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       quote: { text: '结论', note: '补充结论', extras: ['结论底板'] },
       numbers: ['路线编号'],
     },
+    layouts: {
+      statement: {
+        title: '标题',
+        lead: '导语',
+        numbers: ['刊头', '大页码'],
+      },
+      list: {
+        title: '标题',
+        lead: '导语',
+        items: FIVE.map((n) => ({ text: `记录${n}`, note: `说明${n}`, extras: [`时间点${n}`, `记录线${n}`] })),
+        spreadItems: true,
+        numbers: ['刊头'],
+      },
+      data: {
+        title: '标题',
+        lead: '导语',
+        numbers: ['刊头'],
+        remove: [{ text: '示例图表' }],
+      },
+      closing: {
+        title: '主标题',
+        lead: '收束句',
+        numbers: ['路线编号'],
+      },
+    },
   },
   brutalist: {
     cover: {
@@ -242,6 +295,31 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       quote: { text: '正文二' },
       numbers: ['边栏刊头', '边栏页脚'],
     },
+    layouts: {
+      statement: {
+        title: '标题',
+        lead: '导语',
+        numbers: ['刊头', '大页码'],
+      },
+      list: {
+        title: '页标题',
+        lead: '导语',
+        items: FIVE.map((n) => ({ text: `规则${n}`, note: `注释${n}`, extras: [`编号${n}`, `编号块${n}`, `规则线${n}`] })),
+        spreadItems: true,
+        numbers: ['刊头'],
+      },
+      data: {
+        title: '标题',
+        lead: '导语',
+        numbers: ['刊头'],
+        remove: [{ text: '示例图表' }],
+      },
+      closing: {
+        title: '结尾大字',
+        lead: '正文',
+        numbers: ['边栏刊头', '边栏页脚'],
+      },
+    },
   },
   blueprint: {
     cover: {
@@ -264,6 +342,31 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       lead: '导语',
       quote: { text: '签收标题', note: '签收状态', extras: ['签收底板', '签名线', '签名标注'] },
       numbers: ['图纸编号'],
+    },
+    layouts: {
+      statement: {
+        title: '标题',
+        lead: '导语',
+        numbers: ['图纸编号', '大页码'],
+      },
+      list: {
+        title: '标题',
+        lead: '导语',
+        items: FIVE.map((n) => ({ text: `部件${n}`, note: `规格${n}`, extras: [`编号${n}`, `编号框${n}`, `部件线${n}`] })),
+        spreadItems: true,
+        numbers: ['图纸编号'],
+      },
+      data: {
+        title: '标题',
+        lead: '导语',
+        numbers: ['图纸编号'],
+        remove: [{ text: '示例图表' }],
+      },
+      closing: {
+        title: '主标题',
+        lead: '导语',
+        numbers: ['图纸编号'],
+      },
     },
   },
 }

@@ -817,18 +817,19 @@ function createEditorialDocument(): FreeformDocument {
   ])
 }
 
+const CHECKLIST = {
+  paper: '#f3f5ec', green: '#1f4d3a', deep: '#14261d', mint: '#dfe9dc', yellow: '#f2c94c', muted: '#5c6f64', rule: '#dce3d6',
+  frame: '#cfd8cb', ruleOnGreen: '#3c6a56', mutedOnGreen: '#a8c3b5',
+}
+
+const checklistFooter = (color: string) => textNode('DINGCARD WORKBOOK', 88, 1318, 600, 44, {
+  name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(color), fontWeight: 'bold', letterSpacing: 4,
+})
+
 function createChecklistDocument(): FreeformDocument {
-  const paper = '#f3f5ec'
-  const green = '#1f4d3a'
-  const deep = '#14261d'
-  const mint = '#dfe9dc'
-  const yellow = '#f2c94c'
-  const muted = '#5c6f64'
-  const rule = '#dce3d6'
+  const { paper, green, deep, mint, yellow, muted, rule, frame, ruleOnGreen, mutedOnGreen } = CHECKLIST
   const white = '#ffffff'
-  const footer = (color: string) => textNode('DINGCARD WORKBOOK', 88, 1318, 600, 44, {
-    name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(color), fontWeight: 'bold', letterSpacing: 4,
-  })
+  const footer = checklistFooter
   const step = (index: number, number: string, title: string, note: string, plate: string, digits: string) => {
     const y = 396 + index * 230
     const names = ['一', '二', '三'][index]
@@ -845,7 +846,7 @@ function createChecklistDocument(): FreeformDocument {
     const names = ['一', '二', '三'][index]
     return [
       shapeNode('ellipse', 88, y, 76, 76, solid(yellow), { name: `完成点${names}` }),
-      lineNode(196, y + 110, 796, '#3c6a56', 2, { name: `验收线${names}` }),
+      lineNode(196, y + 110, 796, ruleOnGreen, 2, { name: `验收线${names}` }),
       textNode('✓', 88, y + 8, 76, 60, { name: `勾${names}`, fontSize: 40, fontFamily: UI, textFill: solid(green), fontWeight: 'bold', align: 'center' }),
       textNode(text, 196, y + 2, 796, 72, { name: `验收项${names}`, fontSize: 46, textFill: solid(paper), fontWeight: 'bold' }),
     ]
@@ -853,13 +854,13 @@ function createChecklistDocument(): FreeformDocument {
   return documentFromSlides([
     slide('封面', solid(paper), [
       pathNode('M 24 112 L 96 184 L 236 24', 760, 70, 260, 210, { name: '勾形', stroke: yellow, strokeWidth: 40, cap: 'round', join: 'round' }),
-      lineNode(88, 806, 904, '#cfd8cb', 2, { name: '清单线一' }),
+      lineNode(88, 806, 904, frame, 2, { name: '清单线一' }),
       shapeNode('rect', 88, 846, 60, 60, solid(green), { name: '复选框一', cornerRadius: 16 }),
       shapeNode('rect', 88, 976, 60, 60, solid(paper), { name: '复选框二', cornerRadius: 16, stroke: green, strokeWidth: 5 }),
       shapeNode('rect', 88, 1106, 60, 60, solid(paper), { name: '复选框三', cornerRadius: 16, stroke: green, strokeWidth: 5 }),
       lineNode(88, 934, 904, rule, 2, { name: '清单线二' }),
       lineNode(88, 1064, 904, rule, 2, { name: '清单线三' }),
-      lineNode(88, 1294, 904, '#cfd8cb', 2, { name: '页脚线' }),
+      lineNode(88, 1294, 904, frame, 2, { name: '页脚线' }),
       textNode('CHECKLIST', 88, 110, 360, 60, {
         name: '标签文字', fontSize: 30, fontFamily: UI, textFill: solid(green), fontWeight: 'bold', letterSpacing: 5,
         effect: { type: 'background', color: yellow, amount: 55, radius: 100 },
@@ -874,9 +875,9 @@ function createChecklistDocument(): FreeformDocument {
       textNode('01 / 03', 692, 1318, 300, 44, { name: '边栏页码', fontSize: 26, fontFamily: UI, textFill: solid(green), fontWeight: 'bold', align: 'right', letterSpacing: 2 }),
     ]),
     slide('步骤', solid(paper), [
-      lineNode(88, 164, 904, '#cfd8cb', 2, { name: '刊头线' }),
+      lineNode(88, 164, 904, frame, 2, { name: '刊头线' }),
       shapeNode('rect', 88, 1094, 904, 176, solid(mint), { name: '批注底板', cornerRadius: 32 }),
-      lineNode(88, 1294, 904, '#cfd8cb', 2, { name: '页脚线' }),
+      lineNode(88, 1294, 904, frame, 2, { name: '页脚线' }),
       textNode('CHECKLIST / 02', 88, 100, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(green), fontWeight: 'bold', letterSpacing: 4 }),
       textNode('开工前确认', 80, 200, 920, 150, { name: '页标题', fontSize: 104, textFill: solid(deep), fontWeight: 'bold', letterSpacing: -1 }),
       ...step(0, '01', '这次只解决一个问题', '范围越清楚，开始越容易。', green, white),
@@ -886,8 +887,8 @@ function createChecklistDocument(): FreeformDocument {
       footer(green),
     ]),
     slide('验收', solid(green), [
-      lineNode(88, 164, 904, '#3c6a56', 2, { name: '刊头线' }),
-      lineNode(88, 1294, 904, '#3c6a56', 2, { name: '页脚线' }),
+      lineNode(88, 164, 904, ruleOnGreen, 2, { name: '刊头线' }),
+      lineNode(88, 1294, 904, ruleOnGreen, 2, { name: '页脚线' }),
       textNode('FINAL CHECK / 03', 88, 100, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: 4 }),
       textNode('发布前，\n逐项打勾', 80, 196, 920, 290, { name: '标题', fontSize: 112, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -1 }),
       ...check(0, '第一页能看懂主题'),
@@ -895,9 +896,98 @@ function createChecklistDocument(): FreeformDocument {
       ...check(2, '最后一页给出下一步'),
       textNode('03 / 03', 80, 960, 920, 230, { name: '完成进度', fontSize: 200, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: -6, lineHeight: 1 }),
       textNode('全部完成，可以导出。', 88, 1196, 904, 72, { name: '结论', fontSize: 40, textFill: solid(paper), fontWeight: 'bold' }),
-      footer('#a8c3b5'),
+      footer(mutedOnGreen),
     ]),
   ])
+}
+
+/** The workbook's other inner pages (DeckLayoutId): its number plates, tick boxes and note card. */
+const CHECKLIST_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
+  // One thing to remember: the page's number on a plate, the heading over the note card.
+  statement: () => {
+    const { paper, green, deep, mint, yellow, frame } = CHECKLIST
+    return slide('重点页', solid(paper), [
+      lineNode(88, 164, 904, frame, 2, { name: '刊头线' }),
+      shapeNode('rect', 88, 228, 200, 200, solid(green), { name: '编号底板', cornerRadius: 52 }),
+      pathNode('M 24 112 L 96 184 L 236 24', 732, 222, 260, 210, { name: '勾形', stroke: yellow, strokeWidth: 40, cap: 'round', join: 'round' }),
+      shapeNode('rect', 88, 820, 904, 400, solid(mint), { name: '批注底板', cornerRadius: 32 }),
+      lineNode(88, 1294, 904, frame, 2, { name: '页脚线' }),
+      textNode('CHECKLIST / 02', 88, 100, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(green), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('02', 88, 228, 200, 200, {
+        name: '大页码', fontSize: 104, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', lineHeight: 1, verticalAlign: 'middle',
+      }),
+      textNode('这一页\n只记一件事', 80, 470, 920, 300, {
+        name: '标题', fontSize: 112, textFill: solid(deep), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -1, verticalAlign: 'bottom',
+      }),
+      textNode('把最要紧的那一句写进这张卡片，其余的留到下一页。', 136, 856, 808, 328, {
+        name: '导语', fontSize: 44, textFill: solid(green), fontWeight: 'bold', lineHeight: 1.5, verticalAlign: 'middle',
+      }),
+      checklistFooter(green),
+    ])
+  },
+  // A list to tick off: a rule over each row, a box before each point, its note under it.
+  list: () => {
+    const { paper, green, deep, muted, rule, frame } = CHECKLIST
+    const row = (index: number, text: string, note: string) => {
+      const y = 500 + index * 156
+      const n = NUMBERED[index]
+      return [
+        lineNode(88, y - 24, 904, rule, 2, { name: `要点线${n}` }),
+        shapeNode('rect', 88, y + 2, 60, 60, solid(paper), { name: `复选框${n}`, cornerRadius: 16, stroke: green, strokeWidth: 5 }),
+        textNode(text, 180, y - 4, 812, 68, { name: `要点${n}`, fontSize: 46, textFill: solid(deep), fontWeight: 'bold' }),
+        textNode(note, 180, y + 68, 812, 46, { name: `说明${n}`, fontSize: 30, textFill: solid(muted) }),
+      ]
+    }
+    return slide('清单页', solid(paper), [
+      lineNode(88, 164, 904, frame, 2, { name: '刊头线' }),
+      lineNode(88, 1294, 904, frame, 2, { name: '页脚线' }),
+      ...row(0, '先列出要做的事', '一行只写一件'),
+      ...row(1, '每一项都能打勾', '做完就能确认'),
+      ...row(2, '难的放在前面', '趁精力最好的时候'),
+      ...row(3, '留出检查的时间', '最后一项是复查'),
+      ...row(4, '做完一项划一项', '看得见的进度最有用'),
+      textNode('CHECKLIST / 02', 88, 100, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(green), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('照着清单做', 80, 200, 920, 150, { name: '标题', fontSize: 104, textFill: solid(deep), fontWeight: 'bold', letterSpacing: -1 }),
+      textNode('一行只写一件事；做完一项，就在前面的方框里打一个勾。', 88, 362, 904, 100, { name: '导语', fontSize: 34, textFill: solid(muted), lineHeight: 1.45 }),
+      checklistFooter(green),
+    ])
+  },
+  // The progress page: green like the final check, the drawing in its yellow.
+  data: () => {
+    const { paper, green, mint, yellow, ruleOnGreen, mutedOnGreen } = CHECKLIST
+    return slide('进度页', solid(green), [
+      lineNode(88, 164, 904, ruleOnGreen, 2, { name: '刊头线' }),
+      lineNode(88, 1294, 904, ruleOnGreen, 2, { name: '页脚线' }),
+      chartNode('bar', ['第一周', '第二周', '第三周', '第四周'], [{ name: '完成', values: [3, 5, 8, 12], color: yellow }], 88, 520, 904, 720, {
+        name: '示例图表', showValues: true, ink: mutedOnGreen,
+      }),
+      textNode('PROGRESS / 02', 88, 100, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('做到哪一步了', 80, 200, 920, 150, { name: '标题', fontSize: 104, textFill: solid(paper), fontWeight: 'bold', letterSpacing: -1 }),
+      textNode('一张图看清进度：每周完成的项目，一周比一周多。', 88, 362, 904, 100, { name: '导语', fontSize: 34, textFill: solid(mint), lineHeight: 1.45 }),
+      checklistFooter(mutedOnGreen),
+    ])
+  },
+  // The last page for a sentence or two: every box ticked, then the heading and the words.
+  closing: () => {
+    const { paper, green, yellow, ruleOnGreen, mutedOnGreen } = CHECKLIST
+    return slide('完成页', solid(green), [
+      lineNode(88, 164, 904, ruleOnGreen, 2, { name: '刊头线' }),
+      shapeNode('ellipse', 832, 206, 160, 160, solid(yellow), { name: '完成点' }),
+      lineNode(88, 1294, 904, ruleOnGreen, 2, { name: '页脚线' }),
+      textNode('FINAL CHECK / 03', 88, 100, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('03 / 03', 80, 196, 720, 180, { name: '完成进度', fontSize: 180, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: -6, lineHeight: 1 }),
+      textNode('✓', 832, 206, 160, 160, {
+        name: '勾', fontSize: 96, fontFamily: UI, textFill: solid(green), fontWeight: 'bold', align: 'center', lineHeight: 1, verticalAlign: 'middle',
+      }),
+      textNode('最后，\n只做这一件', 80, 420, 920, 330, {
+        name: '标题', fontSize: 112, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -1, verticalAlign: 'bottom',
+      }),
+      textNode('全部打完勾，就合上本子，去做下一件事。', 88, 800, 904, 440, {
+        name: '结论', fontSize: 60, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.4, verticalAlign: 'middle',
+      }),
+      checklistFooter(mutedOnGreen),
+    ])
+  },
 }
 
 const SIGNAL = { paper: '#f1efe9', black: '#111111', red: '#d63b24', blue: '#2550d9', yellow: '#f4c542', rule: '#cfcbc2', grey: '#55524c' }
@@ -1148,14 +1238,10 @@ const SIGNAL_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
   closing: () => signalClosing(),
 }
 
+const NIGHT_FLIGHT = { night: '#0e1824', cream: '#f4eee2', amber: '#f2b84b', teal: '#6fb7c8', coral: '#e8664a', muted: '#a6b3bf', rule: '#26374a', axis: '#3d5570' }
+
 function createNightFlightDocument(): FreeformDocument {
-  const night = '#0e1824'
-  const cream = '#f4eee2'
-  const amber = '#f2b84b'
-  const teal = '#6fb7c8'
-  const coral = '#e8664a'
-  const muted = '#a6b3bf'
-  const rule = '#26374a'
+  const { night, cream, amber, teal, coral, muted, rule, axis } = NIGHT_FLIGHT
   const record = (index: number, time: string, color: string, text: string) => {
     const y = 470 + index * 220
     const names = ['一', '二', '三'][index]
@@ -1165,7 +1251,7 @@ function createNightFlightDocument(): FreeformDocument {
         ...(index === 2 ? { shadow: { color, blur: 18, offsetX: 0, offsetY: 0 } } : {}),
       }),
       ...(index < 2 ? [
-        verticalLineNode(114, y + 56, y + 224, '#3d5570', 4, { name: `时间轴${names}` }),
+        verticalLineNode(114, y + 56, y + 224, axis, 4, { name: `时间轴${names}` }),
         lineNode(168, y + 168, 824, rule, 2, { name: `记录线${names}` }),
       ] : []),
       textNode(time, 168, y, 300, 56, { name: `时间${names}`, fontSize: 36, fontFamily: UI, textFill: solid(color), fontWeight: 'bold', letterSpacing: 2 }),
@@ -1229,11 +1315,101 @@ function createNightFlightDocument(): FreeformDocument {
   ])
 }
 
+/** The night flight's other inner pages (DeckLayoutId): the log's serif headings, its lit dots and the route home. */
+const NIGHT_FLIGHT_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
+  // A waypoint: the page's number drawn in outline, the time, the heading over its paragraph.
+  statement: () => {
+    const { night, cream, amber, teal, muted, rule } = NIGHT_FLIGHT
+    return slide('航点页', solid(night), [
+      lineNode(88, 156, 904, rule, 2, { name: '刊头线' }),
+      shapeNode('ellipse', 92, 520, 24, 24, solid(amber), { name: '航点', shadow: { color: amber, blur: 18, offsetX: 0, offsetY: 0 } }),
+      lineNode(88, 1294, 904, rule, 2, { name: '页脚线' }),
+      textNode('NIGHT FLIGHT / LOG 02', 88, 92, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 3 }),
+      textNode('02', 64, 190, 640, 300, {
+        name: '大页码', fontSize: 300, fontFamily: SERIF, textFill: solid(teal), fontWeight: 'bold', lineHeight: 1,
+        effect: { type: 'hollow', amount: 24 },
+      }),
+      textNode('00:15 · MIDWAY', 136, 508, 600, 50, { name: '当前时间', fontSize: 30, fontFamily: UI, textFill: solid(amber), fontWeight: 'bold', letterSpacing: 3 }),
+      textNode('这一段\n只记一件事', 80, 580, 920, 300, {
+        name: '标题', fontSize: 112, fontFamily: SERIF, textFill: solid(cream), fontWeight: 'bold', lineHeight: 1.25, verticalAlign: 'bottom',
+      }),
+      textNode('夜里想到的那句话，先原样留下；理由和细节，等天亮再补。', 88, 920, 904, 340, {
+        name: '导语', fontSize: 44, textFill: solid(muted), lineHeight: 1.6, verticalAlign: 'middle',
+      }),
+      textNode('31.23°N · ROUTE ACTIVE', 88, 1318, 600, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(teal), fontWeight: 'bold', letterSpacing: 3 }),
+    ])
+  },
+  // The flight log, five entries deep: a rule over each, a lit dot before it.
+  list: () => {
+    const { night, cream, amber, teal, coral, muted, rule } = NIGHT_FLIGHT
+    const colors = [amber, teal, coral, amber, teal]
+    const entry = (index: number, text: string, note: string) => {
+      const y = 500 + index * 156
+      const n = NUMBERED[index]
+      return [
+        lineNode(88, y - 24, 904, rule, 2, { name: `记录线${n}` }),
+        shapeNode('ellipse', 100, y + 18, 28, 28, solid(colors[index]), { name: `时间点${n}`, shadow: { color: colors[index], blur: 14, offsetX: 0, offsetY: 0 } }),
+        textNode(text, 168, y - 4, 824, 68, { name: `记录${n}`, fontSize: 46, fontFamily: SERIF, textFill: solid(cream), fontWeight: 'bold' }),
+        textNode(note, 168, y + 68, 824, 46, { name: `说明${n}`, fontSize: 30, textFill: solid(muted) }),
+      ]
+    }
+    return slide('记录页', solid(night), [
+      lineNode(88, 156, 904, rule, 2, { name: '刊头线' }),
+      lineNode(88, 1294, 904, rule, 2, { name: '页脚线' }),
+      ...entry(0, '留下最初那句话', '不改字，不加修饰'),
+      ...entry(1, '写下它从哪里来', '一本书、一段路、一场对话'),
+      ...entry(2, '标出还缺什么', '缺的部分用问号代替'),
+      ...entry(3, '给它起个名字', '方便明天找回来'),
+      ...entry(4, '然后去睡觉', '剩下的交给早上'),
+      textNode('NIGHT FLIGHT / LOG 02', 88, 92, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 3 }),
+      textNode('今夜的记录', 80, 196, 920, 150, { name: '标题', fontSize: 104, fontFamily: SERIF, textFill: solid(cream), fontWeight: 'bold' }),
+      textNode('一条记录只写一件事，补充的话放在下面那一行。', 88, 362, 904, 100, { name: '导语', fontSize: 34, textFill: solid(muted), lineHeight: 1.5 }),
+      textNode('31.23°N · ROUTE ACTIVE', 88, 1318, 600, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(teal), fontWeight: 'bold', letterSpacing: 3 }),
+    ])
+  },
+  // The instrument page: one drawing under the heading, in the cabin's amber.
+  data: () => {
+    const { night, cream, amber, muted, rule } = NIGHT_FLIGHT
+    return slide('仪表页', solid(night), [
+      lineNode(88, 156, 904, rule, 2, { name: '刊头线' }),
+      lineNode(88, 1294, 904, rule, 2, { name: '页脚线' }),
+      chartNode('line', ['22:00', '23:00', '00:00', '01:00', '02:00', '03:00'], [{ name: '高度', values: [12, 31, 38, 39, 36, 24], color: amber }], 88, 520, 904, 720, {
+        name: '示例图表', showValues: true, ink: muted,
+      }),
+      textNode('NIGHT FLIGHT / LOG 02', 88, 92, 600, 44, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 3 }),
+      textNode('00:15 · ALTITUDE', 692, 92, 300, 44, { name: '当前时间', fontSize: 26, fontFamily: UI, textFill: solid(amber), fontWeight: 'bold', align: 'right', letterSpacing: 3 }),
+      textNode('一路的高度', 80, 196, 920, 150, { name: '标题', fontSize: 104, fontFamily: SERIF, textFill: solid(cream), fontWeight: 'bold' }),
+      textNode('起飞后一路爬升，过了午夜趋于平稳，天亮前开始下降。', 88, 362, 904, 100, { name: '导语', fontSize: 34, textFill: solid(muted), lineHeight: 1.5 }),
+      textNode('DINGCARD / NIGHT FLIGHT', 88, 1318, 600, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 3 }),
+    ])
+  },
+  // Landing for a sentence or two: the arrival bar, the heading, the route flown, the words above the sunrise.
+  closing: () => {
+    const { night, cream, amber, teal, coral } = NIGHT_FLIGHT
+    return slide('抵达', stopsPaint([[0, '#f7f1e6'], [1, '#f3dcbd']], 180), [
+      shapeNode('ellipse', 600, 1050, 600, 600, { type: 'radial-gradient', stops: [{ offset: 0, color: '#f6b04d' }, { offset: 1, color: '#ef7a52' }] }, { name: '朝阳', opacity: 0.9 }),
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, 172 + TEMPLATE_EDGE_BLEED, solid(night), { name: '抵达信息栏', cornerRadius: 0 }),
+      shapeNode('ellipse', 88, 600, 40, 40, solid(amber), { name: '起点' }),
+      shapeNode('ellipse', 520, 600, 40, 40, solid(teal), { name: '中点' }),
+      shapeNode('ellipse', 948, 596, 48, 48, solid(coral), { name: '终点' }),
+      lineNode(136, 614, 376, night, 3, { name: '抵达线一' }),
+      lineNode(568, 614, 372, night, 3, { name: '抵达线二' }),
+      lineNode(88, 1294, 904, night, 2, { name: '页脚线' }),
+      textNode('ARRIVAL · 08:30', 88, 64, 600, 56, { name: '抵达时间', fontSize: 32, fontFamily: UI, textFill: solid(cream), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('ROUTE 03', 692, 66, 300, 52, { name: '路线编号', fontSize: 28, fontFamily: UI, textFill: solid(amber), fontWeight: 'bold', align: 'right', letterSpacing: 3 }),
+      textNode('天亮了，\n就到这里', 80, 236, 920, 300, { name: '主标题', fontSize: 112, fontFamily: SERIF, textFill: solid(night), fontWeight: 'bold', lineHeight: 1.22 }),
+      textNode('夜里记下的，天亮后再读一遍；\n还想继续写的，就是今天的事。', 88, 700, 904, 420, {
+        name: '收束句', fontSize: 60, textFill: solid(night), fontWeight: 'bold', lineHeight: 1.4, verticalAlign: 'middle',
+      }),
+      textNode('DINGCARD / NIGHT FLIGHT', 88, 1318, 600, 44, { name: '页脚', fontSize: 24, fontFamily: UI, textFill: solid(night), fontWeight: 'bold', letterSpacing: 3 }),
+    ])
+  },
+}
+
+const BRUTALIST = { concrete: '#ecebe6', black: '#0d0d0d', yellow: '#f5e900', grey: '#3a3a36' }
+
 function createBrutalistDocument(): FreeformDocument {
-  const concrete = '#ecebe6'
-  const black = '#0d0d0d'
-  const yellow = '#f5e900'
-  const grey = '#3a3a36'
+  const { concrete, black, yellow, grey } = BRUTALIST
   const hard = { color: black, blur: 0, offsetX: 24, offsetY: 24 }
   const rule = (index: number, number: string, title: string, note: string) => {
     const y = 420 + index * 240
@@ -1292,22 +1468,129 @@ function createBrutalistDocument(): FreeformDocument {
   ])
 }
 
+/** The brutalist deck's other inner pages (DeckLayoutId): black blocks, heavy rules, the yellow marker. */
+const BRUTALIST_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
+  // A manifesto of one line: the number in a black block, the heading marked in yellow, the words under it.
+  statement: () => {
+    const { concrete, black, yellow } = BRUTALIST
+    return slide('宣言页', solid(concrete), [
+      lineNode(88, 144, 904, black, 8, { name: '刊头线', cap: 'butt' }),
+      shapeNode('rect', 88, 200, 220, 220, solid(black), { name: '编号块', cornerRadius: 0, shadow: { color: yellow, blur: 0, offsetX: 16, offsetY: 16 } }),
+      lineNode(88, 1288, 904, black, 6, { name: '页脚线', cap: 'butt' }),
+      textNode('MANIFESTO / 02', 88, 84, 520, 48, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 8 }),
+      textNode('02', 88, 200, 220, 220, {
+        name: '大页码', fontSize: 150, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', align: 'center', lineHeight: 1, letterSpacing: -6, verticalAlign: 'middle',
+      }),
+      textNode('→', 360, 200, 400, 220, { name: '箭头', fontSize: 200, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', lineHeight: 1, verticalAlign: 'middle' }),
+      textNode('只说\n一件事', 80, 470, 920, 340, {
+        name: '标题', fontSize: 140, textFill: solid(black), fontWeight: 'bold', lineHeight: 1.15, letterSpacing: -4, verticalAlign: 'bottom',
+        effect: { type: 'marker', color: yellow, amount: 45 },
+      }),
+      textNode('一页只放一个判断。写不下的，就是下一页的事。', 88, 860, 904, 390, {
+        name: '导语', fontSize: 52, textFill: solid(black), fontWeight: 'bold', lineHeight: 1.4, verticalAlign: 'middle',
+      }),
+      textNode('BRUTAL PAGE PRESS', 88, 1312, 600, 44, { name: '刊尾', fontSize: 24, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 6 }),
+    ])
+  },
+  // The rules, five deep: a black block with each number, the point marked in yellow, a heavy rule under it.
+  list: () => {
+    const { concrete, black, yellow, grey } = BRUTALIST
+    const rule = (index: number, text: string, note: string) => {
+      const y = 480 + index * 156
+      const n = NUMBERED[index]
+      return [
+        shapeNode('rect', 88, y, 96, 96, solid(black), { name: `编号块${n}`, cornerRadius: 0 }),
+        lineNode(88, y + 126, 904, black, 5, { name: `规则线${n}`, cap: 'butt' }),
+        textNode(String(index + 1), 88, y + 14, 96, 68, { name: `编号${n}`, fontSize: 60, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', align: 'center', lineHeight: 1 }),
+        textNode(text, 216, y - 4, 776, 70, {
+          name: `规则${n}`, fontSize: 46, textFill: solid(black), fontWeight: 'bold',
+          effect: { type: 'marker', color: yellow, amount: 45 },
+        }),
+        textNode(note, 216, y + 66, 776, 46, { name: `注释${n}`, fontSize: 30, textFill: solid(grey) }),
+      ]
+    }
+    return slide('规则页', solid(concrete), [
+      lineNode(88, 144, 904, black, 8, { name: '刊头线', cap: 'butt' }),
+      lineNode(88, 1288, 904, black, 6, { name: '页脚线', cap: 'butt' }),
+      ...rule(0, '先说结论', '别让人猜你想说什么'),
+      ...rule(1, '一条只说一件事', '两件事就拆成两条'),
+      ...rule(2, '能删就删', '删到不能再删为止'),
+      ...rule(3, '用数字说话', '数字比形容词有力'),
+      ...rule(4, '最后给出动作', '读完就知道做什么'),
+      textNode('RULES / 02', 88, 84, 520, 48, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 8 }),
+      textNode('照规矩来', 80, 190, 920, 160, { name: '页标题', fontSize: 112, textFill: solid(black), fontWeight: 'bold', letterSpacing: -4 }),
+      textNode('每条规则一行，说明写在它下面。没有例外。', 88, 360, 904, 96, { name: '导语', fontSize: 34, textFill: solid(grey), lineHeight: 1.45 }),
+      textNode('BRUTAL PAGE / RULES', 88, 1312, 600, 44, { name: '刊尾', fontSize: 24, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 6 }),
+    ])
+  },
+  // The numbers page: a black head over one drawing in black.
+  data: () => {
+    const { concrete, black, yellow } = BRUTALIST
+    return slide('数据页', solid(concrete), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, 520 + TEMPLATE_EDGE_BLEED, solid(black), { name: '黑色刊头', cornerRadius: 0 }),
+      lineNode(88, 1288, 904, black, 6, { name: '页脚线', cap: 'butt' }),
+      chartNode('bar', ['一月', '二月', '三月', '四月', '五月'], [{ name: '数量', values: [12, 19, 27, 41, 66], color: black }], 88, 680, 904, 560, {
+        name: '示例图表', showValues: true, ink: black,
+      }),
+      textNode('DATA / 02', 88, 84, 520, 48, { name: '刊头', fontSize: 26, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: 8 }),
+      textNode('数字\n不说谎', 80, 150, 920, 330, {
+        name: '标题', fontSize: 120, textFill: solid(concrete), fontWeight: 'bold', lineHeight: 1.15, letterSpacing: -4, verticalAlign: 'bottom',
+      }),
+      textNode('先看图，再读这一句：涨了多少，一眼就看得出来。', 88, 556, 904, 100, { name: '导语', fontSize: 34, textFill: solid(black), lineHeight: 1.45 }),
+      textNode('BRUTAL PAGE PRESS', 88, 1312, 600, 44, { name: '刊尾', fontSize: 24, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 6 }),
+    ])
+  },
+  // The last word for a sentence or two: yellow page, black side bar, the heading huge on the heavy rule, the words under it.
+  closing: () => {
+    const { black, yellow } = BRUTALIST
+    return slide('结束', solid(yellow), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 196 + TEMPLATE_EDGE_BLEED, 1440 + TEMPLATE_EDGE_BLEED * 2, solid(black), { name: '边栏', cornerRadius: 0 }),
+      lineNode(240, 740, 752, black, 12, { name: '结尾线', cap: 'butt' }),
+      lineNode(240, 1288, 752, black, 6, { name: '页脚线', cap: 'butt' }),
+      textNode('END / 03', 62, 88, 60, 420, { name: '边栏刊头', fontSize: 34, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: 8, vertical: true }),
+      textNode('LOUD / 03', 62, 960, 60, 400, { name: '边栏页脚', fontSize: 34, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: 8, vertical: true }),
+      textNode('就说\n到这', 236, 160, 790, 540, {
+        name: '结尾大字', fontSize: 200, textFill: solid(black), fontWeight: 'bold', lineHeight: 1.1, letterSpacing: -8, verticalAlign: 'bottom',
+      }),
+      textNode('最后一句话，站直了说完，不加感叹号。', 240, 790, 752, 460, {
+        name: '正文', fontSize: 60, textFill: solid(black), fontWeight: 'bold', lineHeight: 1.35, verticalAlign: 'middle',
+      }),
+      textNode('BRUTAL PAGE PRESS', 240, 1312, 600, 44, { name: '刊尾', fontSize: 24, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 6 }),
+    ])
+  },
+}
+
+const BLUEPRINT = { paper: '#174478', chalk: '#f2f6fc', line: '#b9cde6', yellow: '#ffd166' }
+
+/** A drafting grid: fine lines every `step`, drawn as one path over the page. */
+function blueprintGrid(name: string, step: number, opacity: number): FreeformSceneNode {
+  const columns = Array.from({ length: Math.floor(1080 / step) }, (_, index) => `M ${(index + 1) * step} 0 V 1440`)
+  const rows = Array.from({ length: Math.floor(1440 / step) }, (_, index) => `M 0 ${(index + 1) * step} H 1080`)
+  return pathNode([...columns, ...rows].join(' '), 0, 0, 1080, 1440, { name, stroke: '#ffffff', strokeWidth: 1.5, opacity, cap: 'butt' })
+}
+
+/** The blueprint's page: both grids over the blue. */
+const blueprintGrids = () => [blueprintGrid('细网格', 60, 0.09), blueprintGrid('粗网格', 240, 0.16)]
+
+/** A dashed frame drawn inside its box. */
+const blueprintBox = (name: string, x: number, y: number, width: number, height: number) => pathNode(
+  `M 2 2 H ${width - 2} V ${height - 2} H 2 Z`, x, y, width, height, { name, stroke: BLUEPRINT.chalk, strokeWidth: 3, dash: 12, cap: 'butt', join: 'miter' },
+)
+
+const blueprintSheet = (number: string) => textNode(number, 692, 86, 300, 44, {
+  name: '图纸编号', fontSize: 26, fontFamily: UI, textFill: solid(BLUEPRINT.chalk), fontWeight: 'bold', align: 'right', letterSpacing: 4,
+})
+
+const blueprintLabel = (text: string, x: number, y: number, name: string) => textNode(text, x, y, 280, 36, {
+  name, fontSize: 22, fontFamily: UI, textFill: solid(BLUEPRINT.line), letterSpacing: 4,
+})
+
 function createBlueprintDocument(): FreeformDocument {
-  const paper = '#174478'
-  const chalk = '#f2f6fc'
-  const line = '#b9cde6'
-  const yellow = '#ffd166'
-  /** A drafting grid: fine lines every `step`, drawn as one path over the page. */
-  const grid = (name: string, step: number, opacity: number) => {
-    const columns = Array.from({ length: Math.floor(1080 / step) }, (_, index) => `M ${(index + 1) * step} 0 V 1440`)
-    const rows = Array.from({ length: Math.floor(1440 / step) }, (_, index) => `M 0 ${(index + 1) * step} H 1080`)
-    return pathNode([...columns, ...rows].join(' '), 0, 0, 1080, 1440, { name, stroke: '#ffffff', strokeWidth: 1.5, opacity, cap: 'butt' })
-  }
-  const box = (name: string, x: number, y: number, width: number, height: number) => pathNode(
-    `M 2 2 H ${width - 2} V ${height - 2} H 2 Z`, x, y, width, height, { name, stroke: chalk, strokeWidth: 3, dash: 12, cap: 'butt', join: 'miter' },
-  )
-  const sheet = (number: string) => textNode(number, 692, 86, 300, 44, { name: '图纸编号', fontSize: 26, fontFamily: UI, textFill: solid(chalk), fontWeight: 'bold', align: 'right', letterSpacing: 4 })
-  const label = (text: string, x: number, y: number, name: string) => textNode(text, x, y, 280, 36, { name, fontSize: 22, fontFamily: UI, textFill: solid(line), letterSpacing: 4 })
+  const { paper, chalk, line, yellow } = BLUEPRINT
+  const grid = blueprintGrid
+  const box = blueprintBox
+  const sheet = blueprintSheet
+  const label = blueprintLabel
   return documentFromSlides([
     slide('图纸', solid(paper), [
       grid('细网格', 60, 0.09),
@@ -1366,6 +1649,95 @@ function createBlueprintDocument(): FreeformDocument {
       textNode('PLAN A APPROVED', 592, 1318, 400, 44, { name: '比例', fontSize: 22, fontFamily: UI, textFill: solid(line), align: 'right', letterSpacing: 6 }),
     ]),
   ])
+}
+
+/** The blueprint's other inner pages (DeckLayoutId): drawn on its grid with callouts, dimension lines and a sign-off. */
+const BLUEPRINT_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
+  // A detail drawing: the page's number in a callout circle, the heading, a dimension line over its paragraph.
+  statement: () => {
+    const { paper, chalk, line } = BLUEPRINT
+    return slide('详图', solid(paper), [
+      ...blueprintGrids(),
+      shapeNode('ellipse', 88, 196, 240, 240, { type: 'transparent' }, { name: '索引圆', stroke: chalk, strokeWidth: 4 }),
+      lineNode(352, 310, 640, line, 2, { name: '索引线', dash: 10 }),
+      lineNode(88, 872, 904, chalk, 2, { name: '尺寸标注', startCap: 'arrow', endCap: 'arrow' }),
+      textNode('DETAIL', 88, 86, 600, 44, { name: '刊头', fontSize: 24, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
+      blueprintSheet('BP-02'),
+      textNode('02', 88, 196, 240, 240, {
+        name: '大页码', fontSize: 120, fontFamily: UI, textFill: solid(chalk), fontWeight: 'bold', align: 'center', lineHeight: 1, verticalAlign: 'middle',
+      }),
+      textNode('DETAIL A · 1 : 5', 352, 252, 640, 40, { name: '索引标注', fontSize: 22, fontFamily: UI, textFill: solid(line), letterSpacing: 4 }),
+      textNode('先把这一块\n画清楚', 80, 480, 920, 330, {
+        name: '标题', fontSize: 112, textFill: solid(chalk), fontWeight: 'bold', lineHeight: 1.2, verticalAlign: 'bottom',
+      }),
+      textNode('一张详图只放大一个部分：尺寸、材料、做法，都在这一页说清。', 88, 912, 904, 360, {
+        name: '导语', fontSize: 44, textFill: solid(line), lineHeight: 1.55, verticalAlign: 'middle',
+      }),
+      textNode('BLUEPRINT / DETAIL', 88, 1318, 600, 44, { name: '页脚', fontSize: 22, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
+    ])
+  },
+  // The parts list: a dashed rule over each row, each point numbered in a drawn box.
+  list: () => {
+    const { paper, chalk, line } = BLUEPRINT
+    const part = (index: number, text: string, note: string) => {
+      const y = 500 + index * 156
+      const n = NUMBERED[index]
+      return [
+        lineNode(88, y - 24, 904, line, 2, { name: `部件线${n}`, dash: 10 }),
+        pathNode('M 2 2 H 82 V 82 H 2 Z', 88, y, 84, 84, { name: `编号框${n}`, stroke: chalk, strokeWidth: 3, cap: 'butt', join: 'miter' }),
+        textNode(String(index + 1).padStart(2, '0'), 88, y + 18, 84, 48, { name: `编号${n}`, fontSize: 36, fontFamily: UI, textFill: solid(chalk), fontWeight: 'bold', align: 'center', lineHeight: 1.2 }),
+        textNode(text, 204, y - 4, 788, 66, { name: `部件${n}`, fontSize: 46, textFill: solid(chalk), fontWeight: 'bold' }),
+        textNode(note, 204, y + 66, 788, 46, { name: `规格${n}`, fontSize: 30, textFill: solid(line) }),
+      ]
+    }
+    return slide('部件表', solid(paper), [
+      ...blueprintGrids(),
+      ...part(0, '先定总尺寸', '量两遍，再下笔'),
+      ...part(1, '列出每个部件', '一行一个，不合并'),
+      ...part(2, '写清楚材料', '规格和数量都要有'),
+      ...part(3, '标出装配顺序', '先骨架，后细节'),
+      ...part(4, '留出检查的位置', '每一步都能核对'),
+      textNode('PARTS LIST', 88, 86, 600, 44, { name: '刊头', fontSize: 24, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
+      blueprintSheet('BP-02'),
+      textNode('部件清单', 80, 196, 920, 150, { name: '标题', fontSize: 104, textFill: solid(chalk), fontWeight: 'bold' }),
+      textNode('一行一个部件，规格写在下面那一行。', 88, 362, 904, 100, { name: '导语', fontSize: 34, textFill: solid(line), lineHeight: 1.5 }),
+      textNode('BLUEPRINT / PARTS', 88, 1318, 600, 44, { name: '页脚', fontSize: 22, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
+    ])
+  },
+  // A measured drawing: one chart under a yellow dimension line.
+  data: () => {
+    const { paper, chalk, line, yellow } = BLUEPRINT
+    return slide('数据图', solid(paper), [
+      ...blueprintGrids(),
+      lineNode(88, 476, 904, yellow, 2, { name: '尺寸标注', startCap: 'arrow', endCap: 'arrow' }),
+      chartNode('bar', ['基础', '结构', '水电', '装修', '验收'], [{ name: '工期', values: [12, 30, 18, 26, 6], color: yellow }], 88, 540, 904, 700, {
+        name: '示例图表', showValues: true, ink: line,
+      }),
+      textNode('SECTION', 88, 86, 600, 44, { name: '刊头', fontSize: 24, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
+      blueprintSheet('BP-02'),
+      textNode('工期怎么分', 80, 196, 920, 150, { name: '标题', fontSize: 104, textFill: solid(chalk), fontWeight: 'bold' }),
+      textNode('结构最费时间，验收最快。每一段的天数都标在柱子上。', 88, 362, 904, 100, { name: '导语', fontSize: 34, textFill: solid(line), lineHeight: 1.5 }),
+      textNode('BLUEPRINT / DATA', 88, 1318, 600, 44, { name: '页脚', fontSize: 22, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
+    ])
+  },
+  // Signed off for a sentence or two: the heading, the approval stamp, the words, the signature line.
+  closing: () => {
+    const { paper, chalk, line, yellow } = BLUEPRINT
+    return slide('验收', solid(paper), [
+      ...blueprintGrids(),
+      shapeNode('rect', 88, 586, 560, 150, { type: 'transparent' }, { name: '签收底板', cornerRadius: 20, stroke: yellow, strokeWidth: 6, rotation: -6 }),
+      lineNode(700, 1222, 292, chalk, 2, { name: '签名线' }),
+      textNode('CHECK', 88, 86, 600, 44, { name: '刊头', fontSize: 24, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
+      blueprintSheet('BP-03'),
+      textNode('按图\n交付', 80, 236, 920, 300, { name: '主标题', fontSize: 112, textFill: solid(chalk), fontWeight: 'bold', lineHeight: 1.2 }),
+      textNode('APPROVED', 88, 616, 560, 90, { name: '签收标题', fontSize: 64, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', align: 'center', letterSpacing: 10, rotation: -6 }),
+      textNode('图纸和实物一一对上，这一版就可以交付。', 88, 800, 904, 400, {
+        name: '导语', fontSize: 60, textFill: solid(chalk), fontWeight: 'bold', lineHeight: 1.4, verticalAlign: 'middle',
+      }),
+      textNode('签名 / DATE', 700, 1240, 292, 40, { name: '签名标注', fontSize: 22, fontFamily: UI, textFill: solid(line), align: 'right', letterSpacing: 3 }),
+      textNode('BLUEPRINT / FINAL', 88, 1318, 600, 44, { name: '页脚', fontSize: 22, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
+    ])
+  },
 }
 
 // --- Posters: one page each, drawn at the size they are made for (formats.ts) ---
@@ -2877,7 +3249,11 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
  */
 export const FREEFORM_DECK_LAYOUTS: Partial<Record<FreeformDeckSeriesId, Record<DeckLayoutId, () => FreeformSlide>>> = {
   editorial: EDITORIAL_LAYOUTS,
+  checklist: CHECKLIST_LAYOUTS,
   signal: SIGNAL_LAYOUTS,
+  'night-flight': NIGHT_FLIGHT_LAYOUTS,
+  brutalist: BRUTALIST_LAYOUTS,
+  blueprint: BLUEPRINT_LAYOUTS,
 }
 
 const markdownSeriesIds: MarkdownTemplateSeriesId[] = [
