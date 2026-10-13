@@ -501,15 +501,15 @@ describe('renderDocument', () => {
   test(
     'keeps a coloured page\'s own background in a JPEG, a PDF and a long JPEG, and sets only a clear page on white',
     async () => {
-      // The hiring poster's page is solid blue: JPEG has no transparency, but the page has its own colour.
-      const instantiation = instantiateTemplate('hiring-poster-freeform')
+      // The price list's page is solid wine red: JPEG has no transparency, but the page has its own colour.
+      const instantiation = instantiateTemplate('price-list-freeform')
       if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
       const document = instantiation.document
       const clear: FreeformDocument = { ...document, slides: document.slides.map((slide) => ({ ...slide, background: { type: 'transparent' as const } })) }
       const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-opaque-'))
-      const jpeg = await renderDocument(document, { outputDir, baseName: 'blue', format: 'jpeg' })
-      const pdf = await renderDocument(document, { outputDir, baseName: 'blue', format: 'pdf' })
-      const long = await renderDocument(document, { outputDir, baseName: 'blue', format: 'jpeg', long: true })
+      const jpeg = await renderDocument(document, { outputDir, baseName: 'wine', format: 'jpeg' })
+      const pdf = await renderDocument(document, { outputDir, baseName: 'wine', format: 'pdf' })
+      const long = await renderDocument(document, { outputDir, baseName: 'wine', format: 'jpeg', long: true })
       const glass = await renderDocument(clear, { outputDir, baseName: 'clear', format: 'jpeg' })
       if (!jpeg.ok || !pdf.ok || !long.ok || !glass.ok) throw new Error('expected every render to succeed')
       const [fromJpeg, fromPdf, fromLong, fromClear] = await jpegColours([
@@ -519,7 +519,7 @@ describe('renderDocument', () => {
         readFileSync(glass.files[0].path),
       ], 12, 12)
       const distance = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
-      for (const colour of [fromJpeg, fromPdf, fromLong]) expect(distance(colour, [0x24, 0x47, 0xe0])).toBeLessThan(12)
+      for (const colour of [fromJpeg, fromPdf, fromLong]) expect(distance(colour, [0x5a, 0x1f, 0x2b])).toBeLessThan(12)
       // A transparent page turns white, not black.
       expect(distance(fromClear, [255, 255, 255])).toBeLessThan(12)
     },

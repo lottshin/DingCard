@@ -526,7 +526,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     subtitle: { text: '副标题' },
     body: { text: '正文' },
     tag: { text: '角标' },
-    details: rows(3, (n) => `职位${n}`, (n) => `说明${n}`, (n) => [`职位卡${n}`, `箭头${n}`]),
+    details: rows(3, (n) => `条件${n}`, (n) => `职位${n}`, (n) => [`编号${n}`, `职位线${n}`]),
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '品牌' },
   },

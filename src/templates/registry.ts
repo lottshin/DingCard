@@ -2015,42 +2015,71 @@ function createSalePosterDocument(): FreeformDocument {
   ])
 }
 
+/** A team member's portrait in a square: a head and shoulders cut from one path, a shade off the square's colour. */
+function avatarPath(name: string, x: number, y: number, size: number, color: string): FreeformSceneNode {
+  const c = size / 2
+  const head = size * 0.17
+  const top = size * 0.6
+  const shoulders = `M ${size * 0.2} ${size} C ${size * 0.2} ${top + size * 0.04} ${size * 0.33} ${top - size * 0.04} ${c} ${top - size * 0.04} C ${size * 0.67} ${top - size * 0.04} ${size * 0.8} ${top + size * 0.04} ${size * 0.8} ${size} Z`
+  const face = `M ${c - head} ${size * 0.36} A ${head} ${head} 0 1 0 ${c + head} ${size * 0.36} A ${head} ${head} 0 1 0 ${c - head} ${size * 0.36} Z`
+  return pathNode(`${face} ${shoulders}`, x, y, size, size, { name, fill: solid(color), stroke: color, strokeWidth: 0 })
+}
+
 function createHiringPosterDocument(): FreeformDocument {
-  const blue = '#2447e0'
-  const ink = '#0f1222'
-  const white = '#ffffff'
-  const pale = '#dfe6ff'
-  const lime = '#c6f432'
-  const role = (index: number, title: string, note: string) => {
-    const y = 900 + index * 194
+  const paper = '#f3efe6'
+  const ink = '#16181d'
+  const muted = '#5b5f6a'
+  const blue = '#2448d8'
+  const orange = '#f0643a'
+  const vermilion = '#d84c22'
+  const rule = '#d9d3c6'
+  // The team as it is: ten seats, one of them still open.
+  const team: Array<readonly [string, string] | null> = [
+    ['#2448d8', '#4a6ae6'], ['#f0643a', '#f58a68'], ['#f2b632', '#f6c95f'], ['#2f8f6a', '#4fa985'], ['#e3dccd', '#cfc6b3'],
+    ['#16181d', '#3a3e48'], ['#f2b632', '#f6c95f'], ['#2448d8', '#4a6ae6'], null, ['#f0643a', '#f58a68'],
+  ]
+  const size = 168
+  const seat = (index: number) => ({ x: 72 + (index % 5) * (size + 24), y: 120 + Math.floor(index / 5) * (size + 24) })
+  const members = team.flatMap((colors, index) => {
+    if (!colors) return []
+    const { x, y } = seat(index)
+    const n = index + 1
+    return [
+      shapeNode('rect', x, y, size, size, solid(colors[0]), { name: `成员${n}`, cornerRadius: 28 }),
+      avatarPath(`头像${n}`, x, y, size, colors[1]),
+    ]
+  })
+  const open = seat(8)
+  const position = (index: number, terms: string, role: string) => {
+    const y = 1040 + index * 150
     const n = ['一', '二', '三'][index]
     return [
-      shapeNode('rect', 72, y, 936, 170, solid(white), { name: `职位卡${n}`, cornerRadius: 28 }),
-      textNode(title, 116, y + 28, 760, 70, { name: `职位${n}`, fontSize: 48, textFill: solid(ink), fontWeight: 'bold' }),
-      textNode(note, 116, y + 102, 760, 50, { name: `说明${n}`, fontSize: 30, textFill: solid('#4b5170') }),
-      textNode('→', 880, y + 50, 90, 70, { name: `箭头${n}`, fontSize: 56, fontFamily: UI, textFill: solid(blue), fontWeight: 'bold', align: 'center' }),
+      lineNode(72, y + 132, 936, rule, 2, { name: `职位线${n}`, cap: 'butt' }),
+      textNode(String(index + 1).padStart(2, '0'), 72, y + 50, 90, 64, { name: `编号${n}`, fontSize: 44, fontFamily: UI, textFill: solid(vermilion), fontWeight: 'bold' }),
+      textNode(terms, 176, y, 832, 44, { name: `条件${n}`, fontSize: 28, fontFamily: UI, textFill: solid(blue), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode(role, 176, y + 44, 832, 76, { name: `职位${n}`, fontSize: 52, textFill: solid(ink), fontWeight: 'bold' }),
     ]
   }
   return documentFromSlides([
-    slide('海报', solid(blue), [
-      lineNode(72, 1774, 936, '#4f6ff0', 2, { name: '页脚线', cap: 'butt' }),
-      shapeNode('rect', 72, 1610, 936, 120, solid(lime), { name: '按钮底板', cornerRadius: 60 }),
-      textNode('JOIN US', 40, 60, 1000, 290, {
-        name: '英文标语', fontSize: 250, fontFamily: UI, textFill: solid(white), fontWeight: 'bold', letterSpacing: -4, lineHeight: 1,
-        effect: { type: 'hollow', amount: 30 },
+    slide('海报', solid(paper), [
+      ...members,
+      pathNode(`M 3 3 H ${size - 3} V ${size - 3} H 3 Z`, open.x, open.y, size, size, { name: '空位', stroke: ink, strokeWidth: 5, dash: 14, cap: 'butt', join: 'miter' }),
+      pathNode('M 84 44 V 124 M 44 84 H 124', open.x, open.y, size, size, { name: '加号', stroke: ink, strokeWidth: 10, cap: 'round' }),
+      lineNode(72, 1774, 936, ink, 3, { name: '页脚线', cap: 'butt' }),
+      shapeNode('rect', 72, 1600, 936, 124, solid(ink), { name: '按钮底板', cornerRadius: 62 }),
+      textNode('WE ARE HIRING', 72, 538, 700, 44, { name: '英文标语', fontSize: 28, fontFamily: UI, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 8 }),
+      textNode('急招', 852, 524, 156, 72, {
+        name: '角标', fontSize: 34, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 6,
+        effect: { type: 'background', color: orange, amount: 40, radius: 100 },
       }),
-      textNode('急招', 72, 380, 300, 64, {
-        name: '角标', fontSize: 32, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6,
-        effect: { type: 'background', color: lime, amount: 50, radius: 100 },
-      }),
-      textNode('我们在找\n下一位设计师', 64, 470, 952, 300, { name: '标题', fontSize: 120, textFill: solid(white), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -2 }),
-      textNode('做一款给 AI 用的设计编辑器', 72, 790, 936, 64, { name: '副标题', fontSize: 40, textFill: solid(pale) }),
-      ...role(0, '产品设计师', '全职 · 上海 · 3 年以上经验'),
-      ...role(1, '前端工程师', '全职 · 可远程 · React / TypeScript'),
-      ...role(2, '设计实习生', '每周 4 天 · 3 个月起'),
-      textNode('弹性工作 · 不打卡 · 每年一次团队旅行', 72, 1496, 936, 70, { name: '正文', fontSize: 40, textFill: solid(lime), fontWeight: 'bold' }),
-      textNode('简历发到 hr@dingcard.app', 72, 1640, 936, 60, { name: '按钮文字', fontSize: 40, textFill: solid(ink), fontWeight: 'bold', align: 'center' }),
-      textNode('DINGCARD 叮卡', 72, 1806, 936, 44, { name: '品牌', fontSize: 26, fontFamily: UI, textFill: solid(white), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('这个位置\n留给你', 64, 610, 952, 300, { name: '标题', fontSize: 124, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.16, letterSpacing: -2 }),
+      textNode('做一款给 AI 用的设计编辑器，现在就差一个你。', 72, 930, 936, 60, { name: '副标题', fontSize: 38, textFill: solid(muted) }),
+      ...position(0, '全职 · 上海', '产品设计师'),
+      ...position(1, '全职 · 可远程', '前端工程师'),
+      ...position(2, '每周 4 天 · 3 个月起', '设计实习生'),
+      textNode('弹性工作 · 不打卡 · 每年一次团队旅行', 72, 1500, 936, 60, { name: '正文', fontSize: 36, textFill: solid(blue), fontWeight: 'bold' }),
+      textNode('简历发到 hr@dingcard.app', 72, 1632, 936, 60, { name: '按钮文字', fontSize: 40, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center' }),
+      textNode('DINGCARD 叮卡', 72, 1806, 936, 44, { name: '品牌', fontSize: 26, fontFamily: UI, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
     ], STORY),
   ])
 }
@@ -2165,29 +2194,53 @@ function createProductCardDocument(): FreeformDocument {
   ])
 }
 
+/** Four corner brackets around a box, `arm` long: a viewfinder's frame or a focus mark. */
+function cornerBrackets(width: number, height: number, arm: number, inset: number): string {
+  const [l, t, r, b] = [inset, inset, width - inset, height - inset]
+  return [
+    `M ${l} ${t + arm} V ${t} H ${l + arm}`,
+    `M ${r - arm} ${t} H ${r} V ${t + arm}`,
+    `M ${r} ${b - arm} V ${b} H ${r - arm}`,
+    `M ${l + arm} ${b} H ${l} V ${b - arm}`,
+  ].join(' ')
+}
+
 function createVideoCoverDocument(): FreeformDocument {
-  const yellow = '#ffd400'
-  const ink = '#111111'
+  const black = '#111315'
+  const white = '#ffffff'
+  const yellow = '#ffd84d'
   const red = '#ff3b30'
-  const gridLines = [0, 1, 2, 3, 4].map((index) => `M 0 ${index * 160} H 580`).join(' ')
+  const grey = '#8d939b'
+  // The exposure scale under the focus mark: a long tick at each stop, short ones between.
+  const ticks = Array.from({ length: 13 }, (_, index) => {
+    const x = 4 + index * 32
+    const long = index % 6 === 0
+    return `M ${x} ${long ? 2 : 14} V 34`
+  }).join(' ')
   return documentFromSlides([
-    slide('封面', solid(yellow), [
-      shapeNode('rect', 1140, 120, 700, 820, solid('#ffffff'), { name: '图表卡', cornerRadius: 48, shadow: { color: ink, blur: 0, offsetX: 18, offsetY: 18 } }),
-      pathNode(gridLines, 1200, 210, 580, 640, { name: '网格', stroke: '#e5e5e5', strokeWidth: 3, cap: 'butt' }),
-      pathNode('M 10 630 C 210 620 380 570 470 420 C 520 330 552 190 572 40', 1200, 210, 580, 640, { name: '曲线', stroke: ink, strokeWidth: 14, cap: 'round' }),
-      shapeNode('ellipse', 1196, 826, 28, 28, solid(ink), { name: '起点' }),
-      shapeNode('ellipse', 1656, 616, 28, 28, solid(ink), { name: '中点' }),
-      shapeNode('ellipse', 1754, 230, 40, 40, solid(red), { name: '终点', shadow: { color: red, blur: 20, offsetX: 0, offsetY: 0 } }),
-      lineNode(96, 920, 160, ink, 8, { name: '标题线', cap: 'butt' }),
-      textNode('EP.12', 96, 88, 320, 80, {
-        name: '角标', fontSize: 44, fontFamily: UI, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 2,
-        effect: { type: 'background', color: ink, amount: 40, radius: 10 },
+    slide('封面', solid(black), [
+      pathNode(cornerBrackets(1792, 952, 104, 4), 64, 64, 1792, 952, { name: '取景框', stroke: white, strokeWidth: 8, cap: 'square', join: 'miter' }),
+      pathNode(cornerBrackets(300, 300, 48, 3), 1420, 330, 300, 300, { name: '对焦框', stroke: yellow, strokeWidth: 6, cap: 'square', join: 'miter' }),
+      pathNode('M 150 132 V 168 M 132 150 H 168', 1420, 330, 300, 300, { name: '对焦点', stroke: yellow, strokeWidth: 4, cap: 'butt' }),
+      pathNode(ticks, 1376, 900, 392, 36, { name: '曝光刻度', stroke: white, strokeWidth: 3, cap: 'butt' }),
+      shapeNode('ellipse', 1567, 878, 14, 14, solid(yellow), { name: '曝光指针' }),
+      shapeNode('ellipse', 140, 136, 30, 30, solid(red), { name: '录制点', shadow: { color: red, blur: 16, offsetX: 0, offsetY: 0 } }),
+      textNode('REC', 186, 126, 200, 50, { name: '录制', fontSize: 34, fontFamily: UI, textFill: solid(white), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('00:08:24', 1480, 126, 300, 50, { name: '时间码', fontSize: 34, fontFamily: UI, textFill: solid(white), fontWeight: 'bold', align: 'right', letterSpacing: 4 }),
+      textNode('EP.12', 140, 246, 320, 80, {
+        name: '角标', fontSize: 44, fontFamily: UI, textFill: solid(black), fontWeight: 'bold', letterSpacing: 2,
+        effect: { type: 'background', color: yellow, amount: 40, radius: 10 },
       }),
-      textNode('3 分钟\n看懂复利', 88, 210, 1000, 560, { name: '标题', fontSize: 230, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.08, letterSpacing: -8 }),
-      textNode('为什么越早开始越好', 96, 790, 980, 90, { name: '副标题', fontSize: 64, textFill: solid('#3a3a3a'), fontWeight: 'bold' }),
-      textNode('叮卡财经', 96, 952, 600, 60, { name: '品牌', fontSize: 38, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
-      textNode('第 1 年', 1200, 870, 200, 44, { name: '起点标注', fontSize: 28, textFill: solid('#6b6b6b') }),
-      textNode('第 30 年', 1580, 870, 200, 44, { name: '终点标注', fontSize: 28, textFill: solid('#6b6b6b'), align: 'right' }),
+      textNode('3 分钟\n看懂复利', 132, 346, 1220, 440, { name: '标题', fontSize: 180, textFill: solid(white), fontWeight: 'bold', lineHeight: 1.1, letterSpacing: -6 }),
+      textNode('为什么越早开始越好', 140, 806, 1200, 84, {
+        name: '副标题', fontSize: 52, textFill: solid(black), fontWeight: 'bold',
+        effect: { type: 'background', color: yellow, amount: 30, radius: 0 },
+      }),
+      textNode('叮卡财经', 140, 934, 700, 52, { name: '品牌', fontSize: 34, textFill: solid(white), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('4K · 60FPS', 1376, 848, 392, 36, { name: '规格', fontSize: 22, fontFamily: UI, textFill: solid(grey), fontWeight: 'bold', letterSpacing: 4 }),
+      ...(['-2', '0', '+2'] as const).map((stop, index) => textNode(stop, 1340 + index * 192, 942, 80, 36, {
+        name: `曝光值${index + 1}`, fontSize: 22, fontFamily: UI, textFill: solid(grey), align: 'center',
+      })),
     ], LANDSCAPE),
   ])
 }
@@ -2356,32 +2409,61 @@ function createMenuDocument(): FreeformDocument {
   ])
 }
 
+/** A strip of receipt paper torn at both ends: teeth `tooth` wide along the top and bottom. */
+function receiptPath(width: number, height: number, tooth: number): string {
+  const depth = tooth * 0.7
+  const teeth = Math.round(width / tooth)
+  const step = width / teeth
+  const top = Array.from({ length: teeth }, (_, index) => `L ${((index + 0.5) * step).toFixed(1)} 0 L ${((index + 1) * step).toFixed(1)} ${depth.toFixed(1)}`).join(' ')
+  const bottom = Array.from({ length: teeth }, (_, index) => `L ${(width - (index + 0.5) * step).toFixed(1)} ${height} L ${(width - (index + 1) * step).toFixed(1)} ${(height - depth).toFixed(1)}`).join(' ')
+  return `M 0 ${depth.toFixed(1)} ${top} L ${width} ${(height - depth).toFixed(1)} ${bottom} Z`
+}
+
+/** A barcode: bars of the given widths (in units of `unit`), dark and light in turn, as one filled path. */
+function barcodePath(widths: readonly number[], unit: number, height: number): { d: string; width: number } {
+  let x = 0
+  const bars: string[] = []
+  widths.forEach((width, index) => {
+    if (index % 2 === 0) bars.push(`M ${x} 0 H ${x + width * unit} V ${height} H ${x} Z`)
+    x += width * unit
+  })
+  return { d: bars.join(' '), width: x }
+}
+
 function createPriceListDocument(): FreeformDocument {
-  const blush = '#f6e8e3'
-  const ink = '#4a2c2a'
-  const rose = '#b04a5f'
-  const muted = '#755a57'
+  const wine = '#5a1f2b'
+  const paper = '#fbf8f2'
+  const ink = '#2a2225'
+  const muted = '#7a6a6c'
+  const rule = '#ddd3cc'
+  const receipt = { x: 130, y: 110, width: 820, height: 1720 }
+  const barcode = barcodePath([3, 1, 1, 2, 2, 1, 1, 3, 1, 1, 4, 2, 1, 1, 2, 3, 1, 2, 1, 1, 3, 1, 2, 2, 1, 3, 1, 1, 2, 1, 1, 4, 1, 2, 3, 1, 1, 2, 2, 1, 1, 3, 1, 1, 2, 2, 3, 1, 1], 5, 80)
   const row = (index: number, service: string, price: string) => {
-    const y = 604 + index * 112
+    const y = 676 + index * 96
     const n = NUMBERED[index]
     return [
-      ...(index > 0 ? [lineNode(140, y - 20, 800, '#f0e1dd', 2, { name: `隔线${n}`, cap: 'butt' })] : []),
-      textNode(service, 140, y, 560, 70, { name: `项目${n}`, fontSize: 40, textFill: solid(ink), fontWeight: 'bold' }),
-      textNode(price, 700, y, 240, 70, { name: `价格${n}`, fontSize: 40, textFill: solid(rose), fontWeight: 'bold', align: 'right' }),
+      ...(index > 0 ? [lineNode(196, y - 22, 688, rule, 2, { name: `隔线${n}`, dash: 6, cap: 'butt' })] : []),
+      textNode(service, 196, y, 488, 64, { name: `项目${n}`, fontSize: 38, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode(price, 684, y, 200, 64, { name: `价格${n}`, fontSize: 38, fontFamily: UI, textFill: solid(wine), fontWeight: 'bold', align: 'right' }),
     ]
   }
   return documentFromSlides([
-    slide('价目表', solid(blush), [
-      decorationNode('sparkles', 96, 108, 130, { color: '#e8a0ad' }),
-      decorationNode('sparkle', 900, 150, 84, { color: '#e8a0ad' }),
-      shapeNode('rect', 80, 548, 920, 952, solid('#ffffff'), { name: '价目卡', cornerRadius: 44, shadow: { color: '#e9d3cd', blur: 40, offsetX: 0, offsetY: 16 } }),
-      shapeNode('rect', 290, 1668, 500, 108, solid(ink), { name: '按钮底板', cornerRadius: 54 }),
-      textNode('美甲 · 美睫', 290, 140, 500, 64, {
-        name: '角标', fontSize: 32, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 4,
-        effect: { type: 'background', color: rose, amount: 50, radius: 100 },
+    slide('价目表', solid(wine), [
+      pathNode(receiptPath(receipt.width, receipt.height, 28), receipt.x, receipt.y, receipt.width, receipt.height, {
+        name: '小票', fill: solid(paper), stroke: paper, strokeWidth: 0, shadow: { color: '#2e0d15', blur: 48, offsetX: 0, offsetY: 20 },
       }),
-      textNode('价目表', 80, 236, 920, 200, { name: '标题', fontSize: 160, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 16 }),
-      textNode('PRICE LIST · 2026', 80, 444, 920, 50, { name: '副标题', fontSize: 30, fontFamily: UI, textFill: solid(muted), align: 'center', letterSpacing: 10 }),
+      lineNode(196, 560, 688, ink, 3, { name: '票头线', dash: 12, cap: 'butt' }),
+      lineNode(196, 1460, 688, ink, 3, { name: '票尾线', dash: 12, cap: 'butt' }),
+      shapeNode('rect', 290, 1552, 500, 104, { type: 'transparent' }, { name: '按钮底板', cornerRadius: 16, stroke: wine, strokeWidth: 4 }),
+      pathNode(barcode.d, Math.round(540 - barcode.width / 2), 1686, barcode.width, 80, { name: '条码', fill: solid(ink), stroke: ink, strokeWidth: 0 }),
+      textNode('美甲 · 美睫', 290, 186, 500, 64, {
+        name: '角标', fontSize: 30, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 4,
+        effect: { type: 'background', color: wine, amount: 50, radius: 100 },
+      }),
+      textNode('价目表', 160, 286, 760, 180, { name: '标题', fontSize: 140, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 16 }),
+      textNode('PRICE LIST · 2026', 160, 478, 760, 44, { name: '副标题', fontSize: 26, fontFamily: UI, textFill: solid(muted), align: 'center', letterSpacing: 10 }),
+      textNode('ITEM', 196, 596, 300, 36, { name: '项目栏', fontSize: 22, fontFamily: UI, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('PRICE', 584, 596, 300, 36, { name: '价格栏', fontSize: 22, fontFamily: UI, textFill: solid(muted), fontWeight: 'bold', align: 'right', letterSpacing: 6 }),
       ...row(0, '纯色美甲', '¥98'),
       ...row(1, '猫眼美甲', '¥158'),
       ...row(2, '法式美甲', '¥138'),
@@ -2390,9 +2472,10 @@ function createPriceListDocument(): FreeformDocument {
       ...row(5, '自然款美睫', '¥168'),
       ...row(6, '卸甲护理', '¥38'),
       ...row(7, '手部护理', '¥88'),
-      textNode('以上价格含基础修型 · 节假日正常营业', 80, 1548, 920, 56, { name: '正文', fontSize: 30, textFill: solid(muted), align: 'center' }),
-      textNode('私信预约', 290, 1690, 500, 64, { name: '按钮文字', fontSize: 40, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 6 }),
-      textNode('@叮卡美甲工作室', 80, 1820, 920, 48, { name: '品牌', fontSize: 28, textFill: solid(muted), align: 'center', letterSpacing: 2 }),
+      textNode('以上价格含基础修型 · 节假日正常营业', 160, 1486, 760, 48, { name: '正文', fontSize: 28, textFill: solid(muted), align: 'center' }),
+      textNode('私信预约', 290, 1574, 500, 60, { name: '按钮文字', fontSize: 38, textFill: solid(wine), fontWeight: 'bold', align: 'center', letterSpacing: 8 }),
+      textNode('0 2026 1013 0001 8', 290, 1770, 500, 34, { name: '条码数字', fontSize: 22, fontFamily: UI, textFill: solid(ink), align: 'center', letterSpacing: 8 }),
+      textNode('@叮卡美甲工作室', 80, 1858, 920, 44, { name: '品牌', fontSize: 28, textFill: solid('#ead9d4'), align: 'center', letterSpacing: 2 }),
     ], STORY),
   ])
 }
@@ -3161,18 +3244,18 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   blueprint: deck('蓝图', '工程网格、尺寸标注和图签，适合计划与结构拆解。', ['计划', '结构']),
   'talk-poster': poster('讲座', '大图配大标题，时间、地点、嘉宾一目了然，适合讲座、分享会和活动报名。', ['活动', '讲座'], 'story'),
   'sale-poster': poster('促销', '大字优惠配产品插画，适合新品、折扣和门店活动。', ['促销', '门店'], 'story'),
-  'hiring-poster': poster('招聘', '大字标语和职位卡片，适合招聘和团队介绍。', ['招聘', '团队'], 'story'),
+  'hiring-poster': poster('招聘', '团队头像排成一格，空着的那格留给新人，下面列职位和投递方式，适合招聘和团队介绍。', ['招聘', '团队'], 'story'),
   'festival-poster': poster('节日', '月亮、祥云和竖排标题，适合中秋等节日问候。', ['节日', '问候'], 'story'),
   invitation: poster('邀请函', '金色边框、居中排版，适合晚宴、发布会和典礼邀请。', ['邀请', '活动'], 'story'),
   'quote-card': poster('金句', '一句话配出处，适合金句、日签和读书摘抄。', ['金句', '日签'], 'square'),
   'product-card': poster('商品主图', '产品图配卖点和价格角标，适合电商主图和新品介绍。', ['电商', '产品'], 'square'),
-  'video-cover': poster('视频封面', '超大标题配一张图表卡片，适合视频和直播封面。', ['封面', '视频'], 'landscape'),
+  'video-cover': poster('视频封面', '相机取景框里的超大标题，带录制、时间码和对焦框，适合视频和直播封面。', ['封面', '视频', 'vlog'], 'landscape'),
   'article-cover': poster('公众号首图', '标题在左、图片在右，适合公众号文章首图。', ['封面', '公众号'], 'wechat-cover'),
   flyer: poster('宣传单', 'A4 单页：大标题、插画、时间地点和预约按钮，适合课程和活动传单。', ['印刷', '课程'], 'a4'),
   'note-cover': poster('干货笔记', '格子纸、荧光笔大标题和三条要点，适合小红书知识类笔记封面。', ['小红书', '封面'], 'xhs'),
   'photo-cover': poster('图片拼贴', '照片配胶带和角标贴纸，下面是大标题，适合小红书探店、旅行和生活封面。', ['小红书', '封面'], 'xhs'),
   menu: poster('菜单', 'A4 单页：店名大标题、八道菜品和价格，适合咖啡店、餐厅和饮品菜单。', ['菜单', '餐饮'], 'a4'),
-  'price-list': poster('价目表', '白色价目卡排八项服务和价格，下面是预约按钮，适合美甲、美发和工作室。', ['价目表', '门店'], 'story'),
+  'price-list': poster('价目表', '撕下来的小票：虚线隔开的项目和价格、预约框和条码，适合美甲、美发、咖啡和工作室。', ['价目表', '门店', '小票'], 'story'),
   certificate: poster('证书', '金色双框、居中大字和奖章，适合荣誉证书、获奖证书和结业证书。', ['证书', '印刷'], 'a4-landscape'),
   'moments-grid': poster('朋友圈九宫格', '一整张插画配横跨中间一排的大标题，导出时切成九张，发朋友圈拼成一张大图。', ['朋友圈', '节日'], 'moments-grid'),
   timetable: poster('课程表', '表格按科目自动配色，适合学校课程表、培训排课和每周计划。', ['课程表', '学校'], 'a4-landscape'),

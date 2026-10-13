@@ -19,7 +19,6 @@ const STANDALONE_TWO_DIGITS = /(?<!\d)\d{2}(?!\d)/
 // Chinese text a template keeps as decoration: labels that read as part of
 // the design, not as sample sentences about some other topic.
 const KEPT_DECORATION: Partial<Record<FreeformTemplateSeriesId, readonly string[]>> = {
-  'video-cover': ['第 1 年', '第 30 年'],
   'product-card': ['到手价'],
   editorial: ['完'],
   blueprint: ['签名 / DATE'],

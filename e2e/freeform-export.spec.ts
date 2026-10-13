@@ -77,20 +77,20 @@ test('拼成一张长图 stacks every page into one picture, at the chosen scale
 })
 
 test('a JPG, a PDF and a long JPG keep a coloured page\'s own background', async ({ page }) => {
-  // The hiring poster's page is solid blue (#2447e0); JPEG has no transparency, but the page has its own colour.
-  await page.goto('/#/edit/canvas/template/hiring-poster-freeform')
+  // The price list's page is solid wine red (#5a1f2b); JPEG has no transparency, but the page has its own colour.
+  await page.goto('/#/edit/canvas/template/price-list-freeform')
   await expect(page.getByTestId('freeform-export')).toBeEnabled()
-  const blue = [0x24, 0x47, 0xe0]
+  const wine = [0x5a, 0x1f, 0x2b]
 
   await (await openExportMenu(page)).getByTestId('export-format-jpeg').click()
   const jpeg = await download(page, 'freeform-primary-export')
   expect(jpeg.name).toBe('slide-01.jpg')
-  expect(colourDistance(await jpegPixel(page, jpeg.bytes, 12, 12), blue)).toBeLessThan(12)
+  expect(colourDistance(await jpegPixel(page, jpeg.bytes, 12, 12), wine)).toBeLessThan(12)
   const long = await download(page, 'freeform-export-long')
-  expect(colourDistance(await jpegPixel(page, long.bytes, 12, 12), blue)).toBeLessThan(12)
+  expect(colourDistance(await jpegPixel(page, long.bytes, 12, 12), wine)).toBeLessThan(12)
 
   await (await openExportMenu(page)).getByTestId('export-format-pdf').click()
   const pdf = await download(page, 'freeform-primary-export')
   expect(pdf.name).toBe('slide-01.pdf')
-  expect(colourDistance(await jpegPixel(page, firstPdfJpeg(pdf.bytes), 12, 12), blue)).toBeLessThan(12)
+  expect(colourDistance(await jpegPixel(page, firstPdfJpeg(pdf.bytes), 12, 12), wine)).toBeLessThan(12)
 })
