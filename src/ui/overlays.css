@@ -437,6 +437,17 @@
   }
 }
 
+/* Uses above the sizes: one row that scrolls sideways. */
+.template-uses {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.template-uses button {
+  flex: none;
+}
+
 /* Size filter above the templates: one chip per size the list has. */
 .template-formats {
   grid-column: 1 / -1;

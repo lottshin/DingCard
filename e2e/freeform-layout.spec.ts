@@ -164,6 +164,28 @@ test('the templates panel shows first pages; a deck opens to its pages, the gall
   await expect(panel).toBeVisible()
 })
 
+test('the templates panel finds templates by words and by use', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await page.getByTestId('freeform-template-button').click()
+  const panel = page.getByTestId('freeform-templates-drawer')
+  const tiles = panel.locator('.freeform-template-tile')
+  await panel.getByTestId('freeform-template-search').fill('婚礼')
+  await expect(tiles).toHaveCount(1)
+  await expect(panel.locator('.freeform-drawer-section')).toHaveCount(0)
+  await expect(tiles.first().locator('.freeform-template-tile-title')).toHaveText('婚礼请柬')
+  // Escape clears the words first; the panel stays.
+  await panel.getByTestId('freeform-template-search').press('Escape')
+  await expect(tiles).toHaveCount(36)
+  await expect(panel).toBeVisible()
+
+  await panel.getByTestId('freeform-template-use-menu').click()
+  await expect(panel.locator('.freeform-template-tile-title')).toHaveText(['菜单', '甜品菜单', '价目表'])
+  await panel.getByTestId('freeform-template-use-menu').click()
+  await expect(tiles).toHaveCount(36)
+  await panel.getByTestId('freeform-template-search').fill('没有这种模板')
+  await expect(panel.getByTestId('freeform-template-empty')).toBeVisible()
+})
+
 test('nothing runs under the stage: pages sit on the left and zoom alone in the corner', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/edit/canvas')

@@ -396,6 +396,58 @@
   flex-shrink: 0;
 }
 
+/* Search and uses above the list. */
+.freeform-drawer .freeform-template-search {
+  width: auto;
+  margin: 2px 16px 0;
+}
+
+.freeform-template-uses {
+  display: flex;
+  gap: 6px;
+  margin: 0 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.freeform-template-uses::-webkit-scrollbar {
+  display: none;
+}
+
+.freeform-template-uses button {
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 12px/1 var(--ui-font);
+  cursor: pointer;
+}
+
+.freeform-template-uses button:hover {
+  color: var(--text);
+}
+
+.freeform-template-uses button[aria-pressed='true'] {
+  border-color: var(--btn);
+  background: var(--btn);
+  color: var(--on-btn);
+}
+
+.freeform-template-uses button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.freeform-template-empty {
+  margin: 16px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  text-align: center;
+}
+
 .freeform-template-pages-head {
   display: flex;
   align-items: center;

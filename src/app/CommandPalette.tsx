@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Draft } from '../drafts'
+import { findTemplates } from '../templates/finder'
 import type { TemplateDefinition } from '../templates/types'
 import { useT } from '../i18n'
 import { AssetsIcon, FreeformMarkIcon, LanguageIcon, MarkdownMarkIcon, MoonIcon, ProjectsIcon, SearchIcon, TemplatesIcon } from '../ui/icons'
@@ -54,8 +55,8 @@ export function CommandPalette({ projects, templates, actions, onOpenProject, on
   const groups = useMemo(() => {
     const projectItems: Item[] = projects.filter((draft) => matches(draft.title, q)).slice(0, 5)
       .map((draft) => ({ type: 'project', key: `p:${draft.id}`, draft }))
-    const templateItems: Item[] = templates
-      .filter((template) => matches(`${template.title} ${t(template.title)} ${template.tags.join(' ')} ${template.tags.map((tag) => t(tag)).join(' ')}`, q))
+    // Templates answer to what they are for, their style and size too (finder.ts).
+    const templateItems: Item[] = findTemplates(templates, { text: q })
       .slice(0, 4)
       .map((template) => ({ type: 'template', key: `t:${template.id}`, template }))
     const actionItems: Item[] = actions.filter((action) => matches(action.label, q))

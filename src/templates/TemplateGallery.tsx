@@ -9,6 +9,8 @@ import { TEMPLATE_FORMATS, templateFormat } from './formats'
 import { markdownFirstPage, previewStyle } from './previewModel'
 import { templatesForWorkspace } from './registry'
 import { loadFavoriteTemplateIds, saveFavoriteTemplateIds, toggleFavoriteTemplateId } from './favorites'
+import { findTemplates, useName, usesIn } from './finder'
+import type { TemplateUseId } from './taxonomy'
 import type { TemplateDefinition, TemplateFormatId, TemplateWorkspace } from './types'
 import { t } from '../i18n'
 
@@ -98,22 +100,19 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
   const onCloseRef = useRef(onClose)
   const allTemplates = templatesForWorkspace(workspace)
   const formats = TEMPLATE_FORMATS.filter((format) => allTemplates.some((template) => template.format === format.id))
+  const uses = usesIn(allTemplates)
   const [format, setFormat] = useState<TemplateFormatId | null>(null)
+  const [use, setUse] = useState<TemplateUseId | null>(null)
   const [query, setQuery] = useState('')
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => loadFavoriteTemplateIds())
   const queryRef = useRef('')
-  // The keyword looks at the copy a tile shows, so it finds what the reader sees.
-  const keyword = query.trim().toLowerCase()
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds])
-  const templates = useMemo(() => {
-    const byFormat = format ? allTemplates.filter((template) => template.format === format) : allTemplates
-    const byFavorite = favoritesOnly ? byFormat.filter((template) => favoriteSet.has(template.id)) : byFormat
-    if (!keyword) return byFavorite
-    return byFavorite.filter((template) =>
-      [template.title, template.description, ...template.tags]
-        .some((text) => t(text).toLowerCase().includes(keyword)))
-  }, [allTemplates, format, keyword, favoritesOnly, favoriteSet])
+  // The keyword finds what a tile shows and what the template is for (finder.ts).
+  const templates = useMemo(
+    () => findTemplates(allTemplates, { text: query, use, format, only: favoritesOnly ? favoriteSet : null }),
+    [allTemplates, query, use, format, favoritesOnly, favoriteSet],
+  )
   const [selectedId, setSelectedId] = useState(templates[0]?.id ?? '')
   const [pending, setPending] = useState<TemplateDefinition | null>(null)
   const selected = templates.find((template) => template.id === selectedId) ?? templates[0]
@@ -178,6 +177,7 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
 
   useEffect(() => {
     setFormat(null)
+    setUse(null)
     setQuery('')
     setSelectedId(allTemplates[0]?.id ?? '')
     pendingReturnFocusRef.current = null
@@ -302,13 +302,23 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
               type='search'
               data-testid='template-search'
               aria-label={t('搜索模板')}
-              placeholder={t('搜索：名称、说明或标签')}
+              placeholder={t('搜索模板，比如：菜单、中秋、读书笔记')}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
+            {uses.length > 1 && (
+              <div className='template-formats template-uses' role='group' aria-label={t('按用途筛选')}>
+                <button type='button' aria-pressed={use === null} onClick={() => setUse(null)}>{t('全部')}</button>
+                {uses.map((entry) => (
+                  <button key={entry} type='button' aria-pressed={use === entry} data-testid={`template-gallery-use-${entry}`} onClick={() => setUse(use === entry ? null : entry)}>
+                    {t(useName(entry))}
+                  </button>
+                ))}
+              </div>
+            )}
             {formats.length > 1 && (
               <div className='template-formats' role='group' aria-label={t('按尺寸筛选')}>
-                <button type='button' aria-pressed={format === null} onClick={() => pickFormat(null)}>{t('全部')}</button>
+                <button type='button' aria-pressed={format === null} onClick={() => pickFormat(null)}>{t('全部尺寸')}</button>
                 {formats.map((entry) => (
                   <button key={entry.id} type='button' aria-pressed={format === entry.id} data-testid={`template-format-${entry.id}`} onClick={() => pickFormat(entry.id)}>
                     {t(entry.name)}

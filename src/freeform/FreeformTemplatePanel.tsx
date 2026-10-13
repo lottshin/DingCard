@@ -1,16 +1,19 @@
 // The templates panel's list: each template's first page, grouped by size,
-// the sizes in the active page's proportions first. A poster goes into the
-// work in one click; a deck opens to its pages, to add one of them or all.
-// Where they land (after the active page, or in its place while it is empty)
-// is the workspace's call.
+// the sizes in the active page's proportions first. A search and the uses
+// (finder.ts) narrow it to one list. A poster goes into the work in one
+// click; a deck opens to its pages, to add one of them or all. Where they
+// land (after the active page, or in its place while it is empty) is the
+// workspace's call.
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Measured } from '../app/DocumentPreview'
 import { t } from '../i18n'
+import { findTemplates, useName, usesIn } from '../templates/finder'
 import { TEMPLATE_FORMATS, templateFormat, type TemplateFormat } from '../templates/formats'
 import { FreeformTemplatePreview } from '../templates/TemplateGallery'
+import type { TemplateUseId } from '../templates/taxonomy'
 import type { TemplateDefinition } from '../templates/types'
-import { ChevronLeftIcon } from '../ui/icons'
+import { ChevronLeftIcon, CloseIcon, SearchIcon } from '../ui/icons'
 import { FreeformSlidePreview } from './FreeformSlidePreview'
 
 interface FreeformTemplatePanelProps {
@@ -32,7 +35,12 @@ export function FreeformTemplatePanel({ templates, pageSize, room, onInsert }: F
   const [openId, setOpenId] = useState<string | null>(null)
   /** The deck whose pages were just closed: its tile takes the focus back. */
   const [closedId, setClosedId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [use, setUse] = useState<TemplateUseId | null>(null)
   const open = templates.find((template) => template.id === openId)
+  const uses = useMemo(() => usesIn(templates), [templates])
+  const searching = query.trim() !== '' || use !== null
+  const found = useMemo(() => (searching ? findTemplates(templates, { text: query, use }) : []), [templates, query, use, searching])
   // The sizes in the active page's proportions first, as the page was when the panel opened:
   // adding a page of another size doesn't reshuffle the list under the pointer. (A stable sort.)
   const [formats] = useState(() => [...TEMPLATE_FORMATS].sort((a, b) => (
@@ -59,40 +67,76 @@ export function FreeformTemplatePanel({ templates, pageSize, room, onInsert }: F
     )
   }
 
+  const tile = (template: TemplateDefinition) => {
+    const format = templateFormat(template.format)
+    const poster = template.kind === 'poster'
+    // Landscape sizes take the whole row.
+    const wide = format.width > format.height * 1.2
+    return (
+      <button
+        key={template.id}
+        type="button"
+        className={`freeform-template-tile${wide ? ' is-wide' : ''}`}
+        data-testid={`freeform-template-tile-${template.id}`}
+        aria-label={t(poster ? '加入{title}' : '打开{title}', { title: t(template.title) })}
+        disabled={poster && room < 1}
+        onClick={() => (poster ? onInsert(template, [0]) : setOpenId(template.id))}
+      >
+        <Measured className="freeform-template-thumb" style={{ aspectRatio: `${format.width} / ${format.height}` }}>
+          {(width) => <FreeformTemplatePreview template={template} frame={{ width, height: Math.round((width * format.height) / format.width) }} />}
+        </Measured>
+        <span className="freeform-template-tile-title">{t(template.title)}</span>
+        <span className="freeform-template-tile-meta">
+          {poster ? t(format.ratio) : t('{n} 页', { n: template.pageCount })}
+        </span>
+      </button>
+    )
+  }
+
   return (
     <div className="freeform-template-list" ref={listRef}>
-      {formats.map((format) => {
+      <label className="search-field freeform-template-search">
+        <SearchIcon />
+        <input
+          type="search"
+          data-testid="freeform-template-search"
+          aria-label={t('搜索模板')}
+          placeholder={t('搜索模板')}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || !query) return
+            // The first Escape clears the words; the next one closes the panel.
+            event.preventDefault()
+            event.stopPropagation()
+            setQuery('')
+          }}
+        />
+        {query && (
+          <button className="tpl-search-clear" type="button" aria-label={t('清空搜索')} onClick={() => setQuery('')}><CloseIcon /></button>
+        )}
+      </label>
+      {uses.length > 1 && (
+        <div className="freeform-template-uses" role="group" aria-label={t('按用途筛选')}>
+          {uses.map((entry) => (
+            <button key={entry} type="button" aria-pressed={use === entry} data-testid={`freeform-template-use-${entry}`} onClick={() => setUse(use === entry ? null : entry)}>
+              {t(useName(entry))}
+            </button>
+          ))}
+        </div>
+      )}
+      {searching && (
+        found.length > 0
+          ? <div className="freeform-template-tiles">{found.map(tile)}</div>
+          : <p className="freeform-template-empty" data-testid="freeform-template-empty">{t('没有找到相关模板')}</p>
+      )}
+      {!searching && formats.map((format) => {
         const group = templates.filter((template) => template.format === format.id)
         if (group.length === 0) return null
-        // Landscape sizes take the whole row.
-        const wide = format.width > format.height * 1.2
         return (
           <Fragment key={format.id}>
             <div className="freeform-drawer-section">{t(format.name)}</div>
-            <div className="freeform-template-tiles">
-              {group.map((template) => {
-                const poster = template.kind === 'poster'
-                return (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className={`freeform-template-tile${wide ? ' is-wide' : ''}`}
-                    data-testid={`freeform-template-tile-${template.id}`}
-                    aria-label={t(poster ? '加入{title}' : '打开{title}', { title: t(template.title) })}
-                    disabled={poster && room < 1}
-                    onClick={() => (poster ? onInsert(template, [0]) : setOpenId(template.id))}
-                  >
-                    <Measured className="freeform-template-thumb" style={{ aspectRatio: `${format.width} / ${format.height}` }}>
-                      {(width) => <FreeformTemplatePreview template={template} frame={{ width, height: Math.round((width * format.height) / format.width) }} />}
-                    </Measured>
-                    <span className="freeform-template-tile-title">{t(template.title)}</span>
-                    <span className="freeform-template-tile-meta">
-                      {poster ? t(format.ratio) : t('{n} 页', { n: template.pageCount })}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
+            <div className="freeform-template-tiles">{group.map(tile)}</div>
           </Fragment>
         )
       })}

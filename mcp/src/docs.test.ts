@@ -125,7 +125,7 @@ describe('list_templates filters', () => {
         arguments: args,
       })) as Content
       return JSON.parse(result.content[0].text ?? '{}') as {
-        templates: Array<{ id: string; kind: string; format: { id: string }; title: string; tags: string[] }>
+        templates: Array<{ id: string; kind: string; format: { id: string }; title: string; tags: string[]; uses: string[] }>
       }
     }
 
@@ -150,8 +150,9 @@ describe('list_templates filters', () => {
     const menus = await call({ q: '菜单' })
     expect(menus.templates.length).toBeGreaterThan(0)
     expect(menus.templates.length).toBeLessThan(all.templates.length)
+    // A keyword finds a template by its words or by what it is for (a price list is filed under menus).
     for (const template of menus.templates) {
-      expect(`${template.title} ${template.tags.join(' ')}`).toContain('菜单')
+      expect(`${template.title} ${template.tags.join(' ')} ${template.uses.join(' ')}`).toContain('菜单')
     }
 
     const combined = await call({ kind: 'poster', format: 'xhs' })

@@ -271,6 +271,49 @@ test('templates start a new project in the matching editor', async ({ page }) =>
   await expect(page.getByTestId('editor-title')).toHaveText('夜航')
 })
 
+test('the template center finds templates by words, use, size and style, and previews one before using it', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('login-guest').click()
+  await page.getByRole('link', { name: '模板中心' }).click()
+  const cards = page.getByTestId('template-card')
+  // Unfiltered, every template once, under what it is for.
+  await expect(cards).toHaveCount(45)
+  await expect(page.getByRole('heading', { level: 2, name: '长文卡片' })).toBeVisible()
+
+  // Words find titles and what a template is for: a price list is filed under menus.
+  const search = page.getByTestId('template-center-search')
+  await search.fill('菜单')
+  await expect(cards).toHaveCount(3)
+  await expect(page.getByTestId('template-center-count')).toHaveText('3 套模板')
+  await search.press('Escape')
+  await expect(search).toHaveValue('')
+
+  // A use, then a size: the facets combine and offer only what is left.
+  await page.getByTestId('template-use-festival').click()
+  await expect(cards).toHaveCount(3)
+  await page.getByTestId('template-filter-format').click()
+  await page.getByRole('option', { name: '竖版海报 · 9:16' }).click()
+  await expect(cards).toHaveCount(2)
+  await page.getByRole('button', { name: '清除筛选' }).first().click()
+  await expect(cards).toHaveCount(45)
+
+  // A style from its menu.
+  await page.getByTestId('template-filter-style').click()
+  await page.getByRole('option', { name: '国风' }).click()
+  await expect(cards).toHaveCount(3)
+
+  // The preview steps through the results, shows every page, and opens the template.
+  await page.getByRole('button', { name: '预览宣纸' }).click()
+  const preview = page.getByTestId('template-preview')
+  await expect(preview.getByRole('heading', { level: 2 })).toHaveText('宣纸')
+  await expect(preview.getByRole('group', { name: '模板页面' }).getByRole('button')).toHaveCount(4)
+  await page.keyboard.press('ArrowRight')
+  await expect(preview.getByRole('heading', { level: 2 })).toHaveText('节日')
+  await preview.getByRole('button', { name: '使用这个模板' }).click()
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
+  await expect(page.getByTestId('editor-title')).toHaveText('节日')
+})
+
 test('a new project asks first when the open one could not be saved', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('login-guest').click()

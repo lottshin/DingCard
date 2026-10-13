@@ -30,7 +30,19 @@ describe('listTemplates', () => {
       expect(template.description.length).toBeGreaterThan(0)
       expect(template.pageCount).toBeGreaterThan(0)
       expect(template.tags.length).toBeGreaterThan(0)
+      // Filed the way the template center files it.
+      expect(template.uses.length, template.id).toBeGreaterThan(0)
+      expect(template.styles.length, template.id).toBeGreaterThan(0)
+      expect(template.colors.length, template.id).toBeGreaterThan(0)
     }
+  })
+
+  test('q finds templates by what they are for and their style, not only their words', () => {
+    const ids = (q: string) => listTemplates({ q }).map((template) => template.id)
+    expect(ids('国风')).toEqual(expect.arrayContaining(['xuan-markdown', 'solar-term-freeform', 'festival-poster-freeform']))
+    expect(ids('菜单价目')).toEqual(['menu-freeform', 'dessert-menu-freeform', 'price-list-freeform'])
+    expect(listTemplates({ q: '长文卡片' }).every((template) => template.workspace === 'markdown')).toBe(true)
+    expect(listTemplates({ kind: 'poster', q: 'PPT' }).map((template) => template.id)).toContain('pitch-cover-freeform')
   })
 
   test('freeform template ids cover the six decks, poster ids the thirty posters', () => {

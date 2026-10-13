@@ -10,6 +10,7 @@
 |---|---|
 | `src/templates/types.ts` | 系列 id 的类型：`MarkdownTemplateSeriesId`、`FreeformTemplateSeriesId`。 |
 | `src/templates/registry.ts` | 所有模板的内容与元数据，以及 `TEMPLATE_REGISTRY`。 |
+| `src/templates/taxonomy.ts` | 模板中心找模板用的分类：每套模板的用途、风格和颜色（`TEMPLATE_FACETS`）。 |
 | `src/theme.ts`、`src/markdownLooks.css`、`src/markdownLooks.ts` | Markdown 模板的版式（`look`）：字号行距、页眉页码和各种元素的样式。 |
 | `src/templates/registry.test.ts` | 注册表的结构测试（数量、唯一 id、文档能通过校验、每次生成互不共享对象）。 |
 | `src/i18n/en/data.ts` | 模板标题、简介和标签的英文。 |
@@ -25,7 +26,8 @@
 3. 在 `freeformSeriesMeta` 里写标题、一句话简介、页数和标签，在 `freeformFactories` 里登记工厂函数，再把 id 加进 `freeformSeriesIds`（这个数组的顺序就是模板中心里的顺序）。
 4. 在 `src/templates/slots.ts` 里写槽位：套图在 `FREEFORM_TEMPLATE_SLOTS` 写每一页哪段文字是标题、导语、要点、引文和页码，哪些形状和线条只跟着某条要点出现（没有这条要点时一起删掉）；海报在 `FREEFORM_POSTER_SLOTS` 写标题、副标题、正文、获得者（证书上的姓名）、信息行（标签和内容；菜单、价目表一行是一道菜或一项服务，冒号前是名称、后面是价格）、按钮、角标、署名和主图位，照片位给一个没有图时用的色块 `fallback`，插画就是设计本身的写 `keep: true`（九宫格的插画没给图时留着）。整块信息共用的底板写在 `detailsExtras`，没有信息行时一起删掉；`spreadDetails` 让少于行数的信息行在原来的范围里拉开（最多拉到原间距的 1.6 倍），清单卡不会下半截空着；`titleFlow` 让标题比示例少几行时，标题下面的内容一起往上移（`pinned` 里的页脚不动）。课程表这类表格写 `table: { layout, sample }`：`src/templates/tables.ts` 的 `tableNodes()` 按版式画出一格一格的色块和字，模板用它画示例，MCP 按内容的行数列数重画（同一个词同一种颜色）。真实内容常常原样用到的示例词（「荣誉证书」「课程表」、价格）写进 `generic`，`check_document` 不把它们当成没换掉的示例。MCP 的 `create_document_from_content` / `create_poster_from_content` 按槽位把内容填进模板，示例文案一句都不会留下。海报的页面用 `slide(name, background, nodes, size)` 画成它的尺寸。装饰素材用 `decorationNode(id, x, y, width, options)` 放进模板（和元素面板同一份，见 `src/freeform/decorations.ts`），要让某一部分当槽位（爆炸贴上的字）就用 `decorationParts()` 把它拆开、逐个命名。
 5. 在 `src/i18n/en/data.ts` 的模板元数据段落里补上标题、简介和新标签的英文。
-6. 更新 `registry.test.ts` 里的模板数量。
+6. 在 `src/templates/taxonomy.ts` 的 `TEMPLATE_FACETS` 里登记它的用途（一到两个）、风格（一到两个）和主要颜色（一到三个），模板中心的分类、筛选、搜索和「相似模板」都靠它；测试会拦住没登记的模板。
+7. 更新 `registry.test.ts` 里的模板数量。
 
 ## 新增一套 Markdown 卡片模板
 
@@ -41,7 +43,7 @@ Markdown 模板是一套「版式」加一篇示例长文。版式要能排任�
 1. 在 `src/theme.ts` 的 `MarkdownLookId` 和 `THEMES` 里加一个带 `look` 和 `type`（字号、行高、段距、边距）的主题，在 `src/markdownLooks.ts` 写它的页码格式和页面家具用到的字体、文字（导出时一起嵌入），在 `src/markdownLooks.css` 写样式。
 2. 在 `MarkdownTemplateSeriesId` 里加系列 id（和 `look` 同名）。
 3. 在 `markdownDocuments` 里写一份 `MarkdownTemplateDocument`：正文 `source` 是一篇完整的示例长文，用单独一行 `---` 分页，每一页用真实字体排下来不超出（`npm run test:e2e` 里有检查）；`themeId` 是第 1 步的主题，字体必须是 `FONTS` 里的。
-4. 在 `markdownSeriesMeta` 写元数据（`pageCount` 要和分出的页数一致），把 id 加进 `markdownSeriesIds`。
+4. 在 `markdownSeriesMeta` 写元数据（`pageCount` 要和分出的页数一致），把 id 加进 `markdownSeriesIds`，在 `taxonomy.ts` 登记用途（`article`）、风格和颜色。
 5. 补英文，改测试里的数量。
 
 ## 版式要求

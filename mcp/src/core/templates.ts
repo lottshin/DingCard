@@ -5,7 +5,9 @@
 // the in-app template center runs.
 
 import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { colorName, styleName, templateScore, useName } from '../../../src/templates/finder'
 import { templateFormat } from '../../../src/templates/formats'
+import { templateFacets } from '../../../src/templates/taxonomy'
 import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, type SlideSlots } from '../../../src/templates/slots'
 import type {
   DeckLayoutId,
@@ -64,6 +66,10 @@ export interface TemplateSummary {
   description: string
   pageCount: number
   tags: string[]
+  /** What it is for, its style and its colours, as the template center files it (taxonomy.ts). */
+  uses: string[]
+  styles: string[]
+  colors: string[]
   capacity?: TemplateCapacity
   posterCapacity?: PosterCapacity
 }
@@ -118,15 +124,16 @@ export interface TemplateFilter {
   kind?: TemplateKind
   /** Page-size id, matched as a case-insensitive substring (如 "xhs"、"a4"). */
   format?: string
-  /** Keyword matched against title, description and tags. */
+  /** Words matched against the title, tags, use, style, size and description (finder.ts). */
   q?: string
 }
 
 export function listTemplates(filter: TemplateFilter = {}): TemplateSummary[] {
-  const query = filter.q?.trim().toLowerCase()
-  return TEMPLATE_REGISTRY.map((template) => {
+  const query = filter.q?.trim() ?? ''
+  return TEMPLATE_REGISTRY.filter((template) => !query || templateScore(template, query) > 0).map((template) => {
     const capacity = template.workspace === 'freeform' && template.kind === 'deck' ? capacityOf(template.series) : undefined
     const posterCapacity = template.kind === 'poster' ? posterCapacityOf(template.series) : undefined
+    const facets = templateFacets(template)
     return {
       id: template.id,
       series: template.series,
@@ -137,13 +144,15 @@ export function listTemplates(filter: TemplateFilter = {}): TemplateSummary[] {
       description: template.description,
       pageCount: template.pageCount,
       tags: [...template.tags],
+      uses: facets.uses.map(useName),
+      styles: facets.styles.map(styleName),
+      colors: facets.colors.map(colorName),
       ...(capacity ? { capacity } : {}),
       ...(posterCapacity ? { posterCapacity } : {}),
     }
   }).filter((template) => {
     if (filter.kind && template.kind !== filter.kind) return false
     if (filter.format && !template.format.id.toLowerCase().includes(filter.format.toLowerCase())) return false
-    if (query && !`${template.title} ${template.description} ${template.tags.join(' ')}`.toLowerCase().includes(query)) return false
     return true
   })
 }

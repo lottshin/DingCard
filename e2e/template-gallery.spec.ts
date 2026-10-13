@@ -242,11 +242,12 @@ test('gallery search narrows the list by keyword and combines with the size filt
 
   const search = dialog.getByTestId('template-search')
 
-  // A keyword leaves the templates whose tags, titles, or descriptions
-  // carry it (the photo collage mentions 小红书 in its description).
+  // A keyword finds titles, tags, sizes and what a template is for, best match
+  // first: everything drawn at 小红书's 3:4, the covers tagged 小红书 leading.
   await search.fill('小红书')
-  await expect(dialog.locator('.template-tile')).toHaveCount(2)
-  await expect(dialog.locator('.template-tile h3')).toContainText(['干货笔记', '图片拼贴'])
+  await expect(dialog.locator('.template-tile h3').nth(0)).toHaveText('干货笔记')
+  await expect(dialog.locator('.template-tile h3').nth(1)).toHaveText('图片拼贴')
+  await expect(dialog.locator('.template-tile h3')).toContainText(['编辑部'])
 
   // Words from the description count too.
   await search.fill('柱状图')
@@ -269,6 +270,22 @@ test('gallery search narrows the list by keyword and combines with the size filt
   // A second Escape closes the gallery.
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
+})
+
+test('gallery uses narrow the list to one kind of template', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await openFreeformTemplateGallery(page)
+  const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
+  const uses = dialog.getByRole('group', { name: '按用途筛选' })
+  await expect(uses.getByRole('button')).toHaveText(['全部', '图文套图', '社交配图', '活动海报', '营销电商', '菜单价目', '节日节气', '邀请贺卡', '办公学习'])
+  await dialog.getByTestId('template-gallery-use-menu').click()
+  await expect(dialog.locator('.template-tile h3')).toHaveText(['菜单', '甜品菜单', '价目表'])
+  // The detail follows the list.
+  await expect(dialog.locator('.template-detail-series')).toHaveText('菜单')
+  await dialog.getByTestId('template-format-a4').click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(2)
+  await uses.getByRole('button', { name: '全部', exact: true }).click()
+  await expect(dialog.locator('.template-tile')).toHaveCount(3)
 })
 
 test('Freeform sidebar mounts scene nodes only near the visible thumbnails', async ({ page }) => {

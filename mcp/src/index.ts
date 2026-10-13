@@ -217,11 +217,11 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、所属工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）、时间线位（timeline，吃 details 行）。可以用 kind / format / q 三个可选参数只取要看的子集（如 kind: "poster"、format: "xhs"、q: "菜单"），返回会小很多。按内容和尺寸挑模板。先用它拿到 templateId。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
+    '列出叮卡内置模板（id、标题、描述、页数、标签、用途、风格、颜色、工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）、时间线位（timeline，吃 details 行）。kind / format / q 可选，只取子集（如 kind: "poster"、format: "xhs"、q: "菜单"）。按内容和尺寸挑模板。先用它拿到 templateId。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
     {
       kind: z.enum(['deck', 'poster']).optional().describe('只列这一类：deck 整套卡片，poster 单页海报'),
       format: z.string().optional().describe('按页面尺寸 id 筛选（不区分大小写的子串匹配，如 "xhs"、"a4"）'),
-      q: z.string().optional().describe('关键词，匹配标题、描述或标签（如 "菜单"、"时间线"）'),
+      q: z.string().optional().describe('关键词，匹配标题、标签、用途、风格和描述（如 "菜单"、"国风"）'),
     },
     async ({ kind, format, q }) => jsonResult({ templates: listTemplates({ kind, format, q }) }),
   )
