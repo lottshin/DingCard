@@ -79,7 +79,7 @@ Markdown 有九套为长文设计的模板（专栏、备忘录、信笺、夜�
 
 模板由社区共建，全部在仓库里维护：做了一套好看的版式，可以按 [贡献模板](docs/templates.md) 提交 Pull Request，合并后所有人都能用。想复用自己的作品，在「我的项目」里把它复制一份再改即可。
 
-![叮卡模板中心，可选择 Markdown 长文和自由画布作品](docs/assets/template-center.png)
+![叮卡模板中心：搜索、按用途分类、按尺寸风格颜色筛选，每套模板按自己的比例排开](docs/assets/template-center.png)
 
 ## MCP 自动化
 
