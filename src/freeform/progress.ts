@@ -39,12 +39,17 @@ export interface ProgressGeometry {
     cx: number
     cy: number
     radius: number
+    /** The track's and the arc's width; the radius leaves room for all of it inside the element. */
+    strokeWidth: number
     /** The arc as an SVG path, open from the top clockwise to the done share. */
     fillPath: string | null
     percent: { x: number; y: number; text: string }
     fontSize: number
   } | null
 }
+
+/** The ring's width as a share of its radius. */
+const RING_STROKE = 0.18
 
 export function progressPercentText(value: number): string {
   return `${Number.isInteger(value) ? value : value.toFixed(1)}%`
@@ -59,7 +64,11 @@ export function progressGeometry(
 ): ProgressGeometry {
   const percent = progressPercentText(value)
   if (kind === 'ring') {
-    const radius = Math.max(6, Math.min(width, height) / 2 - 4)
+    // The stroke is 18% of the radius (6px at least), centred on the circle:
+    // the radius gives up half of it, plus a pixel, so the edge isn't cut.
+    const half = Math.min(width, height) / 2
+    const radius = Math.max(6, Math.floor(Math.min(half - 4, (half - 1) / (1 + RING_STROKE / 2)) * 100) / 100)
+    const strokeWidth = Math.max(6, radius * RING_STROKE)
     const cx = width / 2
     const cy = height / 2
     // The share and its name grow with the ring: a hero number on a card.
@@ -76,11 +85,13 @@ export function progressGeometry(
     const angle = (value / 100) * Math.PI * 2
     const endX = cx + radius * Math.sin(angle)
     const endY = cy - radius * Math.cos(angle)
+    const top = Number((cy - radius).toFixed(2))
+    const bottom = Number((cy + radius).toFixed(2))
     const fillPath = value <= 0
       ? null
       : value >= 100
-        ? `M ${cx} ${cy - radius} A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius} A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius}`
-        : `M ${cx} ${cy - radius} A ${radius} ${radius} 0 ${value > 50 ? 1 : 0} 1 ${endX.toFixed(2)} ${endY.toFixed(2)}`
+        ? `M ${cx} ${top} A ${radius} ${radius} 0 1 1 ${cx} ${bottom} A ${radius} ${radius} 0 1 1 ${cx} ${top}`
+        : `M ${cx} ${top} A ${radius} ${radius} 0 ${value > 50 ? 1 : 0} 1 ${endX.toFixed(2)} ${endY.toFixed(2)}`
     return {
       label: options.label
         ? { x: cx, y: cy + stackHalf, fontSize: labelFontSize }
@@ -90,6 +101,7 @@ export function progressGeometry(
         cx,
         cy,
         radius,
+        strokeWidth,
         fillPath,
         percent: {
           x: cx,

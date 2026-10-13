@@ -910,7 +910,7 @@ function SceneLeafContent({
               r={geometry.ring.radius}
               fill="none"
               stroke={trackColor}
-              strokeWidth={Math.max(6, geometry.ring.radius * 0.18)}
+              strokeWidth={geometry.ring.strokeWidth}
               opacity={leaf.trackFill ? 1 : 0.14}
             />
             {geometry.ring.fillPath && (
@@ -919,7 +919,7 @@ function SceneLeafContent({
                 d={geometry.ring.fillPath}
                 fill="none"
                 stroke={accentColor}
-                strokeWidth={Math.max(6, geometry.ring.radius * 0.18)}
+                strokeWidth={geometry.ring.strokeWidth}
                 strokeLinecap="round"
               />
             )}

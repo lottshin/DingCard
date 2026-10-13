@@ -68,12 +68,20 @@ describe('progress element', () => {
     expect(ring.bar).toBeNull()
     expect(ring.ring!.cx).toBe(120)
     expect(ring.ring!.cy).toBe(120)
-    expect(ring.ring!.radius).toBe(116)
+    expect(ring.ring!.radius).toBe(109.17)
+    expect(ring.ring!.strokeWidth).toBeCloseTo(19.6506, 6)
     expect(ring.ring!.percent.text).toBe('75%')
     expect(ring.ring!.percent.x).toBe(120)
-    expect(ring.ring!.fillPath).toContain('A 116 116')
+    expect(ring.ring!.fillPath).toBe('M 120 10.83 A 109.17 109.17 0 1 1 10.83 120.00')
     expect(progressGeometry(240, 240, 'ring', 0).ring!.fillPath).toBeNull()
-    expect(progressGeometry(240, 240, 'ring', 100).ring!.fillPath).toContain('A 116 116 0 1 1')
+    expect(progressGeometry(240, 240, 'ring', 100).ring!.fillPath).toBe('M 120 10.83 A 109.17 109.17 0 1 1 120 229.17 A 109.17 109.17 0 1 1 120 10.83')
+    // The stroke is centred on the circle, so the radius leaves half of it
+    // (and a pixel) inside the element: a large ring isn't cut at its edges.
+    for (const size of [24, 72, 120, 240, 520]) {
+      const { radius, strokeWidth } = progressGeometry(size, size, 'ring', 50).ring!
+      expect(radius + strokeWidth / 2, `${size}px`).toBeLessThanOrEqual(size / 2 - 1)
+      expect(strokeWidth, `${size}px`).toBeGreaterThanOrEqual(6)
+    }
   })
 
   it('names the goal above the bar and under the ring\'s share', () => {
@@ -95,11 +103,11 @@ describe('progress element', () => {
     // of the digits.
     const ring = progressGeometry(240, 240, 'ring', 75, { label: true })
     expect(ring.label!.x).toBe(120)
-    expect(ring.label!.fontSize).toBeCloseTo(30.2064, 6)
-    expect(ring.label!.y).toBeCloseTo(154.05528, 6)
-    expect(ring.ring!.fontSize).toBeCloseTo(48.72, 6)
+    expect(ring.label!.fontSize).toBeCloseTo(28.427868, 6)
+    expect(ring.label!.y).toBeCloseTo(152.0501286, 6)
+    expect(ring.ring!.fontSize).toBeCloseTo(45.8514, 6)
     expect(ring.ring!.percent.x).toBe(120)
-    expect(ring.ring!.percent.y).toBeCloseTo(120.04872, 6)
+    expect(ring.ring!.percent.y).toBeCloseTo(120.0458514, 6)
     expect(ring.label!.y - ring.label!.fontSize * 0.9).toBeGreaterThan(ring.ring!.percent.y)
     // Without a name the geometry is the plain v38 layout.
     expect(progressGeometry(480, 96, 'bar', 65, {}).label).toBeNull()
