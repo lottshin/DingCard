@@ -36,7 +36,7 @@ async function connect(): Promise<Client> {
 }
 
 describe('dingcard-mcp tool layer', () => {
-  test('exposes the thirty tools', async () => {
+  test('exposes the twenty-two tools', async () => {
     const client = await connect()
     const listing = await client.listTools()
     const names = listing.tools.map((tool) => tool.name).sort()
@@ -51,24 +51,16 @@ describe('dingcard-mcp tool layer', () => {
       'create_document_from_template',
       'create_poster_from_content',
       'get_document',
+      'get_guide',
       'import_stock_image',
       'inspect_document',
-      'list_collages',
-      'list_decorations',
-      'list_filter_presets',
-      'list_icons',
-      'list_server_projects',
-      'list_shares',
-      'list_styles',
+      'list_assets',
       'list_templates',
-      'list_text_styles',
       'open_in_editor',
-      'open_server_project',
       'render_document',
       'render_markdown',
-      'revoke_share',
-      'save_server_project',
       'search_images',
+      'server_projects',
       'share_document',
       'validate_document',
     ])
@@ -87,23 +79,23 @@ describe('dingcard-mcp tool layer', () => {
       expect(share).toMatchObject({ ok: false })
       expect(share.error).toContain('DINGCARD_SERVER_URL')
 
-      const list = await call(client, 'list_shares', {})
+      const list = await call(client, 'share_document', { action: 'list' })
       expect(list).toMatchObject({ ok: false })
       expect(list.error).toContain('DINGCARD_SERVER_URL')
 
-      const revoked = await call(client, 'revoke_share', { id: 'missing' })
+      const revoked = await call(client, 'share_document', { action: 'revoke', id: 'missing' })
       expect(revoked).toMatchObject({ ok: false })
       expect(revoked.error).toContain('DINGCARD_SERVER_URL')
 
-      const projects = await call(client, 'list_server_projects', {})
+      const projects = await call(client, 'server_projects', { action: 'list' })
       expect(projects).toMatchObject({ ok: false })
       expect(projects.error).toContain('DINGCARD_SERVER_URL')
 
-      const opened = await call(client, 'open_server_project', { id: 'missing' })
+      const opened = await call(client, 'server_projects', { action: 'open', id: 'missing' })
       expect(opened).toMatchObject({ ok: false })
       expect(opened.error).toContain('DINGCARD_SERVER_URL')
 
-      const saved = await call(client, 'save_server_project', {})
+      const saved = await call(client, 'server_projects', { action: 'save' })
       expect(saved).toMatchObject({ ok: false })
       expect(saved.error).toContain('DINGCARD_SERVER_URL')
     } finally {
@@ -161,7 +153,7 @@ describe('dingcard-mcp tool layer', () => {
     const client = await connect()
     try {
       const list = await call<{ ok: boolean; projects: Array<{ id: string; title: string; mode: string; updatedAt: number }> }>(
-        client, 'list_server_projects', {},
+        client, 'server_projects', { action: 'list' },
       )
       expect(list.ok).toBe(true)
       expect(list.projects).toEqual([
@@ -171,14 +163,14 @@ describe('dingcard-mcp tool layer', () => {
 
       // A query keeps only the matching titles, case-insensitively.
       const filtered = await call<{ ok: boolean; matched: number; total: number; projects: Array<{ id: string }> }>(
-        client, 'list_server_projects', { query: 'markdown' },
+        client, 'server_projects', { action: 'list', query: 'markdown' },
       )
       expect(filtered.matched).toBe(1)
       expect(filtered.total).toBe(2)
       expect(filtered.projects.map((project) => project.id)).toEqual(['d-md'])
 
       const opened = await call<{ ok: boolean; mode: string; title: string; projectId: string; documentId: string; slides: Array<{ id: string; name: string }> }>(
-        client, 'open_server_project', { id: 'd-free' },
+        client, 'server_projects', { action: 'open', id: 'd-free' },
       )
       expect(opened).toMatchObject({ ok: true, mode: 'freeform-slide', title: '自由作品', projectId: 'd-free' })
       expect(opened.documentId).toMatch(/^doc_[0-9a-f]{12}$/)
@@ -193,14 +185,14 @@ describe('dingcard-mcp tool layer', () => {
 
       // A markdown draft comes back as the envelope render_markdown takes.
       const markdown = await call<{ ok: boolean; mode: string; markdownDocument: { source: string } }>(
-        client, 'open_server_project', { id: 'd-md' },
+        client, 'server_projects', { action: 'open', id: 'd-md' },
       )
       expect(markdown).toMatchObject({ ok: true, mode: 'markdown-card' })
       expect(markdown.markdownDocument.source).toBe('# 标题\n正文')
 
       // A thrown failure (here: the draft does not exist) comes back as an
       // error result with the reason as text, not a JSON payload.
-      const missing = await client.callTool({ name: 'open_server_project', arguments: { id: 'd-none' } }) as Content & { isError?: boolean }
+      const missing = await client.callTool({ name: 'server_projects', arguments: { action: 'open', id: 'd-none' } }) as Content & { isError?: boolean }
       expect(missing.isError).toBe(true)
       expect(missing.content[0].text).toContain('404')
       expect(missing.content[0].text).toContain('草稿不存在')
@@ -216,14 +208,14 @@ describe('dingcard-mcp tool layer', () => {
       expect(edited.ok).toBe(true)
 
       const overwritten = await call<{ ok: boolean; project: { id: string; title: string; updatedAt: number } }>(
-        client, 'save_server_project', { documentId: opened.documentId, projectId: opened.projectId, title: '改完的作品' },
+        client, 'server_projects', { action: 'save', documentId: opened.documentId, projectId: opened.projectId, title: '改完的作品' },
       )
       expect(overwritten).toMatchObject({ ok: true, project: { id: 'd-free', title: '改完的作品', updatedAt: 99 } })
       expect(posted[0]?.body).toMatchObject({ id: 'd-free', title: '改完的作品', mode: 'freeform-slide' })
       expect(Array.isArray(posted[0]?.body.document)).toBe(false)
 
       const createdProject = await call<{ ok: boolean; project: { id: string } }>(
-        client, 'save_server_project', { documentId: opened.documentId },
+        client, 'server_projects', { action: 'save', documentId: opened.documentId },
       )
       expect(createdProject).toMatchObject({ ok: true, project: { id: 'd-new' } })
       expect(posted[1]?.body.id).toBeUndefined()
@@ -553,7 +545,7 @@ describe('dingcard-mcp tool layer', () => {
     const inspected = await call<{ slides: Array<{ nodes: Array<{ id: string; name: string; text?: string }> }> }>('inspect_document', { documentId: created.documentId })
     const names = inspected.slides[0].nodes.map((node) => node.name)
     expect(names.slice(-2)).toEqual(['闪闪', '胶囊标签'])
-    const listed = await call<{ total: number }>('list_decorations', { category: 'sticker' })
+    const listed = await call<{ total: number }>('list_assets', { kind: 'decorations', category: 'sticker' })
     expect(listed.total).toBeGreaterThanOrEqual(10)
     await client.close()
   })
@@ -561,7 +553,7 @@ describe('dingcard-mcp tool layer', () => {
   test('list_icons lists names, searches drawings, and its example inserts as a path', async () => {
     const client = await connect()
     const call = async (args: Record<string, unknown>) => parseContent(
-      (await client.callTool({ name: 'list_icons', arguments: args })) as { content: Array<{ type: string; text?: string }> },
+      (await client.callTool({ name: 'list_assets', arguments: { kind: 'icons', ...args } })) as { content: Array<{ type: string; text?: string }> },
     ) as {
       ok: boolean
       total: number
@@ -607,7 +599,7 @@ describe('dingcard-mcp tool layer', () => {
 
   test('list_styles offers palettes and font sets that document/restyle takes, and inspect_document shows the deck\'s own', async () => {
     const client = await connect()
-    const styles = await call(client, 'list_styles', {}) as unknown as {
+    const styles = await call(client, 'list_assets', { kind: 'styles' }) as unknown as {
       looks: Array<{ id: string; palette: string; fontSet: string }>
       palettes: Array<{ id: string; background: string; text: string; accents: string[] }>
       fontSets: Array<{ id: string; heading: string; body: string }>
@@ -681,7 +673,7 @@ describe('dingcard-mcp tool layer', () => {
 
   test('list_text_styles gives 花字 patches that node/update-style applies', async () => {
     const client = await connect()
-    const listed = await call<{ styles: Array<{ id: string; name: string; backdrop: string; patch: Record<string, unknown> }> }>(client, 'list_text_styles', {})
+    const listed = await call<{ styles: Array<{ id: string; name: string; backdrop: string; patch: Record<string, unknown> }> }>(client, 'list_assets', { kind: 'text_styles' })
     expect(listed.styles.length).toBeGreaterThanOrEqual(12)
     const label = listed.styles.find((style) => style.id === 'label')!
     expect(label.patch).toMatchObject({ effect: { type: 'background' }, fontWeight: 'bold', stroke: null, shadow: null })
@@ -702,7 +694,7 @@ describe('dingcard-mcp tool layer', () => {
 
   test('list_filter_presets gives photo looks that node/update-style applies', async () => {
     const client = await connect()
-    const listed = await call<{ presets: Array<{ id: string; name: string; patch: Record<string, unknown> }> }>(client, 'list_filter_presets', {})
+    const listed = await call<{ presets: Array<{ id: string; name: string; patch: Record<string, unknown> }> }>(client, 'list_assets', { kind: 'filter_presets' })
     expect(listed.presets.length).toBeGreaterThanOrEqual(8)
     const mono = listed.presets.find((preset) => preset.id === 'mono')!
     expect(mono.patch).toMatchObject({ filter: { grayscale: 1 } })
@@ -740,7 +732,7 @@ describe('dingcard-mcp tool layer', () => {
         aspect: number
         example: { id: string; type: string; children: Array<{ id: string; type: string }> }
       }>
-    }>(client, 'list_collages', { pageWidth: 1080, pageHeight: 1440 })
+    }>(client, 'list_assets', { kind: 'collages', pageWidth: 1080, pageHeight: 1440 })
     expect(listed.collages.length).toBeGreaterThanOrEqual(6)
     const quad = listed.collages.find((collage) => collage.id === 'quad')!
     expect(quad.cellCount).toBe(4)

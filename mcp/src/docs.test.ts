@@ -27,18 +27,28 @@ describe('dingcard-mcp tool descriptions stay current', () => {
     const client = await connect()
     const listing = await client.listTools()
     expect(listing.tools.length).toBeGreaterThan(0)
-    for (const tool of listing.tools) {
-      const description = tool.description ?? ''
+    // Tool descriptions and get_guide sections are checked together: the
+    // guide carries what descriptions once carried inline, so it must obey
+    // the same drift rules.
+    const texts: Array<[string, string]> = listing.tools.map((tool) => [tool.name, tool.description ?? ''])
+    const guideListing = JSON.parse(((await (client.callTool({ name: 'get_guide', arguments: {} })) as Content).content[0].text ?? '{}')) as { sections: Array<{ id: string }> }
+    const guideTexts: Array<[string, string]> = []
+    for (const section of guideListing.sections) {
+      const read = await (client.callTool({ name: 'get_guide', arguments: { section: section.id } })) as Content
+      guideTexts.push([`get_guide:${section.id}`, JSON.parse(read.content[0].text ?? '{}').text ?? ''])
+    }
+    for (const [name, description] of [...texts, ...guideTexts]) {
       // Any "自由画布 vNN" claim must name the current version…
       for (const match of description.matchAll(/自由画布 v(\d+)/g)) {
-        expect(match[1], `${tool.name} 的版本说明落后了`).toBe(String(FREEFORM_DOCUMENT_VERSION))
+        expect(match[1], `${name} 的版本说明落后了`).toBe(String(FREEFORM_DOCUMENT_VERSION))
       }
       // …and no example may pin another version.
       for (const match of description.matchAll(/documentVersion: (\d+)/g)) {
-        expect(match[1], `${tool.name} 的示例版本落后了`).toBe(String(FREEFORM_DOCUMENT_VERSION))
+        expect(match[1], `${name} 的示例版本落后了`).toBe(String(FREEFORM_DOCUMENT_VERSION))
       }
-      expect(description, `${tool.name} 还带着 v1–v19 的旧迁移范围`).not.toContain('v1–v19')
-      expect(description, `${tool.name} 还在说 v20 文档`).not.toContain('v20 文档')
+      expect(description, `${name} 还带着 v1–v19 的旧迁移范围`).not.toContain('v1–v19')
+      expect(description, `${name} 还在说 v20 文档`).not.toContain('v20 文档')
+      expect(description, `${name} 里有没填上的占位符`).not.toContain('${')
     }
   })
 
@@ -76,13 +86,36 @@ describe('dingcard-mcp tool descriptions stay current', () => {
   })
 
   test('the tool list stays small enough to read', async () => {
-    // The five document tools once carried the full schema hint each
-    // (90,991 chars). The single copy now lives in the resource; this cap
-    // keeps descriptions from quietly growing back; normal new tools may raise the cap.
+    // Tool descriptions are a catalogue: what a tool does and which guide
+    // section to read first. Long "how to write it" texts live in get_guide
+    // and the schema resources, never back in descriptions. Per-tool caps
+    // keep the catalogue from quietly growing back; a normal new tool whose
+    // description genuinely needs more room may raise its own cap with a
+    // note, the total cap stays.
     const client = await connect()
     const listing = await client.listTools()
     const total = listing.tools.reduce((sum, tool) => sum + JSON.stringify(tool).length, 0)
-    expect(total).toBeLessThan(40000)
+    expect(total).toBeLessThan(32000)
+    for (const tool of listing.tools) {
+      expect((tool.description ?? '').length, `${tool.name} 的说明超过 600 字，长内容进 get_guide`).toBeLessThanOrEqual(600)
+    }
+  })
+
+  test('get_guide covers the topics the descriptions point to', async () => {
+    // The catalogue points at guide sections by id; a section renamed or
+    // deleted behind a description's back breaks that pointer.
+    const client = await connect()
+    const listing = await client.listTools()
+    const catalogue = (JSON.parse(((await (client.callTool({ name: 'get_guide', arguments: {} })) as Content).content[0].text ?? '{}')) as { sections: Array<{ id: string }> }).sections
+    const ids = new Set(catalogue.map((section) => section.id))
+    expect([...ids].sort()).toEqual([
+      'actions', 'deck-content', 'document-model', 'html-import', 'outline', 'poster-content', 'render-export', 'templates',
+    ])
+    for (const tool of listing.tools) {
+      for (const match of (tool.description ?? '').matchAll(/get_guide\("([a-z-]+)"\)/g)) {
+        expect(ids.has(match[1]), `${tool.name} 指向的 get_guide 主题 ${match[1]} 不存在`).toBe(true)
+      }
+    }
   })
 
   test('the docs name the current version wherever they claim one', () => {

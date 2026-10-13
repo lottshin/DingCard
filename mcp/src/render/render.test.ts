@@ -1373,12 +1373,12 @@ describe('share_document against a real server', () => {
         expect(html).toContain('长按图片保存到相册')
         expect(html).toMatch(/<img src="[^"]*\/uploads\//)
 
-        const list = await callTool('list_shares', {})
+        const list = await callTool('share_document', { action: 'list' })
         expect(list.ok).toBe(true)
         expect(list.shares).toHaveLength(1)
         expect((list.shares as Array<{ id: string }>)[0].id).toBe(share.id)
 
-        const revoked = await callTool('revoke_share', { id: share.id })
+        const revoked = await callTool('share_document', { action: 'revoke', id: share.id })
         expect(revoked).toMatchObject({ ok: true, id: share.id })
         expect((await fetch(share.url)).status).toBe(404)
       } finally {

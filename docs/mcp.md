@@ -8,7 +8,7 @@ list_templates → create_document_from_content / create_document_from_outline�
       → render_document → PNG / JPG / PDF / 长图 + 每页缩略图（直接给模型看）
       → open_in_editor → 在叮卡编辑器里打开，人接着改
       → share_document → 分享链接 + 二维码（手机扫码看图，见下文「分享给人」）
-list_server_projects → open_server_project（人在编辑器里存的作品载入，接着改 / 再渲染 / 再分享 / save_server_project 存回去）
+server_projects（list / open / save：人在编辑器里存的作品载入，接着改 / 再渲染 / 再分享 / 存回去）
 ```
 
 服务端保存它创建和修改的文档：工具之间传 `documentId` 即可，不必每次把整份文档 JSON 传来传去（见下文「文档句柄」）。
@@ -19,6 +19,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 
 | 工具 | 作用 |
 | --- | --- |
+| `get_guide` | 按主题读完整使用指南：`document-model` 文档模型、`actions` 动作清单、`deck-content` 套图内容、`outline` Markdown 大纲、`poster-content` 海报内容、`html-import` 网页转文档、`render-export` 渲染导出。工具说明只写做什么；动手写参数前先读对应主题。 |
 | `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台，以及模板中心用的分类：`uses` 用途、`styles` 风格、`colors` 颜色），每个带 `kind`（`deck` 一整套卡片 / `poster` 单页海报）和 `format`（页面尺寸：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240，含宽高）。套图模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么；海报模板另有 `posterCapacity`：副标题、正文、获得者（`recipient`）、按钮、角标、署名、主图位有没有，信息能放几行，有没有表格（`table`，最多几行几列）。可选 `kind`/`format`/`q` 参数只取要看的子集（如 `kind: "poster"`、`format: "xhs"`、`q: "菜单"`），返回会小很多；`q` 和模板中心的搜索一样，除了标题、标签和描述，也认用途和风格（`q: "国风"`、`q: "菜单价目"`）。Markdown 模板的 `themeId` 是它的版式（`template-column` 等），`render_markdown` 渲染时带着页眉页码。按内容和尺寸挑模板。 |
 | `create_document_from_template` | 按模板 id 实例化完整文档：自由画布文档保存在服务端，返回 `documentId` 和各页 id、名称；Markdown 返回源文信封。 |
 | `add_template_pages` | 把任意自由画布模板的某几页（`pages`，从 1 起，可重复；不给就全部）加进已有文档：放在 `afterSlideId` 后面（默认最后），或换掉 `replaceSlideId` 那一页；页面保留模板的尺寸和示例文字，返回加进来的页并默认附缩略图（见下文「不同页用不同模板」）。 |
@@ -29,28 +30,19 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 | `check_document` | 在与导出相同的页面里排版后，逐页列出读者会注意到的问题（见下文「检查」），每条带图层名、节点路径和改法；`fix: true` 时把放不下的文字改成能放下的字号并返回改好的文档。 |
 | `validate_document` | 严格校验 v44 文档（v1–v43 输入自动迁移；精确键匹配、几何范围、id 唯一性），合法时保存在服务端并返回 `documentId`（`includeDocument: true` 时附上规范化后的文档）。 |
 | `inspect_document` | 输出页面摘要与递归节点树（id、name、type、几何、文本摘要；内置图标标出 `icon` id，装饰素材标出 `decoration` id（几部分组成的装饰标在组上），其他图形给出 `d` 开头），以及整套卡片的 `style`：用到的颜色（按面积排序，附占比 `share` 和用在哪：`background`/`fill`/`text`/`line`/`shadow`）、字体（几段文字用、最大字号）和正文字号 `bodySize`，为编辑提供目标。 |
-| `list_icons` | 查内置图标（97 个线性图标）：不带参数列出全部图标的 id 和中英文名，`query` 用中文或英文关键词搜，`ids` 按 id 取；带上路径数据 `d`、统一画法 `style` 和一个可以直接插入的完整节点 `example`（见下文「图形与图标」）。 |
-| `list_decorations` | 查内置装饰素材（48 个，和编辑器「元素」面板同一套）：手绘线条、贴纸、标签。不带参数列出全部，`query` 用中英文关键词搜，`category` 只看一类，`ids` 按 id 取；每个带宽高比 `aspect`、本来的 `color`、标签的示例 `text`、能否单独拉伸 `stretches` 和默认宽度（见下文「装饰素材」）。 |
+| `list_assets` | 查内置素材与样式清单，`kind` 选一类：`icons`（97 个线性图标：`query` 搜、`ids` 取，带路径数据 `d`、统一画法 `style` 和可直接插入的完整节点 `example`，见下文「图形与图标」）、`decorations`（48 个装饰素材：手绘线条、贴纸、标签，`query`/`category`/`ids`，见下文「装饰素材」）、`styles`（配色与字体组合，配合 `document/restyle`，见下文「整套换风格」）、`text_styles`（16 套现成花字：`patch` 直接作为 `node/update-style` 的补丁，见下文「花字与文字效果」）、`collages`（6 套拼图版式：`example` 是完整拼图组节点，格子 `fill` 换图片填充；可选 `pageWidth`/`pageHeight`）、`filter_presets`（8 个滤镜预设：`patch` 给 `node/update-style`，传 `null` 清除）。不给 `kind` 返回各类简介。 |
 | `add_decorations` | 把装饰素材放到一页上，一次可以放多个：每项给 `decoration`、`x`、`y`、`width`，可选 `color`、`text`、`rotation`、`below`（垫在某个顶层节点下面）；返回每个的 `nodeId`、`path` 和盒子。 |
-| `list_text_styles` | 列出 16 套现成的花字：每套有 `id`、`name`、适合的底色 `backdrop` 和 `patch`，`patch` 直接作为 `node/update-style` 的补丁就能把文字变成这个样子（见下文「花字与文字效果」）。 |
-| `list_collages` | 列出 6 套拼图版式（两张并排、一大两小、两小一大、三等分、四宫格、六宫格）：每套有 `id`、`name`、格子数 `cellCount`、宽高比 `aspect` 和 `example`——完整的拼图组节点（圆角矩形格子、留缝、灰色占位），用 `apply_actions` 的 `node/insert-children` 直接插入，再把格子 `fill` 换成图片填充；可选 `pageWidth`/`pageHeight`（默认 1080×1440）按页面尺寸铺格子。 |
-| `list_filter_presets` | 列出 8 个现成的滤镜预设（黑白/复古/暖阳/冷调/胶片/褪色/高对比/柔焦）：每个有 `id`、`name` 和 `patch`，`patch` 直接作为 `node/update-style` 的补丁就能把图片、形状等元素一键变成这个风格（用到 v18 的 `hue`/`grayscale`/`sepia`；传 `null` 清除滤镜回到原图）。 |
-| `list_styles` | 列出可一键套到整套卡片上的搭配（一组配色加上相配的字体组合）、配色（底色、文字色、强调色）和字体组合（标题字体、正文字体），配合 `document/restyle` 使用（见下文「整套换风格」）。 |
 | `apply_actions` | 用与编辑器 UI 完全相同的 `FreeformAction` 归约器应用一串编辑，逐步报告是否生效；按 `documentId` 就地更新（`version` 加一）。 |
 | `get_document` | 取回完整文档 JSON，或用 `path` 写成 `.json` 文件（之后可拖进「我的项目」，或用 `documentPath` 传回来）。 |
 | `open_in_editor` | 在浏览器里的叮卡编辑器打开这份文档，存成一个新项目，人接着手改（见下文「在叮卡里打开」）。 |
 | `render_document` | 无头渲染自由画布 v44 文档，默认输出 `<baseName>-01.png`、`-02.png`… 到指定目录；`format: 'jpeg'` 输出白底 `.jpg`，`format: 'pdf'` 输出一个 `<baseName>.pdf`（每页一张，页面和卡片一样大），`long: true`（png / jpeg）把所有页从上到下拼成一张 `<baseName>-long.png`（太长时自动降低倍率，`files[0].scale` 是实际倍率），`grid: true`（png / jpeg，只用于正方形页面）把每页切成九宫格 `<baseName>-01-1.png` … `-01-9.png`（`files[i].tile` 是 1–9，从左到右、从上到下，按这个顺序发朋友圈拼回一整张），`scale: 2` 输出两倍像素，`quality` 是 JPEG 质量；`slideIds` 只渲染这些页，PDF 和长图也只放这些页。默认附上每页的 JPEG 缩略图（432 px 宽，最多 12 张）作为图片内容返回，模型可以直接看效果；`previews: false` 关掉。 |
 | `render_markdown` | 无头渲染 Markdown 文档信封为一套卡片 PNG：DOM 实测分页（`---` 为手动分页）、平台预设（`rednote`/`weibo`/`twitter`）、主题与个人资料头部、`pixelRatio: 3` 导出；页数由分页结果决定。同样附缩略图。 |
-| `share_document` | 把文档渲染上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接，并附上二维码图片给用户扫（见下文「分享给人」）；自由画布文档和 Markdown 卡片信封（与 `render_markdown` 的 `document` 相同）都可以。需要环境变量 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（API 令牌）或 `DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`。 |
-| `list_shares` | 列出账号在服务端已有的分享（id、标题、链接、创建与过期时间、卡片数、被打开次数），按创建时间倒序。 |
-| `revoke_share` | 撤销一个分享（`id` 从 `list_shares` 查）：链接立刻打不开，页面图片等图片回收清理。 |
-| `list_server_projects` | 列出部署的叮卡服务端账号里存的作品（id、标题、类型 `markdown-card` / `freeform-slide`、最近更新时间），最新在前，`query` 按标题关键词过滤（不区分大小写）；id 给 `open_server_project` 载入（见下文「读账号里的作品」）。需要 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（带 drafts 权限）或账号环境变量。 |
-| `open_server_project` | 把服务端账号里的一个作品载入接着做：自由画布作品返回 `documentId`（之后 `inspect_document` / `apply_actions` / `render_document` / `share_document` 都能用），Markdown 作品返回 `markdownDocument` 信封（交给 `render_markdown`）；作品里的图片已换成服务端的绝对地址。 |
-| `save_server_project` | 把一份自由画布文档存回部署的叮卡服务端账号：不给 `projectId` 存成新作品，给 `projectId`（`open_server_project` 返回的）覆盖那一份——人在编辑器里打开就是改过的版本（见下文「读账号里的作品」）。需要 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（带 drafts 权限）或账号环境变量。 |
+| `share_document` | 把文档渲染上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接，并附上二维码图片给用户扫（见下文「分享给人」）；自由画布文档和 Markdown 卡片信封（与 `render_markdown` 的 `document` 相同）都可以。`action` 另选 `list`（列出账号已有的分享，含被打开次数）、`revoke`（按 `id` 撤销：链接立刻打不开）。需要环境变量 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（API 令牌）或 `DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`。 |
+| `server_projects` | 管部署的叮卡服务端账号里存的作品（见下文「读账号里的作品」），`action` 选操作：`list` 列出作品（id、标题、类型 `markdown-card` / `freeform-slide`、更新时间，`query` 按标题过滤）、`open` 按 `id` 载入（自由画布作品返回 `documentId`，之后 `inspect_document` / `apply_actions` / `render_document` / `share_document` 都能用；Markdown 作品返回 `markdownDocument` 信封，交给 `render_markdown`）、`save` 把文档存回账号（不给 `projectId` 存成新作品，给 `open` 返回的 `projectId` 时覆盖那一份）。需要 `DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN`（带 drafts 权限）或账号环境变量。 |
 
 模板放不下的版式，可以写成网页交给 `create_document_from_html`，转出来同样接 `check_document` → `render_document`。
 
-工具说明保持精简：`validate_document` 的描述带文档速写（顶层结构、节点类型列表、精确键匹配规则），完整的文档模型（每种节点的全部键）只在 `dingcard://schema/freeform` 资源里留一份，其余工具都指向它，AI 客户端按需读取即可。`validate_document` 校验失败会写清第几页、哪个节点、多了或缺少哪个键、该写哪个 `documentVersion`；`apply_actions` 对没生效的动作逐条返回 `reasons`（与 `changes` 一一对应）。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
+工具说明保持精简：每个工具的描述只写做什么、什么时候用，长内容全部收进 `get_guide` 工具（按主题返回完整写法）和 `dingcard://schema/*` 资源，工具描述里只留指路。`validate_document` 的描述带文档速写（顶层结构、节点类型列表、精确键匹配规则），完整的文档模型（每种节点的全部键）在 `dingcard://schema/freeform` 资源和 `get_guide` 的 `document-model` 主题里各留一份（同一来源），其余工具都指向它们，AI 客户端按需读取即可。`validate_document` 校验失败会写清第几页、哪个节点、多了或缺少哪个键、该写哪个 `documentVersion`；`apply_actions` 对没生效的动作逐条返回 `reasons`（与 `changes` 一一对应）。批量场景推荐链路：`list_templates` 按 `capacity` 选风格 → `create_document_from_content`（或大纲）一次生成整套 → `check_document` 看有没有问题 → 需要时 `apply_actions` 修改（整套换配色、字体用 `document/restyle`）→ `render_document` 出全套 PNG（或一个 PDF、一张长图）并看缩略图。
 
 ## 文档句柄
 
@@ -77,16 +69,16 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 - **配置一次**（环境变量，重启 MCP 生效）：`DINGCARD_SERVER_URL`（部署的叮卡地址，如 `https://cards.example.com`）加 `DINGCARD_SERVER_TOKEN`（一个 API 令牌；带 images、shares 权限，见后端方案的「API 令牌」），或 `DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`（一个叮卡账号）。没配置时工具会返回怎么配的提示。
 - `expiresInHours` 是有效期（小时）：1–720（最长一个月），默认 24。过期后链接打不开（410），页面图片仍留在账号里，和编辑器里「分享链接」的规则一致。
 - 返回 `{ ok, share: { id, url, expiresAt, imageCount } }`，并附上二维码 PNG 图片（`qr: false` 关掉）——直接给用户扫即可。
-- `list_shares` 列出已有分享（含被打开次数），`revoke_share` 撤销一个（链接立刻 404）。分享出去的图片与素材库同样受图片回收保护，不会被误清。Markdown 卡片信封（`source`、`platformId`、`themeId` 等，与 `render_markdown` 的 `document` 相同）也能一步分享：传给 `share_document` 的 `document` 即可。
+- `share_document` 的 `action: "list"` 列出已有分享（含被打开次数），`action: "revoke"` 撤销一个（链接立刻 404）。分享出去的图片与素材库同样受图片回收保护，不会被误清。Markdown 卡片信封（`source`、`platformId`、`themeId` 等，与 `render_markdown` 的 `document` 相同）也能一步分享：传给 `share_document` 的 `document` 即可。
 
 ## 读账号里的作品
 
-`list_server_projects` 和 `open_server_project` 把方向反过来：人在编辑器里存好的作品，AI 也能接着做——改几个字、换个配色、再渲染、再分享，不用从零重做；`save_server_project` 再把改完的存回去。
+`server_projects` 把方向反过来：人在编辑器里存好的作品，AI 也能接着做——改几个字、换个配色、再渲染、再分享，不用从零重做；`save` 再把改完的存回去。
 
 - **配置**与分享相同（`DINGCARD_SERVER_URL` 加 `DINGCARD_SERVER_TOKEN` 或账号环境变量）；API 令牌需要带 `drafts` 权限（读和写都是这个作用域）。
-- `list_server_projects` 返回作品的 `id`、`title`、`mode`（`markdown-card` / `freeform-slide`）和 `updatedAt`，最新在前；作品多时用 `query` 按标题关键词过滤（不区分大小写，返回里带 `matched` / `total` 计数）。
-- `open_server_project` 按 `id` 载入：自由画布作品存进服务端并返回 `documentId` 和 `projectId`（服务端那份作品的 id），之后 `inspect_document` / `apply_actions` / `check_document` / `render_document` / `share_document` / `open_in_editor` 都能用；Markdown 作品返回 `markdownDocument` 信封（`source`、`platformId`、`themeId` 等都在里面），交给 `render_markdown` 渲染。
-- `save_server_project` 把文档存回服务端账号：不给 `projectId` 存成新作品（`title` 可选，不给时按第一页名称自动起）；给 `open_server_project` 返回的 `projectId` 时覆盖那一份——人在编辑器里打开看到的就是改过的版本。Markdown 作品不能从 MCP 存回（编辑器里的 Markdown 工作台没有对应的文档工具）。
+- `action: "list"` 返回作品的 `id`、`title`、`mode`（`markdown-card` / `freeform-slide`）和 `updatedAt`，最新在前；作品多时用 `query` 按标题关键词过滤（不区分大小写，返回里带 `matched` / `total` 计数）。
+- `action: "open"` 按 `id` 载入：自由画布作品存进服务端并返回 `documentId` 和 `projectId`（服务端那份作品的 id），之后 `inspect_document` / `apply_actions` / `check_document` / `render_document` / `share_document` / `open_in_editor` 都能用；Markdown 作品返回 `markdownDocument` 信封（`source`、`platformId`、`themeId` 等都在里面），交给 `render_markdown` 渲染。
+- `action: "save"` 把文档存回服务端账号：不给 `projectId` 存成新作品（`title` 可选，不给时按第一页名称自动起）；给 `open` 返回的 `projectId` 时覆盖那一份——人在编辑器里打开看到的就是改过的版本。Markdown 作品不能从 MCP 存回（编辑器里的 Markdown 工作台没有对应的文档工具）。
 - 作品里的图片地址换成服务端的绝对地址（`/uploads/…` 指向部署的叮卡），渲染时能直接取到；不覆盖时（只载入、只渲染、另存新作品）服务端存的原作品不变。
 
 ## 用网页写法出图
@@ -195,7 +187,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 | `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
 | `dingcard://examples/freeform` | 完整自由画布 v44 文档示例（编辑部模板实例）。 |
 | `dingcard://icons` | 内置图标全集：每个图标的 id、中英文名、关键词与 24×24 路径数据 `d`。 |
-| `dingcard://decorations` | 内置装饰素材全集（与 `list_decorations` 不带参数时相同）。 |
+| `dingcard://decorations` | 内置装饰素材全集（与 `list_assets` 的 `decorations` 不带筛选时相同）。 |
 | `dingcard://examples/markdown` | 完整 Markdown 文档信封示例（专栏模板实例）。 |
 
 ## 图形与图标
@@ -207,7 +199,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 - `viewBox` 要正好包住 `d` 用到的坐标，画到框外 `check_document` 会报 `path-overflow` 并给出合适的 `viewBox`。
 - 换图形用 `node/update-content` 的 `{ d, viewBox }`，改样式用 `node/update-style`。
 
-内置图标先用 `list_icons` 查，再把返回的 `example` 改好 `id`、位置和颜色，用 `node/insert-children` 插进去：
+内置图标先用 `list_assets`（`kind: "icons"`）查，再把返回的 `example` 改好 `id`、位置和颜色，用 `node/insert-children` 插进去：
 
 ```json
 {
@@ -223,7 +215,7 @@ list_server_projects → open_server_project（人在编辑器里存的作品载
 
 ## 装饰素材
 
-手绘圈、下划线、箭头、贴纸、标签这些不用自己写 `d`：`list_decorations` 查到 id，`add_decorations` 一次放好。
+手绘圈、下划线、箭头、贴纸、标签这些不用自己写 `d`：`list_assets`（`decorations`）查到 id，`add_decorations` 一次放好。
 
 ```json
 {
@@ -280,14 +272,14 @@ v20 起 `text` 里的每个换行分出一段：
 { "type": "document/restyle", "palette": "night-flight", "fontSet": "editorial", "colors": { "#d94836": "#ff5a36" } }
 ```
 
-- `palette` / `fontSet` 取 `list_styles` 的 id；`looks` 里每套搭配给出一对 `palette` 和 `fontSet`，两个一起传就是这套搭配。配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅（按 `check_document` 的对比度门槛）；字体组合把不小于正文字号 1.4 倍（`headingScale`）的文字换成标题字体，其余换成正文字体。
+- `palette` / `fontSet` 取 `list_assets`（`styles`）的 id；`looks` 里每套搭配给出一对 `palette` 和 `fontSet`，两个一起传就是这套搭配。配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅（按 `check_document` 的对比度门槛）；字体组合把不小于正文字号 1.4 倍（`headingScale`）的文字换成标题字体，其余换成正文字体。
 - `colors`（`{ "#原色": "#新色" }`）和 `fonts`（`{ "原字体": "新字体" }`）精确替换，键是文档里现有的颜色和字体，可以从 `inspect_document` 的 `style` 里取；颜色在文字、片段标色和高亮、填充、描边、投影、渐变色标和文字效果里一起换。同时给时先套 `palette` / `fontSet`，再按 `colors` / `fonts` 覆盖（键仍指原来的颜色和字体）。精确替换不会自动调对比度，换完用 `check_document` 看一遍。
 - 和其他动作一样，不认识的 id、不合法的颜色或什么都没换时，这一步被忽略（`changes` 里是 `false`）。
 
 ## 花字与文字效果
 
 - 文字节点 v17 起可以带一个 `effect`：`neon` 发光、`outline` 字外描边、`hollow` 镂空、`splice` 错位、`offset` 硬投影、`echo` 回声、`glitch` 故障、`extrude` 立体、`background` 每行后面的底色块、`marker` 荧光笔；`amount`（0–100）按字号比例算大小，所以同一个效果放在什么字号上都合适。写法见工具描述里的文档模型，`node/update-style` 的 `effect: null` 去掉。
-- 想直接用现成的样子，`list_text_styles` 给出 16 套花字，把其中的 `patch` 交给 `node/update-style`：
+- 想直接用现成的样子，`list_assets`（`text_styles`）给出 16 套花字，把其中的 `patch` 交给 `node/update-style`：
 
 ```json
 { "type": "node/update-style", "slideId": "cover", "updates": [{ "path": ["title"], "patch": { "textFill": { "type": "solid", "color": "#ffffff" }, "effect": { "type": "background", "color": "#18181b", "amount": 40, "radius": 30 }, "fontWeight": "bold", "stroke": null, "strokeWidth": null, "shadow": null } }] }

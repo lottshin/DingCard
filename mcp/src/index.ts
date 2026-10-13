@@ -91,10 +91,10 @@ function errorResult(error: unknown) {
 }
 
 const SHADOW_HINT = "shadow?({ color, blur(0–400), offsetX(-1000–1000), offsetY(-1000–1000) } 投影)"
-const FILTER_HINT = "filter?({ brightness?(0–3), contrast?(0–3), saturation?(0–3), blur?(0–100 px), hue?(0–360 色相环旋转), grayscale?(0–1 灰度), sepia?(0–1 复古黄) } 滤镜，至少一键；现成的滤镜预设见 list_filter_presets)"
+const FILTER_HINT = "filter?({ brightness?(0–3), contrast?(0–3), saturation?(0–3), blur?(0–100 px), hue?(0–360 色相环旋转), grayscale?(0–1 灰度), sepia?(0–1 复古黄) } 滤镜，至少一键；现成的滤镜预设见 list_assets 的 filter_presets)"
 const BLEND_HINT = "blendMode?('normal'|'multiply'|'screen'|'overlay'|'darken'|'lighten'|'color-dodge'|'color-burn'|'hard-light'|'soft-light'|'difference'|'exclusion'|'hue'|'saturation'|'color'|'luminosity' 混合模式)"
 const TEXT_STROKE_HINT = "stroke?(#RRGGBB 文字描边色；配 strokeWidth 使用), strokeWidth?(0.5–100 px 文字描边宽度), vertical?(true 竖排文字)"
-const TEXT_EFFECT_HINT = `文字效果，一段文字一种：{ type: 'neon', color, amount } 发光 | { type: 'outline', color, amount } 字外描边（贴纸字） | { type: 'hollow', amount } 镂空（只留文字颜色的轮廓） | { type: 'splice', color, amount, angle } 镂空字叠在错开的实心字上 | { type: 'offset', color, amount, angle } 硬投影 | { type: 'echo', color, amount, angle } 两层渐淡的重影 | { type: 'glitch', color, color2, amount } 左右错开的双色故障 | { type: 'extrude', color, amount, angle } 立体 | { type: 'background', color, amount, radius } 每行文字后面一块底色（标签） | { type: 'marker', color, amount } 每行下半截的荧光笔；color/color2 为 #RRGGBB，amount 0–100（按字号比例的强度或大小，50 为默认），angle 0–360（0 向右、90 向下），radius 0–100（底色圆角）；node/update-style 的 effect 传 null 去掉。现成的花字见 list_text_styles`
+const TEXT_EFFECT_HINT = `文字效果，一段文字一种：{ type: 'neon', color, amount } 发光 | { type: 'outline', color, amount } 字外描边（贴纸字） | { type: 'hollow', amount } 镂空（只留文字颜色的轮廓） | { type: 'splice', color, amount, angle } 镂空字叠在错开的实心字上 | { type: 'offset', color, amount, angle } 硬投影 | { type: 'echo', color, amount, angle } 两层渐淡的重影 | { type: 'glitch', color, color2, amount } 左右错开的双色故障 | { type: 'extrude', color, amount, angle } 立体 | { type: 'background', color, amount, radius } 每行文字后面一块底色（标签） | { type: 'marker', color, amount } 每行下半截的荧光笔；color/color2 为 #RRGGBB，amount 0–100（按字号比例的强度或大小，50 为默认），angle 0–360（0 向右、90 向下），radius 0–100（底色圆角）；node/update-style 的 effect 传 null 去掉。现成的花字见 list_assets 的 text_styles`
 
 const DOCUMENT_SCHEMA_HINT = `document：自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（JSON；v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入会自动迁移为 v${FREEFORM_DOCUMENT_VERSION}）。
 顶层 { documentVersion: ${FREEFORM_DOCUMENT_VERSION}, slides: [...], activeSlideId }；每页 { id, name, width(128–4096), height(128–4096), background, nodes, guides? }。
@@ -110,7 +110,7 @@ ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle 
 - path：+ width, height, d(SVG 路径数据；M/L/H/V/C/S/Q/T/A/Z 及小写相对命令，必须以 M/m 开头，最长 20000 字符), viewBox({ x, y, width(>0), height(>0) }：d 所在的坐标系，渲染时拉伸铺满节点盒), fill(ColorPaint 或 { type: 'transparent' } 不填充，或 { type: 'image', src, fit, framing } 图片填充（任意轮廓变成图片框，取景与形状图片填充同一套）), stroke(#RRGGBB), strokeWidth(0–10000，viewBox 单位，随图形缩放；0 即不描边), dash?(>0 的 viewBox 单位虚线长度，缺省实线), cap?('round'|'butt'|'square'，缺省圆头), join?('round'|'miter'|'bevel' 拐角，缺省圆滑), fillRule?('nonzero'|'evenodd'，缺省 nonzero), flipX?(true 左右镜像，v40), flipY?(true 上下镜像，v40), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - qrcode：+ width, height（渲染时保持正方形，居中留白）, payload(要编码的文字或 URL，1–512 字符), dark(#RRGGBB 码点颜色，缺省 #18181b), light(#RRGGBB 背景色，缺省 #ffffff), ecl?('L'|'M'|'Q'|'H' 纠错级别，缺省 M), moduleStyle?('square'|'rounded'|'dot' 模块形状，缺省方块；三个定位角任何样式下都保持方块以便扫描), logoSrc?(中央 logo 的图片地址或 img: 引用；有 logo 时渲染自动按 H 级纠错生成，扫码不受影响), quietZone?(0–4 码边距（码四周留白的模块数），缺省 2；设 0 时码贴边，建议底色和码背景一致), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - chart：+ width, height, chartKind('bar'柱状|'ring'环形|'line'折线|'radar'雷达（维度蛛网，首轴朝上，一系一多边形）, labels([类目字符串×1–12，每个 1–24 字符，超宽自动折成两行]), series([{name?(图例名≤12 字), values:[≥0 数值×类目数], color:#RRGGBB}×1–3]；柱状按类目分组、折线一系一线、环形一系一环，两个以上带名系列自动画图例), showValues?(true 每个点标注数值), barMode?('grouped' 并排|'stacked' 堆叠|'percent' 百分比堆叠，缺省并排；堆叠按类目一根柱并标合计，百分比每柱归一到 100% 并在 ≥10% 的段上标百分比), showLegend?(图例开关：true 从第一个带名系列起显示，false 隐藏，缺省自动——两个以上带名系列才显示), showTicks?(轴刻度开关：false 隐藏 y 轴网格线与刻度文字、图形占满整个宽度，缺省显示), ink?(类目、刻度、数值和图例文字的颜色 #RRGGBB，v43，缺省深灰 #3f3f46；深色底上要设浅色), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
-  图形用法：图标、徽章、对话气泡、波浪分隔线、曲线箭头、折线图等任意矢量图。viewBox 要正好包住 d 用到的坐标（画到框外时 check_document 报 path-overflow）；节点盒与 viewBox 宽高比相同则不变形，不同则图形随盒子拉伸，描边粗细仍保持均匀。内置图标用 list_icons 查：viewBox 0 0 24 24、strokeWidth 2、fill { type: 'transparent' }、圆头圆角，盒子取正方形（如 96×96）即可，换色只改 stroke。手绘圈、下划线、箭头、贴纸、标签等装饰用 list_decorations 查、add_decorations 一次放好，不必手写 d。
+  图形用法：图标、徽章、对话气泡、波浪分隔线、曲线箭头、折线图等任意矢量图。viewBox 要正好包住 d 用到的坐标（画到框外时 check_document 报 path-overflow）；节点盒与 viewBox 宽高比相同则不变形，不同则图形随盒子拉伸，描边粗细仍保持均匀。内置图标用 list_assets（icons）查：viewBox 0 0 24 24、strokeWidth 2、fill { type: 'transparent' }、圆头圆角，盒子取正方形（如 96×96）即可，换色只改 stroke。手绘圈、下划线、箭头、贴纸、标签等装饰用 list_assets（decorations）查、add_decorations 一次放好，不必手写 d。
 - table：+ width, height, rows(2–12 行，含表头), cols(1–6 列), cells(按行展开的单元格文字 [字符串×rows×cols]，每个 1–24 字符、超宽自动折行，空字符串即空白格；第一行默认表头加粗), headerRow?(表头开关：false 去掉表头的加粗与底色，缺省显示), striped?(斑马纹开关：true 隔行铺浅底色，缺省无), ink?(文字与网格线的墨色 #RRGGBB，缺省深灰 #3f3f46), headerFill?(表头底色 #RRGGBB，缺省按墨色铺 8% 浅底), stripeFill?(斑马纹底色 #RRGGBB，缺省按墨色铺 4.5% 浅底), colWidths?(各列相对宽度 [{>0 数字}×cols]，按比例分整行宽，缺省均分；改 cols 时保留前几列的比例、新列均分), grid?(格线样式，v44：'all' 全框（缺省）| 'rows' 每行下面一条横线、没有竖线 | 'three-line' 三线表：顶线和底线粗、表头下一条细线 | 'none' 不画线), lineColor?(格线颜色 #RRGGBB，v44，缺省按墨色铺 28% 浅线), lineWidth?(格线粗细 0.5–24 px，v44，缺省 1；三线表的顶线底线是它的两倍), fontSize?(格子字号 8–96 px，v44，缺省按行高自动取、放不下才缩小), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - timeline：+ width, height, items([{label?(时间或步骤，1–12 字), text(内容，1–48 字，超宽自动折行)}×2–8]，整体替换), accent?(主线与圆点颜色 #RRGGBB，缺省蓝 #1d4ed8，时间标签也用此色), horizontal?(横排开关：true 主线横在顶部、条目并排、文字居中对齐各自圆点，缺省竖排), ink?(条目文字颜色 #RRGGBB，缺省深灰 #3f3f46), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
 - progress：+ width, height, progressKind('bar' 横条：按元素高度画圆角轨道、数字在充色段内或旁边 | 'ring' 圆环：从顶部顺时针画弧、数字居中), value(进度数值 0–100，最多一位小数，如 65、42.5), label?(目标名 1–12 字，横条画在轨道上方左对齐、圆环画在数字下方，缺省不画), accent?(进度颜色 #RRGGBB，缺省蓝 #1d4ed8，轨道用它铺 14% 浅底), trackFill?(轨道底色 #RRGGBB，缺省仍按进度色铺 14% 浅底), ink?(目标名的颜色 #RRGGBB，v43，缺省深灰 #3f3f46；深色底上要设浅色), opacity?, ${SHADOW_HINT}, ${FILTER_HINT}, ${BLEND_HINT}
@@ -137,7 +137,7 @@ const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI �
 - { type: 'slide/delete', slideId } / { type: 'slide/select', slideId } / { type: 'slide/reorder', slideId, targetIndex }（把该页移动到 targetIndex，超出范围会收敛到末位）
 - { type: 'slide/update', slideId, patch: { name?, background? } } / { type: 'slide/resize', slideId, width, height }
 - { type: 'guides/set', slideId, guides: [{ id, axis('x'|'y'), position }] } 整体替换该页参考线（传 [] 清空；越界或重复 id 的整体提交会被忽略）
-- { type: 'document/restyle', palette?, fontSet?, colors?, fonts? } 整套卡片一起换风格（所有页面，一步撤销）。palette / fontSet 用 list_styles 返回的 id：配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅；字体组合按字号分配，不小于正文字号 1.4 倍的文字用标题字体，其余用正文字体。colors: { "#原色": "#新色" } 精确替换颜色（文字、填充、描边、投影、渐变色标、高亮一起换），fonts: { "原字体": "新字体" } 精确替换字体，键是文档现有的颜色和字体（见 inspect_document 的 style）；同时给时先套 palette / fontSet，再按 colors / fonts 覆盖
+- { type: 'document/restyle', palette?, fontSet?, colors?, fonts? } 整套卡片一起换风格（所有页面，一步撤销）。palette / fontSet 用 list_assets（styles）返回的 id：配色把页面底色换成新底色、正文色换成新文字色，深浅灰按原来在两者之间的位置取色，其余颜色依次换成强调色，再把因此看不清的字调深或调浅；字体组合按字号分配，不小于正文字号 1.4 倍的文字用标题字体，其余用正文字体。colors: { "#原色": "#新色" } 精确替换颜色（文字、填充、描边、投影、渐变色标、高亮一起换），fonts: { "原字体": "新字体" } 精确替换字体，键是文档现有的颜色和字体（见 inspect_document 的 style）；同时给时先套 palette / fontSet，再按 colors / fonts 覆盖
 - { type: 'node/insert-children', slideId, parentPath: string[], nodes: FreeformSceneNode[], index? } 插入节点
 - { type: 'node/update-content', slideId, updates: [{ path, patch: { text?, src?, alt?, d?, viewBox?, payload?（qrcode 的编码内容）, labels?（chart 的整套类目 [{字符串}×1–12]）/ series?（chart 的整套系列 [{name?, values:[{≥0 数字}×类目数], color:#RRGGBB}×1–3]，整体替换）/ rows?/cols?（table 的行/列数 2–12 / 1–6；行列变化时原单元格按位置保留，多出的格子留空）/ cells?（table 的整套单元格 [{字符串}×rows×cols]，整体替换）/ colWidths?（table 的整套列宽比例 [{>0 数字}×cols]，整体替换，需与新列数一致）/ items?（timeline 的整套条目 [{label?, text}]×2–8，整体替换）/ value?（progress 的进度数值 0–100，最多一位小数）/ label?（progress 的目标名 1–12 字，传 '' 清除） } }] }（改 text 时已有 spans 会按编辑位置自动保留/收缩；d / viewBox 只用于 path）
 - { type: 'node/update-style', slideId, updates: [{ path, patch: { fontSize?(片段自己的字号按比例跟着变), fontFamily?, textFill?, align?, fontWeight?, verticalAlign?('top'|'middle'|'bottom'), paragraphSpacing?(px，传 null 或 0 清除), list?('bullet'|'number'，传 null 变回普通段落), spans?(整体替换文本片段，传 [] 清空), lineHeight?(传 null 恢复默认行高), letterSpacing?(传 null 恢复默认字距), italic?(true 开启斜体，false 取消), cornerRadius?(矩形/图片统一圆角 px，图片传 null 恢复直角), cornerRadii?(rect 四角圆角 { topLeft, topRight, bottomRight, bottomLeft } 各 0–2000 px，仅 v42，整体给出，传 null 恢复统一圆角), starInnerRatio?(0.15–0.85 五角星内径比，传 null 恢复默认 0.38), bubbleTailX?(0.05–0.95 对话气泡尾巴位置，传 null 恢复默认 0.5), dark?/light?(qrcode 码点/背景色 #RRGGBB，传 null 恢复默认), ecl?(qrcode 纠错级别 'L'|'M'|'Q'|'H'，传 null 恢复 M), moduleStyle?(qrcode 模块形状 'square'|'rounded'|'dot'，传 null 恢复方块), logoSrc?(qrcode 中央 logo 图片地址，传 null 移除), quietZone?(qrcode 码边距 0–4 模块，传 null 恢复 2), chartKind?(chart 图表类型 'bar'|'ring'|'line'|'radar'), accent?(chart 主色 #RRGGBB，传 null 恢复 #1d4ed8；timeline 主线与圆点颜色，传 null 恢复蓝；progress 进度颜色，传 null 恢复蓝), progressKind?(progress 样式 'bar'|'ring'), trackFill?(progress 轨道底色 #RRGGBB，传 null 恢复按进度色铺 14% 浅底), horizontal?(timeline 横排开关：true 主线横在顶部、条目并排，传 null 或 false 恢复竖排), showValues?(true 在 chart 每个点上标数值，传 null 关闭), barMode?(chart 柱状堆叠方式 'grouped'|'stacked'|'percent'，传 null 恢复并排), showLegend?(chart 图例开关 true|false，传 null 恢复自动), showTicks?(chart 轴刻度开关，传 false 隐藏 y 轴网格线与刻度，传 null 恢复显示), headerRow?(table 表头开关，传 false 去掉表头加粗与底色，传 null 恢复显示), striped?(table 斑马纹开关，传 true 隔行铺浅底色，传 null 恢复无斑马纹), ink?/headerFill?/stripeFill?(table 墨色/表头底色/斑马纹底色 #RRGGBB，传 null 恢复缺省的深灰墨色及其浅底；grid?/lineColor?/lineWidth?(table 格线样式 'all'|'rows'|'three-line'|'none'、格线颜色、格线粗细，v44，传 null 恢复全框、墨色浅线、1px)；fontSize 用在 table 上是格子字号（v44，8–96，传 null 恢复按行高自动）；ink 也是 timeline 条目文字、chart 类目刻度图例文字（v43）和 progress 目标名（v43）的颜色，传 null 恢复深灰), opacity?(0–1 不透明度), shadow?(整体替换投影 { color, blur, offsetX, offsetY }，传 null 清除), filter?(整体替换滤镜 { brightness, contrast, saturation, blur, hue, grayscale, sepia } 至少一键，后三个传 null 清除), blendMode?(混合模式，传 null 恢复正常), fit?, framing?, shape?, fill?(path 接受 ColorPaint、{ type: 'transparent' } 或 { type: 'image', src, fit, framing }), stroke?, strokeWidth?(path 为 viewBox 单位；图片是相框), lineKind?, dash?(虚线长度，path 为 viewBox 单位，传 null 恢复实线), cap?('round'|'butt'|'square' 线帽), join?('round'|'miter'|'bevel' path 拐角), fillRule?('nonzero'|'evenodd' path 填充规则), startCap?/endCap?('none'|'arrow'|'dot' 线条端点装饰，传 null 恢复跟随 lineKind), points?(整体替换多段线顶点 [{ x, y }×2–64]，必须全部落在节点盒内), stroke?(文字描边色，传 null 清除), strokeWidth?(文字描边宽度，传 null 清除), vertical?(true 竖排文字，false 恢复横排) } }] }
@@ -147,6 +147,58 @@ const ACTIONS_SCHEMA_HINT = `actions：FreeformAction 数组（与编辑器 UI �
 - { type: 'node/reorder', slideId, parentPath, nodeIds, direction: 'forward'|'backward'|'front'|'back' }
 - { type: 'group/create', slideId, parentPath, nodeIds, name? } / { type: 'group/ungroup', slideId, parentPath, groupIds, mode: 'one-level'|'all-level' }
 path 是从页面根到目标节点的节点 id 数组（[] 表示页面根）。无效动作会被静默忽略（changes 里对应 false），不会报错。`
+
+/**
+ * The guide sections get_guide hands out. Long "how to write it" texts live
+ * here — and in the matching dingcard:// resource — never in tool
+ * descriptions; a description only says what a tool does and which section
+ * to read first.
+ */
+const HTML_IMPORT_GUIDE = `把你写的 HTML/CSS 网页转成叮卡自由画布文档的完整写法：
+- 每页一个 <section>，放在 <body> 下面，用 CSS 写死宽高（px），如 1080×1440（小红书 3:4）、1080×1920（9:16）、1080×1080；没有 section 时整个 body 是一页，尺寸用 width / height。100vw、100vh 就是 width × height。
+- 字体用内置的：苹方 "PingFang SC"、思源黑体 "Noto Sans SC"、思源宋体 "Noto Serif SC"、霞鹜文楷 "LXGW WenKai TC"、站酷小薇 "ZCOOL XiaoWei"、系统宋体 "Songti SC"；标题大字还能用西文的 "Playfair Display"、"Archivo Black"、"Great Vibes" 和站酷黄油体 "ZCOOL QingKe HuangYou"、马善政毛笔 "Ma Shan Zheng"；别的字体换成同类的内置字体（notes 里会写）。字重只有常规和粗体，600 及以上算粗体。
+- 图片用 <img> 或 CSS background-image，object-fit、object-position、圆角和圆形裁切都照着来；src 写本机路径（相对路径按 htmlPath 所在目录或当前目录找）、http(s) URL 或 data URL，本机图片和本机样式表会嵌进来。
+- 图标和图形写成内联 <svg>（path、rect、circle、ellipse、line、polyline、polygon），每个变成一个图形节点，一个 svg 里有几个就成一个组合；长短不一的虚线（环形进度条）照画出来的样子描成线段，SVG 里的 <text> 变成单行文字框，<use> 引用不转。
+- <table> 能照原样画成表格元素时就变成一个可逐格编辑的表格（一种文字颜色和字号、<th> 表头一种底色或没有、正文行不铺色或隔行铺一种色、border-collapse: collapse 的实线格线是全框、每行下一条横线、三线表或没有线且一种颜色、行一样高、格子里的字居中或列宽正好包住字、2–12 行 1–6 列、每格 24 字以内、没有合并单元格），文字颜色和字号、表头底色、斑马纹、格线和列宽照网页来；画不出来的照网页原样导成文字和色块，notes 里会说。<progress> 变成进度条，颜色取 accent-color，aria-label 作图层名（网页上不显示，所以进度条上也不画）。
+- 一段文字里的加粗、换色、行内底色（行内元素的 background）、下划线和删除线会变成文字片段，text-align: justify 照样两端对齐。一个块里只有这段文字、几种字号的行高倍数又一样时（价格里放大的数字），不同字号成为带字号的片段；否则同一行里的不同字号、和行内块（inline-block 标签）同一行的文字会拆成几个文字框，保证位置不变。整齐的 <ul> / <ol>（每项只有文字、样式一样、圆点或编号在外侧、间距一样）转成一个列表文字，其他列表的圆点和编号单独成字；::before / ::after 照常生效。
+- data-name="主标题" 给图层起名，data-group 让一个元素连同里面的东西成为一个组合。
+- 不支持的会写进 notes 并尽量近似：脚本和动画、clip-path、mask、backdrop-filter、内阴影、多层阴影（只留第一层）。透明度不一的渐变（比如照片上的渐隐遮罩）、平铺和锥形渐变会画成一张图。`
+
+const GUIDE_SECTIONS: Record<string, { title: string; text: string }> = {
+  'document-model': { title: '文档模型：怎么写一份自由画布文档', text: DOCUMENT_SCHEMA_HINT },
+  'actions': { title: '动作清单：apply_actions 的每个动作怎么写', text: ACTIONS_SCHEMA_HINT },
+  'deck-content': { title: '套图内容：create_document_from_content 的 content 怎么写', text: CONTENT_SCHEMA_HINT },
+  'outline': { title: 'Markdown 大纲：create_document_from_outline 的 outline 怎么写', text: OUTLINE_SCHEMA_HINT },
+  'poster-content': {
+    title: '海报内容：create_poster_from_content 的 content 怎么写',
+    text: `海报（单页模板）的 content 写法：
+- title：海报标题；两行时可以自己写换行。subtitle：副标题或一句导语。body：一段正文（模板有正文位时）。recipient：证书上的姓名（模板有获得者位时）。cta：按钮文字，如 "扫码报名"。tag：角标——活动类型、价格、期数等短词；数据盘点、成长记录的 tag 是顶上的大年份，如 "2026"。brand：主办方、品牌或落款。image：主图——本机文件路径（/、~/、./、file://）、http(s) URL 或 data URL；主图位放它，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。
+- details：信息行，一条一行，如 "时间：10 月 18 日 14:00"、"地点：…"，冒号前是标签；菜单、价目表写 "拿铁：28"；成长记录一条一个节点，如 "3 月：接到第一单商单"，最多 5 条。
+- table：表格（课程表、对比表）：第一行是表头，如 ["节次", "周一", …]，之后每行第一格是节次，如 ["第 1 节\\n8:00", "语文", …]；课程表按给的行数列数重画、同一科目同一个颜色；对比表换成表格元素本身，最多 12 行 6 列、每格 24 字，参差的行按最宽的行补齐、只有一行时补一个空行，超出 12 行 6 列的格子列在 summary.unplaced，模板的配色和列宽比例保留（加列时新列均分）。
+- chart：图表（数据盘点）：{ kind?: "bar" | "ring" | "line" | "radar", labels?: 类目数组, series: [{ name?, values: 数值数组, color? }] }，替换模板图表的类目和系列，颜色缺省沿用模板的，kind 换图表类型，不给时跟模板走，堆叠方式跟模板走。
+- 位置不够时：页面有空就照最后一行的样子接着往下排，没空就放进下面空着的署名、正文或副标题位；模板没有位置的文字放进空着的同类位置（按钮、署名放进空着的信息行，正文、获得者放进空着的副标题），放到哪里写在 summary.moved；还放不下的信息和画不下的表格格子列在 summary.unplaced，没有位置的内容列在 summary.unused，这时 summary.hint 说明怎么办。缩小的文字在 summary.shrunk（角标最多缩到 50%，其余 72%），还放不下的在 summary.overflowing。
+- 给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。`,
+  },
+  'html-import': { title: '网页转文档：create_document_from_html 的 HTML 怎么写', text: HTML_IMPORT_GUIDE },
+  'templates': {
+    title: '模板清单：list_templates 返回的字段怎么读',
+    text: `list_templates 返回的字段：
+- kind：deck 一整套（封面、内页、结尾页）或 poster 单页。format：页面尺寸（id、name、ratio、width、height）——小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240（这一种用 render_document 的 grid: true 切成九张发朋友圈）。
+- 套图模板的 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等。
+- 海报模板的 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）、时间线位（timeline，吃 details 行）。`,
+  },
+  'render-export': {
+    title: '渲染与导出：render_document 的输出方式',
+    text: `渲染与导出：默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。`,
+  },
+}
+
+/**
+ * The five document tools once carried the full schema hint each
+ * (90,991 chars). The single copy now lives in the resource; this cap
+ * keeps descriptions from quietly growing back; normal new tools may raise the cap.
+ */
+const checkRulesShared = '文档怎么写见 dingcard://schema/freeform 资源或 get_guide("document-model")'
 
 /**
  * Pages into a document with slide/insert: after a page (the last one when
@@ -216,8 +268,24 @@ export function createDingcardServer(): McpServer {
   })
 
   server.tool(
+    'get_guide',
+    '按主题读一份使用指南：文档怎么写、每个动作怎么发、content / outline / 海报内容怎么填、HTML 怎么写、渲染导出有哪些方式。工具说明里只写了做什么；要动手写参数之前，先来这里读对应主题的完整写法。section 给主题 id（不给就列出全部主题 id 和标题）：document-model 文档模型、actions 动作清单、deck-content 套图内容、outline Markdown 大纲、poster-content 海报内容、html-import 网页转文档、render-export 渲染导出。',
+    {
+      section: z.string().optional().describe('主题 id，如 "actions"；不给就列出全部主题'),
+    },
+    async ({ section }) => {
+      if (section === undefined) {
+        return jsonResult({ sections: Object.entries(GUIDE_SECTIONS).map(([id, guide]) => ({ id, title: guide.title })) })
+      }
+      const guide = GUIDE_SECTIONS[section]
+      if (!guide) return jsonResult({ ok: false, error: `没有这个主题：${section}。可用的主题见不带参数的 get_guide。` })
+      return jsonResult({ ok: true, section, title: guide.title, text: guide.text })
+    },
+  )
+
+  server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、用途、风格、颜色、工作台、kind、format）。kind 是 deck（一整套：封面、内页、结尾页，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页：小红书封面、菜单、价目表、证书、朋友圈九宫格、课程表、海报、卡片、宣传单等，用 create_poster_from_content 生成）；format 是页面尺寸（id、name、ratio、width、height：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240——这一种用 render_document 的 grid: true 切成九张）。套图模板另有 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等；海报模板另有 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）、时间线位（timeline，吃 details 行）。kind / format / q 可选，只取子集（如 kind: "poster"、format: "xhs"、q: "菜单"）。按内容和尺寸挑模板。先用它拿到 templateId。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
+    '列出叮卡内置模板（id、标题、描述、页数、标签、用途、风格、颜色、工作台、kind、format），按内容和尺寸挑模板、拿 templateId。kind 是 deck（一整套，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页，用 create_poster_from_content 生成）；format 是页面尺寸；套图模板另有 capacity（每页能放多少要点等），海报模板另有 posterCapacity（有没有主图位、表格、图表等）——这些字段的完整含义见 get_guide("templates")。kind / format / q 可选，只取子集（如 kind: "poster"、format: "xhs"、q: "菜单"）。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
     {
       kind: z.enum(['deck', 'poster']).optional().describe('只列这一类：deck 整套卡片，poster 单页海报'),
       format: z.string().optional().describe('按页面尺寸 id 筛选（不区分大小写的子串匹配，如 "xhs"、"a4"）'),
@@ -313,17 +381,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_html',
-    `把你写的 HTML/CSS 网页转成在叮卡里能逐个修改的自由画布文档（v${FREEFORM_DOCUMENT_VERSION}）。适合模板排不出来的版式：直接用网页写法排版，叮卡在浏览器里排好后，把每个色块、文字、图片和 SVG 图形读成形状、文字框、图片和图形节点，位置、字号、行高、字距、颜色、圆角、边框、阴影、渐变、透明度、混合模式、滤镜和旋转都照网页来，层叠顺序按 CSS（含 z-index）。
-写法：
-- 每页一个 <section>，放在 <body> 下面，用 CSS 写死宽高（px），如 1080×1440（小红书 3:4）、1080×1920（9:16）、1080×1080；没有 section 时整个 body 是一页，尺寸用 width / height。100vw、100vh 就是 width × height。
-- 字体用内置的：苹方 "PingFang SC"、思源黑体 "Noto Sans SC"、思源宋体 "Noto Serif SC"、霞鹜文楷 "LXGW WenKai TC"、站酷小薇 "ZCOOL XiaoWei"、系统宋体 "Songti SC"；标题大字还能用西文的 "Playfair Display"、"Archivo Black"、"Great Vibes" 和站酷黄油体 "ZCOOL QingKe HuangYou"、马善政毛笔 "Ma Shan Zheng"；别的字体换成同类的内置字体（notes 里会写）。字重只有常规和粗体，600 及以上算粗体。
-- 图片用 <img> 或 CSS background-image，object-fit、object-position、圆角和圆形裁切都照着来；src 写本机路径（相对路径按 htmlPath 所在目录或当前目录找）、http(s) URL 或 data URL，本机图片和本机样式表会嵌进来。
-- 图标和图形写成内联 <svg>（path、rect、circle、ellipse、line、polyline、polygon），每个变成一个图形节点，一个 svg 里有几个就成一个组合；长短不一的虚线（环形进度条）照画出来的样子描成线段，SVG 里的 <text> 变成单行文字框，<use> 引用不转。
-- <table> 能照原样画成表格元素时就变成一个可逐格编辑的表格（一种文字颜色和字号、<th> 表头一种底色或没有、正文行不铺色或隔行铺一种色、border-collapse: collapse 的实线格线是全框、每行下一条横线、三线表或没有线且一种颜色、行一样高、格子里的字居中或列宽正好包住字、2–12 行 1–6 列、每格 24 字以内、没有合并单元格），文字颜色和字号、表头底色、斑马纹、格线和列宽照网页来；画不出来的照网页原样导成文字和色块，notes 里会说。<progress> 变成进度条，颜色取 accent-color，aria-label 作图层名（网页上不显示，所以进度条上也不画）。
-- 一段文字里的加粗、换色、行内底色（行内元素的 background）、下划线和删除线会变成文字片段，text-align: justify 照样两端对齐。一个块里只有这段文字、几种字号的行高倍数又一样时（价格里放大的数字），不同字号成为带字号的片段；否则同一行里的不同字号、和行内块（inline-block 标签）同一行的文字会拆成几个文字框，保证位置不变。整齐的 <ul> / <ol>（每项只有文字、样式一样、圆点或编号在外侧、间距一样）转成一个列表文字，其他列表的圆点和编号单独成字；::before / ::after 照常生效。
-- data-name="主标题" 给图层起名，data-group 让一个元素连同里面的东西成为一个组合。
-- 不支持的会写进 notes 并尽量近似：脚本和动画、clip-path、mask、backdrop-filter、内阴影、多层阴影（只留第一层）。透明度不一的渐变（比如照片上的渐隐遮罩）、平铺和锥形渐变会画成一张图。
-返回 documentId、每页的 id 和尺寸，以及 notes（page 为 0 的是整份文档的）；默认附上转换结果的缩略图，对照你的设计看一眼。之后用 check_document 检查、apply_actions 修改、render_document 出图、open_in_editor 在编辑器里接着改。`,
+    `把你写的 HTML/CSS 网页转成在叮卡里能逐个修改的自由画布文档（v${FREEFORM_DOCUMENT_VERSION}）。适合模板排不出来的版式：直接用网页写法排版，叮卡在浏览器里排好后，把每个色块、文字、图片和 SVG 图形读成形状、文字框、图片和图形节点，位置、字号、颜色、圆角、阴影、渐变等全部照网页来，层叠顺序按 CSS（含 z-index）。返回 documentId、每页 id 和尺寸、notes（哪里没转过来），默认附缩略图。之后 check_document 检查、apply_actions 修改、render_document 出图、open_in_editor 交给人。HTML 怎么写（section 分页、内置字体、图片、svg、表格、data-name）见 get_guide("html-import")。`,
     {
       html: z.string().optional().describe('网页源码（可以只写 <style> 和若干 <section>）'),
       htmlPath: z.string().optional().describe('网页文件路径，可替代 html；里面的相对路径按这个文件所在的目录找'),
@@ -365,7 +423,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_content',
-    `按结构化内容生成一整套自由画布卡片（v${FREEFORM_DOCUMENT_VERSION}）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容。${CONTENT_SCHEMA_HINT}`,
+    `按结构化内容生成一整套自由画布卡片（v${FREEFORM_DOCUMENT_VERSION}）：封面 + 每个 page 一页 + 可选结尾页，风格沿用所选模板。适合已经整理好标题、正文、要点的内容；每页还能配一种数据元素（chart / table / timeline / progress）。content 的完整写法（页面字段、版式选择、数据元素、生成规则）见 get_guide("deck-content")。生成后建议先 check_document，再 render_document 看缩略图。`,
     {
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
       content: z.object({
@@ -386,7 +444,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_poster_from_content',
-    '按内容生成一张海报（单页模板：list_templates 里 kind 为 poster 的小红书封面、菜单、价目表、证书、九宫格、课程表、各种海报、请柬、贺卡、封面、宣传单、数据盘点、对比表、成长记录等），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉；主图位放 image，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。菜单、价目表的每一项写成 details 的一行 "名称：价格"；证书的姓名放 recipient；课程表放 table（第一行是表头，每行第一格是节次），按给的行数列数重画表格、同一科目同一个颜色；对比表也放 table（第一行是表头），换成 v34 表格元素本身，最多 12 行 6 列、每格 24 字，参差的行按最宽的行补齐、只有一行时补一个空行，超出 12 行 6 列的格子列在 summary.unplaced，模板的配色和列宽比例保留（加列时新列均分），没给 table 时模板的示例表格原样保留；数据盘点放 chart（{ kind?: "bar" | "ring" | "line" | "radar", labels?: 类目数组, series: [{ name?, values: 数值数组, color? }] }，替换模板图表的类目和系列，颜色缺省沿用模板的，kind 换图表类型，不给时跟模板走，堆叠方式跟模板走）；成长记录放 details（一条一个节点，冒号前是时间，如 "3 月：接到第一单商单"，最多 5 条）；这两张的 tag 是顶上的大年份，如 "2026"。信息比模板的行多时，页面有空就照最后一行的样子接着往下排，没空就放进下面空着的署名、正文或副标题位；模板没有位置的文字放进空着的同类位置（按钮、署名放进空着的信息行，正文、获得者放进空着的副标题），放到哪里写在 summary.moved；还放不下的信息和画不下的表格格子列在 summary.unplaced，没有位置的内容列在 summary.unused，这时 summary.hint 说明怎么办。缩小的文字在 summary.shrunk（角标最多缩到 50%，其余 72%），还放不下的在 summary.overflowing。给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。',
+    '按内容生成一张海报（单页模板：小红书封面、菜单、价目表、证书、九宫格、课程表、各种海报、请柬、贺卡、封面、宣传单、数据盘点、对比表、成长记录等），尺寸跟模板走。模板里的示例文字全部换成内容，没给的连同它的底板、按钮一起删掉。不同模板吃不同的字段（菜单的 details、课程表的 table、数据盘点的 chart、证书的 recipient），content 每个字段的写法和放不下时怎么排见 get_guide("poster-content")；summary.moved / unplaced / shrunk 说明文字放到了哪里、缩了多少。给 documentId 时海报加成那份文档的一页。',
     {
       templateId: z.string().describe('list_templates 里 kind 为 poster 的模板 id，如 "talk-poster-freeform"'),
       content: z.object({
@@ -394,13 +452,13 @@ export function createDingcardServer(): McpServer {
         subtitle: z.string().optional().describe('副标题或一句导语'),
         body: z.string().optional().describe('一段正文（模板有正文位时）'),
         recipient: z.string().optional().describe('证书上的姓名（模板有获得者位时）'),
-        details: z.array(z.string()).optional().describe('信息行，一条一行，如 "时间：10 月 18 日 14:00"、"地点：…"，冒号前是标签；菜单、价目表写 "拿铁：28"；成长记录一条一个节点，如 "3 月：接到第一单商单"'),
-        table: z.array(z.array(z.string())).optional().describe('表格（课程表）：第一行是表头，如 ["节次", "周一", …]，之后每行第一格是节次，如 ["第 1 节\\n8:00", "语文", …]'),
+        details: z.array(z.string()).optional().describe('信息行，一条一行，如 "时间：10 月 18 日 14:00"、"拿铁：28"；成长记录如 "3 月：接到第一单商单"'),
+        table: z.array(z.array(z.string())).optional().describe('表格（课程表）：第一行是表头，每行第一格是节次'),
         chart: z.object({
           kind: z.enum(['bar', 'ring', 'line', 'radar']).optional(),
           labels: z.array(z.string()).optional(),
           series: z.array(z.object({ name: z.string().optional(), values: z.array(z.number()), color: z.string().optional() })).min(1),
-        }).optional().describe('图表（数据盘点），写法见上'),
+        }).optional().describe('图表（数据盘点），写法见 get_guide("poster-content")'),
         cta: z.string().optional().describe('按钮文字，如 "扫码报名"'),
         tag: z.string().optional().describe('角标：活动类型、价格、期数等短词'),
         brand: z.string().optional().describe('主办方、品牌或落款'),
@@ -433,7 +491,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'create_document_from_outline',
-    `按 Markdown 大纲生成一整套自由画布卡片（v${FREEFORM_DOCUMENT_VERSION}）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板。${OUTLINE_SCHEMA_HINT}`,
+    `按 Markdown 大纲生成一整套自由画布卡片（v${FREEFORM_DOCUMENT_VERSION}）：封面 + 每个 "## 小节" 一页 + 可选结尾页，风格沿用所选模板；小节里的 Markdown 表格也变成这一页的表格元素。大纲的完整语法（小节、要点、引文、表格、结尾页）见 get_guide("outline")。生成后建议先 check_document，再 render_document 看缩略图。`,
     {
       outline: z.string().describe('Markdown 大纲：# 总标题 + 若干 ## 小节（小节下正文行填入该页正文）'),
       templateId: z.string().describe('list_templates 返回的自由画布模板 id，如 "editorial-freeform"'),
@@ -452,34 +510,53 @@ export function createDingcardServer(): McpServer {
   )
 
   server.tool(
-    'list_icons',
-    '查内置图标（线性图标，含对勾、叉、箭头、星星、爱心、闪电、灯泡、奖杯、日历、时钟、定位、地球、购物车、礼物、图表、锁、搜索、分享、交通工具等常用图标）。不带参数返回全部图标的 id 与中英文名；query 用中文或英文关键词搜索（如 "勾"、"arrow"、"购物"），返回最匹配的图标连同路径数据 d；ids 按 id 精确取。每个图标插入为一个 path 节点：d 来自这里，viewBox/fill/stroke/strokeWidth 用返回的 style，example 是一个可直接放进 node/insert-children 的完整节点。',
+    'list_assets',
+    '查内置素材与样式清单，kind 选一类：icons 内置图标（query 中文或英文搜、ids 按 id 取；example 是可直接 node/insert-children 的完整 path 节点）、decorations 装饰素材（手绘线条、贴纸、标签；category 只看一类，用 add_decorations 放置）、styles 配色与字体组合（document/restyle 一键套用）、text_styles 现成花字（patch 直接作为 node/update-style 的补丁）、collages 拼图版式（example 是完整的拼图组节点，格子换图片填充）、filter_presets 照片滤镜预设（patch 同样给 node/update-style）。不给 kind 返回每类的条数和用法。',
     {
-      query: z.string().optional().describe('中文或英文关键词，空格分隔的多个词需同时命中'),
-      ids: z.array(z.string()).optional().describe('图标 id 列表，如 ["check", "star"]'),
+      kind: z.enum(['icons', 'decorations', 'styles', 'text_styles', 'collages', 'filter_presets']).optional().describe('素材类别；不给返回各类简介'),
+      query: z.string().optional().describe('icons / decorations：中文或英文关键词，空格分隔的多个词需同时命中'),
+      ids: z.array(z.string()).optional().describe('icons / decorations：按 id 精确取'),
+      category: z.enum(['hand-drawn', 'sticker', 'label']).optional().describe('decorations：只看一类'),
+      pageWidth: z.number().optional().describe('collages：页面宽 px（默认 1080）'),
+      pageHeight: z.number().optional().describe('collages：页面高 px（默认 1440）'),
     },
-    async ({ query, ids }) => jsonResult(listIcons({ query, ids })),
-  )
-
-  server.tool(
-    'list_decorations',
-    '查内置装饰素材（和编辑器「元素」面板同一套）：手绘线条（手绘圈、手绘下划线、波浪线、弧形/绕圈箭头、强调线、手绘对勾/叉、荧光笔、取景框等）、贴纸（闪光、星星、爱心、小花、太阳、云朵、对话气泡、皇冠、奖章、火苗、闪电、笑脸、彩虹、气球、礼物、胶带、回形针、点阵等）和标签（胶囊标签、描边标签、爆炸贴、价签、飘带、分节标题、印章、序号、对话框、便利贴、吊牌、票券，字可以换）。不带参数返回全部；query 用中文或英文关键词搜索，category 只看一类（hand-drawn | sticker | label），ids 按 id 取。每项有 aspect（宽高比）、本来的 color、标签的示例 text、stretches（能否单独拉伸高度）和 defaultWidth。用 add_decorations 放到页面上。',
-    {
-      query: z.string().optional().describe('中文或英文关键词，空格分隔的多个词需同时命中，如 "圈"、"underline"、"促销"'),
-      category: z.enum(['hand-drawn', 'sticker', 'label']).optional().describe('只看一类：hand-drawn 手绘线条、sticker 贴纸、label 标签'),
-      ids: z.array(z.string()).optional().describe('装饰 id 列表，如 ["circle-scribble", "sparkles"]'),
+    async ({ kind, query, ids, category, pageWidth, pageHeight }) => {
+      switch (kind) {
+        case 'icons':
+          return jsonResult(listIcons({ query, ids }))
+        case 'decorations':
+          return jsonResult(listDecorations({ query, category, ids }))
+        case 'styles':
+          return jsonResult(listStyles())
+        case 'text_styles':
+          return jsonResult(listTextStyles())
+        case 'collages':
+          return jsonResult(listCollages(pageWidth, pageHeight))
+        case 'filter_presets':
+          return jsonResult(listFilterPresets())
+        default:
+          return jsonResult({
+            kinds: {
+              icons: '内置图标：query 搜、ids 取，example 直接插入',
+              decorations: '装饰素材：query / category / ids，add_decorations 放置',
+              styles: '配色与字体组合：document/restyle 一键套用',
+              text_styles: '花字：patch 给 node/update-style',
+              collages: '拼图版式：example 给 node/insert-children',
+              filter_presets: '滤镜预设：patch 给 node/update-style',
+            },
+          })
+      }
     },
-    async ({ query, category, ids }) => jsonResult(listDecorations({ query, category, ids })),
   )
 
   server.tool(
     'add_decorations',
-    '把装饰素材放到一页上（一次可放多个，按顺序叠放；list_decorations 查 id）：每项给 decoration、x、y（盒子左上角的页面坐标）、width（不给按页面短边的默认比例），高度按装饰的宽高比算。color（#RRGGBB）换掉装饰本来的主色（手绘线条和贴纸换整体颜色，标签换底色，字色自动取黑或白）；text 换标签上的字；rotation 旋转（度）；below 填同页一个顶层节点的 id 或图层名，装饰就放在它下面一层（荧光笔、胶带、色块垫在文字下面时用），不给则放在最上层。用 documentId 时就地更新这份文档，返回每个装饰的 nodeId、path 和盒子；之后可以用 apply_actions 改，用 check_document 检查有没有压住文字。',
+    '把装饰素材放到一页上（一次可放多个，按顺序叠放；list_assets 的 decorations 查 id）：每项给 decoration、x、y（盒子左上角的页面坐标）、width（不给按页面短边的默认比例），高度按装饰的宽高比算。color（#RRGGBB）换掉装饰本来的主色（手绘线条和贴纸换整体颜色，标签换底色，字色自动取黑或白）；text 换标签上的字；rotation 旋转（度）；below 填同页一个顶层节点的 id 或图层名，装饰就放在它下面一层（荧光笔、胶带、色块垫在文字下面时用），不给则放在最上层。用 documentId 时就地更新这份文档，返回每个装饰的 nodeId、path 和盒子；之后可以用 apply_actions 改，用 check_document 检查有没有压住文字。',
     {
       ...documentInput,
       slideId: z.string().optional().describe('放在哪一页，默认文档当前页（activeSlideId）'),
       items: z.array(z.object({
-        decoration: z.string().describe('list_decorations 返回的装饰 id'),
+        decoration: z.string().describe('list_assets（decorations）返回的装饰 id'),
         x: z.number().describe('盒子左边，页面坐标'),
         y: z.number().describe('盒子上边，页面坐标'),
         width: z.number().positive().optional().describe('盒子宽度（px）；不给按默认比例'),
@@ -502,40 +579,9 @@ export function createDingcardServer(): McpServer {
   )
 
   server.tool(
-    'list_styles',
-    '列出可一键套到整套卡片上的搭配（looks：id、name 和它的 palette、fontSet，两个一起套就是这套搭配）、配色（palettes：id、name、底色 background、文字色 text、强调色 accents）和字体组合（fontSets：id、name、标题字体 heading、正文字体 body），用 apply_actions 的 { type: "document/restyle", palette, fontSet } 套用；headingScale 是用标题字体的字号门槛（正文字号的倍数）。要换成指定的颜色或字体，用 document/restyle 的 colors / fonts，键取自 inspect_document 的 style。',
-    {},
-    async () => jsonResult(listStyles()),
-  )
-
-  server.tool(
-    'list_text_styles',
-    '列出现成的花字（文字效果组合）：每个有 id、name、适合放在什么底色上（backdrop），以及 patch——直接作为 apply_actions 里 node/update-style 的 patch，就能把一段文字变成这个样子（填充、效果和加粗一起设好，同时去掉原来的描边和阴影）。效果的大小按字号比例算，大标题和小字都能用；深色 backdrop 的（霓虹、故障、极光等）放在深色页面上才好看。',
-    {},
-    async () => jsonResult(listTextStyles()),
-  )
-
-  server.tool(
-    'list_collages',
-    `列出 6 套拼图版式（两张并排、一大两小、两小一大、三等分、四宫格、六宫格）：每套有 id、name、格子数 cellCount、宽高比 aspect，以及 example——一个完整的拼图组节点（圆角矩形格子、留缝隙、灰色占位），用 apply_actions 的 node/insert-children 直接插入页面，再把每个格子的 fill 换成 { type: 'image', src, fit, framing } 图片填充（node/update-style，取景同形状图片填充）。可选 pageWidth / pageHeight（默认 1080×1440）让格子按你的页面尺寸铺。`,
-    {
-      pageWidth: z.number().optional().describe('页面宽 px（默认 1080）'),
-      pageHeight: z.number().optional().describe('页面高 px（默认 1440）'),
-    },
-    async ({ pageWidth, pageHeight }) => jsonResult(listCollages(pageWidth, pageHeight)),
-  )
-
-  server.tool(
-    'list_filter_presets',
-    '列出现成的滤镜预设（照片风格）：每个有 id、name，以及 patch——直接作为 apply_actions 里 node/update-style 的 patch，就能把图片、形状等元素一键变成这个风格（整体替换滤镜，黑白/复古/暖阳/冷调/胶片/褪色/高对比/柔焦；用到 v18 的 hue/grayscale/sepia）。传 null 清除滤镜回到原图。',
-    {},
-    async () => jsonResult(listFilterPresets()),
-  )
-
-  server.tool(
     'validate_document',
     `校验文档是否为合法的自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因——会写清第几页、哪个节点、多了或缺少哪个键，或者该写哪个 documentVersion。
-文档速写：{ documentVersion: ${FREEFORM_DOCUMENT_VERSION}, slides: [{ id, name, width(128–4096), height(128–4096), background, nodes, guides? }], activeSlideId }；节点 ${FREEFORM_NODE_TYPES.length} 选一（${FREEFORM_NODE_TYPES.join(' / ')}），公共必填键 id, name, locked, hidden, type, x, y, rotation, scale，其余键按节点类型精确匹配（不允许多余或缺失键），全文档节点 id 唯一。每种节点的完整键表在 dingcard://schema/freeform 资源里：先读它再写文档；不确定就先写个大概，用这个工具校验，按返回的原因改。`,
+文档速写：{ documentVersion: ${FREEFORM_DOCUMENT_VERSION}, slides: [{ id, name, width(128–4096), height(128–4096), background, nodes, guides? }], activeSlideId }；节点 ${FREEFORM_NODE_TYPES.length} 选一（${FREEFORM_NODE_TYPES.join(' / ')}），公共必填键 id, name, locked, hidden, type, x, y, rotation, scale，其余键按节点类型精确匹配（不允许多余或缺失键），全文档节点 id 唯一。每种节点的完整键表见 dingcard://schema/freeform 资源或 get_guide("document-model")：先读它再写文档；不确定就先写个大概，用这个工具校验，按返回的原因改。`,
     { ...documentInput, includeDocument },
     async ({ includeDocument: withDocument, ...input }) => {
       const resolved = await documentFor(input)
@@ -547,7 +593,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'inspect_document',
-    `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要；内置图标标出 icon id，装饰素材标出 decoration id，组成装饰的组也标在组上），以及整套卡片的 style：用到的颜色（按占的面积排序，附 share 和用在 background/fill/text/line/shadow 哪些地方）、字体（texts 用了几段文字、largest 最大字号）和正文字号 bodySize。改文档前先 inspect，拿到节点 id / 路径再发动作。文档怎么写见 validate_document 的说明与 dingcard://schema/freeform 资源。`,
+    `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要；内置图标标出 icon id，装饰素材标出 decoration id，组成装饰的组也标在组上），以及整套卡片的 style：用到的颜色（按占的面积排序，附 share 和用在 background/fill/text/line/shadow 哪些地方）、字体（texts 用了几段文字、largest 最大字号）和正文字号 bodySize。改文档前先 inspect，拿到节点 id / 路径再发动作。${checkRulesShared}。`,
     documentInput,
     async (input) => {
       const resolved = await documentFor(input)
@@ -558,7 +604,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'apply_actions',
-    `对文档应用一串编辑动作（与编辑器 UI 同一归约器，语义完全一致），返回每个动作是否生效（changes）和没生效的原因（reasons，与 changes 一一对应：没改动时是 null，被拒时写清哪个键、哪条规则）。用 documentId 时就地更新这份文档（version 加一），传 document / documentPath 时另存为一份新文档并返回它的 documentId；动作里图片 src 写成本机文件路径的会读进来嵌入。文档怎么写见 validate_document 的说明与 dingcard://schema/freeform 资源。${ACTIONS_SCHEMA_HINT}`,
+    `对文档应用一串编辑动作（与编辑器 UI 同一归约器，语义完全一致），返回每个动作是否生效（changes）和没生效的原因（reasons，与 changes 一一对应：没改动时是 null，被拒时写清哪个键、哪条规则）。用 documentId 时就地更新这份文档（version 加一），传 document / documentPath 时另存为一份新文档并返回它的 documentId；动作里图片 src 写成本机文件路径的会读进来嵌入。常用：node/insert-children（插入节点）、node/update-content（改字/改数据元素内容）、node/update-style（改样式）、node/update-geometry（改位置尺寸）、slide/*（页的增删换序）、document/find-replace（整套查找替换）、document/restyle（整套换配色字体）。每个动作的完整写法见 get_guide("actions")。${checkRulesShared}。`,
     {
       ...documentInput,
       actions: z.array(z.unknown()).describe('FreeformAction 数组'),
@@ -582,7 +628,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'check_document',
-    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下被裁掉（附能放下的字号 fitFontSize）、文字互相叠住、文字被上层色块挡住、跑出页面、文字和底色对比太低、还留着模板示例文字、空文本框、图片没加载出来、图形画到了自己的框外（viewBox 没包住 d）、图形既无填充也无描边而看不见、二维码太小扫不动或码点底色太接近、进度标签比元素宽、表格和时间线的内容放不下被省略号截掉、表格时间线图表进度里的字太小或和底色对比太低、对齐差几px、离页边太近、正文太小、字体或文字颜色太多、标题和正文拉不开层级、页面上一整条空白超过页高四分之一（看着没排完）、纯色块上什么都没有（多半是该放图片的位置空着）。每条带 page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法。fix: true 时把放不下的文字缩到能放下的字号、把差几 px 的对齐吸齐，并保存（用 documentId 时就地更新，返回 documentId 和 version），附改了哪些（fixed 是缩过的字号，snapped 是挪过的位置）和剩下的问题。文档怎么写见 validate_document 的说明与 dingcard://schema/freeform 资源。`,
+    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下被裁掉（附能放下的字号 fitFontSize）、文字互相叠住、文字被上层色块挡住、跑出页面、文字和底色对比太低、还留着模板示例文字、空文本框、图片没加载出来、图形画到了自己的框外（viewBox 没包住 d）、图形既无填充也无描边而看不见、二维码太小扫不动或码点底色太接近、进度标签比元素宽、表格和时间线的内容放不下被省略号截掉、表格时间线图表进度里的字太小或和底色对比太低、对齐差几px、离页边太近、正文太小、字体或文字颜色太多、标题和正文拉不开层级、页面上一整条空白超过页高四分之一（看着没排完）、纯色块上什么都没有（多半是该放图片的位置空着）。每条带 page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法。fix: true 时把放不下的文字缩到能放下的字号、把差几 px 的对齐吸齐，并保存（用 documentId 时就地更新，返回 documentId 和 version），附改了哪些（fixed 是缩过的字号，snapped 是挪过的位置）和剩下的问题。${checkRulesShared}。`,
     {
       ...documentInput,
       fix: z.boolean().optional().describe('把放不下的文字缩到能放下的字号、把差几 px 的对齐吸齐（改动保存回这份文档，返回 documentId 和 version）'),
@@ -605,7 +651,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出）。默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。文档怎么写见 validate_document 的说明与 dingcard://schema/freeform 资源。`,
+    `把自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出），默认逐页 PNG 到 outputDir，另附每页小缩略图供你直接查看效果。长图、九宫格、PDF、JPEG、倍率等输出方式见 get_guide("render-export")。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${checkRulesShared}。`,
     {
       ...documentInput,
       outputDir: z.string().describe('输出目录（不存在会创建）'),
@@ -674,16 +720,34 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'share_document',
-    `把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。自由画布文档（documentId 或 v${FREEFORM_DOCUMENT_VERSION} 文档）和 Markdown 卡片信封（source、platformId、themeId 等，与 render_markdown 的 document 相同）都可以。需要先设环境变量 DINGCARD_SERVER_URL（部署的服务端地址）、DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里；list_shares 查已有分享，revoke_share 随时撤销（撤销后立刻打不开）。`,
+    `把文档渲染成图片、上传到部署的叮卡服务端，生成一个不用登录就能打开的分享链接：手机扫码或点链接就能看整套卡片、长按存图——「电脑做图、手机发图」的最后一公里。自由画布文档（documentId 或 v${FREEFORM_DOCUMENT_VERSION} 文档）和 Markdown 卡片信封（source、platformId、themeId 等，与 render_markdown 的 document 相同）都可以。返回 { ok, share: { id, url, expiresAt, imageCount } } 并附上二维码图片，给用户扫即可。expiresInHours 是有效期（小时，1–720，默认 24，最长一个月），过期后链接打不开、图片仍留在账号里。action 另选 list（列出账号已有的分享）、revoke（按 id 撤销：链接立刻打不开、图片等回收清理）。需要环境变量 DINGCARD_SERVER_URL（部署的服务端地址）和账号或令牌环境变量。`,
     {
+      action: z.enum(['share', 'list', 'revoke']).optional().describe('share 分享（默认）、list 列出已有分享、revoke 撤销一个'),
+      id: z.string().optional().describe('revoke：要撤销的分享 id（list 里查）'),
       ...documentInput,
       title: z.string().optional().describe('分享页标题，默认「叮卡分享」'),
       expiresInHours: z.number().int().min(1).max(720).optional().describe('链接有效期（小时），1–720，默认 24，最长一个月'),
       qr: z.boolean().optional().describe('是否附上二维码图片，默认 true'),
     },
-    async ({ title, expiresInHours, qr, ...input }) => {
+    async ({ action, id, title, expiresInHours, qr, ...input }) => {
       const client = serverClientFromEnv()
       if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+      if (action === 'list') {
+        try {
+          return jsonResult({ ok: true, shares: await client.listShares() })
+        } catch (error) {
+          return errorResult(error)
+        }
+      }
+      if (action === 'revoke') {
+        if (!id) return jsonResult({ ok: false, error: 'revoke 要给 id（list 里查）' })
+        try {
+          await client.revokeShare(id)
+          return jsonResult({ ok: true, id })
+        } catch (error) {
+          return errorResult(error)
+        }
+      }
       const resolved = await resolveDocumentInput(input, documents)
       if (!resolved.ok) return jsonResult(resolved)
       // The pages only need to exist until they are uploaded.
@@ -715,7 +779,7 @@ export function createDingcardServer(): McpServer {
         const value = {
           ok: true as const,
           share: { id: share.id, url: share.url, expiresAt: share.expiresAt, imageCount: share.imageCount },
-          note: '链接不用登录就能打开；给用户扫下面的二维码，或在任何浏览器点开。随时可用 revoke_share 撤销。',
+          note: '链接不用登录就能打开；给用户扫下面的二维码，或在任何浏览器点开。随时可用本工具的 revoke 撤销。',
           ...(resolved.documentId ? { documentId: resolved.documentId } : {}),
         }
         if (qr === false) return jsonResult(value)
@@ -735,70 +799,120 @@ export function createDingcardServer(): McpServer {
     },
   )
 
-  server.tool(
-    'list_shares',
-    '列出账号在服务端已有的分享（id、标题、链接、创建与过期时间、卡片数），按创建时间倒序。需要环境变量 DINGCARD_SERVER_URL / DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD。',
-    {},
-    async () => {
-      const client = serverClientFromEnv()
-      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
-      try {
-        return jsonResult({ ok: true, shares: await client.listShares() })
-      } catch (error) {
-        return errorResult(error)
-      }
-    },
-  )
-
-  server.tool(
-    'revoke_share',
-    '撤销一个分享：链接立刻打不开（404），它的页面图片不再被引用、等图片回收清理。需要环境变量 DINGCARD_SERVER_URL / DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD。',
-    {
-      id: z.string().describe('要撤销的分享 id（list_shares 里查）'),
-    },
-    async ({ id }) => {
-      const client = serverClientFromEnv()
-      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
-      try {
-        await client.revokeShare(id)
-        return jsonResult({ ok: true, id })
-      } catch (error) {
-        return errorResult(error)
-      }
-    },
-  )
-
   // ---- Reading the account's saved work: pick up a deck a human started in
   // the editor and continue on it — inspect, change, render, re-share. ----
 
-  server.tool(
-    'list_server_projects',
-    '列出部署的叮卡服务端账号里存的作品（id、标题、类型 mode：markdown-card / freeform-slide、最近更新时间），最新在前。这是接着做已有作品的第一步：先在这里找到作品，再用 open_server_project 按 id 载入接着编辑或再渲染。作品多时用 query 按标题关键词过滤（不区分大小写，中英文都行）。需要环境变量 DINGCARD_SERVER_URL（部署的服务端地址）和 DINGCARD_SERVER_TOKEN（一个带 drafts 权限的 API 令牌），或 DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。',
-    {
-      query: z.string().optional().describe('按标题关键词过滤，不区分大小写；不给就列全部'),
-    },
-    async ({ query }) => {
-      const client = serverClientFromEnv()
-      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
-      try {
-        const needle = query?.trim().toLowerCase() ?? ''
-        const drafts = await client.listDrafts()
-        const matched = needle === ''
-          ? drafts
-          : drafts.filter((draft) => draft.title.toLowerCase().includes(needle))
+  const openServerProject = async (id: string, withDocument: boolean | undefined) => {
+    const client = serverClientFromEnv()
+    if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+    try {
+      const draft = await client.getDraft(id)
+      if (draft.mode === 'markdown-card') {
         return jsonResult({
           ok: true,
-          ...(needle !== '' ? { query: needle, matched: matched.length, total: drafts.length } : {}),
-          projects: matched.map((draft) => ({
-            id: draft.id,
-            title: draft.title,
-            mode: draft.mode,
-            updatedAt: draft.updatedAt,
-          })),
+          mode: 'markdown-card',
+          title: draft.title,
+          markdownDocument: draft.document,
+          note: 'Markdown 作品不能用在自由画布工具上：把 markdownDocument 交给 render_markdown 渲染（source、platformId、themeId 等都在里面）。',
         })
-      } catch (error) {
-        return errorResult(error)
       }
+      if (draft.mode === 'freeform-slide') {
+        // A same-origin deployment saves root-relative "/uploads/…" picture
+        // srcs; against any other origin they would render as broken images.
+        const relocated = absolutizeRootRelativeImages(draft.document as FreeformDocument, client.serverUrl)
+        const validated = validateDocument(relocated)
+        if (!validated.ok) return jsonResult(validated)
+        const stored = documents.add(validated.document)
+        return jsonResult({
+          ok: true,
+          mode: 'freeform-slide',
+          title: draft.title,
+          // The server draft's own id: hand it to server_projects 的 save
+          // to write changes back over the same project.
+          projectId: draft.id,
+          ...handleOf(stored, withDocument),
+          slides: stored.document.slides.map((slide) => ({ id: slide.id, name: slide.name })),
+          note: '已载入：inspect_document 看结构，apply_actions 修改，share_document 直接再分享，server_projects 的 save 存回服务端，open_in_editor 交给人接着手改。',
+        })
+      }
+      return jsonResult({ ok: false, error: `未知的作品类型：${draft.mode}` })
+    } catch (error) {
+      return errorResult(error)
+    }
+  }
+
+  const listServerProjects = async (query: string | undefined) => {
+    const client = serverClientFromEnv()
+    if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+    try {
+      const needle = query?.trim().toLowerCase() ?? ''
+      const drafts = await client.listDrafts()
+      const matched = needle === ''
+        ? drafts
+        : drafts.filter((draft) => draft.title.toLowerCase().includes(needle))
+      return jsonResult({
+        ok: true,
+        ...(needle !== '' ? { query: needle, matched: matched.length, total: drafts.length } : {}),
+        projects: matched.map((draft) => ({
+          id: draft.id,
+          title: draft.title,
+          mode: draft.mode,
+          updatedAt: draft.updatedAt,
+        })),
+      })
+    } catch (error) {
+      return errorResult(error)
+    }
+  }
+
+  const saveServerProject = async (
+    input: DocumentInput,
+    title: string | undefined,
+    projectId: string | undefined,
+  ) => {
+    const client = serverClientFromEnv()
+    if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
+    const resolved = await documentFor(input)
+    if (!resolved.ok) return jsonResult(resolved)
+    try {
+      const saved = await client.saveDraft({
+        ...(projectId !== undefined ? { id: projectId } : {}),
+        ...(title !== undefined ? { title } : {}),
+        mode: 'freeform-slide',
+        document: resolved.document,
+      })
+      return jsonResult({
+        ok: true,
+        project: { id: saved.id, title: saved.title, mode: saved.mode, updatedAt: saved.updatedAt },
+        ...(resolved.documentId ? { documentId: resolved.documentId } : {}),
+        note: projectId !== undefined
+          ? '已写回服务端那一份：人在编辑器里打开就是最新版本。'
+          : '已存成新作品：server_projects 的 list 能看到，open 随时载入。',
+      })
+    } catch (error) {
+      return errorResult(error)
+    }
+  }
+
+  server.tool(
+    'server_projects',
+    '管部署的叮卡服务端账号里存的作品（人在编辑器里存的，AI 接着做）：action 选操作——list 列出作品（id、标题、类型 mode、更新时间，query 按标题过滤，这是接着做已有作品的第一步）、open 按 id 载入（自由画布作品返回 documentId，之后 inspect_document / apply_actions / render_document / share_document 都能用；Markdown 作品返回 markdownDocument 信封，交给 render_markdown）、save 把一份文档存回账号（不给 projectId 存成新作品，给 open 返回的 projectId 时覆盖那一份）。需要环境变量 DINGCARD_SERVER_URL 加 DINGCARD_SERVER_TOKEN（带 drafts 权限的 API 令牌）或账号环境变量。',
+    {
+      action: z.enum(['list', 'open', 'save']).describe('要做的操作'),
+      query: z.string().optional().describe('list：按标题关键词过滤，不区分大小写；不给就列全部'),
+      id: z.string().optional().describe('open：要打开的作品 id（list 里查）'),
+      projectId: z.string().optional().describe('save：要覆盖的服务端作品 id（open 返回的 projectId）；不给就存成新作品'),
+      title: z.string().optional().describe('save：作品名；不给时按第一页的名称自动起'),
+      ...documentInput,
+      includeDocument,
+    },
+    async ({ action, query, id, projectId, title, includeDocument: withDocument, ...input }) => {
+      if (action === 'list') return listServerProjects(query)
+      if (action === 'open') {
+        if (!id) return jsonResult({ ok: false, error: 'open 要给 id（list 里查）' })
+        return openServerProject(id, withDocument)
+      }
+      return saveServerProject(input, title, projectId)
     },
   )
 
@@ -825,87 +939,6 @@ export function createDingcardServer(): McpServer {
     },
     async ({ source, id }) => {
       return jsonResult(await importStockImage(source, id, { server: serverClientFromEnv() }))
-    },
-  )
-
-  server.tool(
-    'open_server_project',
-    '把服务端账号里的一个作品载入进来接着做。自由画布作品（freeform-slide）返回 documentId，之后 inspect_document / apply_actions / check_document / render_document / share_document / open_in_editor 都能用它；Markdown 作品（markdown-card）返回 markdownDocument 信封，直接交给 render_markdown 渲染。id 从 list_server_projects 查。作品里的图片已换成服务端的绝对地址，渲染时能直接取到。',
-    {
-      id: z.string().describe('要打开的作品 id（list_server_projects 里查）'),
-      includeDocument,
-    },
-    async ({ id, includeDocument: withDocument }) => {
-      const client = serverClientFromEnv()
-      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
-      try {
-        const draft = await client.getDraft(id)
-        if (draft.mode === 'markdown-card') {
-          return jsonResult({
-            ok: true,
-            mode: 'markdown-card',
-            title: draft.title,
-            markdownDocument: draft.document,
-            note: 'Markdown 作品不能用在自由画布工具上：把 markdownDocument 交给 render_markdown 渲染（source、platformId、themeId 等都在里面）。',
-          })
-        }
-        if (draft.mode === 'freeform-slide') {
-          // A same-origin deployment saves root-relative "/uploads/…" picture
-          // srcs; against any other origin they would render as broken images.
-          const relocated = absolutizeRootRelativeImages(draft.document as FreeformDocument, client.serverUrl)
-          const validated = validateDocument(relocated)
-          if (!validated.ok) return jsonResult(validated)
-          const stored = documents.add(validated.document)
-          return jsonResult({
-            ok: true,
-            mode: 'freeform-slide',
-            title: draft.title,
-            // The server draft's own id: hand it to save_server_project to
-            // write changes back over the same project.
-            projectId: draft.id,
-            ...handleOf(stored, withDocument),
-            slides: stored.document.slides.map((slide) => ({ id: slide.id, name: slide.name })),
-            note: '已载入：inspect_document 看结构，apply_actions 修改，share_document 直接再分享，save_server_project 存回服务端，open_in_editor 交给人接着手改。',
-          })
-        }
-        return jsonResult({ ok: false, error: `未知的作品类型：${draft.mode}` })
-      } catch (error) {
-        return errorResult(error)
-      }
-    },
-  )
-
-  server.tool(
-    'save_server_project',
-    '把一份自由画布文档存到部署的叮卡服务端账号里，和人在编辑器里存的作品放在一起。不给 projectId 时存成一份新作品；给 projectId（open_server_project 返回的）时覆盖服务端那一份——人再在编辑器里打开，看到的就是改过的版本。返回 { ok, project: { id, title, updatedAt } }；之后 list_server_projects 能看到、open_server_project 随时载入。需要环境变量 DINGCARD_SERVER_URL（部署的服务端地址）和 DINGCARD_SERVER_TOKEN（一个带 drafts 权限的 API 令牌），或 DINGCARD_SERVER_USERNAME / DINGCARD_SERVER_PASSWORD（一个叮卡账号）。',
-    {
-      ...documentInput,
-      title: z.string().optional().describe('作品名；不给时按第一页的名称自动起'),
-      projectId: z.string().optional().describe('要覆盖的服务端作品 id（open_server_project 返回的 projectId）；不给就存成新作品'),
-    },
-    async ({ title, projectId, ...input }) => {
-      const client = serverClientFromEnv()
-      if (!client) return jsonResult(SHARE_SERVER_UNCONFIGURED)
-      const resolved = await documentFor(input)
-      if (!resolved.ok) return jsonResult(resolved)
-      try {
-        const saved = await client.saveDraft({
-          ...(projectId !== undefined ? { id: projectId } : {}),
-          ...(title !== undefined ? { title } : {}),
-          mode: 'freeform-slide',
-          document: resolved.document,
-        })
-        return jsonResult({
-          ok: true,
-          project: { id: saved.id, title: saved.title, mode: saved.mode, updatedAt: saved.updatedAt },
-          ...(resolved.documentId ? { documentId: resolved.documentId } : {}),
-          note: projectId !== undefined
-            ? '已写回服务端那一份：人在编辑器里打开就是最新版本。'
-            : '已存成新作品：list_server_projects 能看到，open_server_project 随时载入。',
-        })
-      } catch (error) {
-        return errorResult(error)
-      }
     },
   )
 
