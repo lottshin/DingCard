@@ -146,7 +146,7 @@ test('the templates panel shows first pages; a deck opens to its pages, the gall
   await expect(templatesTool).toHaveAttribute('aria-expanded', 'true')
   const panel = page.getByTestId('freeform-templates-drawer')
   const tiles = panel.locator('.freeform-template-tile')
-  await expect(tiles).toHaveCount(36)
+  await expect(tiles).toHaveCount(42)
   await expect(tiles.first().locator('.freeform-slide-preview-artboard')).toHaveCount(1)
 
   const second = tiles.nth(1)
@@ -154,7 +154,7 @@ test('the templates panel shows first pages; a deck opens to its pages, the gall
   await second.click()
   await expect(panel.getByTestId('freeform-template-pages').getByRole('heading')).toHaveText(title)
   await panel.getByTestId('freeform-template-back').click()
-  await expect(tiles).toHaveCount(36)
+  await expect(tiles).toHaveCount(42)
 
   await panel.getByTestId('freeform-templates-browse').click()
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
@@ -175,13 +175,13 @@ test('the templates panel finds templates by words and by use', async ({ page })
   await expect(tiles.first().locator('.freeform-template-tile-title')).toHaveText('婚礼请柬')
   // Escape clears the words first; the panel stays.
   await panel.getByTestId('freeform-template-search').press('Escape')
-  await expect(tiles).toHaveCount(36)
+  await expect(tiles).toHaveCount(42)
   await expect(panel).toBeVisible()
 
   await panel.getByTestId('freeform-template-use-menu').click()
   await expect(panel.locator('.freeform-template-tile-title')).toHaveText(['菜单', '甜品菜单', '价目表'])
   await panel.getByTestId('freeform-template-use-menu').click()
-  await expect(tiles).toHaveCount(36)
+  await expect(tiles).toHaveCount(42)
   await panel.getByTestId('freeform-template-search').fill('没有这种模板')
   await expect(panel.getByTestId('freeform-template-empty')).toBeVisible()
 })

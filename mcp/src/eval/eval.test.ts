@@ -15,8 +15,8 @@ function composeOf(prompt: EvalPrompt): { ok: boolean; error?: string; document?
 }
 
 describe('the release eval set', () => {
-  test('is thirty-six briefs with unique ids and a deliberate mix', () => {
-    expect(EVAL_PROMPTS).toHaveLength(36)
+  test('is forty-two briefs with unique ids and a deliberate mix', () => {
+    expect(EVAL_PROMPTS).toHaveLength(42)
     const ids = new Set(EVAL_PROMPTS.map((prompt) => prompt.id))
     expect(ids.size).toBe(EVAL_PROMPTS.length)
     const byKind = (kind: EvalPrompt['kind']) => EVAL_PROMPTS.filter((prompt) => prompt.kind === kind).length

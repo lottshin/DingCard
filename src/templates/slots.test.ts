@@ -23,6 +23,7 @@ const KEPT_DECORATION: Partial<Record<FreeformTemplateSeriesId, readonly string[
   'product-card': ['到手价'],
   editorial: ['完'],
   blueprint: ['签名 / DATE'],
+  'travel-postcard': ['80 分'],
 }
 
 function freeformTemplates() {

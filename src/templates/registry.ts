@@ -2462,6 +2462,253 @@ function createAutumnMarketDocument(): FreeformDocument {
   ])
 }
 
+/**
+ * A sun cut into bars by the horizon: the circle's cap above the first cut,
+ * then the slices between cuts ([top, height] in the box), one path so its
+ * gradient runs on unbroken.
+ */
+function slicedSun(r: number, cuts: ReadonlyArray<readonly [number, number]>): string {
+  const edge = (y: number) => Math.sqrt(Math.max(0, r * r - (y - r) ** 2))
+  const point = (x: number, y: number) => `${Math.round(x * 10) / 10} ${Math.round(y * 10) / 10}`
+  const [first] = cuts
+  const parts = [`M ${point(r - edge(first[0]), first[0])} A ${r} ${r} 0 1 1 ${point(r + edge(first[0]), first[0])} Z`]
+  cuts.forEach(([top, height], index) => {
+    const from = top + height
+    const to = index + 1 < cuts.length ? cuts[index + 1][0] : 2 * r
+    parts.push(`M ${point(r - edge(from), from)} A ${r} ${r} 0 0 0 ${point(r - edge(to), to)} L ${point(r + edge(to), to)} A ${r} ${r} 0 0 0 ${point(r + edge(from), from)} Z`)
+  })
+  return parts.join(' ')
+}
+
+/** A circle drawn as a path, so a big one reads as a mark, not as an empty picture place. */
+function circlePath(cx: number, cy: number, r: number) {
+  return `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} Z`
+}
+
+function createMagazineCoverDocument(): FreeformDocument {
+  const paper = '#eeeae2'
+  const ink = '#171513'
+  const muted = '#655f56'
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      textNode('DING', 40, 36, 1000, 320, { name: '刊名', fontSize: 290, fontFamily: PLAYFAIR, textFill: solid(ink), align: 'center', letterSpacing: 40, lineHeight: 1.1 }),
+      lineNode(88, 362, 904, ink, 2, { name: '刊头线', cap: 'butt' }),
+      textNode('VOL.12', 88, 382, 260, 40, { name: '角标', fontSize: 26, fontFamily: PLAYFAIR, textFill: solid(ink), letterSpacing: 4 }),
+      textNode('2026 秋季号 · 城市与生活', 360, 382, 632, 40, { name: '副标题', fontSize: 26, fontFamily: SANS, textFill: solid(ink), align: 'right', letterSpacing: 4 }),
+      pictureShape('主图', '/templates/editorial-building.webp', 88, 450, 904, 690),
+      textNode('城市里的慢生活', 88, 1168, 904, 112, { name: '标题', fontSize: 88, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('从一条街开始，重新认识你住了五年的地方', 88, 1290, 904, 48, { name: '正文', fontSize: 32, fontFamily: SERIF, textFill: solid(muted), letterSpacing: 1 }),
+      lineNode(88, 1352, 904, ink, 1.5, { name: '页脚线', cap: 'butt' }),
+      textNode('建筑 · 旅行 · 生活方式', 88, 1366, 600, 40, { name: '品牌', fontSize: 24, fontFamily: SANS, textFill: solid(ink), letterSpacing: 6 }),
+      textNode('¥ 48', 692, 1366, 300, 40, { name: '信息一', fontSize: 26, fontFamily: PLAYFAIR, textFill: solid(ink), align: 'right', fontWeight: 'bold' }),
+    ]),
+  ])
+}
+
+function createBookListDocument(): FreeformDocument {
+  const paper = '#f3eee4'
+  const ink = '#26221d'
+  const muted = '#6f675c'
+  const shelf = 900
+  const leaning = { x: 809, y: 374, width: 112, height: 520 }
+  const books = [
+    { x: 112, width: 118, height: 560, color: '#2f4b3d', text: '#f3ecdf', title: '慢慢来', note: '林夕 · 写给总在赶路的人' },
+    { x: 244, width: 96, height: 486, color: '#c4583a', text: '#fbf3e8', title: '去看海', note: '陈默 · 一个人的旅行散文' },
+    { x: 354, width: 138, height: 600, color: '#e7c46a', text: '#2a2620', title: '一个人的厨房', note: '苏禾 · 三十道一人食' },
+    { x: 506, width: 104, height: 470, color: '#3d5c8c', text: '#f3f0ea', title: '城市漫步', note: '周遥 · 走路看城市' },
+    { x: 624, width: 124, height: 540, color: '#2a2622', text: '#efe6d6', title: '夜晚的书', note: '许眠 · 失眠时读的短篇' },
+  ]
+  return documentFromSlides([
+    slide('书单', solid(paper), [
+      shapeNode('rect', 72, shelf, 936, 18, solid('#8a6a4f'), { name: '书架', cornerRadius: 2 }),
+      lineNode(72, 932, 936, '#d9cdb8', 2, { name: '分隔线', cap: 'butt' }),
+      ...books.flatMap((book, index) => {
+        const n = NUMBERED[index]
+        const top = shelf - book.height
+        const band = (y: number, suffix: string) => shapeNode('rect', book.x, y, book.width, 8, solid(book.text), { name: `书标${n}${suffix}`, opacity: 0.55 })
+        return [
+          shapeNode('rect', book.x, top, book.width, book.height, solid(book.color), { name: `书脊${n}`, cornerRadius: 6 }),
+          band(top + 40, ''),
+          band(shelf - 56, '下'),
+          textNode(book.title, book.x + (book.width - 64) / 2, top + 76, 64, book.height - 160, { name: `书名${n}`, fontSize: 40, fontFamily: SERIF, textFill: solid(book.text), fontWeight: 'bold', vertical: true, letterSpacing: 8, lineHeight: 1.1 }),
+        ]
+      }),
+      // One more book leans on the row's end, resting on the shelf and its neighbour, its bands turned with it.
+      shapeNode('rect', leaning.x, leaning.y, leaning.width, leaning.height, solid('#b49a74'), { name: '斜书', cornerRadius: 6, rotation: -14 }),
+      ...[leaning.y + 40, leaning.y + leaning.height - 56].map((y, index) => {
+        const at = turnedWith({ x: leaning.x, y, width: leaning.width, height: 8 }, leaning, -14)
+        return shapeNode('rect', at.x, at.y, leaning.width, 8, solid('#f3ecdf'), { name: index === 0 ? '斜书标' : '斜书标下', opacity: 0.55, rotation: -14 })
+      }),
+      textNode('十月书单', 64, 72, 952, 150, { name: '标题', fontSize: 120, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 10 }),
+      textNode('这个月读完的五本书，每一本都想推荐给你', 64, 232, 952, 48, { name: '副标题', fontSize: 32, fontFamily: SANS, textFill: solid(muted), letterSpacing: 2 }),
+      ...books.flatMap((book, index) => {
+        const n = NUMBERED[index]
+        const y = 968 + index * 60
+        return [
+          textNode(String(index + 1).padStart(2, '0'), 72, y, 72, 44, { name: `序号${n}`, fontSize: 30, fontFamily: PLAYFAIR, textFill: solid(book.color === '#e7c46a' ? '#a2781a' : book.color), fontWeight: 'bold' }),
+          textNode(book.note, 156, y, 860, 44, { name: `推荐${n}`, fontSize: 30, fontFamily: SANS, textFill: solid(ink) }),
+        ]
+      }),
+      textNode('@林一的书房', 64, 1328, 952, 44, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(muted), letterSpacing: 4 }),
+    ]),
+  ])
+}
+
+function createWordOfYearDocument(): FreeformDocument {
+  const paper = '#f4f1ea'
+  const ink = '#1b1917'
+  const red = '#b8322a'
+  const muted = '#6a645b'
+  return documentFromSlides([
+    slide('海报', solid(paper), [
+      textNode('2026 年度汉字', 88, 120, 620, 52, { name: '副标题', fontSize: 34, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 12 }),
+      textNode('Word of the Year', 600, 124, 392, 48, { name: '英文', fontSize: 30, fontFamily: PLAYFAIR, textFill: solid(muted), italic: true, align: 'right' }),
+      lineNode(88, 190, 904, ink, 2, { name: '刊头线', cap: 'butt' }),
+      textNode('wěn', 140, 286, 800, 120, { name: '拼音', fontSize: 92, fontFamily: PLAYFAIR, textFill: solid(muted), italic: true, align: 'center' }),
+      textNode('稳', 90, 400, 900, 840, { name: '标题', fontSize: 800, fontFamily: BRUSH, textFill: solid(ink), align: 'center', lineHeight: 1.05 }),
+      shapeNode('rect', 786, 1250, 120, 120, solid(red), { name: '印章', cornerRadius: 8, rotation: -4 }),
+      textNode('年度', 786, 1270, 120, 80, { name: '印章文字', fontSize: 50, fontFamily: BRUSH, textFill: solid('#ffffff'), align: 'center', rotation: -4, lineHeight: 1.2 }),
+      textNode('稳，是这一年最想对自己说的话。\n不急，不慌，一步一步，把日子过稳。', 88, 1410, 904, 150, { name: '正文', fontSize: 40, fontFamily: SERIF, textFill: solid(ink), align: 'center', lineHeight: 1.75 }),
+      lineNode(500, 1610, 80, red, 3, { name: '短线', cap: 'butt' }),
+      textNode('你的年度汉字是哪一个？', 88, 1648, 904, 56, { name: '信息一', fontSize: 34, fontFamily: SERIF, textFill: solid(muted), align: 'center', letterSpacing: 4 }),
+      textNode('叮卡 · 年终特辑', 88, 1796, 904, 48, { name: '品牌', fontSize: 28, fontFamily: SERIF, textFill: solid(ink), align: 'center', letterSpacing: 8 }),
+    ], STORY),
+  ])
+}
+
+function createMusicFestivalDocument(): FreeformDocument {
+  const night = '#190a34'
+  const white = '#ffffff'
+  const yellow = '#ffd54a'
+  const pink = '#ff6fa8'
+  // The horizon cuts the sun into bars, thicker toward the ground.
+  const cuts = [[380, 10], [440, 14], [492, 18], [540, 22], [586, 26], [632, 30]] as const
+  const row = (index: number, label: string, value: string) => {
+    const y = 1508 + index * 64
+    const n = NUMBERED[index]
+    return [
+      textNode(label, 96, y + 4, 110, 44, { name: `标签${n}`, fontSize: 28, fontFamily: SANS, textFill: solid(yellow), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode(value, 210, y, 806, 50, { name: `信息${n}`, fontSize: 32, fontFamily: SANS, textFill: solid(white) }),
+    ]
+  }
+  const grid = [
+    ...[0, 180, 360, 540, 720, 900, 1080].map((x) => `M 540 0 L ${x} 220`),
+    ...[36, 84, 146, 220].map((y) => `M 0 ${y} L 1080 ${y}`),
+  ].join(' ')
+  return documentFromSlides([
+    slide('海报', stopsPaint([[0, night], [1, '#2c0b4f']], 180), [
+      pathNode(slicedSun(350, cuts), 190, 260, 700, 700, { name: '太阳', fill: stopsPaint([[0, '#ffe066'], [0.55, '#ff8a5b'], [1, '#ff3d81']], 180), strokeWidth: 0 }),
+      lineNode(48, 954, 984, pink, 4, { name: '地平线', cap: 'butt' }),
+      pathNode(grid, 0, 960, 1080, 220, { name: '网格', stroke: pink, strokeWidth: 2, opacity: 0.55 }),
+      textNode('SOUND WAVE FESTIVAL', 64, 84, 640, 44, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(white), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('VOL.03', 716, 80, 300, 48, { name: '角标', fontSize: 32, fontFamily: ARCHIVO, textFill: solid(white), align: 'right' }),
+      textNode('LIVE MUSIC', 40, 1196, 1000, 170, { name: '英文标语', fontSize: 132, fontFamily: ARCHIVO, textFill: solid(white), align: 'center', letterSpacing: -2, lineHeight: 1.15 }),
+      textNode('声浪音乐节', 64, 1366, 952, 112, { name: '标题', fontSize: 84, fontFamily: SANS, textFill: solid(white), fontWeight: 'bold', align: 'center', letterSpacing: 14 }),
+      ...row(0, '周六', '落日飞行 · 海边的风 · 白日梦乐队'),
+      ...row(1, '周日', '晚安星球 · 野草莓 · 城市漫游者'),
+      ...row(2, '地点', '滨江公园大草坪 · 11 月 21 — 22 日'),
+      shapeNode('rect', 340, 1724, 400, 96, solid(white), { name: '按钮底板', cornerRadius: 48 }),
+      textNode('立即购票', 340, 1746, 400, 52, { name: '按钮文字', fontSize: 36, fontFamily: SANS, textFill: solid(night), fontWeight: 'bold', align: 'center', letterSpacing: 8 }),
+    ], STORY),
+  ])
+}
+
+/** The red and blue airmail stripes round a card's edge, as one path per colour. */
+function airmailStripes(width: number, height: number, inset: number, band: number, offset: number): string {
+  const run = 30
+  const period = run * 4
+  const parts: string[] = []
+  for (let x = inset + offset; x < width - inset; x += period) {
+    for (const y of [inset, height - inset - band]) {
+      parts.push(`M ${x} ${y} L ${x + run} ${y} L ${x + run - band} ${y + band} L ${x - band} ${y + band} Z`)
+    }
+  }
+  for (let y = inset + band + offset; y < height - inset - band; y += period) {
+    for (const x of [inset, width - inset - band]) {
+      parts.push(`M ${x} ${y} L ${x + band} ${y - band} L ${x + band} ${y - band + run} L ${x} ${y + run} Z`)
+    }
+  }
+  return parts.join(' ')
+}
+
+/** A stamp's perforations: half-holes along its edges, cut in the card's colour. */
+function perforations(x: number, y: number, width: number, height: number, radius: number, step: number): string {
+  const hole = (cx: number, cy: number) => `M ${cx - radius} ${cy} A ${radius} ${radius} 0 1 0 ${cx + radius} ${cy} A ${radius} ${radius} 0 1 0 ${cx - radius} ${cy} Z`
+  const parts: string[] = []
+  for (let cx = x + step / 2; cx < x + width; cx += step) parts.push(hole(cx, y), hole(cx, y + height))
+  for (let cy = y + step / 2; cy < y + height; cy += step) parts.push(hole(x, cy), hole(x + width, cy))
+  return parts.join(' ')
+}
+
+function createTravelPostcardDocument(): FreeformDocument {
+  const paper = '#f7f1e4'
+  const red = '#cf3b2e'
+  const blue = '#2a4f9e'
+  const ink = '#2b2724'
+  const muted = '#655d52'
+  const rule = '#d9cdb8'
+  const stamp = { x: 790, y: 96, width: 200, height: 244 }
+  return documentFromSlides([
+    slide('明信片', solid(paper), [
+      pathNode(airmailStripes(1080, 1440, 22, 22, 0), 0, 0, 1080, 1440, { name: '航空边红', fill: solid(red), strokeWidth: 0 }),
+      pathNode(airmailStripes(1080, 1440, 22, 22, 60), 0, 0, 1080, 1440, { name: '航空边蓝', fill: solid(blue), strokeWidth: 0 }),
+      ...Array.from({ length: 6 }, (_, index) => shapeNode('rect', 88 + index * 54, 98, 44, 44, { type: 'transparent' }, { name: `邮编框${NUMBERED[index]}`, stroke: red, strokeWidth: 2.5, cornerRadius: 2 })),
+      shapeNode('rect', stamp.x, stamp.y, stamp.width, stamp.height, solid('#ffffff'), { name: '邮票', shadow: { color: '#d8ccb6', blur: 12, offsetX: 0, offsetY: 4 } }),
+      pathNode(perforations(8, 8, stamp.width, stamp.height, 7, 20), stamp.x - 8, stamp.y - 8, stamp.width + 16, stamp.height + 16, { name: '齿孔', fill: solid(paper), strokeWidth: 0 }),
+      pictureShape('主图', '/templates/grid-sunset.svg', stamp.x + 16, stamp.y + 16, stamp.width - 32, stamp.height - 72),
+      textNode('80 分', stamp.x + 16, stamp.y + stamp.height - 50, stamp.width - 32, 36, { name: '面值', fontSize: 24, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', align: 'right' }),
+      shapeNode('ellipse', 616, 248, 196, 196, { type: 'transparent' }, { name: '邮戳', stroke: ink, strokeWidth: 3, opacity: 0.6 }),
+      textNode('厦门\n2026.10.13', 616, 300, 196, 96, { name: '邮戳文字', fontSize: 26, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', align: 'center', rotation: -10, opacity: 0.7, lineHeight: 1.5 }),
+      pathNode('M 0 20 Q 30 0 60 20 T 120 20 T 180 20 M 0 50 Q 30 30 60 50 T 120 50 T 180 50 M 0 80 Q 30 60 60 80 T 120 80 T 180 80', 430, 300, 180, 100, { name: '邮戳波纹', stroke: ink, strokeWidth: 3, opacity: 0.45, cap: 'round' }),
+      textNode('POST CARD', 88, 172, 640, 84, { name: '英文标语', fontSize: 64, fontFamily: PLAYFAIR, textFill: solid(ink), letterSpacing: 12, lineHeight: 1.2 }),
+      textNode('Greetings from the sea', 88, 258, 520, 40, { name: '英文', fontSize: 28, fontFamily: PLAYFAIR, textFill: solid(muted), italic: true }),
+      textNode('来自海边的问候', 88, 400, 904, 92, { name: '标题', fontSize: 68, fontFamily: KAI, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      ...Array.from({ length: 6 }, (_, index) => lineNode(88, 576 + index * 72 - 6, 904, rule, 2, { name: `横线${NUMBERED[index]}`, cap: 'butt' })),
+      textNode('这里的风是咸的，傍晚的海是粉色的。\n住在看得见灯塔的小旅馆，每天早上被海鸥叫醒。\n等你有空，我们一起来。', 88, 516, 904, 430, { name: '正文', fontSize: 40, fontFamily: KAI, textFill: solid(ink), lineHeight: 1.8 }),
+      textNode('—— 林一，于厦门', 492, 960, 500, 56, { name: '署名', fontSize: 36, fontFamily: KAI, textFill: solid(ink), align: 'right' }),
+      lineNode(88, 1060, 904, rule, 2, { name: '分隔线', cap: 'butt', dash: 10 }),
+      textNode('TO', 88, 1100, 120, 64, { name: '收件', fontSize: 48, fontFamily: PLAYFAIR, textFill: solid(red), italic: true }),
+      textNode('远方的你', 210, 1104, 600, 60, { name: '收件人', fontSize: 44, fontFamily: KAI, textFill: solid(ink), letterSpacing: 4 }),
+      lineNode(210, 1172, 782, rule, 2, { name: '地址线一', cap: 'butt' }),
+      textNode('北京市东城区 · 胡同里的那扇红门', 210, 1196, 782, 52, { name: '信息一', fontSize: 34, fontFamily: KAI, textFill: solid(muted) }),
+      lineNode(210, 1258, 782, rule, 2, { name: '地址线二', cap: 'butt' }),
+    ]),
+  ])
+}
+
+function createDesignWeekDocument(): FreeformDocument {
+  const paper = '#f1f0eb'
+  const ink = '#111111'
+  const red = '#e3352b'
+  const muted = '#55544f'
+  const column = (index: number, label: string, value: string) => {
+    const x = 64 + index * 320
+    const n = NUMBERED[index]
+    return [
+      lineNode(x, 1474, 292, ink, 3, { name: `栏线${n}`, cap: 'butt' }),
+      textNode(label, x, 1494, 292, 40, { name: `标签${n}`, fontSize: 26, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode(value, x, 1546, 292, 110, { name: `信息${n}`, fontSize: 32, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.5 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('海报', solid(paper), [
+      pathNode(circlePath(260, 260, 260), 520, 210, 520, 520, { name: '红圆', fill: solid(red), strokeWidth: 0 }),
+      textNode('26', 30, 120, 1020, 800, { name: '角标', fontSize: 760, fontFamily: ARCHIVO, textFill: solid(ink), letterSpacing: -40, lineHeight: 1.05 }),
+      textNode('DESIGN WEEK 2026', 966, 984, 74, 470, { name: '副标题', fontSize: 38, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', vertical: true, letterSpacing: 4, lineHeight: 1.2 }),
+      lineNode(64, 944, 952, ink, 6, { name: '刊头线', cap: 'butt' }),
+      textNode('城市设计周', 64, 984, 880, 150, { name: '标题', fontSize: 124, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      lineNode(64, 1160, 96, red, 8, { name: '标题线', cap: 'butt' }),
+      textNode('三十场展览、四十场讲座，\n看设计怎样改变一座城市。', 64, 1206, 880, 130, { name: '正文', fontSize: 38, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.6 }),
+      ...column(0, '时间', '11.18 — 11.24\n10:00 — 20:00'),
+      ...column(1, '地点', '西岸艺术中心\n徐汇区龙腾大道'),
+      ...column(2, '票价', '免费预约\n现场 50 元'),
+      lineNode(64, 1786, 952, ink, 2, { name: '页脚线', cap: 'butt' }),
+      textNode('主办：城市设计研究所', 64, 1808, 700, 48, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('No.07', 716, 1808, 300, 48, { name: '编号', fontSize: 30, fontFamily: ARCHIVO, textFill: solid(ink), align: 'right' }),
+    ], STORY),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -2570,6 +2817,12 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'dessert-menu': poster('甜品菜单', 'A4 单页：竖排大标题、八道甜品和价格，两角配橙黄蓝的花，适合甜品店、面包店和下午茶菜单。', ['菜单', '餐饮'], 'a4'),
   'wedding-invitation': poster('婚礼请柬', '尤加利叶环里写着花体 Save the Date 和两个人的名字，适合婚礼、订婚和纪念日邀请。', ['婚礼', '邀请'], 'story'),
   'autumn-market': poster('秋日市集', '枫叶和银杏叶上下围着宋体大标题，适合市集、秋季活动和周末聚会。', ['市集', '活动'], 'xhs'),
+  'magazine-cover': poster('杂志封面', 'Playfair 大字刊名、细线刊头和一张大图，像一本独立杂志的封面，适合小红书封面、专题和期刊。', ['杂志', '封面'], 'xhs'),
+  'book-list': poster('书单', '一排彩色书脊立在书架上，书名竖排在书脊里，下面一本一句推荐，适合书单、好物清单和年度推荐。', ['书单', '读书'], 'xhs'),
+  'word-of-year': poster('年度汉字', '一个毛笔大字配拼音和一方朱红印章，适合年度汉字、年终总结和新年愿望。', ['年终', '国风'], 'story'),
+  'music-festival': poster('音乐节', '夜空里一轮被地平线切开的渐变太阳和霓虹网格，配大字标题和演出阵容，适合音乐节、演出和派对。', ['音乐', '活动'], 'story'),
+  'travel-postcard': poster('旅行明信片', '红蓝航空信封边、带齿孔的邮票和邮戳，霞鹜文楷写在横线上，适合旅行分享、问候和祝福。', ['旅行', '问候'], 'xhs'),
+  'design-week': poster('设计周', '黑字大号数字压在一个红圆上，下面三栏信息，国际主义版式，适合设计周、展会和论坛。', ['展会', '设计'], 'story'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -2609,6 +2862,12 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'dessert-menu': createDessertMenuDocument,
   'wedding-invitation': createWeddingInvitationDocument,
   'autumn-market': createAutumnMarketDocument,
+  'magazine-cover': createMagazineCoverDocument,
+  'book-list': createBookListDocument,
+  'word-of-year': createWordOfYearDocument,
+  'music-festival': createMusicFestivalDocument,
+  'travel-postcard': createTravelPostcardDocument,
+  'design-week': createDesignWeekDocument,
 }
 
 /**
@@ -2642,6 +2901,8 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   // Posters, the scenes asked for most first.
   'note-cover',
   'photo-cover',
+  'magazine-cover',
+  'book-list',
   'portfolio-cover',
   'menu',
   'dessert-menu',
@@ -2650,15 +2911,19 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'moments-grid',
   'timetable',
   'exhibition-poster',
+  'design-week',
+  'music-festival',
   'talk-poster',
   'launch-poster',
   'sale-poster',
   'hiring-poster',
   'festival-poster',
   'solar-term',
+  'word-of-year',
   'invitation',
   'wedding-invitation',
   'birthday-card',
+  'travel-postcard',
   'autumn-market',
   'quote-card',
   'product-card',

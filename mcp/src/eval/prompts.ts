@@ -352,4 +352,40 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'birthday-card-freeform',
     content: { title: '生日快乐', recipient: '阿澄', body: '新的一岁，愿望都灵。', brand: '爱你的大家' },
   },
+  {
+    id: 'poster-magazine',
+    kind: 'poster',
+    templateId: 'magazine-cover-freeform',
+    content: { title: '在山里住一个月', subtitle: '2026 冬季号 · 乡村与远方', body: '我们找了五个愿意离开城市的人，听他们讲山里的日子', tag: 'VOL.13', details: ['¥ 52'], brand: '旅行 · 自然 · 人物', image: '/templates/art-ink-mountains.svg' },
+  },
+  {
+    id: 'poster-book-list',
+    kind: 'poster',
+    templateId: 'book-list-freeform',
+    content: { title: '年度书单', subtitle: '今年反复读了好几遍的书', details: ['小王子：圣埃克苏佩里 · 写给大人的童话', '活着：余华 · 一口气读完的那种', '人间食粮：纪德 · 适合夏天读', '瓦尔登湖：梭罗 · 慢慢读'], brand: '@阿澄的读书笔记' },
+  },
+  {
+    id: 'poster-word-of-year',
+    kind: 'poster',
+    templateId: 'word-of-year-freeform',
+    content: { title: '勇', subtitle: '2026 年度汉字', body: '勇，是今年做得最多的事。\n换城市、换工作，也换了一种活法。', details: ['评论区说说你的年度汉字'], tag: '年度', brand: '阿澄 · 年终总结' },
+  },
+  {
+    id: 'poster-music-festival',
+    kind: 'poster',
+    templateId: 'music-festival-freeform',
+    content: { title: '海边音乐节', details: ['周六：浪花乐队 · 南风 · 青年旅社', '周日：月亮河 · 夏日漫游 · 盐', '地点：东海岸沙滩 · 5 月 1 — 2 日'], cta: '立即购票', tag: 'VOL.05', brand: 'SEASIDE MUSIC' },
+  },
+  {
+    id: 'poster-postcard',
+    kind: 'poster',
+    templateId: 'travel-postcard-freeform',
+    content: { title: '从大理寄来的信', body: '洱海边的风很大，云走得很快。\n我在古城的院子里住下了，每天晒太阳、喝茶。\n下次一起来。', recipient: '亲爱的你', details: ['上海市徐汇区 · 梧桐树下的那栋楼'], tag: '大理\n2026.12.01', brand: '—— 阿澄，于大理' },
+  },
+  {
+    id: 'poster-design-week',
+    kind: 'poster',
+    templateId: 'design-week-freeform',
+    content: { title: '设计与城市论坛', subtitle: 'URBAN FORUM 2027', body: '二十位建筑师和设计师，聊聊城市的下一个十年。', details: ['时间：03.20 — 03.22\n09:30 — 18:00', '地点：滨江会展中心\n三号馆', '票价：早鸟 99 元\n现场 199 元'], tag: '27', brand: '主办：城市更新研究会' },
+  },
 ]

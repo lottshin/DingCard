@@ -107,6 +107,12 @@ export const TEMPLATE_FACETS: Record<TemplateSeriesId, TemplateFacets> = {
   'data-roundup': facets(['office'], ['editorial', 'business'], ['beige', 'red']),
   'compare-table': facets(['office'], ['business'], ['blue', 'white']),
   'growth-timeline': facets(['office'], ['elegant'], ['green', 'yellow']),
+  'magazine-cover': facets(['social'], ['editorial', 'elegant'], ['beige', 'black']),
+  'book-list': facets(['social'], ['literary', 'fresh'], ['beige', 'green', 'orange']),
+  'word-of-year': facets(['festival', 'social'], ['chinese', 'minimal'], ['white', 'red', 'black']),
+  'music-festival': facets(['event'], ['bold', 'retro'], ['purple', 'pink', 'yellow']),
+  'travel-postcard': facets(['invite', 'social'], ['retro'], ['beige', 'red', 'blue']),
+  'design-week': facets(['event'], ['bold', 'minimal'], ['white', 'red', 'black']),
 }
 
 export function templateFacets(template: Pick<TemplateDefinition, 'series'>): TemplateFacets {

@@ -657,6 +657,59 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     image: { node: '主图', keep: true },
   },
+  'magazine-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    tag: { text: '角标' },
+    details: rows(1, () => undefined, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    image: { node: '主图', fallback: block('#3b3b3b') },
+  },
+  // A book's title stands in its spine, its line of praise under the shelf.
+  'book-list': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    details: rows(5, (n) => `书名${n}`, (n) => `推荐${n}`, (n) => [`书脊${n}`, `书标${n}`, `书标${n}下`, `序号${n}`]),
+    brand: { text: '品牌' },
+  },
+  'word-of-year': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    tag: { text: '印章文字', extras: ['印章'] },
+    details: rows(1, () => undefined, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    // The sample's pinyin reads only for its own character.
+    remove: [{ text: '拼音' }],
+    generic: ['副标题', '印章文字'],
+  },
+  'music-festival': {
+    title: '标题',
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+    generic: ['按钮文字'],
+  },
+  'travel-postcard': {
+    title: '标题',
+    body: { text: '正文' },
+    recipient: { text: '收件人' },
+    tag: { text: '邮戳文字', extras: ['邮戳', '邮戳波纹'] },
+    details: rows(1, () => undefined, (n) => `信息${n}`),
+    brand: { text: '署名' },
+    image: { node: '主图', keep: true },
+  },
+  'design-week': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`, (n) => [`栏线${n}`]),
+    brand: { text: '品牌' },
+    generic: ['角标'],
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

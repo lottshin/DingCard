@@ -61,6 +61,12 @@ export type FreeformPosterSeriesId =
   | 'dessert-menu'
   | 'wedding-invitation'
   | 'autumn-market'
+  | 'magazine-cover'
+  | 'book-list'
+  | 'word-of-year'
+  | 'music-festival'
+  | 'travel-postcard'
+  | 'design-week'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId
