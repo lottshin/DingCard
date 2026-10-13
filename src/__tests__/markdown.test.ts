@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { collectMarkdownImageSources, parseBlocks } from '../markdown'
+import { collectMarkdownImageSources, markWordBreaks, parseBlocks } from '../markdown'
 
 describe('collectMarkdownImageSources', () => {
   it('collects nested markdown image hrefs once in first-seen order', () => {
@@ -72,5 +72,35 @@ describe('parseBlocks block kinds', () => {
       'paragraph',
       'paragraph',
     ])
+  })
+})
+
+describe('reading furniture in blocks', () => {
+  it('turns `[ ]` and `[x]` items into to-dos and leaves other items alone', () => {
+    const [open, done, plain] = parseBlocks('- [ ] 买菜\n- [x] **交房租**\n- [链接](https://example.com)')
+    expect(open.html).toContain('<ul class="task-list"><li class="task" data-done="false">买菜</li></ul>')
+    expect(done.html).toContain('data-done="true"><strong>交房租</strong>')
+    expect(plain.html).toContain('<ul><li><a href="https://example.com">链接</a></li></ul>')
+    expect([open.kind, done.kind, plain.kind]).toEqual(['list', 'list', 'list'])
+  })
+
+  it('carries a picture\'s description for a caption', () => {
+    const [picture] = parseBlocks('![旧城区的老楼|320](/templates/editorial-building.webp)')
+    expect(picture.html).toContain('data-alt="旧城区的老楼"')
+    expect(picture.html).toContain('style="width:320px;"')
+  })
+
+  it('marks word boundaries in Chinese headings and quotes, not inside words, tags or entities', () => {
+    const marked = markWordBreaks('旅行的意义，<strong>也许就是在陌生的地方</strong> &amp; A&B')
+    expect(marked.replace(/\u200B/g, '')).toBe('旅行的意义，<strong>也许就是在陌生的地方</strong> &amp; A&B')
+    expect(marked).toContain('在\u200B陌生\u200B的\u200B地方</strong>')
+    expect(marked).not.toMatch(/陌\u200B生/)
+    expect(marked).toContain('&amp; A&B')
+    // A short clause stays whole, so the line breaks at its comma.
+    expect(markWordBreaks('失眠的夜里，我读完了一本书')).toBe('失眠的夜里，我读完了一本书')
+    const [heading, quote, paragraph] = parseBlocks('## 迷路是认识一座城市最好的方式\n\n> 你不需要去很远很远的地方才看得见\n\n正文不需要标记')
+    expect(heading.html).toContain('\u200B')
+    expect(quote.html).toContain('\u200B')
+    expect(paragraph.html).not.toContain('\u200B')
   })
 })

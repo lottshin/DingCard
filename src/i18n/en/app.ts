@@ -137,9 +137,9 @@ export const app: Record<string, Translation> = {
   '写一篇长文，自动排成一组卡片': 'Write a long post, get a set of cards',
   '只管写字。标题、正文、金句按内容自动分页，整组图片一键导出。':
     'Just write. Headings, body text and quotes are paginated for you, and the whole set exports in one click.',
-  '# 这周事情很多，我先删掉一半': '# A busy week: I cut half of it',
-  '## 任务列了二十多条，今天只做三条': '## Twenty tasks listed, three done today',
-  '> 明天上午先不回消息': '> No messages until noon tomorrow',
+  '# 在城市里慢慢走': '# Walking the city slowly',
+  '## 地铁看不见的东西': '## What the subway never shows',
+  '> 你不需要去很远的地方': '> You don\'t have to go far',
   '新建': 'New',
   '从模板开始': 'Start from a template',
   '像做海报一样，自由摆放每个元素': 'Place every element freely, like a poster',
@@ -327,6 +327,7 @@ export const app: Record<string, Translation> = {
   '每套模板都在仓库里维护。做了一套好看的版式？按贡献指南提交 Pull Request，合并后所有人都能用。想复用自己的作品，在「我的项目」里复制一份就行。':
     'Every template lives in the repository. Made a layout worth sharing? Follow the contribution guide and open a pull request; once it is merged, everyone can use it. To reuse your own work, duplicate the project in My projects.',
   '查看贡献指南': 'Read the contribution guide',
+  '只换样式': 'Use the look only',
   '你存过的 {n} 个模板已经放进「我的项目」': plural(
     'The template you saved is now in My projects',
     'The {n} templates you saved are now in My projects',

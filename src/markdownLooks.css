@@ -1,0 +1,1499 @@
+/* =====================================================================
+   Markdown looks (theme.ts `look`, markdownLooks.ts): designed pages for
+   long reads. Card and paginator probe both carry data-look and
+   data-page-role, so everything that takes room is set on .card-content and
+   measured; the chrome layer (running head, folio, marks) stays in the
+   margins the content's padding leaves.
+   ===================================================================== */
+
+.markdown-card-chrome {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.markdown-card-chrome > span {
+  position: absolute;
+  display: none;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.markdown-chrome-head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Every card: to-dos and tables ---------- */
+.card-content .task-list {
+  padding-left: 1.5em;
+  list-style: none;
+}
+
+.card-content .task-list > li.task {
+  position: relative;
+}
+
+.card-content .task-list > li.task::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--card-lh) * 0.5em - 0.5em);
+  left: -1.5em;
+  box-sizing: border-box;
+  width: 1em;
+  height: 1em;
+  border: 1.5px solid var(--card-accent);
+  border-radius: 3px;
+}
+
+.card-content .task-list > li.task[data-done="true"]::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.4l2.8 2.8 6-6.4' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 78% no-repeat,
+    var(--card-accent);
+}
+
+.card-content .task-list > li.task[data-done="true"] {
+  opacity: 0.6;
+}
+
+.card-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+}
+
+.card-content th,
+.card-content td {
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+  text-align: left;
+}
+
+/* ---------- Shared reading styles ---------- */
+.card[data-look] {
+  background: var(--look-paper);
+  color: var(--look-ink);
+}
+
+.card[data-look] .cardhead {
+  color: var(--look-ink);
+}
+
+.card-content[data-look] {
+  color: var(--look-ink);
+  padding-top: var(--look-top, 0px);
+  padding-bottom: var(--look-bottom, 0px);
+}
+
+/* A social header takes the place of the furniture at the top of the page
+   (the paginator's probe carries data-social too, so it measures the same). */
+.card-content[data-look][data-social="true"] {
+  padding-top: 0;
+}
+
+.card[data-look][data-has-social-header="true"] .markdown-chrome-head,
+.card[data-look][data-has-social-header="true"] .markdown-chrome-date,
+.card[data-look][data-has-social-header="true"] .markdown-chrome-mark {
+  display: none;
+}
+
+.card-content[data-look] > * {
+  margin: 0 0 var(--card-gap);
+}
+
+.card-content[data-look] > :first-child {
+  margin-top: 0;
+}
+
+.card-content[data-look] > :last-child {
+  margin-bottom: 0;
+}
+
+.card-content[data-look] h1,
+.card-content[data-look] h2,
+.card-content[data-look] h3,
+.card-content[data-look] h4,
+.card-content[data-look] h5,
+.card-content[data-look] h6 {
+  color: var(--look-head, var(--look-ink));
+  font-weight: 700;
+}
+
+/* Headings and quotes break into lines of even length, at the pauses
+   (after punctuation) where they have them rather than inside a word. */
+.card-content[data-look] :is(h1, h2, h3, blockquote) {
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  word-break: keep-all;
+}
+
+.card-content[data-look] h1 {
+  font-size: var(--look-h1, 1.75em);
+  line-height: 1.32;
+  letter-spacing: 0.01em;
+}
+
+.card-content[data-look] h2 {
+  margin-top: var(--look-h2-top, 0.9em);
+  font-size: var(--look-h2, 1.22em);
+  line-height: 1.45;
+}
+
+.card-content[data-look] h3 {
+  margin-top: 0.4em;
+  font-size: var(--look-h3, 1.06em);
+  line-height: 1.5;
+}
+
+.card-content[data-look] h4,
+.card-content[data-look] h5,
+.card-content[data-look] h6 {
+  font-size: 1em;
+  line-height: inherit;
+}
+
+.card-content[data-look] p {
+  text-align: justify;
+}
+
+.card-content[data-look] p:has(> .img-wrap) {
+  text-align: left;
+  text-indent: 0;
+}
+
+.card-content[data-look] strong {
+  color: inherit;
+  font-weight: 700;
+}
+
+/* Chinese has no italics: emphasis takes the look's colour instead. */
+.card-content[data-look] em {
+  color: var(--look-accent);
+  font-style: normal;
+}
+
+.card-content[data-look] a {
+  color: var(--look-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.card-content[data-look] del {
+  opacity: 0.55;
+}
+
+.card-content[data-look] blockquote {
+  margin-left: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  opacity: 1;
+}
+
+.card-content[data-look] blockquote > * {
+  margin: 0 0 0.4em;
+}
+
+.card-content[data-look] blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* Balanced lines are short on purpose: justifying them would space them out. */
+.card-content[data-look] blockquote p {
+  text-align: start;
+}
+
+.card-content[data-look] ul,
+.card-content[data-look] ol {
+  padding-left: 1.3em;
+}
+
+.card-content[data-look] ul {
+  list-style: none;
+}
+
+.card-content[data-look] li {
+  position: relative;
+  margin: 0;
+}
+
+/* Every item is a list of its own (markdown.ts), so items of one list sit closer. */
+.card-content[data-look] ul:has(+ ul),
+.card-content[data-look] ol:has(+ ol) {
+  margin-bottom: var(--look-item-gap, 0.35em);
+}
+
+.card-content[data-look] ul > li::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--card-lh) * 0.5em - var(--look-dot, 5px) / 2);
+  left: -1em;
+  width: var(--look-dot, 5px);
+  height: var(--look-dot, 5px);
+  border-radius: var(--look-dot-radius, 50%);
+  background: var(--look-bullet, var(--look-accent));
+}
+
+.card-content[data-look] ol > li::marker {
+  color: var(--look-number, var(--look-accent));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-content[data-look] .task-list {
+  padding-left: 1.55em;
+}
+
+.card-content[data-look] .task-list > li.task::before {
+  top: calc(var(--card-lh) * 0.5em - 0.5em);
+  left: -1.55em;
+  box-sizing: border-box;
+  width: 1em;
+  height: 1em;
+  border: 1.5px solid var(--look-task-ring, var(--look-accent));
+  border-radius: var(--look-task-radius, 50%);
+  background: transparent;
+}
+
+.card-content[data-look] .task-list > li.task[data-done="true"]::before {
+  border-color: var(--look-accent);
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.4l2.8 2.8 6-6.4' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 78% no-repeat,
+    var(--look-accent);
+}
+
+.card-content[data-look] .task-list > li.task[data-done="true"] {
+  color: var(--look-muted);
+  opacity: 1;
+}
+
+/* A picture spans the column unless it was given a width; tall ones are cropped. */
+.card-content[data-look] .img-wrap[style=""] {
+  display: block;
+}
+
+/* The resize handle sits inside the picture's corner: a full-width one leaves no room outside. */
+.card-content[data-look] .img-handle {
+  right: 6px;
+  bottom: 6px;
+}
+
+.card-content[data-look] img {
+  max-height: 240px;
+  border-radius: var(--look-img-radius, 4px);
+  object-fit: cover;
+}
+
+.card-content[data-look][data-page-role="cover"] img {
+  max-height: var(--look-cover-img, 176px);
+}
+
+.card-content[data-look] code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--look-code-bg, rgba(127, 127, 127, 0.12));
+  font-size: 0.86em;
+}
+
+.card-content[data-look] pre {
+  overflow: hidden;
+  padding: 10px 12px;
+  border-radius: var(--look-pre-radius, 6px);
+  background: var(--look-code-bg, rgba(127, 127, 127, 0.1));
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.card-content[data-look] pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.card-content[data-look] table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84em;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-content[data-look] th,
+.card-content[data-look] td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--look-rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+.card-content[data-look] th {
+  border-bottom: 1.5px solid var(--look-head, var(--look-ink));
+  color: var(--look-head, var(--look-ink));
+  font-weight: 700;
+}
+
+/* Looks that print a picture's description under it. */
+.card-content:is([data-look="column"], [data-look="night"], [data-look="swiss"], [data-look="xuan"]) .img-wrap[data-alt]:not([data-alt=""])::after {
+  content: attr(data-alt);
+  display: block;
+  margin-top: 7px;
+  color: var(--look-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+}
+
+/* =====================================================================
+   专栏 — a literary column: warm paper, serif, one vermilion accent.
+   ===================================================================== */
+.card[data-look="column"],
+.card-content[data-look="column"] {
+  --look-paper: #f3eee4;
+  --look-ink: #2a251f;
+  --look-head: #14110e;
+  --look-muted: #776e63;
+  --look-rule: rgba(29, 26, 22, 0.16);
+  --look-accent: #c0402a;
+  --look-code-bg: rgba(29, 26, 22, 0.06);
+  --look-top: 30px;
+  --look-bottom: 22px;
+  --look-h2: 18.5px;
+  --look-h2-top: 1.15em;
+  --look-dot: 5px;
+  --look-dot-radius: 0;
+  --look-img-radius: 1px;
+  --look-cover-img: 150px;
+}
+
+.card-content[data-look="column"][data-page-role="cover"] {
+  --look-top: 34px;
+}
+
+.card-content[data-look="column"] h1 {
+  margin-bottom: 14px;
+  font-size: 27px;
+  line-height: 1.3;
+}
+
+.card-content[data-look="column"] h1::before {
+  content: "";
+  display: block;
+  width: 26px;
+  height: 3px;
+  margin-bottom: 16px;
+  background: var(--look-accent);
+}
+
+.card-content[data-look="column"] h1 + p {
+  color: var(--look-muted);
+  font-size: 15.5px;
+}
+
+.card-content[data-look="column"] h2::before {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 2px;
+  margin-bottom: 9px;
+  background: var(--look-accent);
+}
+
+.card-content[data-look="column"] strong {
+  background: linear-gradient(transparent 64%, rgba(192, 64, 42, 0.17) 64%);
+  color: var(--look-head);
+}
+
+.card-content[data-look="column"] blockquote {
+  position: relative;
+  padding: 2px 0 2px 26px;
+  color: var(--look-head);
+  font-size: 16.5px;
+  font-weight: 600;
+  line-height: 1.75;
+}
+
+.card-content[data-look="column"] blockquote::before {
+  content: "“";
+  position: absolute;
+  top: -7px;
+  left: -2px;
+  color: var(--look-accent);
+  font-family: "Playfair Display", serif;
+  font-size: 46px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.card-content[data-look="column"] pre {
+  border-left: 2px solid var(--look-accent);
+  border-radius: 0;
+}
+
+.card-content[data-look="column"] table {
+  border-top: 1.5px solid var(--look-head);
+  border-bottom: 1.5px solid var(--look-head);
+}
+
+.card-content[data-look="column"] td {
+  border-bottom: 0;
+}
+
+/* The end sign after the article's last paragraph. */
+.card-content[data-look="column"][data-page-role="close"] > p:last-child::after,
+.card-content[data-look="column"][data-page-role="close"] > blockquote:last-child > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.45em;
+  background: var(--look-accent);
+  vertical-align: 0.05em;
+}
+
+.markdown-card-chrome--column .markdown-chrome-mark {
+  top: 41px;
+  right: 30px;
+  left: 30px;
+  display: block;
+  border-top: 1px solid var(--look-rule);
+}
+
+.markdown-card-chrome--column[data-chrome-role="cover"] .markdown-chrome-mark {
+  top: 30px;
+  border-top: 2.5px solid var(--look-head);
+}
+
+.markdown-card-chrome--column .markdown-chrome-head {
+  top: 24px;
+  left: 30px;
+  display: block;
+  max-width: 220px;
+  color: var(--look-muted);
+  font-family: var(--card-font);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+}
+
+.markdown-card-chrome--column[data-chrome-role="cover"] .markdown-chrome-head {
+  display: none;
+}
+
+.markdown-card-chrome--column .markdown-chrome-folio {
+  right: 30px;
+  bottom: 22px;
+  display: block;
+  color: var(--look-muted);
+  font-family: "Playfair Display", serif;
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.08em;
+}
+
+/* =====================================================================
+   备忘录 — a phone note: warm white, the notes bar, a highlighter.
+   ===================================================================== */
+.card[data-look="memo"],
+.card-content[data-look="memo"] {
+  --look-paper: #fffdf8;
+  --look-ink: #1c1c1e;
+  --look-muted: #8e8e93;
+  --look-rule: #e5e5ea;
+  --look-accent: #e3a008;
+  --look-code-bg: #f2f2f7;
+  --look-top: 26px;
+  --look-bottom: 14px;
+  --look-h1: 22px;
+  --look-h2: 17.5px;
+  --look-h2-top: 0.75em;
+  --look-dot: 5px;
+  --look-bullet: #1c1c1e;
+  --look-number: #1c1c1e;
+  --look-task-ring: #c7c7cc;
+  --look-img-radius: 10px;
+  --look-pre-radius: 10px;
+}
+
+.card-content[data-look="memo"][data-page-role="cover"] {
+  --look-top: 40px;
+}
+
+.card-content[data-look="memo"] h1 {
+  margin-bottom: 0.45em;
+  line-height: 1.35;
+}
+
+.card-content[data-look="memo"] strong {
+  background: linear-gradient(transparent 58%, rgba(255, 204, 0, 0.42) 58%);
+  font-weight: 600;
+}
+
+.card-content[data-look="memo"] blockquote {
+  padding-left: 12px;
+  border-left: 3px solid var(--look-accent);
+  color: #48484a;
+}
+
+.card-content[data-look="memo"] th,
+.card-content[data-look="memo"] td {
+  border: 1px solid var(--look-rule);
+}
+
+.card-content[data-look="memo"] th {
+  background: #f7f7f9;
+}
+
+.markdown-card-chrome--memo .markdown-chrome-mark {
+  top: 18px;
+  right: 18px;
+  left: 16px;
+  display: block;
+  height: 18px;
+}
+
+.markdown-card-chrome--memo .markdown-chrome-mark::before {
+  content: "‹ 备忘录";
+  position: absolute;
+  top: 1px;
+  left: 0;
+  color: var(--look-accent);
+  font-family: var(--card-font);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.markdown-card-chrome--memo .markdown-chrome-mark::after {
+  content: "⋯";
+  position: absolute;
+  top: 0;
+  right: 0;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--look-accent);
+  border-radius: 50%;
+  color: var(--look-accent);
+  font-family: var(--card-font);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+.markdown-card-chrome--memo .markdown-chrome-date {
+  top: 46px;
+  right: 0;
+  left: 0;
+  color: var(--look-muted);
+  font-family: var(--card-font);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.markdown-card-chrome--memo[data-chrome-role="cover"] .markdown-chrome-date {
+  display: block;
+}
+
+.markdown-card-chrome--memo .markdown-chrome-folio {
+  right: 0;
+  bottom: 13px;
+  left: 0;
+  display: block;
+  color: var(--look-muted);
+  font-family: var(--card-font);
+  font-size: 9.5px;
+  text-align: center;
+}
+
+/* =====================================================================
+   信笺 — a letter on ruled paper: 霞鹜文楷, red-brown rules, indents.
+   ===================================================================== */
+.card[data-look="letter"],
+.card-content[data-look="letter"] {
+  --look-paper: #f6efe1;
+  --look-ink: #2e2a36;
+  --look-head: #2e2a36;
+  --look-muted: #857a6c;
+  --look-rule: rgba(165, 73, 58, 0.26);
+  --look-accent: #a5493a;
+  --look-code-bg: rgba(46, 42, 54, 0.06);
+  --look-top: 22px;
+  --look-bottom: 20px;
+  --look-dot: 5px;
+  --look-pitch: calc(var(--card-fs) * var(--card-lh));
+  --look-img-radius: 0;
+}
+
+.card[data-look="letter"] {
+  background:
+    radial-gradient(120% 90% at 50% 40%, rgba(255, 252, 244, 0.7) 0%, rgba(255, 252, 244, 0) 70%),
+    var(--look-paper);
+}
+
+/* Each block rules its own lines, a pitch apart, so words always sit on them. */
+.card-content[data-look="letter"] p,
+.card-content[data-look="letter"] li,
+.card-content[data-look="letter"] h2,
+.card-content[data-look="letter"] h3,
+.card-content[data-look="letter"] h4 {
+  background-image: linear-gradient(transparent calc(100% - 1px), var(--look-rule) calc(100% - 1px));
+  background-size: 100% var(--look-pitch);
+  line-height: var(--look-pitch);
+}
+
+.card-content[data-look="letter"] p {
+  text-indent: 2em;
+}
+
+/* The line under the title is the greeting, flush left. */
+.card-content[data-look="letter"] h1 + p {
+  text-indent: 0;
+}
+
+.card-content[data-look="letter"] p:has(> .img-wrap) {
+  margin: 10px 0 14px;
+  background: none;
+}
+
+.card-content[data-look="letter"] h1 {
+  margin: 4px 0 14px;
+  color: var(--look-accent);
+  font-size: 23px;
+  line-height: 1.45;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.card-content[data-look="letter"] h2,
+.card-content[data-look="letter"] h3 {
+  margin-top: 0;
+  font-size: 16.5px;
+}
+
+.card-content[data-look="letter"] h3 {
+  font-size: 15px;
+}
+
+.card-content[data-look="letter"] strong {
+  color: var(--look-accent);
+}
+
+.card-content[data-look="letter"] blockquote {
+  padding-left: 2em;
+  color: #5a5262;
+}
+
+.card-content[data-look="letter"] blockquote p {
+  text-indent: 0;
+}
+
+.card-content[data-look="letter"] ul:has(+ ul),
+.card-content[data-look="letter"] ol:has(+ ol) {
+  margin-bottom: 0;
+}
+
+.card-content[data-look="letter"] ul,
+.card-content[data-look="letter"] ol {
+  padding-left: 2em;
+}
+
+.card-content[data-look="letter"] ul > li::before {
+  left: -1.1em;
+  top: calc(var(--look-pitch) / 2 - 2.5px);
+}
+
+.card-content[data-look="letter"] .img-wrap img {
+  box-sizing: border-box;
+  border: 6px solid #fffdf7;
+  box-shadow: 0 2px 9px rgba(60, 40, 20, 0.16);
+  /* Tilted, and a touch smaller so its corners stay in the column. */
+  transform: rotate(-1deg) scale(0.98);
+}
+
+.markdown-card-chrome--letter .markdown-chrome-mark {
+  top: 28px;
+  right: 30px;
+  left: 30px;
+  display: block;
+  height: 3px;
+  border-top: 1.5px solid var(--look-accent);
+  border-bottom: 0.75px solid var(--look-accent);
+  opacity: 0.7;
+}
+
+.markdown-card-chrome--letter .markdown-chrome-folio {
+  right: 0;
+  bottom: 19px;
+  left: 0;
+  display: block;
+  color: var(--look-muted);
+  font-family: "LXGW WenKai TC", cursive;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+/* =====================================================================
+   夜读 — reading at night: deep ink, warm grey type, gold.
+   ===================================================================== */
+.card[data-look="night"],
+.card-content[data-look="night"] {
+  --look-paper: #16171b;
+  --look-ink: #d9d3c6;
+  --look-head: #f2ede2;
+  --look-muted: #8f897e;
+  --look-rule: rgba(217, 211, 198, 0.16);
+  --look-accent: #c9a45c;
+  --look-code-bg: rgba(255, 255, 255, 0.07);
+  --look-top: 30px;
+  --look-bottom: 10px;
+  --look-h2: 18px;
+  --look-h2-top: 1.1em;
+  --look-dot: 4px;
+  --look-img-radius: 3px;
+}
+
+.card[data-look="night"] {
+  background:
+    radial-gradient(120% 60% at 50% -12%, #2a2d3a 0%, rgba(42, 45, 58, 0) 62%),
+    var(--look-paper);
+}
+
+.card-content[data-look="night"][data-page-role="cover"] {
+  --look-top: 66px;
+}
+
+.card-content[data-look="night"] h1 {
+  margin-bottom: 14px;
+  font-size: 27px;
+  line-height: 1.35;
+}
+
+.card-content[data-look="night"] h1::after {
+  content: "";
+  display: block;
+  width: 22px;
+  height: 1px;
+  margin-top: 18px;
+  background: var(--look-accent);
+}
+
+.card-content[data-look="night"] h1 + p {
+  color: var(--look-muted);
+}
+
+.card-content[data-look="night"] h2::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  margin-right: 9px;
+  background: var(--look-accent);
+  vertical-align: 0.32em;
+}
+
+.card-content[data-look="night"] strong {
+  color: #e9cc8f;
+  font-weight: 600;
+}
+
+.card-content[data-look="night"] blockquote {
+  padding-left: 14px;
+  border-left: 1px solid var(--look-accent);
+  color: var(--look-head);
+  font-size: 16px;
+}
+
+.card-content[data-look="night"] th {
+  border-bottom-color: var(--look-accent);
+}
+
+.card-content[data-look="night"][data-page-role="close"]::after {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  margin: 18px auto 0;
+  background: var(--look-accent);
+  transform: rotate(45deg);
+}
+
+.markdown-card-chrome--night .markdown-chrome-head {
+  top: 25px;
+  left: 30px;
+  display: block;
+  max-width: 230px;
+  color: var(--look-muted);
+  font-family: var(--card-font);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+}
+
+.markdown-card-chrome--night .markdown-chrome-folio {
+  top: 23px;
+  right: 30px;
+  display: block;
+  color: var(--look-accent);
+  font-family: "Playfair Display", serif;
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 0.06em;
+}
+
+.markdown-card-chrome--night[data-chrome-role="cover"] .markdown-chrome-head {
+  display: none;
+}
+
+/* A crescent over the cover. */
+.markdown-card-chrome--night[data-chrome-role="cover"] .markdown-chrome-mark {
+  top: 48px;
+  right: 40px;
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  box-shadow: inset -7px 4px 0 0 #e7d3a2;
+  transform: rotate(-18deg);
+}
+
+/* =====================================================================
+   极光 — soft colour light behind a frosted page.
+   ===================================================================== */
+.card[data-look="aurora"],
+.card-content[data-look="aurora"] {
+  --look-paper: #f1edf7;
+  --look-ink: #2a2735;
+  --look-head: #1d1a2b;
+  --look-muted: #77728a;
+  --look-rule: rgba(42, 39, 53, 0.12);
+  --look-accent: #6f55e8;
+  --look-code-bg: rgba(111, 85, 232, 0.09);
+  --look-top: 0px;
+  --look-bottom: 22px;
+  --look-h1: 25px;
+  --look-h2: 17.5px;
+  --look-h2-top: 0.85em;
+  --look-dot: 6px;
+  --look-bullet: linear-gradient(135deg, #ff9a7a, #8f7bff);
+  --look-img-radius: 14px;
+  --look-pre-radius: 12px;
+}
+
+.card[data-look="aurora"] {
+  background:
+    radial-gradient(58% 42% at 10% 6%, rgba(255, 184, 158, 0.95) 0%, rgba(255, 184, 158, 0) 72%),
+    radial-gradient(55% 44% at 94% 20%, rgba(196, 178, 255, 0.95) 0%, rgba(196, 178, 255, 0) 72%),
+    radial-gradient(72% 50% at 78% 100%, rgba(146, 208, 255, 0.9) 0%, rgba(146, 208, 255, 0) 72%),
+    radial-gradient(50% 38% at 4% 86%, rgba(166, 236, 210, 0.85) 0%, rgba(166, 236, 210, 0) 72%),
+    var(--look-paper);
+}
+
+.card-content[data-look="aurora"] h1 {
+  margin-bottom: 0.5em;
+  line-height: 1.35;
+}
+
+.card-content[data-look="aurora"] h1::before {
+  content: "";
+  display: block;
+  width: 34px;
+  height: 6px;
+  margin-bottom: 14px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #ff9a7a, #8f7bff);
+}
+
+.card-content[data-look="aurora"] h2 {
+  width: fit-content;
+  max-width: 100%;
+  background: linear-gradient(transparent 62%, rgba(143, 123, 255, 0.22) 62%);
+}
+
+.card-content[data-look="aurora"] strong {
+  color: var(--look-accent);
+}
+
+.card-content[data-look="aurora"] blockquote {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #3b3650;
+}
+
+.card-content[data-look="aurora"] th {
+  border-bottom-color: rgba(111, 85, 232, 0.5);
+}
+
+.markdown-card-chrome--aurora .markdown-chrome-mark,
+.card[data-look][data-has-social-header="true"] .markdown-card-chrome--aurora .markdown-chrome-mark {
+  inset: 16px 16px 40px;
+  display: block;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 10px 30px rgba(80, 60, 140, 0.1);
+}
+
+.markdown-card-chrome--aurora .markdown-chrome-folio {
+  right: 0;
+  bottom: 16px;
+  left: 0;
+  display: block;
+  color: rgba(42, 39, 53, 0.62);
+  font-family: var(--card-font);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-align: center;
+}
+
+/* =====================================================================
+   文档 — a knowledge-base page: breadcrumb bar, callouts, code.
+   ===================================================================== */
+.card[data-look="doc"],
+.card-content[data-look="doc"] {
+  --look-paper: #ffffff;
+  --look-ink: #1f2329;
+  --look-head: #1f2329;
+  --look-muted: #646a73;
+  --look-rule: #dee0e3;
+  --look-accent: #3370ff;
+  --look-code-bg: #f2f3f5;
+  --look-top: 26px;
+  --look-bottom: 12px;
+  --look-h1: 24px;
+  --look-h2: 18px;
+  --look-h2-top: 1.05em;
+  --look-dot: 5px;
+  --look-task-ring: #bbbfc4;
+  --look-task-radius: 3px;
+  --look-img-radius: 8px;
+  --look-pre-radius: 8px;
+}
+
+.card-content[data-look="doc"] h1 {
+  margin-bottom: 0.55em;
+  line-height: 1.35;
+}
+
+.card-content[data-look="doc"] h2 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--look-rule);
+}
+
+.card-content[data-look="doc"] strong {
+  font-weight: 600;
+}
+
+.card-content[data-look="doc"] .task-list > li.task[data-done="true"] {
+  text-decoration: line-through;
+  text-decoration-color: rgba(100, 106, 115, 0.6);
+}
+
+/* A quote is a callout. */
+.card-content[data-look="doc"] blockquote {
+  position: relative;
+  padding: 9px 12px 9px 36px;
+  border-radius: 8px;
+  background: #eef3ff;
+}
+
+.card-content[data-look="doc"] blockquote::before {
+  content: "i";
+  position: absolute;
+  top: calc(9px + var(--card-lh) * 0.5em - 8px);
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--look-accent);
+  color: #ffffff;
+  font-family: var(--card-font);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.card-content[data-look="doc"] code {
+  color: #d83931;
+}
+
+.card-content[data-look="doc"] pre {
+  border: 1px solid #e8e9eb;
+  background: #f7f8fa;
+}
+
+.card-content[data-look="doc"] pre code {
+  color: var(--look-ink);
+}
+
+.card-content[data-look="doc"] table {
+  border: 1px solid var(--look-rule);
+}
+
+.card-content[data-look="doc"] th,
+.card-content[data-look="doc"] td {
+  border: 1px solid var(--look-rule);
+}
+
+.card-content[data-look="doc"] th {
+  background: #f5f6f7;
+}
+
+.card-content[data-look="doc"] img {
+  border: 1px solid #eceef0;
+}
+
+.markdown-card-chrome--doc::after {
+  content: "";
+  position: absolute;
+  top: 42px;
+  right: 0;
+  left: 0;
+  border-top: 1px solid var(--look-rule);
+}
+
+.markdown-card-chrome--doc .markdown-chrome-mark {
+  top: 20px;
+  left: 28px;
+  display: block;
+  width: 10px;
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(225deg, #ffffff 0 3px, #8eb0ff 3px 4px, var(--look-accent) 4px);
+}
+
+.markdown-card-chrome--doc .markdown-chrome-head {
+  top: 21px;
+  left: 45px;
+  display: block;
+  max-width: 220px;
+  color: var(--look-muted);
+  font-family: var(--card-font);
+  font-size: 10px;
+}
+
+.markdown-card-chrome--doc .markdown-chrome-folio {
+  top: 21px;
+  right: 28px;
+  display: block;
+  color: var(--look-muted);
+  font-family: var(--card-font);
+  font-size: 10px;
+}
+
+.card[data-look="doc"][data-has-social-header="true"] .markdown-card-chrome--doc::after,
+.card[data-look="doc"][data-has-social-header="true"] .markdown-chrome-folio {
+  display: none;
+}
+
+/* =====================================================================
+   宣纸 — rice paper, ink and a vermilion seal for the folio.
+   ===================================================================== */
+.card[data-look="xuan"],
+.card-content[data-look="xuan"] {
+  --look-paper: #f2ecdf;
+  --look-ink: #2a2622;
+  --look-head: #1f1b18;
+  --look-muted: #7d7366;
+  --look-rule: rgba(42, 38, 34, 0.2);
+  --look-accent: #b23a2e;
+  --look-code-bg: rgba(42, 38, 34, 0.06);
+  --look-top: 18px;
+  --look-bottom: 30px;
+  --look-h2: 17px;
+  --look-h2-top: 1em;
+  --look-dot: 6px;
+  --look-img-radius: 0;
+  --look-cover-img: 150px;
+}
+
+/* Fibres in the paper, faint enough to read as texture. */
+.card[data-look="xuan"] {
+  background:
+    repeating-linear-gradient(112deg, rgba(122, 100, 70, 0.022) 0 1px, transparent 1px 9px),
+    repeating-linear-gradient(28deg, rgba(122, 100, 70, 0.016) 0 1px, transparent 1px 13px),
+    radial-gradient(120% 90% at 50% 45%, rgba(250, 246, 236, 0.65) 0%, rgba(250, 246, 236, 0) 72%),
+    var(--look-paper);
+}
+
+.card-content[data-look="xuan"] p {
+  text-indent: 2em;
+}
+
+.card-content[data-look="xuan"] h1 {
+  margin: 8px 0 18px;
+  font-size: 25px;
+  line-height: 1.45;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.card-content[data-look="xuan"] h1::after {
+  content: "";
+  display: block;
+  width: 24px;
+  height: 2px;
+  margin: 16px auto 0;
+  background: var(--look-accent);
+}
+
+.card-content[data-look="xuan"][data-page-role="cover"] h1 + p {
+  color: var(--look-muted);
+  text-align: center;
+  text-indent: 0;
+}
+
+.card-content[data-look="xuan"] h2 {
+  letter-spacing: 0.08em;
+}
+
+.card-content[data-look="xuan"] h2::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 11px 0 2px;
+  background: var(--look-accent);
+  transform: rotate(45deg);
+  vertical-align: 0.24em;
+}
+
+.card-content[data-look="xuan"] strong {
+  font-weight: 600;
+  text-emphasis: filled dot var(--look-accent);
+  text-emphasis-position: under right;
+}
+
+.card-content[data-look="xuan"] blockquote {
+  padding: 0 1.6em;
+  color: #4d463e;
+}
+
+.card-content[data-look="xuan"] blockquote p {
+  text-indent: 0;
+}
+
+.card-content[data-look="xuan"] blockquote > :first-child::before {
+  content: "「";
+  color: var(--look-accent);
+}
+
+.card-content[data-look="xuan"] blockquote > :last-child::after {
+  content: "」";
+  color: var(--look-accent);
+}
+
+.card-content[data-look="xuan"] ul > li::before {
+  box-sizing: border-box;
+  border: 1.5px solid var(--look-accent);
+  background: transparent;
+}
+
+.card-content[data-look="xuan"] .img-wrap img {
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid rgba(42, 38, 34, 0.16);
+  background: #f8f3e8;
+}
+
+.card-content[data-look="xuan"][data-page-role="close"]::after {
+  content: "完";
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin: 18px 0 0 auto;
+  border-radius: 2px;
+  background: var(--look-accent);
+  color: #f7efe2;
+  font-family: "Noto Serif SC", serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+
+.markdown-card-chrome--xuan .markdown-chrome-mark,
+.card[data-look][data-has-social-header="true"] .markdown-card-chrome--xuan .markdown-chrome-mark {
+  top: 40px;
+  right: 14px;
+  bottom: 40px;
+  display: block;
+  border-left: 1px solid rgba(178, 58, 46, 0.45);
+}
+
+.markdown-card-chrome--xuan .markdown-chrome-head {
+  top: 46px;
+  right: 1px;
+  display: block;
+  max-height: 260px;
+  color: var(--look-muted);
+  font-family: "Noto Serif SC", serif;
+  font-size: 9px;
+  letter-spacing: 0.32em;
+  writing-mode: vertical-rl;
+}
+
+.markdown-card-chrome--xuan[data-chrome-role="cover"] .markdown-chrome-head {
+  display: none;
+}
+
+.markdown-card-chrome--xuan .markdown-chrome-folio {
+  bottom: 24px;
+  left: 32px;
+  display: block;
+  box-sizing: border-box;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: var(--look-accent);
+  color: #f7efe2;
+  font-family: "Noto Serif SC", serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 21px;
+  text-align: center;
+}
+
+/* =====================================================================
+   瑞士 — the international style: black rules, one red, big numbers.
+   ===================================================================== */
+.card[data-look="swiss"],
+.card-content[data-look="swiss"] {
+  --look-paper: #f4f4f1;
+  --look-ink: #161616;
+  --look-head: #0d0d0d;
+  --look-muted: #5c5c5c;
+  --look-rule: rgba(17, 17, 17, 0.22);
+  --look-accent: #e5382a;
+  --look-code-bg: #e7e7e2;
+  --look-top: 36px;
+  --look-bottom: 6px;
+  --look-h2: 18px;
+  --look-h2-top: 1.1em;
+  --look-dot: 6px;
+  --look-dot-radius: 0;
+  --look-number: #0d0d0d;
+  --look-img-radius: 0;
+  --look-cover-img: 150px;
+}
+
+.card-content[data-look="swiss"][data-page-role="cover"] {
+  --look-top: 78px;
+}
+
+.card-content[data-look="swiss"] h1 {
+  margin-bottom: 0.45em;
+  font-size: 30px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.card-content[data-look="swiss"] h1 + p {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.card-content[data-look="swiss"] h2 {
+  padding-top: 10px;
+  border-top: 2px solid var(--look-head);
+}
+
+.card-content[data-look="swiss"] h3 {
+  color: var(--look-accent);
+}
+
+.card-content[data-look="swiss"] strong {
+  color: var(--look-accent);
+}
+
+.card-content[data-look="swiss"] blockquote {
+  padding-left: 12px;
+  border-left: 4px solid var(--look-accent);
+  color: var(--look-head);
+  font-size: 16.5px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.card-content[data-look="swiss"] th {
+  border-bottom: 0;
+  background: var(--look-head);
+  color: var(--look-paper);
+}
+
+.markdown-card-chrome--swiss .markdown-chrome-mark {
+  top: 28px;
+  right: 28px;
+  left: 28px;
+  display: block;
+  height: 4px;
+  background: var(--look-head);
+}
+
+.markdown-card-chrome--swiss .markdown-chrome-head {
+  top: 41px;
+  left: 28px;
+  display: block;
+  max-width: 230px;
+  color: var(--look-head);
+  font-family: var(--card-font);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.markdown-card-chrome--swiss .markdown-chrome-folio {
+  top: 40px;
+  right: 28px;
+  display: block;
+  color: var(--look-accent);
+  font-family: "Archivo Black", sans-serif;
+  font-size: 11px;
+}
+
+.markdown-card-chrome--swiss[data-chrome-role="cover"] .markdown-chrome-head {
+  display: none;
+}
+
+.card[data-has-social-header="true"] .markdown-card-chrome--swiss[data-chrome-role="cover"] .markdown-chrome-folio {
+  display: none;
+}
+
+.markdown-card-chrome--swiss[data-chrome-role="cover"] .markdown-chrome-folio {
+  top: 42px;
+  right: auto;
+  left: 26px;
+  font-size: 46px;
+  letter-spacing: -0.02em;
+}
+
+/* =====================================================================
+   手账 — a journal on dot-grid paper: 霞鹜文楷, highlighters, tape.
+   ===================================================================== */
+.card[data-look="journal"],
+.card-content[data-look="journal"] {
+  --look-paper: #fbf7ef;
+  --look-ink: #3a342f;
+  --look-head: #2f2925;
+  --look-muted: #8a8076;
+  --look-rule: rgba(58, 52, 47, 0.16);
+  --look-accent: #e8875a;
+  --look-code-bg: rgba(58, 52, 47, 0.07);
+  --look-top: 32px;
+  --look-bottom: 14px;
+  --look-h1: 24px;
+  --look-h2: 17.5px;
+  --look-h2-top: 0.85em;
+  --look-dot: 6px;
+  --look-task-ring: #3a342f;
+  --look-task-radius: 3px;
+  --look-img-radius: 2px;
+  --look-cover-img: 214px;
+}
+
+.card[data-look="journal"] {
+  background:
+    radial-gradient(circle, rgba(120, 100, 80, 0.24) 0.9px, transparent 1.3px) 4px 4px / 16px 16px,
+    var(--look-paper);
+}
+
+.card-content[data-look="journal"] h1 {
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 0.55em;
+  padding-bottom: 9px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='8' viewBox='0 0 24 8'%3E%3Cpath d='M0 4 Q6 0 12 4 T24 4' fill='none' stroke='%23e8875a' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") left bottom / 24px 8px repeat-x;
+  line-height: 1.4;
+}
+
+.card-content[data-look="journal"] h2 {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0 2px;
+  background: linear-gradient(transparent 56%, rgba(255, 210, 128, 0.75) 56%);
+}
+
+.card-content[data-look="journal"] h3 {
+  color: var(--look-accent);
+}
+
+.card-content[data-look="journal"] strong {
+  background: linear-gradient(transparent 60%, rgba(150, 214, 186, 0.7) 60%);
+}
+
+.card-content[data-look="journal"] ul > li::before {
+  box-sizing: border-box;
+  border: 1.5px solid var(--look-accent);
+  background: transparent;
+}
+
+.card-content[data-look="journal"] .task-list > li.task::before {
+  border-width: 1.5px;
+}
+
+.card-content[data-look="journal"] blockquote {
+  margin-right: 2px;
+  margin-left: 2px;
+  padding: 9px 12px;
+  border-radius: 2px;
+  background: #fff1a8;
+  box-shadow: 0 2px 6px rgba(60, 50, 20, 0.1);
+  transform: rotate(-0.6deg);
+}
+
+.card-content[data-look="journal"] p:has(> .img-wrap) {
+  margin-top: 10px;
+}
+
+.card-content[data-look="journal"] .img-wrap img {
+  box-sizing: border-box;
+  border: 5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(60, 50, 40, 0.15);
+  transform: rotate(0.8deg) scale(0.98);
+}
+
+.card-content[data-look="journal"] .img-wrap::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: -8px;
+  left: 50%;
+  width: 66px;
+  height: 17px;
+  margin-left: -33px;
+  background: rgba(232, 135, 90, 0.42);
+  transform: rotate(-3deg);
+}
+
+.markdown-card-chrome--journal .markdown-chrome-date {
+  top: 22px;
+  left: 26px;
+  display: block;
+  padding: 3px 8px;
+  background: rgba(232, 135, 90, 0.26);
+  color: var(--look-head);
+  font-family: "LXGW WenKai TC", cursive;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  transform: rotate(-2deg);
+}
+
+.markdown-card-chrome--journal .markdown-chrome-folio {
+  right: 28px;
+  bottom: 16px;
+  display: block;
+  color: var(--look-muted);
+  font-family: "LXGW WenKai TC", cursive;
+  font-size: 11px;
+}

@@ -3,6 +3,7 @@ import type { SyntheticEvent } from 'react'
 import { MarkdownCardChrome } from './MarkdownCardChrome'
 import type { MarkdownPageRole } from './templates/markdownPresentation'
 import type { CardConfig, Profile } from './theme'
+import './markdownLooks.css'
 
 interface CardProps {
   html: string
@@ -12,6 +13,8 @@ interface CardProps {
   pageCount: number
   pageRole: MarkdownPageRole
   showHeader?: boolean
+  /** The article's title, for a look's running head (markdownRunningTitle). */
+  title?: string
 }
 
 /** Two-letter avatar fallback when the user hasn't uploaded an image. */
@@ -146,7 +149,7 @@ function markImageLoadError(event: SyntheticEvent<HTMLDivElement>) {
  * html-to-image snapshots, so everything visual must live inside it.
  */
 export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
-  { html, config, profile, pageIndex, pageCount, pageRole, showHeader = true },
+  { html, config, profile, pageIndex, pageCount, pageRole, showHeader = true, title },
   ref,
 ) {
   const hasSocialHeader = showHeader && config.header !== 'none'
@@ -156,23 +159,27 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
       className="card"
       ref={ref}
       data-card-theme={config.themeId}
+      data-look={config.look ?? undefined}
       data-page-role={pageRole}
       data-page-index={pageIndex}
       data-page-count={pageCount}
       data-has-social-header={String(hasSocialHeader)}
     >
       <MarkdownCardChrome
-        themeId={config.themeId}
+        look={config.look}
         pageRole={pageRole}
         pageIndex={pageIndex}
         pageCount={pageCount}
+        title={title}
       />
       {showHeader && config.header === 'weibo' && <WeiboHeader profile={profile} />}
       {showHeader && config.header === 'twitter' && <TwitterHeader profile={profile} />}
       <div
         className="card-content"
         data-card-theme={config.themeId}
+        data-look={config.look ?? undefined}
         data-page-role={pageRole}
+        data-social={String(hasSocialHeader)}
         onErrorCapture={markImageLoadError}
         dangerouslySetInnerHTML={{ __html: html }}
       />

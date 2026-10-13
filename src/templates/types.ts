@@ -2,9 +2,15 @@ import type { FreeformDocument } from '../freeform/types'
 import type { Profile } from '../theme'
 
 export type MarkdownTemplateSeriesId =
-  | 'editorial-archive'
-  | 'public-theatre'
-  | 'issue-cover'
+  | 'column'
+  | 'memo'
+  | 'letter'
+  | 'night'
+  | 'aurora'
+  | 'doc'
+  | 'xuan'
+  | 'swiss'
+  | 'journal'
 
 /** Freeform templates that make a deck: a cover, pages for the sections, an ending. */
 export type FreeformDeckSeriesId =

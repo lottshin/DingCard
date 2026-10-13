@@ -10,11 +10,11 @@ import { LanguageMenu } from './LanguageMenu'
 import { t, useLang } from '../i18n'
 
 const SHOWCASE_IDS = [
-  'editorial-archive-markdown',
+  'xuan-markdown',
   'portfolio-cover-freeform',
-  'issue-cover-markdown',
+  'column-markdown',
   'night-flight-freeform',
-  'public-theatre-markdown',
+  'aurora-markdown',
 ]
 
 export function templatePreviewSource(template: TemplateDefinition): PreviewSource | null {
@@ -81,7 +81,7 @@ export function LoginPage({ onAuthed, onGuest }: LoginPageProps) {
           <p>{t('Markdown 卡片把一篇长文切成一组小红书、微博、推特卡片；自由编辑像做海报一样摆放文字、图片和形状。')}</p>
           <ul className="login-facts">
             <li><b>2</b> {t('套编辑器，一个工作台')}</li>
-            <li><b>11</b> {t('套成品模板')}</li>
+            <li><b>{TEMPLATE_REGISTRY.length}</b> {t('套成品模板')}</li>
             <li><b>MIT</b> {t('开源，可自部署')}</li>
           </ul>
         </div>

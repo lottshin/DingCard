@@ -2,16 +2,17 @@ import { describe, expect, it } from 'vitest'
 
 import type { Block, MarkdownBlockKind } from '../markdown'
 import {
-  formatMarkdownPageNumber,
   isMarkdownTemplateTheme,
+  markdownLookOf,
+  MARKDOWN_TEMPLATE_THEME_IDS,
   resolveMarkdownPageRole,
 } from './markdownPresentation'
 
 const block = (kind: MarkdownBlockKind): Block => ({ html: `<p>${kind}</p>`, raw: kind, kind })
 
 describe('resolveMarkdownPageRole', () => {
-  it('uses article for generic, legacy and unknown themes', () => {
-    for (const themeId of ['light', 'template-editorial', 'missing-theme', '', null]) {
+  it('uses article for plain, retired and unknown themes', () => {
+    for (const themeId of ['light', 'template-editorial', 'template-editorial-archive', 'missing-theme', '', null]) {
       expect(
         resolveMarkdownPageRole({
           themeId,
@@ -26,7 +27,7 @@ describe('resolveMarkdownPageRole', () => {
   it('uses article for empty and single-page documents', () => {
     expect(
       resolveMarkdownPageRole({
-        themeId: 'template-editorial-archive',
+        themeId: 'template-column',
         blocks: [],
         pageIndex: 0,
         includesLastContentBlock: false,
@@ -35,7 +36,7 @@ describe('resolveMarkdownPageRole', () => {
 
     expect(
       resolveMarkdownPageRole({
-        themeId: 'template-editorial-archive',
+        themeId: 'template-column',
         blocks: [block('heading'), block('paragraph')],
         pageIndex: 0,
         includesLastContentBlock: true,
@@ -43,22 +44,23 @@ describe('resolveMarkdownPageRole', () => {
     ).toBe('article')
   })
 
-  it('prioritizes cover, quote, list, close and article in that order', () => {
+  it('prioritizes cover, close, quote, list and article in that order', () => {
     const resolve = (
       blocks: Block[],
       pageIndex: number,
       includesLastContentBlock: boolean,
     ) =>
       resolveMarkdownPageRole({
-        themeId: 'template-public-theatre',
+        themeId: 'template-memo',
         blocks,
         pageIndex,
         includesLastContentBlock,
       })
 
     expect(resolve([block('heading')], 0, false)).toBe('cover')
-    expect(resolve([block('blockquote')], 1, true)).toBe('quote')
-    expect(resolve([block('list')], 2, true)).toBe('list')
+    expect(resolve([block('blockquote')], 1, true)).toBe('close')
+    expect(resolve([block('blockquote'), block('list')], 1, false)).toBe('quote')
+    expect(resolve([block('list')], 2, false)).toBe('list')
     expect(resolve([block('paragraph')], 3, true)).toBe('close')
     expect(resolve([block('paragraph')], 2, false)).toBe('article')
   })
@@ -66,7 +68,7 @@ describe('resolveMarkdownPageRole', () => {
   it('ignores manual page-break blocks when checking for empty pages', () => {
     expect(
       resolveMarkdownPageRole({
-        themeId: 'template-issue-cover',
+        themeId: 'template-xuan',
         blocks: [{ html: '', raw: '---', kind: 'other', isBreak: true }],
         pageIndex: 2,
         includesLastContentBlock: true,
@@ -75,26 +77,31 @@ describe('resolveMarkdownPageRole', () => {
   })
 })
 
-describe('markdown template presentation helpers', () => {
-  it.each([
-    ['template-editorial-archive', true],
-    ['template-public-theatre', true],
-    ['template-issue-cover', true],
-    ['template-editorial', false],
-    ['light', false],
-    ['', false],
-    [undefined, false],
-  ])('recognizes theme %j as %s', (themeId, expected) => {
-    expect(isMarkdownTemplateTheme(themeId)).toBe(expected)
+describe('markdown template themes', () => {
+  it('are the themes with a designed look', () => {
+    expect(MARKDOWN_TEMPLATE_THEME_IDS).toEqual([
+      'template-column',
+      'template-memo',
+      'template-letter',
+      'template-night',
+      'template-aurora',
+      'template-doc',
+      'template-xuan',
+      'template-swiss',
+      'template-journal',
+    ])
   })
 
   it.each([
-    [0, 4, '01 / 04'],
-    [8, 9, '09 / 09'],
-    [0, 10, '01 / 10'],
-    [-1, 0, '01 / 01'],
-    [Number.NaN, Number.POSITIVE_INFINITY, '01 / 01'],
-  ])('formats page %j of %j as %s', (pageIndex, pageCount, expected) => {
-    expect(formatMarkdownPageNumber(pageIndex, pageCount)).toBe(expected)
+    ['template-column', true, 'column'],
+    ['template-journal', true, 'journal'],
+    ['template-editorial-archive', false, null],
+    ['template-editorial', false, null],
+    ['light', false, null],
+    ['', false, null],
+    [undefined, false, null],
+  ])('recognizes theme %j', (themeId, expected, look) => {
+    expect(isMarkdownTemplateTheme(themeId)).toBe(expected)
+    expect(markdownLookOf(themeId)).toBe(look)
   })
 })

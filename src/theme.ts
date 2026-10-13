@@ -26,16 +26,37 @@ export interface Theme {
   accent: string
   /** Loadable for saved drafts but omitted from the normal theme picker. */
   hidden?: boolean
+  /**
+   * A designed look (src/markdownLooks.css, src/markdownLooks.ts): page
+   * furniture such as a running head and folio, and its own reading sizes.
+   */
+  look?: MarkdownLookId
+  /** The look's body size, line height, gap between blocks and inner margin; plain themes keep the defaults. */
+  type?: Partial<Pick<CardConfig, 'fontSize' | 'lineHeight' | 'blockGap' | 'padding'>>
 }
+
+/** The designed looks, one per Markdown template. */
+export type MarkdownLookId = 'column' | 'memo' | 'letter' | 'night' | 'aurora' | 'doc' | 'xuan' | 'swiss' | 'journal'
 
 export const THEMES: Theme[] = [
   { id: 'light', label: '简约白', background: '#ffffff', color: '#1a1a1a', accent: '#2563eb' },
   { id: 'warm', label: '暖米色', background: '#faf6f0', color: '#3a3226', accent: '#c2703d' },
   { id: 'dark', label: '深空黑', background: '#1c1c1e', color: '#f2f2f7', accent: '#0a84ff' },
   { id: 'mint', label: '薄荷绿', background: '#eef7f2', color: '#1f3a2e', accent: '#2fa36b' },
-  { id: 'template-editorial-archive', label: '模板 · 编辑档案', background: '#eee8db', color: '#171411', accent: '#dc3f2f' },
-  { id: 'template-public-theatre', label: '模板 · 公共剧场', background: '#11110f', color: '#f3ecdc', accent: '#ed3828' },
-  { id: 'template-issue-cover', label: '模板 · 议题封面', background: '#eee3cf', color: '#18191d', accent: '#ec5a2a' },
+  // Designed looks for long reads, one per Markdown template.
+  { id: 'template-column', label: '专栏', background: '#f3eee4', color: '#1d1a16', accent: '#c0402a', look: 'column', type: { fontSize: 15, lineHeight: 1.85, blockGap: 13, padding: 30 } },
+  { id: 'template-memo', label: '备忘录', background: '#fffdf8', color: '#1c1c1e', accent: '#e0a000', look: 'memo', type: { fontSize: 15, lineHeight: 1.8, blockGap: 12, padding: 26 } },
+  { id: 'template-letter', label: '信笺', background: '#f6efe1', color: '#2e2a36', accent: '#a5493a', look: 'letter', type: { fontSize: 15, lineHeight: 1.9, blockGap: 0, padding: 30 } },
+  { id: 'template-night', label: '夜读', background: '#16171b', color: '#d9d3c6', accent: '#c9a45c', look: 'night', type: { fontSize: 15, lineHeight: 1.9, blockGap: 13, padding: 30 } },
+  { id: 'template-aurora', label: '极光', background: '#f1edf7', color: '#2a2735', accent: '#6f55e8', look: 'aurora', type: { fontSize: 14.5, lineHeight: 1.8, blockGap: 11, padding: 36 } },
+  { id: 'template-doc', label: '文档', background: '#ffffff', color: '#1f2329', accent: '#3370ff', look: 'doc', type: { fontSize: 14.5, lineHeight: 1.8, blockGap: 11, padding: 28 } },
+  { id: 'template-xuan', label: '宣纸', background: '#f2ecdf', color: '#2a2622', accent: '#b23a2e', look: 'xuan', type: { fontSize: 15, lineHeight: 2, blockGap: 10, padding: 32 } },
+  { id: 'template-swiss', label: '瑞士', background: '#f4f4f1', color: '#111111', accent: '#e5382a', look: 'swiss', type: { fontSize: 14.5, lineHeight: 1.75, blockGap: 12, padding: 28 } },
+  { id: 'template-journal', label: '手账', background: '#fbf7ef', color: '#3a342f', accent: '#e8875a', look: 'journal', type: { fontSize: 15, lineHeight: 1.85, blockGap: 12, padding: 28 } },
+  // Retired templates: saved drafts still open, in their colours, without the old page furniture.
+  { id: 'template-editorial-archive', label: '旧模板 · 编辑档案', background: '#eee8db', color: '#171411', accent: '#dc3f2f', hidden: true },
+  { id: 'template-public-theatre', label: '旧模板 · 公共剧场', background: '#11110f', color: '#f3ecdc', accent: '#ed3828', hidden: true },
+  { id: 'template-issue-cover', label: '旧模板 · 议题封面', background: '#eee3cf', color: '#18191d', accent: '#ec5a2a', hidden: true },
   { id: 'template-editorial', label: '旧模板 · 编辑部', background: '#f6f3ea', color: '#171717', accent: '#d94836', hidden: true },
   { id: 'template-checklist', label: '旧模板 · 清单', background: '#f3f5ed', color: '#14271f', accent: '#174a38', hidden: true },
   { id: 'template-signal', label: '旧模板 · 信号', background: '#f2f0e8', color: '#111111', accent: '#e4472f', hidden: true },
@@ -131,6 +152,8 @@ export const AVATAR_COLORS = ['#3b82f6', '#e08a2b', '#3a9e5f', '#9b59d0', '#d94a
  */
 export interface CardConfig {
   themeId: string
+  /** The theme's designed look, if it has one. */
+  look: MarkdownLookId | null
   width: number
   height: number
   padding: number
@@ -148,17 +171,38 @@ export interface CardConfig {
 export function buildConfig(platform: Platform, theme: Theme, fontFamily: string): CardConfig {
   return {
     themeId: theme.id,
+    look: theme.look ?? null,
     width: platform.width,
     height: platform.height,
-    padding: CARD_PADDING,
+    padding: theme.type?.padding ?? CARD_PADDING,
     header: platform.header,
     headerHeight: HEADER_HEIGHT[platform.header],
     background: theme.background,
     color: theme.color,
     accent: theme.accent,
     fontFamily,
-    fontSize: FONT_SIZE,
-    lineHeight: LINE_HEIGHT,
-    blockGap: BLOCK_GAP,
+    fontSize: theme.type?.fontSize ?? FONT_SIZE,
+    lineHeight: theme.type?.lineHeight ?? LINE_HEIGHT,
+    blockGap: theme.type?.blockGap ?? BLOCK_GAP,
+  }
+}
+
+/**
+ * The CSS variables a card reads (styles.css, markdownLooks.css), set on the
+ * element around it: the editor's stage, a preview, the render page.
+ */
+export function cardVars(config: CardConfig, radius: number): Record<string, string> {
+  return {
+    '--card-w': `${config.width}px`,
+    '--card-h': `${config.height}px`,
+    '--card-pad': `${config.padding}px`,
+    '--card-bg': config.background,
+    '--card-fg': config.color,
+    '--card-accent': config.accent,
+    '--card-font': config.fontFamily,
+    '--card-fs': `${config.fontSize}px`,
+    '--card-lh': String(config.lineHeight),
+    '--card-gap': `${config.blockGap}px`,
+    '--card-radius': `${radius}px`,
   }
 }

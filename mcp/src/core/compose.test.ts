@@ -337,7 +337,7 @@ describe('composeDeck', () => {
     expect(normalizeDeckContent({ title: ' ', pages: [{ title: 'a' }] })).toContain('封面标题')
     expect(normalizeDeckContent({ title: 'a', pages: [] })).toContain('至少要有一页')
     expect(normalizeDeckContent({ title: 'a', pages: [{ body: 'x' }] })).toContain('缺少 title')
-    expect(composeDeck('editorial-archive-markdown', RICH)).toMatchObject({ ok: false })
+    expect(composeDeck('column-markdown', RICH)).toMatchObject({ ok: false })
   })
 })
 

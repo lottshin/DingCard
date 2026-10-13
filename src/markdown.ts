@@ -96,8 +96,9 @@ marked.use({
       const ref = href ?? ''
       const src = store.images.resolve(ref)
       // data-href keeps the ORIGINAL href (short ref) so resize can find it in source.
+      // data-alt lets a look print the description as a caption (marked has escaped it).
       return (
-        `<span class="img-wrap" style="${widthStyle}" data-href="${encodeURIComponent(ref)}">` +
+        `<span class="img-wrap" style="${widthStyle}" data-href="${encodeURIComponent(ref)}" data-alt="${alt}">` +
         `<img src="${src}" alt="${alt}" />` +
         `<span class="img-handle" aria-hidden="true"></span>` +
         `</span>`
@@ -105,6 +106,42 @@ marked.use({
     },
   },
 })
+
+const wordSegmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl
+  ? new Intl.Segmenter('zh-Hans', { granularity: 'word' })
+  : null
+const HAN = /[\u3400-\u9fff\uf900-\ufaff]/
+
+/** A clause this long may need to break inside; a shorter one breaks at its punctuation. */
+const SHORT_CLAUSE = 8
+const CLAUSE_END = /([，。！？；：、,.!?;:…—「」『』（）《》“”\s]+)/
+
+/**
+ * Mark the word boundaries inside runs of Chinese with U+200B. A look sets
+ * headings and quotes `word-break: keep-all` with balanced lines, so they
+ * break after a pause or between two words, never in the middle of one
+ * (陌/生). A clause of up to eight characters gets no marks: it moves to the
+ * next line whole, so the break falls on its punctuation. Tags and entities
+ * are left alone: only a boundary with a Han character on both sides counts.
+ */
+export function markWordBreaks(html: string): string {
+  if (!wordSegmenter) return html
+  const markClause = (clause: string) => {
+    if ([...clause].filter((character) => HAN.test(character)).length <= SHORT_CLAUSE) return clause
+    let out = ''
+    let previous = ''
+    for (const { segment } of wordSegmenter.segment(clause)) {
+      if (previous && HAN.test(previous.slice(-1)) && HAN.test(segment[0])) out += '\u200B'
+      out += segment
+      previous = segment
+    }
+    return out
+  }
+  return html.split(/(<[^>]*>)/).map((part, index) => {
+    if (index % 2 === 1 || !HAN.test(part)) return part
+    return part.split(CLAUSE_END).map((clause, at) => (at % 2 === 1 ? clause : markClause(clause))).join('')
+  }).join('')
+}
 
 function isImageOnlyParagraph(raw: string): boolean {
   const token = marked.lexer(raw).find((candidate) => candidate.type !== 'space')
@@ -132,6 +169,13 @@ function renderListItem(text: string, ordered: boolean, start: number, raw = tex
   if (!body) return null
   const tag = ordered ? 'ol' : 'ul'
   const startAttr = ordered ? ` start="${start}"` : ''
+  // `- [ ] 买菜` / `- [x] 买菜`: a to-do, ticked or not, drawn by the stylesheet.
+  const task = /^\[( |x|X)\]\s+(.*)$/.exec(body)
+  if (task && task[2].trim()) {
+    const done = task[1] !== ' '
+    const html = `<${tag}${startAttr} class="task-list"><li class="task" data-done="${done}">${marked.parseInline(task[2].trim()) as string}</li></${tag}>\n`
+    return { html, raw, kind: 'list' }
+  }
   const html = `<${tag}${startAttr}><li>${marked.parseInline(body) as string}</li></${tag}>\n`
   return { html, raw, kind: 'list' }
 }
@@ -259,7 +303,8 @@ function lexSegment(segment: string): Block[] {
       continue
     }
 
-    const html = marked.parser([token as never])
+    const parsed = marked.parser([token as never])
+    const html = token.type === 'heading' || token.type === 'blockquote' ? markWordBreaks(parsed) : parsed
     if (html.trim()) blocks.push({ html, raw, kind: tokenKind(token.type) })
   }
 

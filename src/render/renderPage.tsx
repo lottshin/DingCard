@@ -56,8 +56,9 @@ import { isMarkdownDocument, type MarkdownCardDocument } from '../drafts'
 import { parseBlocks } from '../markdown'
 import { paginate, type Page } from '../paginate'
 import { Card } from '../Card'
-import { buildFontEmbedCSS } from '../fontEmbed'
-import { PLATFORMS, buildConfig, resolveTheme } from '../theme'
+import { buildFontEmbedPlanCSS } from '../fontEmbed'
+import { markdownFontPlan, markdownRunningTitle } from '../markdownLooks'
+import { PLATFORMS, buildConfig, cardVars, resolveTheme } from '../theme'
 import { store } from '../storage'
 import { createLongImage, longImageScale } from '../exportLongImage'
 import { sliceIntoGrid } from '../exportGrid'
@@ -649,19 +650,7 @@ function MarkdownRenderApp({ markdown }: { markdown: MarkdownCardDocument }) {
   const config = buildConfig(platform, theme, markdown.fontFamily)
   // Same CSS variable set the workspace mounts around the Card, so the Card
   // renders with identical dimensions, colors, typography, and radius.
-  const cssVars = {
-    '--card-w': `${config.width}px`,
-    '--card-h': `${config.height}px`,
-    '--card-pad': `${config.padding}px`,
-    '--card-bg': config.background,
-    '--card-fg': config.color,
-    '--card-accent': config.accent,
-    '--card-font': config.fontFamily,
-    '--card-fs': `${config.fontSize}px`,
-    '--card-lh': String(config.lineHeight),
-    '--card-gap': `${config.blockGap}px`,
-    '--card-radius': `${markdown.radius}px`,
-  } as CSSProperties
+  const cssVars = cardVars(config, markdown.radius) as CSSProperties
 
   // Images must be registered (img:<id> → data URL) BEFORE parseBlocks: the
   // marked image renderer resolves refs while producing block HTML. And
@@ -687,7 +676,7 @@ function MarkdownRenderApp({ markdown }: { markdown: MarkdownCardDocument }) {
       try {
         let fontCSS: string | undefined
         try {
-          fontCSS = await buildFontEmbedCSS(markdown.source, markdown.fontFamily)
+          fontCSS = await buildFontEmbedPlanCSS(markdownFontPlan(config.look, markdown.source, markdown.fontFamily))
         } catch {
           fontCSS = undefined // fall back to no explicit embed rather than failing
         }
@@ -744,6 +733,7 @@ function MarkdownRenderApp({ markdown }: { markdown: MarkdownCardDocument }) {
           pageRole={page.role}
           showHeader={!markdown.profile.headerFirstPageOnly || index === 0}
           html={page.blocks.map((block) => block.html).join('')}
+          title={markdownRunningTitle(markdown.source)}
         />
       )}
     </div>

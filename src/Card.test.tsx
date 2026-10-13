@@ -8,12 +8,13 @@ describe('Card markdown presentation contract', () => {
   it('writes theme and page metadata on both export and measurement nodes', () => {
     const config = buildConfig(
       PLATFORMS[0],
-      resolveTheme('template-editorial-archive'),
+      resolveTheme('template-column'),
       FONTS[0].id,
     )
     const html = renderToStaticMarkup(
       <Card
-        html="<h1>编辑档案</h1>"
+        html="<h1>专栏</h1>"
+        title="专栏"
         config={config}
         profile={DEFAULT_PROFILE}
         pageIndex={1}
@@ -23,12 +24,14 @@ describe('Card markdown presentation contract', () => {
       />,
     )
 
-    expect(html).toContain('data-card-theme="template-editorial-archive"')
+    expect(html).toContain('data-card-theme="template-column"')
+    expect(html.match(/data-look="column"/g)).toHaveLength(2)
     expect(html).toContain('data-page-role="article"')
     expect(html).toContain('data-page-index="1"')
     expect(html).toContain('data-page-count="4"')
     expect(html).toContain('data-has-social-header="false"')
     expect(html.match(/data-card-theme=/g)).toHaveLength(2)
-    expect(html).toContain('markdown-card-chrome--editorial-archive')
+    expect(html).toContain('markdown-card-chrome--column')
+    expect(html).toContain('markdown-chrome-head')
   })
 })

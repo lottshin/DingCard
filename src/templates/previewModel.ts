@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { parseBlocks } from '../markdown'
-import type { buildConfig } from '../theme'
+import { cardVars, type CardConfig } from '../theme'
 import { resolveMarkdownPageRole } from './markdownPresentation'
 
 /** First page of a markdown document: every block up to the first manual break. */
@@ -38,19 +38,6 @@ export function markdownPage(document: { source: string; themeId: string }, page
   }
 }
 
-export function previewStyle(scale: number, radius: number, config: ReturnType<typeof buildConfig>): CSSProperties {
-  return {
-    '--card-w': `${config.width}px`,
-    '--card-h': `${config.height}px`,
-    '--card-pad': `${config.padding}px`,
-    '--card-bg': config.background,
-    '--card-fg': config.color,
-    '--card-accent': config.accent,
-    '--card-font': config.fontFamily,
-    '--card-fs': `${config.fontSize}px`,
-    '--card-lh': String(config.lineHeight),
-    '--card-gap': `${config.blockGap}px`,
-    '--card-radius': `${radius}px`,
-    '--template-scale': String(scale),
-  } as CSSProperties
+export function previewStyle(scale: number, radius: number, config: CardConfig): CSSProperties {
+  return { ...cardVars(config, radius), '--template-scale': String(scale) } as CSSProperties
 }

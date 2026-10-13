@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Card } from '../Card'
 import { FreeformSlidePreview } from '../freeform/FreeformSlidePreview'
 import { buildConfig, DEFAULT_PROFILE, FONTS, PLATFORMS, resolveTheme } from '../theme'
+import { markdownRunningTitle } from '../markdownLooks'
 import { CloseIcon } from '../ui/icons'
 import { TEMPLATE_FORMATS, templateFormat } from './formats'
 import { markdownFirstPage, previewStyle } from './previewModel'
@@ -21,6 +22,8 @@ interface TemplateGalleryProps {
   onApply: (template: TemplateDefinition) => void
   /** Add the template's pages to the open work instead (the freeform editor). */
   onInsert?: (template: TemplateDefinition) => void
+  /** Set the open article in the template's look, keeping its words (the Markdown editor). */
+  onApplyLook?: (template: TemplateDefinition) => void
 }
 
 function MarkdownTemplatePreview({ template, detail = false }: { template: TemplateDefinition; detail?: boolean }) {
@@ -41,6 +44,7 @@ function MarkdownTemplatePreview({ template, detail = false }: { template: Templ
         pageCount={template.pageCount}
         pageRole={firstPage.role}
         showHeader={false}
+        title={markdownRunningTitle(document.source)}
       />
     </div>
   )
@@ -86,7 +90,7 @@ function focusableElements(dialog: HTMLElement): HTMLElement[] {
   ))
 }
 
-export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsSaved, onClose, onApply, onInsert }: TemplateGalleryProps) {
+export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsSaved, onClose, onApply, onInsert, onApplyLook }: TemplateGalleryProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const pendingReturnFocusRef = useRef<HTMLElement | null>(null)
@@ -343,6 +347,9 @@ export function TemplateGallery({ open, workspace, hasCurrentContent, currentIsS
                     : t('{n} 页作品已经排好，文字、颜色、尺寸和图层都可以改。', { n: selected.pageCount })}
               </p>
               <button className='template-use' type='button' onClick={() => requestApply(selected)}>{t('使用这套模板')}</button>
+              {onApplyLook && selected.workspace === 'markdown' && (
+                <button className='template-add' type='button' data-testid='template-apply-look' onClick={() => onApplyLook(selected)}>{t('只换样式')}</button>
+              )}
               {onInsert && selected.workspace === 'freeform' && (
                 <button className='template-add' type='button' data-testid='template-add-to-work' onClick={() => onInsert(selected)}>{t('加到当前作品')}</button>
               )}

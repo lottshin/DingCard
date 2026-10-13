@@ -273,3 +273,12 @@ export async function buildFontEmbedCSS(
   builtInFlightCache.set(sig, build)
   return build
 }
+
+/**
+ * Several faces at once, each for the text it draws (a Markdown look's
+ * chrome is set in a face of its own: markdownFontPlan), as one stylesheet.
+ */
+export async function buildFontEmbedPlanCSS(plan: ReadonlyArray<{ fontFamily: string; text: string }>): Promise<string> {
+  const sheets = await Promise.all(plan.map((entry) => buildFontEmbedCSS(entry.text, entry.fontFamily)))
+  return sheets.filter(Boolean).join('\n')
+}

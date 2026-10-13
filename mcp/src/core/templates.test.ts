@@ -13,9 +13,9 @@ describe('listTemplates', () => {
     const templates = listTemplates()
     const ids = templates.map((template) => template.id)
     expect(ids).toEqual(expect.arrayContaining([
-      'editorial-archive-markdown',
-      'public-theatre-markdown',
-      'issue-cover-markdown',
+      'column-markdown',
+      'memo-markdown',
+      'journal-markdown',
       'editorial-freeform',
       'checklist-freeform',
       'signal-freeform',
@@ -84,7 +84,7 @@ describe('instantiateTemplate', () => {
   })
 
   test('markdown templates return their source envelope', () => {
-    const instantiation = instantiateTemplate('editorial-archive-markdown')
+    const instantiation = instantiateTemplate('column-markdown')
     expect(instantiation.workspace).toBe('markdown')
     if (instantiation.workspace !== 'markdown') return
     expect(instantiation.document.source).toContain('#')
@@ -117,6 +117,6 @@ describe('templatePages', () => {
   test('says what it cannot give', () => {
     expect(templatePages('editorial-freeform', [4])).toMatchObject({ ok: false, error: expect.stringContaining('只有 3 页') })
     expect(templatePages('nope')).toMatchObject({ ok: false, error: expect.stringContaining('未知模板') })
-    expect(templatePages('editorial-archive-markdown')).toMatchObject({ ok: false, error: expect.stringContaining('Markdown') })
+    expect(templatePages('column-markdown')).toMatchObject({ ok: false, error: expect.stringContaining('Markdown') })
   })
 })

@@ -685,7 +685,7 @@ describe('renderMarkdownDocument', () => {
   test(
     'renders a markdown template envelope into per-page PNGs',
     async () => {
-      const instantiation = instantiateTemplate('editorial-archive-markdown')
+      const instantiation = instantiateTemplate('column-markdown')
       if (instantiation.workspace !== 'markdown') throw new Error('expected a markdown envelope')
       const outputDir = mkdtempSync(path.join(tmpdir(), 'dingcard-md-render-'))
 

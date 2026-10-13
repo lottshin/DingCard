@@ -246,7 +246,7 @@ describe('dingcard-mcp tool layer', () => {
     // Freeform templates say how much a page holds, so a client can pick one for its content.
     expect(templates.find((template) => template.id === 'editorial-freeform')?.capacity)
       .toMatchObject({ sectionPoints: 3, sectionQuote: true })
-    expect(templates.find((template) => template.id === 'editorial-archive-markdown')?.capacity).toBeUndefined()
+    expect(templates.find((template) => template.id === 'column-markdown')?.capacity).toBeUndefined()
     await client.close()
   })
 

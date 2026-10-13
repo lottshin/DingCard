@@ -3,7 +3,8 @@ import type { EditorView } from '@codemirror/view'
 import { toCanvas, toPng } from 'html-to-image'
 import { AssetDrawer } from '../../app/AssetDrawer'
 import { navigate, routes } from '../../app/router'
-import { buildFontEmbedCSS } from '../../fontEmbed'
+import { buildFontEmbedPlanCSS } from '../../fontEmbed'
+import { markdownFontPlan, markdownRunningTitle } from '../../markdownLooks'
 import { collectMarkdownImageSources, parseBlocks, setImageWidth } from '../../markdown'
 import { paginate, type Page } from '../../paginate'
 import {
@@ -11,6 +12,7 @@ import {
   THEMES,
   FONTS,
   buildConfig,
+  cardVars,
   DEFAULT_PROFILE,
   resolveTheme,
   themesForPicker,
@@ -192,6 +194,7 @@ export function MarkdownWorkspace({
     () => buildConfig(platform, theme, fontFamily),
     [platform, theme, fontFamily],
   )
+  const runningTitle = useMemo(() => markdownRunningTitle(source), [source])
 
   const blocks = useMemo(() => parseBlocks(source), [source])
   const imageSources = useMemo(() => collectMarkdownImageSources(source), [source])
@@ -399,17 +402,7 @@ export function MarkdownWorkspace({
   }, [ctx])
 
   const cssVars = {
-    '--card-w': `${config.width}px`,
-    '--card-h': `${config.height}px`,
-    '--card-pad': `${config.padding}px`,
-    '--card-bg': config.background,
-    '--card-fg': config.color,
-    '--card-accent': config.accent,
-    '--card-font': config.fontFamily,
-    '--card-fs': `${config.fontSize}px`,
-    '--card-lh': String(config.lineHeight),
-    '--card-gap': `${config.blockGap}px`,
-    '--card-radius': `${radius}px`,
+    ...cardVars(config, radius),
     '--preview-scale': String(previewScale),
     '--preview-w': `${config.width * previewScale}px`,
     '--preview-h': `${config.height * previewScale}px`,
@@ -474,7 +467,7 @@ export function MarkdownWorkspace({
   // nothing at all, so export is instant. Result is reused across pages.
   async function fontEmbedOnce(): Promise<string | undefined> {
     try {
-      return await buildFontEmbedCSS(source, fontFamily)
+      return await buildFontEmbedPlanCSS(markdownFontPlan(config.look, source, fontFamily))
     } catch {
       return undefined // fall back to no explicit embed rather than failing
     }
@@ -780,6 +773,17 @@ export function MarkdownWorkspace({
     const document = template.createMarkdown?.()
     if (!document) return
     loadDocument(document, null)
+  }
+
+  /** The template's look, font and corners on the open article; its words stay. */
+  function applyMarkdownLook(template: TemplateDefinition) {
+    const document = template.workspace === 'markdown' ? template.createMarkdown?.() : null
+    if (!document) return
+    setThemeId(resolveTheme(document.themeId).id)
+    setFontFamily(document.fontFamily)
+    setRadius(document.radius)
+    markDraftDirty()
+    setShowTemplates(false)
   }
 
   const derivedTitle = deriveMarkdownTitle(source)
@@ -1173,6 +1177,7 @@ export function MarkdownWorkspace({
                     pageRole={pages[active]?.role ?? 'article'}
                     showHeader={!profile.headerFirstPageOnly || active === 0}
                     html={(pages[active]?.blocks ?? []).map((b) => b.html).join('')}
+                    title={runningTitle}
                   />
                   {(['tl', 'tr', 'bl', 'br'] as const).map((c) => (
                     <span
@@ -1345,6 +1350,7 @@ export function MarkdownWorkspace({
         currentIsSaved={ownerId !== null && !unsaved}
         onClose={() => setShowTemplates(false)}
         onApply={applyMarkdownTemplate}
+        onApplyLook={applyMarkdownLook}
       />
     </div>
   )

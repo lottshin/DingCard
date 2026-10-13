@@ -29,6 +29,9 @@ export function paginate(blocks: Block[], config: CardConfig, headerFirstPageOnl
   const probe = document.createElement('div')
   probe.className = 'card-content'
   probe.dataset.cardTheme = config.themeId
+  if (config.look) probe.dataset.look = config.look
+  // Border-box, like the card's own content box: a look's side padding
+  // narrows the words here exactly as it does on the card.
   Object.assign(probe.style, {
     position: 'absolute',
     left: '-99999px',
@@ -38,7 +41,7 @@ export function paginate(blocks: Block[], config: CardConfig, headerFirstPageOnl
     fontFamily: config.fontFamily,
     fontSize: `${config.fontSize}px`,
     lineHeight: String(config.lineHeight),
-    boxSizing: 'content-box',
+    boxSizing: 'border-box',
   })
   probe.style.setProperty('--card-font', config.fontFamily)
   probe.style.setProperty('--card-fs', `${config.fontSize}px`)
@@ -67,6 +70,8 @@ export function paginate(blocks: Block[], config: CardConfig, headerFirstPageOnl
         lastContentBlock !== undefined && candidate.includes(lastContentBlock),
     })
     probe.dataset.pageRole = role
+    // A page under a social header: a look gives the header its top margin.
+    probe.dataset.social = String(config.header !== 'none' && (!headerFirstPageOnly || pages.length === 0))
     probe.innerHTML = candidate.map((b) => b.html).join('')
     return {
       height: Math.max(probe.scrollHeight, probe.getBoundingClientRect().height),
@@ -100,6 +105,26 @@ export function paginate(blocks: Block[], config: CardConfig, headerFirstPageOnl
     const next = [...current, block]
     const nextMeasurement = current.length > 0 ? measure(next) : singleMeasurement
     if (current.length > 0 && nextMeasurement.height > pageLimit()) {
+      // A page doesn't end on a heading: headings at its foot move over with
+      // the block they introduce, when the two fit on the next page.
+      let carried: Block[] = []
+      let kept = current
+      while (kept.length > 1 && kept[kept.length - 1].kind === 'heading') {
+        carried = [kept[kept.length - 1], ...carried]
+        kept = kept.slice(0, -1)
+      }
+      if (carried.length > 0) {
+        // Close the page without them (its role measured as that page), then
+        // see whether they open the next one; if not, they stay where they were.
+        pages.push({ blocks: kept, role: measure(kept).role })
+        const opening = measure([...carried, block])
+        if (opening.height <= pageLimit()) {
+          current = [...carried, block]
+          currentRole = opening.role
+          continue
+        }
+        pages.pop()
+      }
       flush()
       const newPageMeasurement = measure(single)
       current = single

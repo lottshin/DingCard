@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '../Card'
 import { FreeformSlidePreview } from '../freeform/FreeformSlidePreview'
 import type { FreeformDocument } from '../freeform/types'
+import { markdownRunningTitle } from '../markdownLooks'
 import { store } from '../storage'
 import { markdownPage, previewStyle } from '../templates/previewModel'
 import { buildConfig, DEFAULT_PROFILE, PLATFORMS, resolveTheme, type Profile } from '../theme'
@@ -78,6 +79,7 @@ function MarkdownPreview({
         pageCount={Math.max(page + 1, content.pageCount)}
         pageRole={content.role}
         showHeader={page === 0 || !(document.profile ?? DEFAULT_PROFILE).headerFirstPageOnly}
+        title={markdownRunningTitle(document.source)}
       />
     </div>
   )

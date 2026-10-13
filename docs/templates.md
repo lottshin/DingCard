@@ -10,6 +10,7 @@
 |---|---|
 | `src/templates/types.ts` | 系列 id 的类型：`MarkdownTemplateSeriesId`、`FreeformTemplateSeriesId`。 |
 | `src/templates/registry.ts` | 所有模板的内容与元数据，以及 `TEMPLATE_REGISTRY`。 |
+| `src/theme.ts`、`src/markdownLooks.css`、`src/markdownLooks.ts` | Markdown 模板的版式（`look`）：字号行距、页眉页码和各种元素的样式。 |
 | `src/templates/registry.test.ts` | 注册表的结构测试（数量、唯一 id、文档能通过校验、每次生成互不共享对象）。 |
 | `src/i18n/en/data.ts` | 模板标题、简介和标签的英文。 |
 
@@ -28,10 +29,20 @@
 
 ## 新增一套 Markdown 卡片模板
 
-1. 在 `MarkdownTemplateSeriesId` 里加系列 id。
-2. 在 `markdownDocuments` 里写一份 `MarkdownTemplateDocument`：正文 `source` 用单独一行 `---` 分页，另选 `platformId`、`themeId`、`fontFamily`、`radius` 和示例 `profile`。平台、主题、字体必须是 `src/theme.ts` 里已有的 id。
-3. 在 `markdownSeriesMeta` 写元数据（`pageCount` 要和 `---` 分出的页数一致），把 id 加进 `markdownSeriesIds`。
-4. 补英文，改测试里的数量。
+Markdown 模板是一套「版式」加一篇示例长文。版式要能排任何长度的文章，所以按长文的排版来做，不按海报：
+
+- 正文 14.5–15px、行高 1.75–2（导出放大三倍），左右边距 26–36px；标题、引文、列表、待办、代码、表格和图片都要有样式，标题和引文用均衡换行（`text-wrap: balance`，在标点和词之间断开）。
+- 页眉（文章标题）、页码、日期这类「页面家具」画在 `MarkdownCardChrome` 里，只能放在 `.card-content` 的上下内边距留出的地方；会占地方的东西（文末的「完」、封面的装饰条）写在 `.card-content` 的样式里，分页时才量得到。
+- 页面角色 `data-page-role`：第一页是 `cover`，有最后一段的一页是 `close`，可以给它们不同的样子，但其他页的内容随文章变化，不要按某一页的示例去摆。
+- 有社交头部（微博、推特）的页面，`.card-content[data-social="true"]` 去掉顶部留白，页眉让给头部。
+
+步骤：
+
+1. 在 `src/theme.ts` 的 `MarkdownLookId` 和 `THEMES` 里加一个带 `look` 和 `type`（字号、行高、段距、边距）的主题，在 `src/markdownLooks.ts` 写它的页码格式和页面家具用到的字体、文字（导出时一起嵌入），在 `src/markdownLooks.css` 写样式。
+2. 在 `MarkdownTemplateSeriesId` 里加系列 id（和 `look` 同名）。
+3. 在 `markdownDocuments` 里写一份 `MarkdownTemplateDocument`：正文 `source` 是一篇完整的示例长文，用单独一行 `---` 分页，每一页用真实字体排下来不超出（`npm run test:e2e` 里有检查）；`themeId` 是第 1 步的主题，字体必须是 `FONTS` 里的。
+4. 在 `markdownSeriesMeta` 写元数据（`pageCount` 要和分出的页数一致），把 id 加进 `markdownSeriesIds`。
+5. 补英文，改测试里的数量。
 
 ## 版式要求
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { builtInFont } from '../freeform/fontChoices'
 import { normalizeFreeformDocument } from '../freeform/sceneDocument'
 import type { FreeformSceneLeaf, FreeformSceneNode } from '../freeform/types'
+import { parseBlocks } from '../markdown'
 import { FONTS, PLATFORMS, THEMES } from '../theme'
 import { templateFormat } from './formats'
 import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
@@ -35,13 +36,19 @@ function geometrySignature(nodes: FreeformSceneNode[]): string {
 }
 
 describe('template registry', () => {
-  it('exposes three markdown series, six freeform decks and thirty posters with unique IDs', () => {
-    expect(TEMPLATE_REGISTRY).toHaveLength(39)
-    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(39)
+  it('exposes nine markdown series, six freeform decks and thirty posters with unique IDs', () => {
+    expect(TEMPLATE_REGISTRY).toHaveLength(45)
+    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(45)
     expect(templatesForWorkspace('markdown').map((template) => template.series)).toEqual([
-      'editorial-archive',
-      'public-theatre',
-      'issue-cover',
+      'column',
+      'memo',
+      'letter',
+      'night',
+      'aurora',
+      'doc',
+      'xuan',
+      'swiss',
+      'journal',
     ])
     const freeform = templatesForWorkspace('freeform')
     expect(freeform.filter((template) => template.kind === 'deck')).toHaveLength(6)
@@ -54,11 +61,13 @@ describe('template registry', () => {
     for (const template of templatesForWorkspace('markdown')) {
       const first = template.createMarkdown?.()
       const second = template.createMarkdown?.()
-      expect(template.pageCount).toBe(4)
-      expect(first?.source.split(/\n---\n/)).toHaveLength(template.pageCount)
-      expect(first?.source).toContain('---')
+      // One manual break per page (a `---` in a code fence is code, not a break).
+      const breaks = parseBlocks(first?.source ?? '').filter((block) => block.isBreak)
+      expect(breaks.length + 1, template.id).toBe(template.pageCount)
+      expect(template.pageCount, template.id).toBeGreaterThanOrEqual(3)
       expect(PLATFORMS.some((platform) => platform.id === first?.platformId)).toBe(true)
-      expect(THEMES.some((theme) => theme.id === first?.themeId)).toBe(true)
+      // Each one is set in its own designed look.
+      expect(THEMES.find((theme) => theme.id === first?.themeId)?.look, template.id).toBe(template.series)
       expect(FONTS.some((font) => font.id === first?.fontFamily)).toBe(true)
       expect(first?.profile).not.toBe(second?.profile)
       if (first && second) first.profile.nickname = 'changed'

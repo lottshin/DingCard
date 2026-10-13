@@ -73,7 +73,7 @@ export function HomePage({
   const recent = projects.projects.filter((draft) => filter === 'all' || draft.mode === filter).slice(0, 8)
 
   const archive = useMemo(() => {
-    const template = TEMPLATE_REGISTRY.find((candidate) => candidate.id === 'editorial-archive-markdown')
+    const template = TEMPLATE_REGISTRY.find((candidate) => candidate.id === 'column-markdown')
     return template ? templatePreviewSource(template) : null
   }, [])
   const flight = useMemo(() => {
@@ -84,7 +84,7 @@ export function HomePage({
     ? (flight.document.slides[0]?.nodes ?? []).slice(-4).reverse().map(nodeLabel)
     : []
   const picks = useMemo(
-    () => ['public-theatre-markdown', 'autumn-market-freeform', 'issue-cover-markdown', 'signal-freeform']
+    () => ['column-markdown', 'autumn-market-freeform', 'journal-markdown', 'signal-freeform']
       .map((id) => TEMPLATE_REGISTRY.find((template) => template.id === id))
       .filter((template): template is TemplateDefinition => Boolean(template)),
     [],
@@ -107,13 +107,13 @@ export function HomePage({
           </div>
           <div className="system-art system-art-md" aria-hidden="true">
             <div className="md-doc">
-              <b>{t('# 这周事情很多，我先删掉一半')}</b>
+              <b>{t('# 在城市里慢慢走')}</b>
               <i /><i className="short" />
               <span className="md-break">---</span>
-              <b>{t('## 任务列了二十多条，今天只做三条')}</b>
+              <b>{t('## 地铁看不见的东西')}</b>
               <i /><i /><i className="short" />
               <span className="md-break">---</span>
-              <span>{t('> 明天上午先不回消息')}</span>
+              <span>{t('> 你不需要去很远的地方')}</span>
             </div>
             <span className="md-flow" />
             <div className="md-fan">

@@ -113,7 +113,7 @@ describe('createDocumentFromOutline', () => {
     expect(badTemplate.ok).toBe(false)
     if (!badTemplate.ok) expect(badTemplate.error).toContain('未知的模板 id')
 
-    const markdownTemplate = createDocumentFromOutline(OUTLINE, 'editorial-archive-markdown')
+    const markdownTemplate = createDocumentFromOutline(OUTLINE, 'column-markdown')
     expect(markdownTemplate.ok).toBe(false)
     if (!markdownTemplate.ok) expect(markdownTemplate.error).toContain('仅支持自由画布模板')
   })

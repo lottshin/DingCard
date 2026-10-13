@@ -993,12 +993,12 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'markdown-example',
     'dingcard://examples/markdown',
-    { description: '完整 Markdown 文档信封示例（编辑档案模板实例）', mimeType: 'application/json' },
+    { description: '完整 Markdown 文档信封示例（专栏模板实例）', mimeType: 'application/json' },
     async (uri: URL) => ({
       contents: [{
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify(instantiateTemplate('editorial-archive-markdown').document, null, 2),
+        text: JSON.stringify(instantiateTemplate('column-markdown').document, null, 2),
       }],
     }),
   )

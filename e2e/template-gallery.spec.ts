@@ -42,33 +42,52 @@ test.beforeEach(async ({ context }) => {
   await installOfflineFontRoutes(context)
 })
 
-test('Markdown gallery renders three design systems and applies a complete document', async ({ page }) => {
+test('Markdown gallery renders the nine looks and applies a complete document', async ({ page }) => {
   await page.goto('/#/edit')
   await page.getByTestId('markdown-template-button').click()
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
   await expect(dialog).toBeVisible()
-  await expect(dialog.locator('.template-tile')).toHaveCount(3)
-  await expect(dialog.locator('.template-tile-preview')).toHaveCount(3)
+  await expect(dialog.locator('.template-tile')).toHaveCount(9)
+  await expect(dialog.locator('.template-tile-preview')).toHaveCount(9)
   await expect(dialog.locator('.template-detail-preview')).toBeVisible()
   await expect.poll(() => dialog.locator('.template-markdown-preview .card-content h1').count()).toBeGreaterThan(0)
-  await expect(dialog.locator('.template-detail .card')).toHaveCSS('border-radius', '4px')
-  await expect(dialog.locator('.template-markdown-preview .card[data-card-theme="template-editorial-archive"]')).toHaveCount(2)
-  await expect(dialog.locator('.template-markdown-preview .card[data-card-theme="template-public-theatre"]')).toHaveCount(1)
-  await expect(dialog.locator('.template-markdown-preview .card[data-card-theme="template-issue-cover"]')).toHaveCount(1)
-  const editorialPreview = dialog.getByRole('button', { name: '预览编辑档案' })
-  const theatrePreview = dialog.getByRole('button', { name: '预览公共剧场' })
-  await expect(editorialPreview).toHaveAttribute('aria-pressed', 'true')
-  await theatrePreview.click()
-  await expect(theatrePreview).toHaveAttribute('aria-pressed', 'true')
-  await expect(editorialPreview).toHaveAttribute('aria-pressed', 'false')
-  await editorialPreview.click()
+  // Each tile is its template's look; the detail repeats the picked one.
+  await expect(dialog.locator('.template-markdown-preview .card[data-look="column"]')).toHaveCount(2)
+  for (const look of ['memo', 'letter', 'night', 'aurora', 'doc', 'xuan', 'swiss', 'journal']) {
+    await expect(dialog.locator(`.template-markdown-preview .card[data-look="${look}"]`)).toHaveCount(1)
+  }
+  const columnPreview = dialog.getByRole('button', { name: '预览专栏' })
+  const memoPreview = dialog.getByRole('button', { name: '预览备忘录' })
+  await expect(columnPreview).toHaveAttribute('aria-pressed', 'true')
+  await memoPreview.click()
+  await expect(memoPreview).toHaveAttribute('aria-pressed', 'true')
+  await expect(columnPreview).toHaveAttribute('aria-pressed', 'false')
+  await columnPreview.click()
 
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.locator('.cm-content')).toContainText('这周事情很多，我先删掉一半')
-  await expect(page.locator('.pane-sub')).toContainText('4 页')
-  await expect(page.getByRole('combobox', { name: '主题' })).toContainText('模板 · 编辑档案')
+  await expect(page.locator('.cm-content')).toContainText('在城市里慢慢走')
+  await expect(page.getByRole('combobox', { name: '主题' })).toContainText('专栏')
+})
+
+test('只换样式 sets the open article in a template\'s look and keeps its words', async ({ page }) => {
+  await page.goto('/#/edit')
+  await page.waitForFunction(() => !!(window as unknown as { __cmView?: unknown }).__cmView)
+  await page.evaluate(() => {
+    const view = (window as unknown as { __cmView: { state: { doc: { toString(): string } }; dispatch(spec: unknown): void } }).__cmView
+    view.dispatch({ changes: { from: 0, to: view.state.doc.toString().length, insert: '# 我自己的文章\n\n第一段正文。' } })
+  })
+  await page.getByTestId('markdown-template-button').click()
+  const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
+  await dialog.getByRole('button', { name: '预览宣纸' }).click()
+  await dialog.getByTestId('template-apply-look').click()
+  // No question asked: nothing is replaced but the look.
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  await expect(dialog).toBeHidden()
+  await expect(page.locator('.cm-content')).toContainText('我自己的文章')
+  await expect(page.getByRole('combobox', { name: '主题' })).toContainText('宣纸')
+  await expect(page.locator('.stage .card')).toHaveAttribute('data-look', 'xuan')
 })
 
 test('Markdown cancel keeps the current unsaved content intact', async ({ page }) => {
@@ -389,7 +408,7 @@ test('templates come from the repository only; the editors offer no way to save 
   await expect(page.getByTestId('markdown-toolbar')).toBeVisible()
   await expect(page.getByRole('button', { name: '存为模板' })).toHaveCount(0)
   await page.getByTestId('markdown-template-button').click()
-  await expect(gallery.locator('.template-tile')).toHaveCount(3)
+  await expect(gallery.locator('.template-tile')).toHaveCount(9)
 })
 
 test('a signed-in template swap keeps the saved project and opens the template as a new one', async ({ page }) => {
