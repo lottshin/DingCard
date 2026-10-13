@@ -15,7 +15,6 @@ import {
   cardVars,
   DEFAULT_PROFILE,
   resolveTheme,
-  themesForPicker,
 } from '../../theme'
 import type { CardConfig, Profile } from '../../theme'
 import { Card } from '../../Card'
@@ -53,6 +52,7 @@ import {
   TemplatesIcon,
 } from '../../ui/icons'
 import { TemplateGallery } from '../../templates/TemplateGallery'
+import { LookPicker } from './LookPicker'
 import type { TemplateDefinition } from '../../templates/types'
 import { FreeformShareDialog } from '../../freeform/FreeformShareDialog'
 import { DraftHistoryDialog } from '../../app/DraftHistoryDialog'
@@ -966,19 +966,19 @@ export function MarkdownWorkspace({
             ))}
           </div>
 
-          <Select
-            value={themeId}
-            onChange={(nextThemeId) => {
-              if (nextThemeId === themeId) return
-              setThemeId(nextThemeId)
+          <LookPicker
+            themeId={themeId}
+            fontFamily={fontFamily}
+            radius={radius}
+            profile={profile}
+            firstPageHtml={(pages[0]?.blocks ?? []).map((block) => block.html).join('')}
+            pageCount={pages.length}
+            title={runningTitle}
+            onPick={(theme, nextFontFamily) => {
+              setThemeId(theme.id)
+              setFontFamily(nextFontFamily)
               markDraftDirty()
             }}
-            title={t('主题')}
-            options={themesForPicker(themeId).map((theme) => ({
-              id: theme.id,
-              label: t(theme.label),
-              swatch: { bg: theme.background, accent: theme.accent },
-            }))}
           />
 
           <Select

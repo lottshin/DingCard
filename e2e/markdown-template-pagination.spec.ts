@@ -248,6 +248,43 @@ test('long profile text stays inside a look\'s social header', async ({ page }) 
   }
 })
 
+test('the look picker draws every theme on the article itself and sets a look in its own face', async ({ page }) => {
+  await setDoc(page, '# 我自己的文章\n\n第一段正文。\n\n---\n\n第二页。')
+  const trigger = page.getByTestId('markdown-look-picker')
+  await trigger.click()
+  const panel = page.getByRole('listbox', { name: '主题' })
+  await expect(panel).toBeFocused()
+  await expect(panel.getByRole('group', { name: '长文版式' }).getByRole('option')).toHaveCount(9)
+  await expect(panel.getByRole('group', { name: '基础主题' }).getByRole('option')).toHaveCount(4)
+  // Each thumbnail is the open article in that look, its cover when the article has more pages.
+  const thumb = panel.getByTestId('look-option-template-night').locator('.card')
+  await expect(thumb).toHaveAttribute('data-look', 'night')
+  await expect(thumb).toHaveAttribute('data-page-role', 'cover')
+  await expect(thumb.locator('h1')).toHaveText('我自己的文章')
+
+  // A designed look comes with its template's face.
+  await panel.getByRole('option', { name: '信笺', exact: true }).click()
+  await expect(panel).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await expect(page.locator('.stage .card')).toHaveAttribute('data-look', 'letter')
+  await expect(page.getByRole('combobox', { name: '字体' })).toContainText('霞鹜文楷')
+  await expect(page.locator('.cm-content')).toContainText('我自己的文章')
+
+  // The keyboard walks the grid; a plain theme keeps the article's font.
+  await trigger.press('Enter')
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.stage .card')).toHaveAttribute('data-card-theme', 'mint')
+  await expect(page.getByRole('combobox', { name: '字体' })).toContainText('霞鹜文楷')
+
+  // Escape closes the panel without a change.
+  await trigger.click()
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('Escape')
+  await expect(panel).toHaveCount(0)
+  await expect(page.locator('.stage .card')).toHaveAttribute('data-card-theme', 'mint')
+})
+
 test('single-page, empty and plain-theme fallbacks remove the look\'s chrome safely', async ({ page }) => {
   await chooseTheme(page, '专栏')
   await setDoc(page, '只有这一页。')

@@ -346,6 +346,8 @@ export const app: Record<string, Translation> = {
   '编辑方式': 'Editor',
   '使用这个模板': 'Use this template',
   '只换样式': 'Use the look only',
+  '长文版式': 'Long-read looks',
+  '基础主题': 'Plain themes',
   '相似模板': 'Similar templates',
   '长文卡片': 'Long reads',
   '图文套图': 'Carousels',
