@@ -164,7 +164,7 @@ const HTML_IMPORT_GUIDE = `把你写的 HTML/CSS 网页转成叮卡自由画布�
 - data-name="主标题" 给图层起名，data-group 让一个元素连同里面的东西成为一个组合。
 - 不支持的会写进 notes 并尽量近似：脚本和动画、clip-path、mask、backdrop-filter、内阴影、多层阴影（只留第一层）。透明度不一的渐变（比如照片上的渐隐遮罩）、平铺和锥形渐变会画成一张图。`
 
-const GUIDE_SECTIONS: Record<string, { title: string; text: string }> = {
+const GUIDE_SECTIONS = {
   'document-model': { title: '文档模型：怎么写一份自由画布文档', text: DOCUMENT_SCHEMA_HINT },
   'actions': { title: '动作清单：apply_actions 的每个动作怎么写', text: ACTIONS_SCHEMA_HINT },
   'deck-content': { title: '套图内容：create_document_from_content 的 content 怎么写', text: CONTENT_SCHEMA_HINT },
@@ -174,7 +174,7 @@ const GUIDE_SECTIONS: Record<string, { title: string; text: string }> = {
     text: `海报（单页模板）的 content 写法：
 - title：海报标题；两行时可以自己写换行。subtitle：副标题或一句导语。body：一段正文（模板有正文位时）。recipient：证书上的姓名（模板有获得者位时）。cta：按钮文字，如 "扫码报名"。tag：角标——活动类型、价格、期数等短词；数据盘点、成长记录的 tag 是顶上的大年份，如 "2026"。brand：主办方、品牌或落款。image：主图——本机文件路径（/、~/、./、file://）、http(s) URL 或 data URL；主图位放它，没给图时照片位变成一块色块、插画位删掉（九宫格的插画是设计本身，会留着）。
 - details：信息行，一条一行，如 "时间：10 月 18 日 14:00"、"地点：…"，冒号前是标签；菜单、价目表写 "拿铁：28"；成长记录一条一个节点，如 "3 月：接到第一单商单"，最多 5 条。
-- table：表格（课程表、对比表）：第一行是表头，如 ["节次", "周一", …]，之后每行第一格是节次，如 ["第 1 节\\n8:00", "语文", …]；课程表按给的行数列数重画、同一科目同一个颜色；对比表换成表格元素本身，最多 12 行 6 列、每格 24 字，参差的行按最宽的行补齐、只有一行时补一个空行，超出 12 行 6 列的格子列在 summary.unplaced，模板的配色和列宽比例保留（加列时新列均分）。
+- table：表格（课程表、对比表）：第一行是表头，如 ["节次", "周一", …]，之后每行第一格是节次，如 ["第 1 节\\n8:00", "语文", …]；课程表按给的行数列数重画、同一科目同一个颜色；对比表换成表格元素本身，最多 12 行 6 列、每格 24 字，参差的行按最宽的行补齐、只有一行时补一个空行，超出 12 行 6 列的格子列在 summary.unplaced，模板的配色和列宽比例保留（加列时新列均分），没给 table 时对比表的示例表格原样保留。
 - chart：图表（数据盘点）：{ kind?: "bar" | "ring" | "line" | "radar", labels?: 类目数组, series: [{ name?, values: 数值数组, color? }] }，替换模板图表的类目和系列，颜色缺省沿用模板的，kind 换图表类型，不给时跟模板走，堆叠方式跟模板走。
 - 位置不够时：页面有空就照最后一行的样子接着往下排，没空就放进下面空着的署名、正文或副标题位；模板没有位置的文字放进空着的同类位置（按钮、署名放进空着的信息行，正文、获得者放进空着的副标题），放到哪里写在 summary.moved；还放不下的信息和画不下的表格格子列在 summary.unplaced，没有位置的内容列在 summary.unused，这时 summary.hint 说明怎么办。缩小的文字在 summary.shrunk（角标最多缩到 50%，其余 72%），还放不下的在 summary.overflowing。
 - 给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。`,
@@ -187,18 +187,44 @@ const GUIDE_SECTIONS: Record<string, { title: string; text: string }> = {
 - 套图模板的 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等。
 - 海报模板的 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）、时间线位（timeline，吃 details 行）。`,
   },
+  'check': {
+    title: '检查项：check_document 报的每种问题是什么、怎么改',
+    text: `check_document 每条问题的 kind：
+- text-overflow：字被文本框裁掉了笔画；fitFontSize 是能放下的最大字号，fix: true 会改成它。行高超出文本框、笔画还在框里的不算。
+- text-overlap：两段文字叠在一起。
+- covered-text：文字被上层不透明的色块、图片或图形挡住三成以上；图形按真正画到的地方算，圈住文字的手绘圈、正片叠底的荧光笔不算。
+- off-page：文字跑出页面。
+- low-contrast：文字和身后的底板、页面背景或背景图对比低于 4.5:1（48 号以上或 40 号以上粗体放宽到 3:1）；表格、时间线、图表、进度条的字色（ink）也这样算，改法写明该用浅色还是深色。
+- sample-text：还是模板里的示例文字。
+- empty-text：空文本框。
+- image-failed：这一页有图片没加载出来。
+- path-overflow：图形画到了自己的框外（viewBox 没包住 d），改法给出正好包住它的 viewBox。
+- empty-path：图形既无填充也无描边，看不见。
+- tiny-qrcode / low-contrast-qrcode：二维码小于 120×120，或码点色和背景对比低于 3:1，手机扫不稳。
+- progress-label-overflow：进度条的目标名比元素宽。
+- data-clipped：表格的格子、时间线的条目放不下，被省略号截掉（写明第几行第几列、第几条）。
+- tiny-text：正文小于 18px；表格、时间线、图表、进度条里的字也算。
+- misalignment：几个对象的边差 4–10px；alignment 写着吸齐时挪哪个、挪到哪，fix: true 照着挪。
+- edge-margin：对象离页边只有 2–14px，不像出血也不像留白。
+- too-many-fonts / too-many-colors：一页的字体超过 3 种，或文字颜色超过 6 种。
+- weak-heading：最大的字不到正文的 1.25 倍，标题和正文拉不开层级。
+- empty-band：页面上一整条横向空白高过页高的四分之一，看着没排完，写明从哪到哪、占页高多少；卡片、色块按里面放的东西算，背景是图片的页不查。
+- empty-frame：一块纯色的方块或圆（占页面 5% 以上、不到六成）上几乎什么都没有，多半是该放图片的位置空着；改法给出换成图片填充的写法。
+模板原样保留的装饰文字、模板自己的配色不算问题，报出来的都是内容带来的。fix: true 只改 text-overflow（记在 fixed）和 misalignment（记在 snapped），其余按每条的改法用 apply_actions 改，改完再查一遍。`,
+  },
   'render-export': {
     title: '渲染与导出：render_document 的输出方式',
     text: `渲染与导出：默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。`,
   },
-}
+} satisfies Record<string, { title: string; text: string }>
 
-/**
- * The five document tools once carried the full schema hint each
- * (90,991 chars). The single copy now lives in the resource; this cap
- * keeps descriptions from quietly growing back; normal new tools may raise the cap.
- */
-const checkRulesShared = '文档怎么写见 dingcard://schema/freeform 资源或 get_guide("document-model")'
+type GuideId = keyof typeof GUIDE_SECTIONS
+const GUIDE_IDS = Object.keys(GUIDE_SECTIONS) as [GuideId, ...GuideId[]]
+/** The topics as get_guide's description lists them: each id with the start of its title. */
+const GUIDE_TOPICS = Object.entries(GUIDE_SECTIONS).map(([id, guide]) => `${id} ${guide.title.split('：')[0]}`).join('、')
+
+/** Where the tools that take a document point for how to write one. */
+const DOCUMENT_GUIDE_POINTER = '文档怎么写见 dingcard://schema/freeform 资源或 get_guide("document-model")'
 
 /**
  * Pages into a document with slide/insert: after a page (the last one when
@@ -269,16 +295,15 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'get_guide',
-    '按主题读一份使用指南：文档怎么写、每个动作怎么发、content / outline / 海报内容怎么填、HTML 怎么写、渲染导出有哪些方式。工具说明里只写了做什么；要动手写参数之前，先来这里读对应主题的完整写法。section 给主题 id（不给就列出全部主题 id 和标题）：document-model 文档模型、actions 动作清单、deck-content 套图内容、outline Markdown 大纲、poster-content 海报内容、html-import 网页转文档、render-export 渲染导出。',
+    `按主题读一份使用指南：文档怎么写、每个动作怎么发、content / outline / 海报内容怎么填、HTML 怎么写、模板字段和检查项是什么意思、渲染导出有哪些方式。工具说明里只写了做什么；要动手写参数之前，先来这里读对应主题的完整写法。section 给主题 id（不给就列出全部主题 id 和标题）：${GUIDE_TOPICS}。`,
     {
-      section: z.string().optional().describe('主题 id，如 "actions"；不给就列出全部主题'),
+      section: z.enum(GUIDE_IDS).optional().describe('主题 id，如 "actions"；不给就列出全部主题'),
     },
     async ({ section }) => {
       if (section === undefined) {
         return jsonResult({ sections: Object.entries(GUIDE_SECTIONS).map(([id, guide]) => ({ id, title: guide.title })) })
       }
       const guide = GUIDE_SECTIONS[section]
-      if (!guide) return jsonResult({ ok: false, error: `没有这个主题：${section}。可用的主题见不带参数的 get_guide。` })
       return jsonResult({ ok: true, section, title: guide.title, text: guide.text })
     },
   )
@@ -580,8 +605,8 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'validate_document',
-    `校验文档是否为合法的自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入自动迁移，图片 src 写成本机文件路径的会读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因——会写清第几页、哪个节点、多了或缺少哪个键，或者该写哪个 documentVersion。
-文档速写：{ documentVersion: ${FREEFORM_DOCUMENT_VERSION}, slides: [{ id, name, width(128–4096), height(128–4096), background, nodes, guides? }], activeSlideId }；节点 ${FREEFORM_NODE_TYPES.length} 选一（${FREEFORM_NODE_TYPES.join(' / ')}），公共必填键 id, name, locked, hidden, type, x, y, rotation, scale，其余键按节点类型精确匹配（不允许多余或缺失键），全文档节点 id 唯一。每种节点的完整键表见 dingcard://schema/freeform 资源或 get_guide("document-model")：先读它再写文档；不确定就先写个大概，用这个工具校验，按返回的原因改。`,
+    `校验文档是否为合法的自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 自动迁移，src 是本机路径的图片读进来嵌入）；合法时保存在服务端并返回 documentId（已有 documentId 的照旧），非法时返回原因：第几页、哪个节点、多了或缺了哪个键，或者该写哪个 documentVersion。
+文档速写：{ documentVersion: ${FREEFORM_DOCUMENT_VERSION}, slides: [{ id, name, width(128–4096), height(128–4096), background, nodes, guides? }], activeSlideId }；节点 ${FREEFORM_NODE_TYPES.length} 选一（${FREEFORM_NODE_TYPES.join(' / ')}），公共必填键 id, name, locked, hidden, type, x, y, rotation, scale，其余键按节点类型精确匹配（不多不少），全文档节点 id 唯一。每种节点的完整键表见 dingcard://schema/freeform 资源或 get_guide("document-model")，写之前先读；拿不准就先写个大概来校验，按返回的原因改。`,
     { ...documentInput, includeDocument },
     async ({ includeDocument: withDocument, ...input }) => {
       const resolved = await documentFor(input)
@@ -593,7 +618,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'inspect_document',
-    `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要；内置图标标出 icon id，装饰素材标出 decoration id，组成装饰的组也标在组上），以及整套卡片的 style：用到的颜色（按占的面积排序，附 share 和用在 background/fill/text/line/shadow 哪些地方）、字体（texts 用了几段文字、largest 最大字号）和正文字号 bodySize。改文档前先 inspect，拿到节点 id / 路径再发动作。${checkRulesShared}。`,
+    `检查文档结构：页面摘要（尺寸/背景/节点数）与递归节点树（id、name、type、几何、文本摘要；内置图标标出 icon id，装饰素材标出 decoration id，组成装饰的组也标在组上），以及整套卡片的 style：用到的颜色（按占的面积排序，附 share 和用在 background/fill/text/line/shadow 哪些地方）、字体（texts 用了几段文字、largest 最大字号）和正文字号 bodySize。改文档前先 inspect，拿到节点 id / 路径再发动作。${DOCUMENT_GUIDE_POINTER}。`,
     documentInput,
     async (input) => {
       const resolved = await documentFor(input)
@@ -604,7 +629,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'apply_actions',
-    `对文档应用一串编辑动作（与编辑器 UI 同一归约器，语义完全一致），返回每个动作是否生效（changes）和没生效的原因（reasons，与 changes 一一对应：没改动时是 null，被拒时写清哪个键、哪条规则）。用 documentId 时就地更新这份文档（version 加一），传 document / documentPath 时另存为一份新文档并返回它的 documentId；动作里图片 src 写成本机文件路径的会读进来嵌入。常用：node/insert-children（插入节点）、node/update-content（改字/改数据元素内容）、node/update-style（改样式）、node/update-geometry（改位置尺寸）、slide/*（页的增删换序）、document/find-replace（整套查找替换）、document/restyle（整套换配色字体）。每个动作的完整写法见 get_guide("actions")。${checkRulesShared}。`,
+    `对文档应用一串编辑动作（与编辑器 UI 同一归约器，语义完全一致），返回每个动作是否生效（changes）和没生效的原因（reasons，与 changes 一一对应：没改动时是 null，被拒时写清哪个键、哪条规则）。用 documentId 时就地更新这份文档（version 加一），传 document / documentPath 时另存为一份新文档并返回它的 documentId；动作里图片 src 写成本机文件路径的会读进来嵌入。常用：node/insert-children（插入节点）、node/update-content（改字/改数据元素内容）、node/update-style（改样式）、node/update-geometry（改位置尺寸）、slide/*（页的增删换序）、document/find-replace（整套查找替换）、document/restyle（整套换配色字体）。每个动作的完整写法见 get_guide("actions")。${DOCUMENT_GUIDE_POINTER}。`,
     {
       ...documentInput,
       actions: z.array(z.unknown()).describe('FreeformAction 数组'),
@@ -628,7 +653,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'check_document',
-    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下被裁掉（附能放下的字号 fitFontSize）、文字互相叠住、文字被上层色块挡住、跑出页面、文字和底色对比太低、还留着模板示例文字、空文本框、图片没加载出来、图形画到了自己的框外（viewBox 没包住 d）、图形既无填充也无描边而看不见、二维码太小扫不动或码点底色太接近、进度标签比元素宽、表格和时间线的内容放不下被省略号截掉、表格时间线图表进度里的字太小或和底色对比太低、对齐差几px、离页边太近、正文太小、字体或文字颜色太多、标题和正文拉不开层级、页面上一整条空白超过页高四分之一（看着没排完）、纯色块上什么都没有（多半是该放图片的位置空着）。每条带 page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法。fix: true 时把放不下的文字缩到能放下的字号、把差几 px 的对齐吸齐，并保存（用 documentId 时就地更新，返回 documentId 和 version），附改了哪些（fixed 是缩过的字号，snapped 是挪过的位置）和剩下的问题。${checkRulesShared}。`,
+    `检查自由画布文档排出来的样子：在与导出相同的页面里排版后，逐页列出读者会注意到的问题——文字放不下、叠住、被挡住或跑出页面，对比度太低，还留着示例文字，图片没加载出来，图形、二维码、表格、图表画坏了，对齐差几 px，标题和正文拉不开层级，页面上一大片空白，该放图片的色块空着。每条带 kind、page、slideId、node（图层名）、path（apply_actions 用的节点路径）和改法，每种 kind 是什么意思见 get_guide("check")。fix: true 时把放不下的文字缩到能放下的字号、把差几 px 的对齐吸齐，并保存（用 documentId 时就地更新，返回 documentId 和 version），附改了哪些（fixed 是缩过的字号，snapped 是挪过的位置）和剩下的问题。${DOCUMENT_GUIDE_POINTER}。`,
     {
       ...documentInput,
       fix: z.boolean().optional().describe('把放不下的文字缩到能放下的字号、把差几 px 的对齐吸齐（改动保存回这份文档，返回 documentId 和 version）'),
@@ -651,7 +676,7 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'render_document',
-    `把自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出），默认逐页 PNG 到 outputDir，另附每页小缩略图供你直接查看效果。长图、九宫格、PDF、JPEG、倍率等输出方式见 get_guide("render-export")。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${checkRulesShared}。`,
+    `把自由画布 v${FREEFORM_DOCUMENT_VERSION} 文档（v1–${FREEFORM_DOCUMENT_VERSION - 1} 输入自动迁移）无头渲染为图片或 PDF（与编辑器导出同一管线：网页字体按字符子集嵌入、图片就绪等待、逐页导出），默认逐页 PNG 到 outputDir，另附每页小缩略图供你直接查看效果。长图、九宫格、PDF、JPEG、倍率等输出方式见 get_guide("render-export")。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。${DOCUMENT_GUIDE_POINTER}。`,
     {
       ...documentInput,
       outputDir: z.string().describe('输出目录（不存在会创建）'),

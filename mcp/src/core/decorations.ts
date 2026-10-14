@@ -139,7 +139,7 @@ export function placeDecorations(
   if (!slide) return { ok: false, error: `没有这一页：${slideId}（slideId 用 inspect_document 里的页面 id）` }
   if (items.length === 0) return { ok: false, error: 'items 至少要有一项' }
   const unknown = items.filter((item) => !decorationById(item.decoration)).map((item) => item.decoration)
-  if (unknown.length > 0) return { ok: false, error: `没有这些装饰：${unknown.join('、')}（先用 list_decorations 查 id）` }
+  if (unknown.length > 0) return { ok: false, error: `没有这些装饰：${unknown.join('、')}（先用 list_assets 的 decorations 查 id）` }
   const badColor = items.find((item) => item.color !== undefined && !HEX.test(item.color))
   if (badColor) return { ok: false, error: `color 要写成 #RRGGBB：${badColor.color}` }
 

@@ -3,7 +3,8 @@
 叮卡（DingCard）的 MCP 服务器：让 AI 客户端直接生成、检查、修改和导出叮卡的自由画布卡片，再一步交给编辑器让人接着改。
 
 - 生成：`create_document_from_template`、`create_document_from_content`、`create_document_from_outline`
-- 查看与修改：`inspect_document`、`apply_actions`（与编辑器同一个归约器）、`list_icons`、`list_styles`
+- 查看与修改：`inspect_document`、`apply_actions`（与编辑器同一个归约器）、`list_assets`（图标、装饰、配色字体、花字、拼图、滤镜）
+- 写法：`get_guide`（按主题读文档、动作、内容和导出的完整写法）
 - 检查：`check_document`（按导出的样子排版后列出看得见的问题）
 - 导出：`render_document`（逐页 PNG / JPG、一个 PDF 或一张长图）、`render_markdown`
 - 交给人：`open_in_editor`（在浏览器里的叮卡编辑器打开）、`get_document`

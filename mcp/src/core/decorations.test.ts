@@ -23,7 +23,7 @@ function texts(node: FreeformSceneNode): string[] {
   return found
 }
 
-describe('list_decorations', () => {
+describe('list_assets decorations', () => {
   test('lists the whole library by category, with what an agent needs to place each', () => {
     const all = listDecorations()
     expect(all.total).toBe(DECORATIONS.length)

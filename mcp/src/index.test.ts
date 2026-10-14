@@ -550,7 +550,7 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
-  test('list_icons lists names, searches drawings, and its example inserts as a path', async () => {
+  test('list_assets icons lists names, searches drawings, and its example inserts as a path', async () => {
     const client = await connect()
     const call = async (args: Record<string, unknown>) => parseContent(
       (await client.callTool({ name: 'list_assets', arguments: { kind: 'icons', ...args } })) as { content: Array<{ type: string; text?: string }> },
@@ -597,14 +597,16 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
-  test('list_styles offers palettes and font sets that document/restyle takes, and inspect_document shows the deck\'s own', async () => {
+  test('list_assets styles offers palettes and font sets that document/restyle takes, and inspect_document shows the deck\'s own', async () => {
     const client = await connect()
     const styles = await call(client, 'list_assets', { kind: 'styles' }) as unknown as {
       looks: Array<{ id: string; palette: string; fontSet: string }>
       palettes: Array<{ id: string; background: string; text: string; accents: string[] }>
       fontSets: Array<{ id: string; heading: string; body: string }>
       headingScale: number
+      usage: string
     }
+    expect(styles.usage).toContain('document/restyle')
     expect(styles.palettes.length).toBeGreaterThanOrEqual(8)
     expect(styles.fontSets.length).toBeGreaterThanOrEqual(5)
     // Every look names a palette and a font set the list has.
@@ -671,9 +673,10 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
-  test('list_text_styles gives 花字 patches that node/update-style applies', async () => {
+  test('list_assets text_styles gives 花字 patches that node/update-style applies', async () => {
     const client = await connect()
-    const listed = await call<{ styles: Array<{ id: string; name: string; backdrop: string; patch: Record<string, unknown> }> }>(client, 'list_assets', { kind: 'text_styles' })
+    const listed = await call<{ styles: Array<{ id: string; name: string; backdrop: string; patch: Record<string, unknown> }>; usage: string }>(client, 'list_assets', { kind: 'text_styles' })
+    expect(listed.usage).toContain('node/update-style')
     expect(listed.styles.length).toBeGreaterThanOrEqual(12)
     const label = listed.styles.find((style) => style.id === 'label')!
     expect(label.patch).toMatchObject({ effect: { type: 'background' }, fontWeight: 'bold', stroke: null, shadow: null })
@@ -692,9 +695,10 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
-  test('list_filter_presets gives photo looks that node/update-style applies', async () => {
+  test('list_assets filter_presets gives photo looks that node/update-style applies', async () => {
     const client = await connect()
-    const listed = await call<{ presets: Array<{ id: string; name: string; patch: Record<string, unknown> }> }>(client, 'list_assets', { kind: 'filter_presets' })
+    const listed = await call<{ presets: Array<{ id: string; name: string; patch: Record<string, unknown> }>; usage: string }>(client, 'list_assets', { kind: 'filter_presets' })
+    expect(listed.usage).toContain('node/update-style')
     expect(listed.presets.length).toBeGreaterThanOrEqual(8)
     const mono = listed.presets.find((preset) => preset.id === 'mono')!
     expect(mono.patch).toMatchObject({ filter: { grayscale: 1 } })
@@ -722,7 +726,7 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
-  test('list_collages gives insertable picture grids', async () => {
+  test('list_assets collages gives insertable picture grids', async () => {
     const client = await connect()
     const listed = await call<{
       collages: Array<{
@@ -732,7 +736,9 @@ describe('dingcard-mcp tool layer', () => {
         aspect: number
         example: { id: string; type: string; children: Array<{ id: string; type: string }> }
       }>
+      usage: string
     }>(client, 'list_assets', { kind: 'collages', pageWidth: 1080, pageHeight: 1440 })
+    expect(listed.usage).toContain('node/insert-children')
     expect(listed.collages.length).toBeGreaterThanOrEqual(6)
     const quad = listed.collages.find((collage) => collage.id === 'quad')!
     expect(quad.cellCount).toBe(4)

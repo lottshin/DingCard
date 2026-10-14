@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createDingcardServer, FREEFORM_NODE_TYPES } from './index'
+import { LAYOUT_ISSUE_KINDS } from './core/layoutIssues'
 import { FREEFORM_DOCUMENT_VERSION } from '../../src/freeform/types'
 
 type Content = { content: Array<{ type: string; text?: string }> }
@@ -98,6 +99,8 @@ describe('dingcard-mcp tool descriptions stay current', () => {
     expect(total).toBeLessThan(32000)
     for (const tool of listing.tools) {
       expect((tool.description ?? '').length, `${tool.name} 的说明超过 600 字，长内容进 get_guide`).toBeLessThanOrEqual(600)
+      // Parameter descriptions are read too: the whole entry has a cap.
+      expect(JSON.stringify(tool).length, `${tool.name} 连参数说明超过 3500 字，长内容进 get_guide`).toBeLessThanOrEqual(3500)
     }
   })
 
@@ -109,13 +112,25 @@ describe('dingcard-mcp tool descriptions stay current', () => {
     const catalogue = (JSON.parse(((await (client.callTool({ name: 'get_guide', arguments: {} })) as Content).content[0].text ?? '{}')) as { sections: Array<{ id: string }> }).sections
     const ids = new Set(catalogue.map((section) => section.id))
     expect([...ids].sort()).toEqual([
-      'actions', 'deck-content', 'document-model', 'html-import', 'outline', 'poster-content', 'render-export', 'templates',
+      'actions', 'check', 'deck-content', 'document-model', 'html-import', 'outline', 'poster-content', 'render-export', 'templates',
     ])
+    // get_guide's own description names every topic.
+    const guideDescription = listing.tools.find((tool) => tool.name === 'get_guide')?.description ?? ''
+    for (const id of ids) expect(guideDescription, `get_guide 的说明漏了主题 ${id}`).toContain(id)
     for (const tool of listing.tools) {
       for (const match of (tool.description ?? '').matchAll(/get_guide\("([a-z-]+)"\)/g)) {
         expect(ids.has(match[1]), `${tool.name} 指向的 get_guide 主题 ${match[1]} 不存在`).toBe(true)
       }
     }
+  })
+
+  test('the check topic explains exactly the kinds check_document reports', async () => {
+    // One bullet per kind (or a pair sharing a line), none forgotten, none invented.
+    const client = await connect()
+    const read = await (client.callTool({ name: 'get_guide', arguments: { section: 'check' } })) as Content
+    const text = String(JSON.parse(read.content[0].text ?? '{}').text)
+    const listed = [...text.matchAll(/^- ([a-z-]+(?: \/ [a-z-]+)*)：/gm)].flatMap((match) => match[1].split(' / ')).sort()
+    expect(listed).toEqual([...LAYOUT_ISSUE_KINDS].sort())
   })
 
   test('the docs name the current version wherever they claim one', () => {

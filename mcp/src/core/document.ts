@@ -113,7 +113,7 @@ export interface NodeSummary {
   trackFill?: string
   /** A path drawn from the built-in icon set: the icon's id. */
   icon?: string
-  /** A piece of the decoration library (list_decorations), as one path or a group of its parts: its id. */
+  /** A piece of the decoration library (list_assets, kind decorations), as one path or a group of its parts: its id. */
   decoration?: string
   /** The start of a path's drawing, for paths that aren't built-in icons. */
   d?: string

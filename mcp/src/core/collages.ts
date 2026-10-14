@@ -24,7 +24,12 @@ export interface CollageEntry {
 
 export interface CollageCatalogue {
   collages: CollageEntry[]
+  usage: string
 }
+
+const USAGE = 'example 是完整的拼图组节点（圆角格子、留缝、灰色占位），用 apply_actions 的 node/insert-children 直接插入；'
+  + '再用 node/update-style 把每个格子的 fill 换成 { type: "image", src, fit, framing } 图片填充（取景和形状的图片填充一样）。'
+  + '给 pageWidth / pageHeight，格子就按你的页面尺寸铺（默认 1080×1440）。'
 
 function entryFor(
   layout: CollageLayout,
@@ -46,5 +51,6 @@ export function listCollages(pageWidth = 1080, pageHeight = 1440): CollageCatalo
   const height = Number.isFinite(pageHeight) ? Math.max(128, Math.min(4096, pageHeight)) : 1440
   return {
     collages: COLLAGE_LAYOUTS.map((layout) => entryFor(layout, { width, height })),
+    usage: USAGE,
   }
 }

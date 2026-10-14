@@ -14,29 +14,33 @@ import type { DeckLayoutId, FreeformDeckSeriesId, FreeformPosterSeriesId } from 
 import { emWidth } from './textFit'
 import type { InspectedSlide } from '../render/renderer'
 
-export type LayoutIssueKind =
-  | 'text-overflow'
-  | 'text-overlap'
-  | 'covered-text'
-  | 'off-page'
-  | 'low-contrast'
-  | 'sample-text'
-  | 'empty-text'
-  | 'image-failed'
-  | 'path-overflow'
-  | 'empty-path'
-  | 'tiny-qrcode'
-  | 'low-contrast-qrcode'
-  | 'progress-label-overflow'
-  | 'data-clipped'
-  | 'misalignment'
-  | 'edge-margin'
-  | 'tiny-text'
-  | 'too-many-fonts'
-  | 'too-many-colors'
-  | 'weak-heading'
-  | 'empty-band'
-  | 'empty-frame'
+/** Every kind of issue check_document reports; get_guide("check") explains each one. */
+export const LAYOUT_ISSUE_KINDS = [
+  'text-overflow',
+  'text-overlap',
+  'covered-text',
+  'off-page',
+  'low-contrast',
+  'sample-text',
+  'empty-text',
+  'image-failed',
+  'path-overflow',
+  'empty-path',
+  'tiny-qrcode',
+  'low-contrast-qrcode',
+  'progress-label-overflow',
+  'data-clipped',
+  'misalignment',
+  'edge-margin',
+  'tiny-text',
+  'too-many-fonts',
+  'too-many-colors',
+  'weak-heading',
+  'empty-band',
+  'empty-frame',
+] as const
+
+export type LayoutIssueKind = typeof LAYOUT_ISSUE_KINDS[number]
 
 export interface LayoutIssue {
   page: number
