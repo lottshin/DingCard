@@ -23,7 +23,7 @@ import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformSceneNod
 import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots, type SlotItem } from '../../../src/templates/slots'
 import type { DeckLayoutId, FreeformDeckSeriesId } from '../../../src/templates/types'
-import { balancedHeading, balancedSentence, contentsLines, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
+import { balancedHeading, balancedSentence, contentsLines, displayWords, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
 import { blockingBoxes, drawingBox, pagePalette, seriesColors, type PagePalette } from './dataPlacement'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -324,7 +324,7 @@ function splitTitle(title: string): [string, string] {
   if (lines.length > 1) return [lines[0], lines.slice(1).join(' ')]
   const chars = [...title]
   if (chars.length < 2) return [title, '']
-  const words = [...new Intl.Segmenter('zh', { granularity: 'word' }).segment(title)].map((part) => part.segment)
+  const words = displayWords(title)
   let best: { lines: [string, string]; score: number } | null = null
   let head = ''
   for (const word of words.slice(0, -1)) {

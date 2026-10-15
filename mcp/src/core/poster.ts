@@ -14,11 +14,11 @@ import {
   TIMELINE_TEXT_MAX_CHARS,
 } from '../../../src/freeform/timeline'
 import type { FreeformDocument, FreeformSceneNode, FreeformTextElement } from '../../../src/freeform/types'
-import { TEMPLATE_REGISTRY } from '../../../src/templates/registry'
-import { FREEFORM_POSTER_SLOTS, type PosterDetail, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
+import { FREEFORM_POSTER_TEXT_ONLY, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { FREEFORM_POSTER_SLOTS, posterTextOnlySlots, type PosterDetail, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
 import { tableNodes, tableShape } from '../../../src/templates/tables'
 import type { FreeformPosterSeriesId } from '../../../src/templates/types'
-import { balancedHeading, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
+import { balancedHeading, fillingHeading, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
 
 export interface PosterContent {
   title: string
@@ -74,6 +74,8 @@ export interface PosterSuccess {
     moved: Array<{ content: keyof PosterContent; text: string; node: string }>
     /** What to do about anything left out; absent when everything is on the poster. */
     hint?: string
+    /** text-only: no picture came, so the poster is the template's drawing without one. */
+    layout?: 'text-only'
   }
 }
 
@@ -111,6 +113,8 @@ const CONTENT_NAMES: Partial<Record<keyof PosterContent, string>> = {
   table: '表格',
 }
 const NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'] as const
+/** The render page's padding inside a text box. */
+const TEXT_PADDING = 8
 
 interface Box {
   x: number
@@ -253,25 +257,42 @@ function shifted(node: FreeformSceneNode, by: number): FreeformSceneNode {
   return by === 0 ? node : { ...node, y: Math.round((node.y + by) * 10) / 10 }
 }
 
+/** Where a node's ink sits down the page: a text's set lines where its alignment puts them, else its box. */
+function inkSpan(node: FreeformSceneNode): { top: number; bottom: number } | null {
+  if (node.type !== 'text') {
+    const box = boxOf(node)
+    return box ? { top: box.y, bottom: box.y + box.height } : null
+  }
+  if (node.vertical) return { top: node.y, bottom: node.y + node.height }
+  const depth = measureText(node, node.text, node.fontSize, true).depth
+  const room = node.height - TEXT_PADDING * 2
+  const offset = node.verticalAlign === 'middle' ? (room - depth) / 2 : node.verticalAlign === 'bottom' ? room - depth : 0
+  const top = node.y + TEXT_PADDING + Math.max(0, offset)
+  return { top, bottom: top + depth }
+}
+
 /**
  * Close up what the content left open: fewer lines than rows spread over the
- * rows' span (spreadDetails), and a title shorter than its sample pulls up
- * what sits below it (titleFlow).
+ * rows' span and sit in its middle (spreadDetails), a title shorter than its
+ * sample pulls up what sits below it (titleFlow), and a column moves to the
+ * middle of its span (centre).
  */
 function settle(nodes: FreeformSceneNode[], template: readonly FreeformSceneNode[], slots: PosterSlots, used: number): FreeformSceneNode[] {
   let result = nodes
   const rows = slots.details ?? []
   const filled = Math.min(used, rows.length)
-  if (slots.spreadDetails && filled >= 2 && filled < rows.length) {
+  if (slots.spreadDetails && filled >= 1 && filled < rows.length) {
     const top = (row: (typeof rows)[number]) => template.find((node) => node.name === row.value)?.y
     const first = top(rows[0])
     const second = top(rows[1])
     if (first !== undefined && second !== undefined && second > first) {
       const pitch = second - first
-      const spread = Math.min(pitch * 1.6, (pitch * (rows.length - 1)) / (filled - 1))
+      const spread = filled >= 2 ? Math.min(pitch * 1.6, (pitch * (rows.length - 1)) / (filled - 1)) : pitch
+      // What the spread can't fill is shared above and below the list.
+      const lead = (pitch * (rows.length - 1) - spread * (filled - 1)) / 2
       const offsets = new Map<string, number>()
       rows.slice(0, filled).forEach((row, index) => {
-        for (const name of [row.label, row.value, ...(row.extras ?? [])]) if (name) offsets.set(name, index * (spread - pitch))
+        for (const name of [row.label, row.value, ...(row.extras ?? [])]) if (name) offsets.set(name, lead + index * (spread - pitch))
       })
       result = result.map((node) => shifted(node, offsets.get(node.name) ?? 0))
     }
@@ -284,6 +305,20 @@ function settle(nodes: FreeformSceneNode[], template: readonly FreeformSceneNode
       const below = sample.y + sample.height - 1
       const pinned = new Set(slots.titleFlow.pinned ?? [])
       if (room > 1) result = result.map((node) => (node.y >= below && !pinned.has(node.name) ? shifted(node, -room) : node))
+    }
+  }
+  if (slots.centre) {
+    const { top, bottom } = slots.centre
+    // What lies inside the span moves; a frame reaching across it stays.
+    const inside = result.filter((node) => {
+      const box = boxOf(node)
+      return box !== null && box.y >= top - 1 && box.y + box.height <= bottom + 1 && box.height < (bottom - top) * 0.9
+    })
+    const spans = inside.map(inkSpan).filter((span): span is { top: number; bottom: number } => span !== null)
+    if (spans.length > 0) {
+      const by = Math.round((top + bottom) / 2 - (Math.min(...spans.map((span) => span.top)) + Math.max(...spans.map((span) => span.bottom))) / 2)
+      const moving = new Set(inside)
+      result = result.map((node) => (moving.has(node) ? shifted(node, by) : node))
     }
   }
   return result
@@ -302,9 +337,11 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   }
   const content = normalizePosterContent(value)
   if (typeof content === 'string') return { ok: false, error: content }
-  const slots = FREEFORM_POSTER_SLOTS[template.series]
+  // Without a picture, a poster that draws one is set on its text-only drawing.
+  const textOnly = content.image ? undefined : FREEFORM_POSTER_TEXT_ONLY[template.series]
+  const slots = textOnly ? posterTextOnlySlots(template.series) : FREEFORM_POSTER_SLOTS[template.series]
   const made = template.create()
-  const slide = made.slides[0]
+  const slide = textOnly ? textOnly() : made.slides[0]
 
   const texts = new Map<string, string>()
   const remove = new Set<string>()
@@ -533,7 +570,9 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
         const box = boxOf(node)
         if (!box) continue
         if ((node.type === 'shape' || node.type === 'path' || node.type === 'image') && box.width * box.height >= 0.6 * slide.width * slide.height) continue
-        if (node.type === 'shape' && encloses(box, row)) grounds.push(box)
+        // The panel the rows sit on: a shape, or a filled drawing (the arch a flyer's lines stand in).
+        const panel = node.type === 'shape' || (node.type === 'path' && node.fill.type !== 'transparent')
+        if (panel && encloses(box, row)) grounds.push(box)
         else blockers.push(box)
       }
       const bottom = slide.height - Math.max(32, Math.round(slide.height * 0.025))
@@ -628,7 +667,13 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     // The sample lends its lines to the box, so copy no longer than it never shrinks.
     let next: FreeformTextElement = { ...node, text }
     delete next.spans
-    if (!textFits(next, text, next.fontSize, node.text)) {
+    const isTitle = node.name === slots.title
+    // A display title fills its box: as large as its words break well.
+    const filled = isTitle && slots.titleFit
+      ? fillingHeading(next, text, Math.round(node.fontSize * slots.titleFit.maxScale), slots.titleFit.maxLines)
+      : null
+    if (filled) next = { ...next, fontSize: filled.fontSize, text: filled.text }
+    else if (!textFits(next, text, next.fontSize, node.text)) {
       const scale = node.name === slots.tag?.text ? TAG_MIN_FIT_SCALE : MIN_FIT_SCALE
       const size = fittingFontSize(next, text, node.text, scale)
       const smallest = Math.max(10, Math.floor(next.fontSize * scale))
@@ -636,7 +681,8 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       if (size === null) overflowing.push({ node: node.name, text })
       next = { ...next, fontSize: size ?? smallest }
     }
-    if (node.name === slots.title) next = { ...next, text: balancedHeading(next, next.text, next.fontSize) }
+    if (isTitle && slots.titleFit?.align) next = { ...next, verticalAlign: slots.titleFit.align }
+    if (isTitle && !filled) next = { ...next, text: balancedHeading(next, next.text, next.fontSize) }
     return [next]
   })
 
@@ -663,6 +709,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       ...(left.length > 0
         ? { hint: `海报上没有放下：${left.join('、')}。换一个有这些位置的模板（看 list_templates 的 posterCapacity），或生成后用 apply_actions 加上。` }
         : {}),
+      ...(textOnly ? { layout: 'text-only' as const } : {}),
     },
   }
 }

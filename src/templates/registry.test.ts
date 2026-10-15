@@ -5,7 +5,7 @@ import type { FreeformSceneLeaf, FreeformSceneNode } from '../freeform/types'
 import { parseBlocks } from '../markdown'
 import { FONTS, PLATFORMS, THEMES } from '../theme'
 import { templateFormat } from './formats'
-import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
+import { FREEFORM_DECK_LAYOUTS, FREEFORM_POSTER_TEXT_ONLY, TEMPLATE_REGISTRY, templatesForWorkspace } from './registry'
 
 function nodeIds(nodes: FreeformSceneNode[]): string[] {
   return nodes.flatMap((node) => [
@@ -179,7 +179,8 @@ describe('template registry', () => {
     // A layout drawn for another page size leaves its words below the edge (the 拍立得墙 once did).
     const outside: string[] = []
     const layoutPages = Object.entries(FREEFORM_DECK_LAYOUTS).flatMap(([series, layouts]) => ({ id: `${series}-layouts`, slides: Object.values(layouts!).map((create) => create()) }))
-    for (const template of [...templatesForWorkspace('freeform').map((entry) => ({ id: entry.id, slides: entry.createFreeform!().slides })), ...layoutPages]) {
+    const textOnlyPages = Object.entries(FREEFORM_POSTER_TEXT_ONLY).map(([series, create]) => ({ id: `${series}-text-only`, slides: [create!()] }))
+    for (const template of [...templatesForWorkspace('freeform').map((entry) => ({ id: entry.id, slides: entry.createFreeform!().slides })), ...layoutPages, ...textOnlyPages]) {
       for (const slide of template.slides) {
         for (const node of sceneLeaves(slide.nodes)) {
           if (node.type !== 'text' || !node.text.trim()) continue

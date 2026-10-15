@@ -11,7 +11,7 @@ import { reduceFreeformDocument } from '../../../src/freeform/document'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { FILTER_PRESETS } from '../../../src/freeform/filterPresets'
 import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformPathElement, type FreeformTextElement } from '../../../src/freeform/types'
-import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { FREEFORM_DECK_LAYOUTS, FREEFORM_POSTER_TEXT_ONLY, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { listIcons } from '../core/icons'
 import { composeDeck } from '../core/compose'
 import { createDocumentFromOutline } from '../core/outline'
@@ -965,12 +965,25 @@ describe('checkDocument', () => {
     const band = sparse.issues.find((issue) => issue.page === 2 && issue.kind === 'empty-band')
     expect(band?.message).toMatch(/页面 \d+–\d+px 这一段是空的（占页高 \d+%）/)
 
-    // A talk poster without its picture keeps a flat block where the photo was.
-    const talk = composePoster('talk-poster-freeform', { title: '独立开发者茶话会', subtitle: '聊聊一个人做一个产品是什么体验', details: ['时间：周六 14:00', '地点：科技园 B1 咖啡'], cta: '扫码报名' })
+    // A talk poster whose photo frame was emptied to a flat block.
+    const talk = composePoster('talk-poster-freeform', { title: '独立开发者茶话会', subtitle: '聊聊一个人做一个产品是什么体验', details: ['时间：周六 14:00', '地点：科技园 B1 咖啡'], cta: '扫码报名', image: 'data:image/png;base64,iVBORw0KGgo=' })
     if (!talk.ok) throw new Error(talk.error)
-    const blank = await checkDocument(talk.document)
+    const flat = {
+      ...talk.document,
+      slides: talk.document.slides.map((slide) => ({
+        ...slide,
+        nodes: slide.nodes.map((node) => (node.name === '主图' && node.type === 'shape' ? { ...node, fill: { type: 'solid' as const, color: '#d8d0c2' } } : node)),
+      })),
+    }
+    const blank = await checkDocument(flat)
     if (!blank.ok) throw new Error(blank.error)
     expect(blank.issues.filter((issue) => issue.kind === 'empty-frame').map((issue) => issue.node)).toEqual(['主图'])
+    // Without a picture the poster is set on its text-only page: nothing empty.
+    const plain = composePoster('talk-poster-freeform', { title: '独立开发者茶话会', subtitle: '聊聊一个人做一个产品是什么体验', details: ['时间：周六 14:00', '地点：科技园 B1 咖啡'], cta: '扫码报名' })
+    if (!plain.ok) throw new Error(plain.error)
+    const set = await checkDocument(plain.document)
+    if (!set.ok) throw new Error(set.error)
+    expect(set.issues.filter((issue) => issue.kind === 'empty-frame' || issue.kind === 'empty-band')).toEqual([])
   }, 420_000)
 
   test('finds nothing but sample copy on any template as it ships', async () => {
@@ -981,6 +994,7 @@ describe('checkDocument', () => {
         .flatMap((template) => template.createFreeform!().slides.map((slide) => ({ template: template.id, slide }))),
       ...Object.entries(FREEFORM_DECK_LAYOUTS).flatMap(([series, layouts]) => Object.entries(layouts!)
         .map(([layout, create]) => ({ template: `${series}-freeform:${layout}`, slide: create() }))),
+      ...Object.entries(FREEFORM_POSTER_TEXT_ONLY).map(([series, create]) => ({ template: `${series}-freeform:text-only`, slide: create!() })),
     ]
     const document: FreeformDocument = { documentVersion: FREEFORM_DOCUMENT_VERSION, activeSlideId: pages[0].slide.id, slides: pages.map((page) => page.slide) }
     const result = await checkDocument(document)

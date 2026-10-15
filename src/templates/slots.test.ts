@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { FreeformSlide } from '../freeform/types'
-import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from './registry'
+import { FREEFORM_DECK_LAYOUTS, FREEFORM_POSTER_TEXT_ONLY, TEMPLATE_REGISTRY } from './registry'
 import {
   FREEFORM_POSTER_SLOTS,
   FREEFORM_TEMPLATE_SLOTS,
   posterSampleNames,
   posterSlotNames,
+  posterTextOnlySlots,
   slotNodeNames,
   slotSampleNames,
   type SlideSlots,
@@ -140,6 +141,27 @@ describe('template slots', () => {
       for (const node of document.slides[0].nodes) {
         if (node.type !== 'text' || !CJK.test(node.text) || handled.has(node.name)) continue
         expect(kept, `${id}: ${node.name} 「${node.text}」 is neither filled nor kept on purpose`).toContain(node.text)
+      }
+    }
+  })
+
+  it('draw a text-only page for posters with a picture, carrying every slot it fills and no picture', () => {
+    const sizes = new Map(posterTemplates().map(({ series, document }) => [series, document.slides[0]]))
+    for (const [id, create] of Object.entries(FREEFORM_POSTER_TEXT_ONLY) as Array<[FreeformPosterSeriesId, () => FreeformSlide]>) {
+      const picture = FREEFORM_POSTER_SLOTS[id].image
+      expect(picture, `${id} has no picture to go without`).toBeDefined()
+      const slide = create()
+      const names = topNames(slide)
+      expect(names, id).not.toContain(picture!.node)
+      expect([slide.width, slide.height], id).toEqual([sizes.get(id)!.width, sizes.get(id)!.height])
+      for (const name of posterSlotNames(posterTextOnlySlots(id))) {
+        expect(names.filter((candidate) => candidate === name), `${id}: ${name}`).toHaveLength(1)
+      }
+      const kept = KEPT_DECORATION[id] ?? []
+      const handled = new Set(posterSampleNames(posterTextOnlySlots(id)))
+      for (const node of slide.nodes) {
+        if (node.type !== 'text' || !CJK.test(node.text) || handled.has(node.name)) continue
+        expect(kept, `${id} text-only: ${node.name} 「${node.text}」 is neither filled nor kept on purpose`).toContain(node.text)
       }
     }
   })

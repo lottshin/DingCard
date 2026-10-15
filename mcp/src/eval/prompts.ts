@@ -388,4 +388,23 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'design-week-freeform',
     content: { title: '设计与城市论坛', subtitle: 'URBAN FORUM 2027', body: '二十位建筑师和设计师，聊聊城市的下一个十年。', details: ['时间：03.20 — 03.22\n09:30 — 18:00', '地点：滨江会展中心\n三号馆', '票价：早鸟 99 元\n现场 199 元'], tag: '27', brand: '主办：城市更新研究会' },
   },
+  // Picture templates given no picture: each is set on its text-only page.
+  {
+    id: 'poster-photo-cover',
+    kind: 'poster',
+    templateId: 'photo-cover-freeform',
+    content: { title: '城郊三条徒步线', subtitle: '新手友好，半天来回', tag: '收藏', brand: '@山野周末' },
+  },
+  {
+    id: 'poster-portfolio',
+    kind: 'poster',
+    templateId: 'portfolio-cover-freeform',
+    content: { title: '十年设计作品集', subtitle: '品牌 · 包装 · 书籍', tag: '2026', brand: '陈一  CHEN YI' },
+  },
+  {
+    id: 'poster-flyer',
+    kind: 'poster',
+    templateId: 'flyer-freeform',
+    content: { title: '社区读书角开张', subtitle: '每周三晚上，一起读一本书', details: ['时间：每周三 19:30', '地点：社区活动中心二楼', '费用：免费，自带水杯'], cta: '扫码进群', tag: '免费', brand: '城南社区' },
+  },
 ]

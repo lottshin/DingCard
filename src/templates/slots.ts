@@ -442,7 +442,10 @@ export interface PosterSlots {
   details?: readonly PosterDetail[]
   /** Decoration for the lines as a whole (the card they sit on), removed when there are none. */
   detailsExtras?: readonly string[]
-  /** Fewer lines than rows spread out over the rows' span (at most 1.6 times as far apart), so a list fills its card. */
+  /**
+   * Fewer lines than rows spread out over the rows' span (at most 1.6 times
+   * as far apart) and sit in the middle of it, so a list fills its card.
+   */
   spreadDetails?: boolean
   /**
    * When the title takes fewer lines than its sample, everything whose top is
@@ -450,6 +453,17 @@ export interface PosterSlots {
    * that keeps its place).
    */
   titleFlow?: { pinned?: readonly string[] }
+  /**
+   * A display title that fills its box: up to `maxScale` times its size,
+   * broken at word boundaries into at most `maxLines` lines, set `align`
+   * in the box (the box's own alignment when not given).
+   */
+  titleFit?: { maxScale: number; maxLines?: number; align?: 'middle' | 'bottom' }
+  /**
+   * Content between `top` and `bottom` (page px) moves as one block to the
+   * middle of that span, so a short invitation doesn't leave its foot empty.
+   */
+  centre?: { top: number; bottom: number }
   /** A grid of cells: row 0 is the column headings, column 0 the row labels (a timetable). */
   table?: PosterTable
   /** A v34 table element: filled with `table` content (row 0 is the header);
@@ -488,6 +502,11 @@ export interface PosterSlots {
    * left over from the template.
    */
   generic?: readonly string[]
+  /**
+   * The slots of the poster's text-only drawing (FREEFORM_POSTER_TEXT_ONLY),
+   * where they differ: content without a picture is set there.
+   */
+  textOnly?: Partial<Omit<PosterSlots, 'textOnly' | 'image'>>
 }
 
 const block = (color: string): ColorPaint => ({ type: 'solid', color })
@@ -510,6 +529,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '主办' },
     image: { node: '主图', fallback: block('#d8d0c2') },
+    // The panel's words sit in its middle when there are few of them.
+    textOnly: { titleFit: { maxScale: 1.8, maxLines: 3 }, centre: { top: 1120, bottom: 1880 } },
   },
   'sale-poster': {
     title: '标题',
@@ -520,6 +541,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '品牌' },
     image: { node: '主图' },
+    textOnly: { titleFit: { maxScale: 1.5, maxLines: 3 } },
   },
   'hiring-poster': {
     title: '标题',
@@ -527,6 +549,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     body: { text: '正文' },
     tag: { text: '角标' },
     details: rows(3, (n) => `条件${n}`, (n) => `职位${n}`, (n) => [`编号${n}`, `职位线${n}`]),
+    spreadDetails: true,
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '品牌' },
   },
@@ -545,12 +568,18 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     // 敬请回复 is what most invitations ask.
     generic: ['按钮文字'],
+    titleFit: { maxScale: 1.5, maxLines: 2, align: 'middle' },
+    // Inside the frame, under its masthead.
+    centre: { top: 330, bottom: 1840 },
   },
   'quote-card': {
     title: '标题',
     subtitle: { text: '副标题' },
     details: rows(1, () => undefined, (n) => `信息${n}`),
     brand: { text: '品牌' },
+    titleFit: { maxScale: 1.6, maxLines: 3, align: 'middle' },
+    // Above the rule and its footer.
+    centre: { top: 120, bottom: 860 },
   },
   'product-card': {
     title: '标题',
@@ -559,6 +588,10 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     details: rows(3, () => undefined, (n) => `信息${n}`, (n) => [`勾底${n}`, `勾${n}`]),
     brand: { text: '品牌' },
     image: { node: '主图' },
+    textOnly: {
+      titleFit: { maxScale: 1.2, maxLines: 1 },
+      tag: { text: '角标', extras: ['价格底', '价格标签', '价格圈'] },
+    },
   },
   'video-cover': {
     title: '标题',
@@ -572,6 +605,9 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     tag: { text: '角标' },
     brand: { text: '品牌' },
     image: { node: '主图', fallback: block('#26385e') },
+    // Without a tag the column still sits in the middle of the cover.
+    // The rule leads into the sign-off and goes with it.
+    textOnly: { titleFit: { maxScale: 1.5, maxLines: 2 }, centre: { top: 40, bottom: 726 }, brand: { text: '品牌', extras: ['标题线'] } },
   },
   'note-cover': {
     title: '标题',
@@ -590,6 +626,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     tag: { text: '角标', extras: ['角标底'] },
     brand: { text: '品牌' },
     image: { node: '主图', fallback: block('#d9cbb8') },
+    // The title sits on the card: nothing below it moves.
+    textOnly: { titleFit: { maxScale: 1.6, maxLines: 3 }, titleFlow: undefined },
   },
   menu: {
     title: '标题',
@@ -644,6 +682,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     image: { node: '主图' },
     remove: [{ text: '页脚' }],
+    // The details move into the arch; the text-only page draws no footer to take away.
+    textOnly: { remove: [] },
   },
   'data-roundup': {
     title: '标题',
@@ -730,6 +770,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     image: { node: '主图', fallback: block('#3b3b3b') },
     generic: ['角标'],
+    textOnly: { titleFit: { maxScale: 1.8, maxLines: 3 } },
   },
   'dessert-menu': {
     title: '标题',
@@ -768,6 +809,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     details: rows(1, () => undefined, (n) => `信息${n}`),
     brand: { text: '品牌' },
     image: { node: '主图', fallback: block('#3b3b3b') },
+    textOnly: { titleFit: { maxScale: 1.45, maxLines: 3 } },
   },
   // A book's title stands in its spine, its line of praise under the shelf.
   'book-list': {
@@ -850,4 +892,10 @@ export function posterSampleNames(slots: PosterSlots, { labels = true }: { label
   if (labels) return names
   const generic = new Set(slots.generic ?? [])
   return names.filter((name) => !generic.has(name))
+}
+
+/** The slots of a poster's text-only drawing: its own where they differ, no picture. */
+export function posterTextOnlySlots(series: FreeformPosterSeriesId): PosterSlots {
+  const { textOnly, image: _image, ...slots } = FREEFORM_POSTER_SLOTS[series]
+  return { ...slots, ...textOnly }
 }

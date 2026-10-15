@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { FreeformTextElement } from '../../../src/freeform/types'
-import { balancedHeading, fittingFontSize, measureText, textFits } from './textFit'
+import { balancedHeading, fillingHeading, fittingFontSize, measureText, textFits } from './textFit'
 
 const box = (overrides: Partial<FreeformTextElement> = {}): FreeformTextElement => ({
   id: 'text',
@@ -81,5 +81,31 @@ describe('text fitting', () => {
     const long = '一二三四五六七八九十'.repeat(4)
     expect(balancedHeading(heading, long, 112)).toBe(long)
   })
-})
 
+  test('fills a display box with a title as large as it breaks between words', () => {
+    const hero = box({ name: '标题', width: 952, height: 800, fontSize: 150, fontWeight: 'bold', lineHeight: 1.12, letterSpacing: -4 })
+    const fill = (text: string) => fillingHeading(hero, text, 300, 3)
+    // Suffixes and particles stay with the word before them.
+    expect(fill('独立开发者茶话会')?.text).toBe('独立\n开发者\n茶话会')
+    expect(fill('周年庆全场')?.text).toBe('周年庆\n全场')
+    expect(fill('城市里的第二条路')?.text).toBe('城市里的\n第二条路')
+    // A title in two halves breaks after its colon.
+    const card = box({ name: '标题', width: 728, height: 640, fontSize: 112, fontWeight: 'bold', lineHeight: 1.24, letterSpacing: -2 })
+    expect(fillingHeading(card, '周末去哪儿：城郊三条徒步线', 179, 3)?.text.split('\n')[0]).toBe('周末去哪儿：')
+    // Two one-character words are kept together: 用好 stays one word.
+    expect(fill('设计师如何用好 AI')?.text.split('\n').some((line) => line.startsWith('好'))).toBe(false)
+    // Short titles grow to the width; no title grows past the cap.
+    expect(fill('茶话会')?.fontSize).toBeGreaterThan(280)
+    expect(fill('乔迁小聚')?.fontSize).toBeLessThanOrEqual(300)
+    // Every line it breaks fits the box at the size it picks, measured as textFits measures.
+    for (const title of ['为什么你应该开始写作', '独立开发者茶话会', '城市里的第二条路']) {
+      const filled = fill(title)!
+      expect(measureText(hero, filled.text, filled.fontSize).lines, title).toBe(filled.text.split('\n').length)
+      expect(measureText(hero, filled.text, filled.fontSize).depth, title).toBeLessThanOrEqual(800 - 16)
+    }
+    // A title too long for three lines at the box's own size is left to the usual fit.
+    expect(fill('先把睡眠时间固定下来的十四个字')).toBeNull()
+    // Nothing smaller than the box's own size: that is the usual fit's job.
+    expect(fillingHeading(box({ width: 400, height: 60, fontSize: 40 }), '一句放不进一行的很长很长的标题', 60, 1)).toBeNull()
+  })
+})

@@ -139,6 +139,8 @@ export function fittingFontSize(
 const NO_LINE_START = /^[，。、；：！？）」』》〉,.;:!?)\]}%…—]/
 const NO_LINE_END = /[（「『《〈(\[{“‘]$/
 const PAUSE = /[，、；：,;:]$/
+/** A pause a title is read in two halves at (周末去哪儿：城郊三条徒步线): the line breaks after it if it can. */
+const STRONG_PAUSE = /[：；！？—｜:;!?|]$/
 
 /**
  * A heading that takes two or three lines, broken where they come out most
@@ -156,7 +158,7 @@ export function balancedHeading(node: FreeformTextElement, text: string, fontSiz
   const available = (node.width - PADDING * 2) / WIDTH_SAFETY
   const spacing = node.letterSpacing ?? 0
   const width = (part: string) => [...part].reduce((sum, char) => sum + glyphEm(char) * fontSize + spacing, 0)
-  const words = [...new Intl.Segmenter('zh', { granularity: 'word' }).segment(text)].map((part) => part.segment)
+  const words = displayWords(text)
   if (words.length < lines || words.length > 40) return text
   const splits: number[][] = []
   for (let first = 1; first < words.length; first += 1) {
@@ -177,7 +179,8 @@ export function balancedHeading(node: FreeformTextElement, text: string, fontSiz
     const ragged = widths.reduce((sum, value) => sum + ((longest - value) / longest) ** 2, 0)
     const rising = widths.slice(1).filter((value, index) => value > widths[index]).length
     const pauses = parts.slice(0, -1).filter((part) => PAUSE.test(part)).length
-    const score = longest + (ragged * 0.5 + rising * 0.25 - pauses * 0.5) * fontSize
+    const strong = parts.slice(0, -1).filter((part) => STRONG_PAUSE.test(part)).length
+    const score = longest + (ragged * 0.5 + rising * 0.25 - pauses * 0.5 - strong * 1) * fontSize
     if (score < bestScore) {
       best = parts.join('\n')
       bestScore = score
@@ -208,6 +211,128 @@ export function balancedSentence(node: FreeformTextElement, text: string, fontSi
     if (!best || distance < best.distance) best = { at: index + 1, distance }
   }
   return best ? `${chars.slice(0, best.at).join('')}\n${chars.slice(best.at).join('').trim()}` : balancedHeading(node, text, fontSize)
+}
+
+/** Particles that end the phrase before them: a display line doesn't start with one. */
+const NO_DISPLAY_LINE_START = /^[的了着过地得们吗呢吧啊之]/
+/** Words that lead into the one after them: a display line doesn't end with one. */
+const NO_DISPLAY_LINE_END = /(?:第|和|与|及|或|在|从|把|被|对|向|为)$/
+/** Characters that end a word as a suffix (开发者, 设计师, 会员日, 读书角, 作品集). */
+const SUFFIX = /^[者性化们庆节季日角师员家集线液界论感式型率度区馆店室站]$/
+const IDEOGRAPH = /^\p{Script=Han}$/u
+
+/**
+ * A title's words as a display break sees them. The segmenter cuts Chinese
+ * finer than a reader does (乔 | 迁 | 小 | 聚, 开发 | 者), so a suffix joins the
+ * word before it and characters left on their own pair up, as most words are
+ * two characters: 乔迁 | 小聚, 开发者, 全场.
+ */
+export function displayWords(text: string): string[] {
+  const joined: string[] = []
+  for (const { segment } of new Intl.Segmenter('zh', { granularity: 'word' }).segment(text)) {
+    const previous = joined[joined.length - 1]
+    if (previous !== undefined && SUFFIX.test(segment) && [...previous].length >= 2 && [...previous].every((char) => IDEOGRAPH.test(char))) {
+      joined[joined.length - 1] = previous + segment
+    } else joined.push(segment)
+  }
+  const words: string[] = []
+  let run: string[] = []
+  const flush = () => {
+    for (let index = 0; index < run.length; index += 2) words.push(run.slice(index, index + 2).join(''))
+    run = []
+  }
+  for (const word of joined) {
+    if (IDEOGRAPH.test(word)) run.push(word)
+    else {
+      flush()
+      words.push(word)
+    }
+  }
+  flush()
+  return words
+}
+
+/**
+ * A display title set to fill its box: the largest size, from `maxSize` down
+ * to the node's own, at which it breaks at word boundaries into lines that
+ * fit (up to `maxLines`, a line more only when it buys a tenth more size),
+ * no line starting with a particle or closing mark, none ending in a word
+ * that leads into the next. A break after a strong pause (：！？) counts as a
+ * fifth more size and may go a tenth below the box's own. A title with its
+ * own line breaks keeps them. Null when no break reaches the box's own size:
+ * the usual fit applies.
+ */
+export function fillingHeading(
+  node: FreeformTextElement,
+  text: string,
+  maxSize: number,
+  maxLines = 3,
+): { fontSize: number; text: string } | null {
+  if (node.vertical || maxSize <= node.fontSize) return null
+  const along = node.width - PADDING * 2
+  const room = node.height - PADDING * 2
+  const lineHeight = node.lineHeight ?? DEFAULT_LINE_HEIGHT
+  const spacing = node.letterSpacing ?? 0
+  const weight = node.fontWeight === 'bold' ? 1.04 : 1
+  // Ems and characters of a line, measured as textFits measures (with its
+  // slack), so its widest size is (room - spacing) / ems.
+  const span = (part: string) => {
+    const chars = [...part]
+    const ems = chars.reduce((sum, char) => sum + glyphEm(char) * weight * WIDTH_SAFETY, 0)
+    return { ems, chars: chars.length }
+  }
+  const widest = (parts: readonly string[]) => Math.min(...parts.map((part) => {
+    const { ems, chars } = span(part)
+    return ems > 0 ? (along - spacing * chars) / ems : Infinity
+  }))
+  const tall = (lines: number) => room / (lines * lineHeight)
+  const candidates: Array<{ fontSize: number; text: string; lines: number; score: number }> = []
+  if (text.includes('\n')) {
+    const parts = text.split('\n')
+    const fontSize = Math.min(maxSize, widest(parts), tall(parts.length))
+    if (fontSize >= node.fontSize) candidates.push({ fontSize, text, lines: parts.length, score: fontSize })
+  } else {
+    const words = displayWords(text)
+    if (words.length > 40) return null
+    for (let lines = 1; lines <= Math.min(maxLines, words.length); lines += 1) {
+      const splits: Array<{ fontSize: number; text: string; score: number }> = []
+      const visit = (start: number, left: number, parts: string[]) => {
+        if (left === 1) {
+          const last = words.slice(start).join('').trim()
+          const all = [...parts, last]
+          if (!last || all.some((part, index) => (
+            (index > 0 && (NO_LINE_START.test(part) || NO_DISPLAY_LINE_START.test(part)))
+            || (index < all.length - 1 && (NO_LINE_END.test(part) || NO_DISPLAY_LINE_END.test(part)))
+          ))) return
+          const fontSize = Math.min(maxSize, widest(all), tall(all.length))
+          const strong = all.slice(0, -1).filter((part) => STRONG_PAUSE.test(part)).length
+          if (fontSize < node.fontSize * (strong > 0 ? 0.9 : 1)) return
+          // A break at a strong pause counts a fifth more; on a tie in size the
+          // evener lines win, then a break after a pause, then longer lines
+          // first (周年庆 / 全场, not 周年 / 庆全场).
+          const ems = all.map((part) => span(part).ems)
+          const ragged = ems.reduce((sum, value) => sum + ((Math.max(...ems) - value) / Math.max(...ems)) ** 2, 0)
+          const pauses = all.slice(0, -1).filter((part) => PAUSE.test(part)).length
+          const rising = ems.slice(1).filter((value, index) => value > ems[index]).length
+          splits.push({ fontSize, text: all.join('\n'), score: fontSize * (1 - ragged * 0.02 + pauses * 0.02 + strong * 0.2 - rising * 0.002) })
+          return
+        }
+        for (let end = start + 1; end <= words.length - left + 1; end += 1) {
+          const part = words.slice(start, end).join('').trim()
+          if (part) visit(end, left - 1, [...parts, part])
+        }
+      }
+      visit(0, lines, [])
+      const best = splits.reduce<(typeof splits)[number] | null>((top, split) => (!top || split.score > top.score ? split : top), null)
+      if (best) candidates.push({ fontSize: best.fontSize, text: best.text, lines, score: best.score })
+    }
+  }
+  let chosen: (typeof candidates)[number] | null = null
+  for (const candidate of candidates) {
+    if (!chosen || candidate.score > chosen.score * (candidate.lines > chosen.lines ? 1.1 : 1)) chosen = candidate
+  }
+  if (!chosen) return null
+  return { fontSize: Math.floor(chosen.fontSize), text: chosen.text }
 }
 
 /** Titles joined with " · ", a line broken only between titles where the next would not fit. */

@@ -8,8 +8,8 @@ import { chartLabelFont } from '../../../src/freeform/charts'
 import { tableGeometry } from '../../../src/freeform/tables'
 import { timelineGeometry } from '../../../src/freeform/timeline'
 import type { FreeformDocument, FreeformSceneNode, FreeformSlide, ScenePath } from '../../../src/freeform/types'
-import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
-import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, posterSampleNames, slotSampleNames, type SlideSlots } from '../../../src/templates/slots'
+import { FREEFORM_DECK_LAYOUTS, FREEFORM_POSTER_TEXT_ONLY, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
+import { FREEFORM_POSTER_SLOTS, FREEFORM_TEMPLATE_SLOTS, posterSampleNames, posterTextOnlySlots, slotSampleNames, type PosterSlots, type SlideSlots } from '../../../src/templates/slots'
 import type { DeckLayoutId, FreeformDeckSeriesId, FreeformPosterSeriesId } from '../../../src/templates/types'
 import { emWidth } from './textFit'
 import type { InspectedSlide } from '../render/renderer'
@@ -118,6 +118,7 @@ function namesOfTemplateNodes(): Set<string> {
     }
   }
   for (const slide of deckLayoutSlides()) walkScene(slide.slide.nodes, (node) => names.add(node.name))
+  for (const slide of posterTextOnlySlides()) walkScene(slide.slide.nodes, (node) => names.add(node.name))
   templateNodeNames = names
   return names
 }
@@ -129,6 +130,12 @@ function deckLayoutSlides(): Array<{ slide: FreeformSlide; slots: SlideSlots }> 
       const slots = FREEFORM_TEMPLATE_SLOTS[series].layouts?.[id]
       return slots ? [{ slide: create(), slots }] : []
     }))
+}
+
+/** The posters' text-only drawings, each with the slot spec that fills it. */
+export function posterTextOnlySlides(): Array<{ series: FreeformPosterSeriesId; slide: FreeformSlide; slots: PosterSlots }> {
+  return (Object.entries(FREEFORM_POSTER_TEXT_ONLY) as Array<[FreeformPosterSeriesId, () => FreeformSlide]>)
+    .map(([series, create]) => ({ series, slide: create(), slots: posterTextOnlySlots(series) }))
 }
 
 interface TemplateMarks {
@@ -167,6 +174,7 @@ export function templateMarks(): TemplateMarks {
     document.slides.forEach((slide, index) => mark(slide, new Set(pages[index] ?? [])))
   }
   for (const { slide, slots } of deckLayoutSlides()) mark(slide, new Set(slotSampleNames(slots)))
+  for (const { slide, slots } of posterTextOnlySlides()) mark(slide, new Set(posterSampleNames(slots, { labels: false })))
   marks = result
   return result
 

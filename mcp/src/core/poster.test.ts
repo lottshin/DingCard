@@ -143,16 +143,29 @@ describe('composePoster', () => {
     expect(named(bare, '正文')).toBeUndefined()
   })
 
-  test('puts the picture in the picture slot, or a colour block in a photo frame and nothing where an illustration was', () => {
+  test('puts the picture in the picture slot, and sets a poster that came without one on its text-only page', () => {
     const photo = compose('talk-poster-freeform', { ...TALK, image: 'https://example.com/hall.jpg' })
     const frame = named(photo, '主图') as FreeformShapeElement
     expect(frame.fill).toMatchObject({ type: 'image', src: 'https://example.com/hall.jpg', fit: 'cover' })
-    const block = compose('talk-poster-freeform', TALK)
-    expect((named(block, '主图') as FreeformShapeElement).fill).toEqual({ type: 'solid', color: '#d8d0c2' })
+    expect(photo.summary.layout).toBeUndefined()
+    // No photo: no empty frame, the title takes its place, large, broken between words.
+    const plain = compose('talk-poster-freeform', TALK)
+    expect(plain.summary.layout).toBe('text-only')
+    expect(named(plain, '主图')).toBeUndefined()
+    const title = named(plain, '标题') as FreeformTextElement
+    expect(title.fontSize).toBeGreaterThan(152)
+    expect(title.text.replace(/\n/g, '')).toBe('设计系统的第二年')
+    expect(title.text.split('\n').some((line) => line.startsWith('的'))).toBe(false)
 
     const product = compose('product-card-freeform', { title: '新品', image: 'https://example.com/shoe.png' })
     expect((named(product, '主图') as FreeformImageElement).src).toBe('https://example.com/shoe.png')
-    expect(named(compose('product-card-freeform', { title: '新品' }), '主图')).toBeUndefined()
+    // The product's place goes to the price, set large in the circle; no price, no circle.
+    const priced = compose('product-card-freeform', { title: '新品', tag: '¥59' })
+    expect(named(priced, '主图')).toBeUndefined()
+    expect(named(priced, '价格底')).toBeDefined()
+    expect(named(compose('product-card-freeform', { title: '新品' }), '价格圈')).toBeUndefined()
+    // A poster drawn without a picture has no other page.
+    expect(compose('quote-card-freeform', { title: '一句' }).summary.layout).toBeUndefined()
   })
 
   test('shrinks long copy into its box, places what has no slot where it can, and reports the rest', () => {
@@ -175,7 +188,7 @@ describe('composePoster', () => {
 
   test('continues the information rows where the page has room, in the last row\'s look', () => {
     const lines = ['时间：周六 10:00', '地点：二楼', '费用：免费', '报名：扫码', '咨询：前台']
-    const result = compose('flyer-freeform', { title: '开放日', details: lines })
+    const result = compose('flyer-freeform', { title: '开放日', details: lines, image: 'https://example.com/clay.png' })
     const node = (name: string) => named(result, name) as FreeformTextElement
     expect(result.summary.unplaced).toEqual([])
     expect(result.summary.moved).toEqual([
@@ -189,7 +202,7 @@ describe('composePoster', () => {
     expect(node('信息五').y - node('信息四').y).toBeCloseTo(pitch, 0)
     expect(node('信息四').fontSize).toBe(node('信息三').fontSize)
     // The rows keep clear of the button: on the sale poster the line under them takes the free sign-off.
-    const sale = compose('sale-poster-freeform', { title: '周年庆', details: ['会员双倍积分', '满额赠帆布袋', '当天有效'], cta: '到店领取' })
+    const sale = compose('sale-poster-freeform', { title: '周年庆', details: ['会员双倍积分', '满额赠帆布袋', '当天有效'], cta: '到店领取', image: 'https://example.com/cup.png' })
     expect(sale.summary.moved).toEqual([{ content: 'details', text: '当天有效', node: '品牌' }])
     expect(named(sale, '信息三')).toBeUndefined()
   })
@@ -210,8 +223,33 @@ describe('composePoster', () => {
     expect(full.summary.hint).toContain('副标题「又长大一岁」')
   })
 
+  test('sets a short quote or invitation title large, broken between words, in the middle of its room', () => {
+    const quote = compose('quote-card-freeform', { title: '慢慢来，比较快', subtitle: '—— 给焦虑的十一月' })
+    const title = named(quote, '标题') as FreeformTextElement
+    expect(title.fontSize).toBeGreaterThan(80)
+    expect(title.verticalAlign).toBe('middle')
+    // A long one still shrinks to fit, as before.
+    const long = compose('quote-card-freeform', { title: '把复杂的事情说得简单一些，再简单一些，是一种很难得、需要长期练习的能力。' })
+    expect((named(long, '标题') as FreeformTextElement).fontSize).toBeLessThan(80)
+    const invitation = compose('invitation-freeform', { title: '乔迁小聚', details: ['时间：11 月 16 日 12:00'] })
+    expect((named(invitation, '标题') as FreeformTextElement).fontSize).toBeGreaterThan(108)
+  })
+
+  test('moves a short invitation to the middle of its frame, and a short list to the middle of its rows', () => {
+    const full = compose('invitation-freeform', { title: '年度设计之夜', subtitle: '诚邀您参加', details: ['时间：12 月 20 日', '地点：外滩源', '着装：深色正装'], cta: '敬请回复', brand: '叮卡团队' })
+    const short = compose('invitation-freeform', { title: '乔迁小聚', details: ['时间：11 月 16 日 12:00'] })
+    // With less on it, the column comes down from under the masthead.
+    expect((named(short, '标题') as FreeformTextElement).y).toBeGreaterThan((named(full, '标题') as FreeformTextElement).y + 100)
+    const prices = compose('price-list-freeform', { title: '理发价目表', details: ['剪发：45', '剪+吹：58'] })
+    const first = named(prices, '项目一') as FreeformTextElement
+    const second = named(prices, '项目二') as FreeformTextElement
+    // Two rows of eight: 1.6 times as far apart at most, in the middle of the rows' span.
+    expect(second.y - first.y).toBeCloseTo(96 * 1.6, 0)
+    expect(first.y).toBeCloseTo(676 + (96 * 7 - 96 * 1.6) / 2, 0)
+  })
+
   test('shrinks a badge\'s words further than copy so they stay inside it', () => {
-    const result = compose('product-card-freeform', { title: '珐琅小奶锅', tag: '新品 9 折' })
+    const result = compose('product-card-freeform', { title: '珐琅小奶锅', tag: '新品 9 折', image: 'https://example.com/pot.png' })
     const tag = named(result, '角标') as FreeformTextElement
     // Below the 72% copy may go, inside the badge, nothing left overflowing.
     expect(tag.fontSize).toBeLessThan(110 * 0.72)
