@@ -54,6 +54,9 @@ RUN PLAYWRIGHT_DRIVER="$(node -e "console.log(require('./server/node_modules/pla
     && apt-get update \
     && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
+# Templates set their words in PingFang SC, which only Apple systems have:
+# set it in Noto Sans CJK SC instead of falling back font by font.
+COPY deploy/fontconfig.conf /etc/fonts/local.conf
 
 COPY --from=server-deps /app/server/node_modules ./server/node_modules
 COPY server/package.json ./server/package.json

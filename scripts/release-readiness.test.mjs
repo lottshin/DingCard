@@ -184,6 +184,7 @@ test('CI invokes repository contracts and existing verification commands', () =>
   ]) {
     assert.match(workflow, new RegExp(escapeRegExp(command)), `CI must run ${command}`)
   }
+  assert.match(workflow, /cp deploy\/fontconfig\.conf \/etc\/fonts\/local\.conf\n\s*- run: npm --prefix mcp run test:render/, 'the render tests run with the image\'s fonts')
   assert.match(workflow, /contents:\s*read/)
   assert.match(workflow, /package-lock\.json[\s\S]*server\/package-lock\.json[\s\S]*mcp\/package-lock\.json/)
   assert.match(workflow, /hashFiles\('test-results\/\*\*\/\*'\)/)
@@ -587,6 +588,8 @@ test('root Dockerfile builds the frontend and server into a non-root Node image'
   )
   assert.doesNotMatch(dockerfile, /playwright@1\.\d+\.\d+ install/, 'no hardcoded Chromium driver pin to drift out of sync')
   assert.match(dockerfile, /fonts-noto-cjk/, 'the image carries CJK fonts so Chinese cards render correctly')
+  assert.match(dockerfile, /COPY deploy\/fontconfig\.conf \/etc\/fonts\/local\.conf/, 'the image sets PingFang SC in Noto Sans CJK SC')
+  assert.match(read('deploy/fontconfig.conf'), /<family>PingFang SC<\/family>\s*<prefer><family>Noto Sans CJK SC<\/family><\/prefer>/)
 
   for (const setting of [
     'NODE_ENV=production',

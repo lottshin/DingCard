@@ -65,6 +65,8 @@ jobs:
           DINGCARD_FULL_E2E: "1"
       - run: npm run build
       - run: npm --prefix mcp run build
+      # Render as the image does: PingFang SC (Apple only) set in Noto Sans CJK SC.
+      - run: sudo cp deploy/fontconfig.conf /etc/fonts/local.conf
       - run: npm --prefix mcp run test:render
       - name: Upload Playwright results
         if: ${{ failure() && hashFiles('test-results/**/*') != '' }}
