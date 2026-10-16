@@ -182,6 +182,8 @@ test('a page never ends on a heading: it moves over with what it introduces', as
     '第二段也有几行字，标题后面总要跟着正文才好读。'.repeat(2),
   ].join('\n'))
   await setDoc(page, ['# 一篇很长的文章', '', ...sections].join('\n\n'))
+  // The pages are set again once the new text is in: wait for its title on the first.
+  await expect(page.locator('.stage .card-content h1')).toHaveText('一篇很长的文章')
   const count = await page.locator('.page-dot').count()
   expect(count).toBeGreaterThan(3)
   for (let index = 0; index < count - 1; index += 1) {

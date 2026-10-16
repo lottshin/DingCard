@@ -2,6 +2,7 @@
 // the selected web font before export.
 
 import { expect, test } from '@playwright/test'
+import { FREEFORM_FONTS } from '../src/theme'
 import {
   clickLocatorCenter,
   freeformElementPositions,
@@ -325,7 +326,7 @@ test('font menu closes on Tab without trapping focus and handles Space selection
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('Space')
   await expect(page.getByRole('listbox')).toHaveCount(0)
-  await expect(trigger).toContainText('系统默认')
+  await expect(trigger).toContainText(FREEFORM_FONTS[FREEFORM_FONTS.length - 1].label)
 })
 
 test('font listbox keeps option identity across dynamic options and guards the empty state', async ({ page }) => {
