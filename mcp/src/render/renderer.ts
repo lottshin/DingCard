@@ -288,7 +288,9 @@ async function runInBrowser(payload: RenderPayload, port: number): Promise<PageR
       },
       payload,
     )
-    await page.goto(`http://127.0.0.1:${port}/render.html`, { waitUntil: 'load' })
+    // The page loads the web fonts from Google Fonts before it fires load: a
+    // slow fetch is not a failed render, so it gets the render's time, not 30 seconds.
+    await page.goto(`http://127.0.0.1:${port}/render.html`, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS })
     await page.waitForFunction(
       () =>
         (globalThis as unknown as Record<string, unknown>).__DINGCARD_RENDER_RESULT__
