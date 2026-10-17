@@ -11,9 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# One Ubuntu release, not the moving latest label: the browser job installs
+# Chrome's libraries and CJK fonts, and the render tests measure text in them.
+# A new Ubuntu comes in on its own branch, not under a release.
 jobs:
   static:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -43,7 +46,7 @@ jobs:
 
   browser:
     needs: static
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -78,7 +81,7 @@ jobs:
 
   container:
     needs: static
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7

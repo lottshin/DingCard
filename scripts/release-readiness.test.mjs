@@ -198,9 +198,10 @@ test('CI invokes repository contracts and existing verification commands', () =>
   assert.match(workflow, /yaml\.safe_load/)
   assert.match(workflow, /pathlib\.Path\('\.github\/workflows'\)\.glob\('\*\.yml'\)/)
   assert.match(workflow, /publish-image\.yml/)
-  assert.match(workflow, /^  static:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10$/m)
-  assert.match(workflow, /^  browser:\n    needs: static\n    runs-on: ubuntu-latest\n    timeout-minutes: 20$/m)
-  assert.match(workflow, /^  container:\n    needs: static\n    runs-on: ubuntu-latest\n    timeout-minutes: 15$/m)
+  assert.match(workflow, /^  static:\n    runs-on: ubuntu-24\.04\n    timeout-minutes: 10$/m)
+  assert.match(workflow, /^  browser:\n    needs: static\n    runs-on: ubuntu-24\.04\n    timeout-minutes: 20$/m)
+  assert.match(workflow, /^  container:\n    needs: static\n    runs-on: ubuntu-24\.04\n    timeout-minutes: 15$/m)
+  assert.doesNotMatch(workflow, /ubuntu-latest/, 'CI runs on a pinned Ubuntu')
 })
 
 test('tag releases publish and anonymously verify the multi-architecture GHCR image', () => {
@@ -211,6 +212,7 @@ test('tag releases publish and anonymously verify the multi-architecture GHCR im
   )
 
   const workflow = read('.github/workflows/publish-image.yml')
+  assert.doesNotMatch(workflow, /ubuntu-latest/, 'the image is built and smoke-tested on a pinned Ubuntu')
   assert.match(workflow, /^on:\s*\n\s{2}push:\s*\n\s{4}tags:\s*\n\s{6}- ['"]v\*['"]\s*$/m)
   assert.doesNotMatch(workflow, /branches:/)
   const workflowPreamble = workflow.split(/^jobs:\s*$/m)[0]
