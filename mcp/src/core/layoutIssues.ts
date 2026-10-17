@@ -92,6 +92,8 @@ const ORNAMENT_AREA_RATIO = 0.2
 const ALIGNMENT_ISSUES_PER_PAGE = 3
 /** A band across the page with nothing in it, taller than this share of the page, reads as unfinished. */
 const EMPTY_BAND = 0.25
+/** A block set in the page's middle may leave up to this share empty above it and below it, each. */
+const CENTRED_BAND = 0.35
 /** A shape over this share of the page is the page's ground, not something on it. */
 const BACKDROP_SHARE = 0.6
 /** What is smaller than this share of the page (a dot, a sparkle) doesn't fill a band. */
@@ -711,7 +713,8 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
     // What reads as unfinished: a band across the page with nothing in it,
     // and a plain block (a picture's place) with nothing on it. Things are
     // taken where the page shows them, words by their lines; a shape with
-    // things set inside it is their card, not something of its own.
+    // things set inside it is their card, not something of its own, unless
+    // they sit in its middle.
     const pageArea = slide.width * slide.height
     const wordsOf = new Map(texts.map((text) => [text.nodeId, text.area]))
     // Judged only off a page measured whole: a node the render left out would read as a hole.
@@ -726,10 +729,11 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
       return rect && rect.width > 0 && rect.height > 0 ? [{ node, rect, z }] : []
     })
     type Shown = (typeof shown)[number]
-    const holdsAbove = (entry: Shown) => shown.some((other) => other.z > entry.z
+    const heldBy = (entry: Shown) => shown.filter((other) => other.z > entry.z
       && other.rect.x >= entry.rect.x - 1 && other.rect.y >= entry.rect.y - 1
       && other.rect.x + other.rect.width <= entry.rect.x + entry.rect.width + 1
       && other.rect.y + other.rect.height <= entry.rect.y + entry.rect.height + 1)
+    const holdsAbove = (entry: Shown) => heldBy(entry).length > 0
     const isPicture = (node: LeafNode) => node.type === 'image' || (node.type === 'shape' && node.fill.type === 'image')
 
     // A picture page is never blank.
@@ -743,20 +747,41 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         if (share >= BACKDROP_SHARE || share < ORNAMENT_SHARE) return false
         return !((node.type === 'shape' || node.type === 'path') && holdsAbove(entry))
       })
-      const spans = fills
+      // A card round words set in its middle (a price circle, a note on tape)
+      // shows its own edge above and below them: that margin is the card's.
+      const margins = shown.flatMap((entry) => {
+        const { node, rect } = entry
+        if ((node.type !== 'shape' && node.type !== 'path') || isPicture(node)) return []
+        const share = (rect.width * rect.height) / pageArea
+        const held = heldBy(entry)
+        if (share >= BACKDROP_SHARE || share < ORNAMENT_SHARE || held.length === 0) return []
+        const top = Math.min(...held.map((other) => other.rect.y))
+        const bottom = Math.max(...held.map((other) => other.rect.y + other.rect.height))
+        if (Math.abs((top - rect.y) - (rect.y + rect.height - bottom)) > rect.height * 0.2) return []
+        return [{ rect }]
+      })
+      const spans = [...fills, ...margins]
         .map(({ rect }) => [Math.max(0, rect.y), Math.min(slide.height, rect.y + rect.height)] as const)
         .filter(([top, bottom]) => bottom > top)
         .sort((a, b) => a[0] - b[0])
       if (spans.length === 0) {
         issue('empty-band', null, '这一页什么都没有：放上内容，或者删掉这一页。')
       } else {
-        let gap = { top: 0, bottom: spans[0][0] }
+        const head = spans[0][0]
+        let gap = { top: 0, bottom: 0 }
         let reach = spans[0][1]
         for (const [top, bottom] of spans.slice(1)) {
           if (top - reach > gap.bottom - gap.top) gap = { top: reach, bottom: top }
           reach = Math.max(reach, bottom)
         }
-        if (slide.height - reach > gap.bottom - gap.top) gap = { top: reach, bottom: slide.height }
+        const foot = slide.height - reach
+        // Even room above and below a block set in the middle frames it,
+        // up to a point; room on one side only is a page left unfinished.
+        const centred = Math.abs(head - foot) <= slide.height * 0.1 && Math.max(head, foot) <= slide.height * CENTRED_BAND
+        if (!centred) {
+          if (head > gap.bottom - gap.top) gap = { top: 0, bottom: head }
+          if (foot > gap.bottom - gap.top) gap = { top: reach, bottom: slide.height }
+        }
         const share = (gap.bottom - gap.top) / slide.height
         if (share > EMPTY_BAND) {
           const top = Math.round(gap.top)

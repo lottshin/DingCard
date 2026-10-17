@@ -661,6 +661,26 @@ describe('how full a page is', () => {
     expect(found(onPage([])).map((issue) => issue.message)).toEqual(['这一页什么都没有：放上内容，或者删掉这一页。'])
   })
 
+  test('a block set in the middle may leave even room above and below it, but not too much, and not on one side', () => {
+    // 1440 tall: a block from 470 to 970 leaves 470 above (33%) and 470 below (33%).
+    expect(found(onPage([text('标题', { y: 470, height: 200 }), text('正文', { y: 700, height: 270 })]))).toEqual([])
+    // Room on one side only is still reported: the same block 100px lower leaves 26% below and 39% above.
+    expect(found(onPage([text('标题', { y: 570, height: 200 }), text('正文', { y: 800, height: 270 })]))[0].message).toContain('页面最上面 570px 都是空的')
+    // A small block in the middle leaves too much: 560 above and below is 39% each.
+    expect(found(onPage([text('标题', { y: 560, height: 320 })]))[0].message).toContain('页面最上面 560px 都是空的')
+    // A band in the middle of the page is reported however even its ends are.
+    expect(found(onPage([text('标题', { y: 300, height: 120 }), text('页脚', { y: 1020, height: 120 })]))[0].message).toContain('页面 420–1020px 这一段是空的')
+  })
+
+  test('a card with its words in its middle is filled to its edges; one with its words at its top is not', () => {
+    // A 840-tall card from 300 to 1140 (a price circle, a note on tape): words in its middle make the card the content.
+    const centred = onPage([card('卡片', '#ffffff', { x: 190, y: 300, width: 700, height: 840 }), text('卡片字', { x: 240, y: 680, height: 80 })])
+    expect(found(centred)).toEqual([])
+    // The same words at its top: the card is their ground, the rest of it is empty.
+    const high = onPage([card('卡片', '#ffffff', { x: 190, y: 300, width: 700, height: 840 }), text('卡片字', { x: 240, y: 340, height: 80 })])
+    expect(found(high).map((issue) => issue.message)).toEqual([expect.stringContaining('页面 420px 以下都是空的')])
+  })
+
   test('rules fill the rows they run along, a card is judged by what it holds, and a picture page is never blank', () => {
     // A title and a rule every 300px: no band runs a quarter of the page.
     expect(found(onPage([text('标题', { y: 80, height: 120 }), ...[400, 700, 1000, 1300].map((y, index) => rule(`分隔线${index}`, y))]))).toEqual([])
