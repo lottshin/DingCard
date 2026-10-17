@@ -670,43 +670,44 @@ function SceneLeafContent({
           )
         })()}
         {leaf.chartKind === 'ring' && (() => {
-          const chart = ringChartGeometry(leaf.series, { showValues, showLegend: leaf.showLegend })
-          // The ring is laid out in a 100-unit square: draw that square as
-          // large as the box allows, centred, so the ring fills the chart.
-          const side = Math.max(1, Math.min(leaf.width, leaf.height))
+          const chart = ringChartGeometry(leaf.width, leaf.height, leaf.labels, leaf.series, { showValues, showLegend: leaf.showLegend })
+          // The rings are laid out in a 100-unit square, drawn where the
+          // layout puts it beside or above the key (centred without one).
           return (
-            <svg
-              x={(leaf.width - side) / 2}
-              y={(leaf.height - side) / 2}
-              width={side}
-              height={side}
-              viewBox="0 0 100 100"
-              overflow="visible"
-              data-testid="freeform-chart-ring"
-            >
-              {chart.segments.length === 0
-                ? <circle cx={50} cy={50} r={34} fill="none" stroke={chart.track} strokeWidth={17} />
-                : chart.segments.map((segment, index) => (
-                  <path key={index} d={segment.d} fill={segment.color} data-testid="freeform-chart-segment" />
+            <>
+              <svg
+                x={chart.ring.x}
+                y={chart.ring.y}
+                width={chart.ring.side}
+                height={chart.ring.side}
+                viewBox="0 0 100 100"
+                overflow="visible"
+                data-testid="freeform-chart-ring"
+              >
+                {chart.segments.length === 0
+                  ? <circle cx={50} cy={50} r={34} fill="none" stroke={chart.track} strokeWidth={17} />
+                  : chart.segments.map((segment, index) => (
+                    <path key={index} d={segment.d} fill={segment.color} data-testid="freeform-chart-segment" />
+                  ))}
+                {chart.segments.map((segment, index) => (
+                  segment.label && (
+                    <text
+                      key={index}
+                      x={segment.label.x}
+                      y={segment.label.y}
+                      textAnchor="middle"
+                      fontFamily="inherit"
+                      fontSize={7}
+                      fontWeight={600}
+                      fill="#ffffff"
+                    >
+                      {segment.label.text}
+                    </text>
+                  )
                 ))}
-              {chart.segments.map((segment, index) => (
-                segment.label && (
-                  <text
-                    key={index}
-                    x={segment.label.x}
-                    y={segment.label.y}
-                    textAnchor="middle"
-                    fontFamily="inherit"
-                    fontSize={7}
-                    fontWeight={600}
-                    fill="#ffffff"
-                  >
-                    {segment.label.text}
-                  </text>
-                )
-              ))}
-              {legend(chart.legend, 6.5)}
-            </svg>
+              </svg>
+              {legend(chart.legend, chart.legendFont)}
+            </>
           )
         })()}
       </svg>

@@ -252,22 +252,60 @@ describe('chart geometry', () => {
   })
 
   it('a ring splits proportional arcs with labels on big slices', () => {
-    const chart = ringChartGeometry([{ values: [1, 1, 2], color: '#1d4ed8' }], { showValues: true })
+    // Without its key a single ring carries its values on the slices.
+    const bare = { showValues: true, showLegend: false }
+    const chart = ringChartGeometry(400, 400, ['甲', '乙', '丙'], [{ values: [1, 1, 2], color: '#1d4ed8' }], bare)
     expect(chart.segments).toHaveLength(3)
     // Half the ring belongs to the third slice; every slice shares ≥ 10%.
     expect(chart.segments.every((segment) => segment.label)).toBe(true)
     expect(chart.segments[2].label!.text).toBe('50%')
     // An all-zero series draws only the empty track.
-    const empty = ringChartGeometry([{ values: [0, 0], color: '#1d4ed8' }], { showValues: true })
+    const empty = ringChartGeometry(400, 400, ['甲', '乙'], [{ values: [0, 0], color: '#1d4ed8' }], bare)
     expect(empty.segments).toEqual([])
     // Small slices stay unlabelled even when values are asked for.
-    const tiny = ringChartGeometry([{ values: [95, 5], color: '#1d4ed8' }], { showValues: true })
+    const tiny = ringChartGeometry(400, 400, ['甲', '乙'], [{ values: [95, 5], color: '#1d4ed8' }], bare)
     expect(tiny.segments[0].label).not.toBeNull()
     expect(tiny.segments[1].label).toBeNull()
+    // No key: the rings take the box's largest centred square, as they always did.
+    expect(chart.ring).toEqual({ x: 0, y: 0, side: 400 })
+    expect(ringChartGeometry(600, 400, ['甲', '乙'], [{ values: [1, 1], color: '#1d4ed8' }], bare).ring).toEqual({ x: 100, y: 0, side: 400 })
+  })
+
+  it('a single ring names its slices, in its tints, beside the ring or under it', () => {
+    const labels = ['硬装', '家具', '电器', '软装']
+    const budget = [{ name: '预算', values: [40, 25, 20, 15], color: '#1d4ed8' }]
+    // Two slices or more name themselves; with values each name carries its share, and the slices none.
+    const wide = ringChartGeometry(920, 640, labels, budget, { showValues: true })
+    expect(wide.legend.map((item) => item.text)).toEqual(['硬装 40%', '家具 25%', '电器 20%', '软装 15%'])
+    expect(wide.legend.map((item) => item.color)).toEqual(chartPointColors('ring', 4, '#1d4ed8'))
+    expect(wide.segments.every((segment) => segment.label === null)).toBe(true)
+    // A wide box: the names in a column right of the ring, the two centred, nothing past the box.
+    expect(wide.ring.side).toBe(640)
+    expect(wide.legend.every((item) => item.x > wide.ring.x + wide.ring.side)).toBe(true)
+    expect(new Set(wide.legend.map((item) => item.x)).size).toBe(1)
+    expect(wide.ring.x).toBeGreaterThan(0)
+    expect(wide.legendFont).toBeGreaterThanOrEqual(20)
+    // A square box: the names in rows under the ring, which keeps most of the box.
+    const square = ringChartGeometry(600, 600, labels, budget, { showValues: false })
+    expect(square.legend.map((item) => item.text)).toEqual(labels)
+    expect(square.legend.every((item) => item.y > square.ring.y + square.ring.side)).toBe(true)
+    expect(square.ring.side).toBeGreaterThanOrEqual(600 * 0.6)
+    expect(Math.max(...square.legend.map((item) => item.y))).toBeLessThanOrEqual(600)
+    // Twelve long names in a small box: the words shrink, the ring keeps its share of the box.
+    const many = Array.from({ length: 12 }, (_, index) => `第 ${index + 1} 个开销类目`)
+    const crowded = ringChartGeometry(480, 320, many, [{ values: many.map(() => 1), color: '#1d4ed8' }], { showValues: false })
+    expect(crowded.legend).toHaveLength(12)
+    expect(crowded.legendFont).toBeLessThan(wide.legendFont)
+    expect(Math.max(...crowded.legend.map((item) => item.y))).toBeLessThanOrEqual(320)
+    // One slice names nothing unless asked; the switch hides the names.
+    const whole = [{ values: [1], color: '#1d4ed8' }]
+    expect(ringChartGeometry(400, 400, ['全部'], whole, { showValues: false }).legend).toEqual([])
+    expect(ringChartGeometry(400, 400, ['全部'], whole, { showValues: false, showLegend: true }).legend.map((item) => item.text)).toEqual(['全部'])
+    expect(ringChartGeometry(920, 640, labels, budget, { showValues: false, showLegend: false }).legend).toEqual([])
   })
 
   it('two series nest a second ring inside the first', () => {
-    const chart = ringChartGeometry([
+    const chart = ringChartGeometry(400, 400, ['甲', '乙'], [
       { name: '去年', values: [1, 1], color: '#1d4ed8' },
       { name: '今年', values: [3, 1], color: '#e11d48' },
     ], { showValues: true })
@@ -294,8 +332,9 @@ describe('chart legend switch', () => {
       .legend.map((item) => item.text)).toEqual(['今年'])
     expect(radarChartGeometry(400, 320, ['一', '二'], single, { showValues: false, showLegend: true })
       .legend.map((item) => item.text)).toEqual(['今年'])
-    expect(ringChartGeometry(single, { showValues: false, showLegend: true })
-      .legend.map((item) => item.text)).toEqual(['今年'])
+    // A single ring's key names its slices, not its series.
+    expect(ringChartGeometry(400, 400, ['一', '二'], single, { showValues: false, showLegend: true })
+      .legend.map((item) => item.text)).toEqual(['一', '二'])
     // `false` hides a legend two named series would otherwise earn, and the
     // plot takes the freed room back.
     const pair = [
@@ -307,7 +346,7 @@ describe('chart legend switch', () => {
     expect(auto.legend).toHaveLength(2)
     expect(hidden.legend).toEqual([])
     expect(hidden.bars[0].y).toBeLessThan(auto.bars[0].y)
-    expect(ringChartGeometry(pair, { showValues: false, showLegend: false }).legend).toEqual([])
+    expect(ringChartGeometry(400, 400, ['一', '二'], pair, { showValues: false, showLegend: false }).legend).toEqual([])
     // The switch itself stays readable: false never shows, absent needs two.
     expect(legendVisible(undefined, 2)).toBe(true)
     expect(legendVisible(undefined, 1)).toBe(false)

@@ -590,21 +590,38 @@ export function radarChartGeometry(
 }
 
 export interface ChartRingGeometry {
-  /** One flat list: the outermost series' segments first. */
+  /** Where the rings' 100-unit square sits in the chart's box, in its pixels. */
+  ring: { x: number; y: number; side: number }
+  /** One flat list: the outermost series' segments first, in the square's units. */
   segments: ChartRingSegment[]
   /** The hole colour, drawn under the segments. */
   track: string
+  /** The key, in the chart's pixels: a single ring's slices, or several rings. */
   legend: ChartLegendItem[]
+  /** The key's text size in the chart's pixels (0 without a key). */
+  legendFont: number
 }
 
+/** A row of the ring's key, in its text size. */
+const RING_KEY_ROW = 1.7
+/** The least share of the box's square the rings keep beside or above their key. */
+const RING_KEY_MIN_SIDE = 0.6
+
 /** A ring chart: proportional arcs around a hollow centre; every series adds
- *  another ring, the first on the outside. */
+ *  another ring, the first on the outside. Its key sits beside or under the
+ *  rings (ringKeyEntries says what it names). */
 export function ringChartGeometry(
+  width: number,
+  height: number,
+  labels: readonly string[],
   series: readonly ChartSeriesInput[],
   options: { showValues: boolean; showLegend?: boolean },
 ): ChartRingGeometry {
   const colors = series.map((entry) => entry.color)
   const track = tintTowardWhite(colors[0], 0.82)
+  const entries = ringKeyEntries(labels, series, options)
+  // A key that gives each slice its share takes the values off the ring.
+  const valuesOnRing = options.showValues && !(series.length === 1 && entries.length > 0)
   const center = 50
   // The single-series ring keeps its v24 shape: a 17-unit band at radius 34.
   const outerEdge = 42.5
@@ -637,7 +654,7 @@ export function ringChartGeometry(
       const y3 = center + inner * Math.sin(start)
       const largeArc = sweep > Math.PI ? 1 : 0
       const d = `M${x0.toFixed(2)} ${y0.toFixed(2)} A${outer.toFixed(2)} ${outer.toFixed(2)} 0 ${largeArc} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)} A${inner.toFixed(2)} ${inner.toFixed(2)} 0 ${largeArc} 0 ${x3.toFixed(2)} ${y3.toFixed(2)} Z`
-      const label = options.showValues && share >= 0.1
+      const label = valuesOnRing && share >= 0.1
         ? {
           x: center + radius * Math.cos((start + end) / 2),
           y: center + radius * Math.sin((start + end) / 2) + 2.6,
@@ -647,30 +664,111 @@ export function ringChartGeometry(
       segments.push({ d, color: pointColors[pointIndex], label })
     })
   })
-  return { segments, track, legend: ringLegendLayout(series, options.showLegend).items }
+  return { segments, track, ...ringKeyLayout(width, height, entries) }
 }
 
-/** The ring's legend sits under the rings, in the same 100-box units. */
-function ringLegendLayout(
+/**
+ * What a ring's key names: what its colours tell apart. A single ring's
+ * colours are its slices, so its key lists the categories in the ring's
+ * tints, each with its share when values are on; automatically once there
+ * are two slices, `true` from one, `false` never. Several rings each take
+ * their series' colour, so their key lists the named series by the legend
+ * rule (v31).
+ */
+function ringKeyEntries(
+  labels: readonly string[],
   series: readonly ChartSeriesInput[],
-  showLegend?: boolean,
-): { items: ChartLegendItem[] } {
+  options: { showValues: boolean; showLegend?: boolean },
+): Array<{ color: string; text: string }> {
+  if (series.length === 1) {
+    if (options.showLegend === false || labels.length < (options.showLegend === true ? 1 : 2)) return []
+    const [only] = series
+    const tints = chartPointColors('ring', labels.length, only.color)
+    const total = only.values.reduce((sum, value) => sum + value, 0)
+    return labels.map((label, index) => ({
+      color: tints[index],
+      text: options.showValues && total > 0 ? `${label} ${Math.round(((only.values[index] ?? 0) / total) * 100)}%` : label,
+    }))
+  }
   const named = series.filter((entry) => (entry.name ?? '').trim().length > 0)
-  if (!legendVisible(showLegend, named.length)) return { items: [] }
-  const texts = named.map((entry) => entry.name!.trim())
-  const fontSize = 6.5
-  const chip = 4.2
-  const gap = 4
-  const itemWidths = texts.map((text) => chip + 1.6 + text.length * fontSize * 0.62 + gap)
-  const rowWidth = itemWidths.reduce((sum, item) => sum + item, 0) - gap
-  let x = Math.max(2, 50 - rowWidth / 2)
-  const y = 97
-  const items = named.map((entry, index) => {
-    const item = { x, y, color: entry.color, text: texts[index] }
-    x += itemWidths[index]
-    return item
-  })
-  return { items }
+  if (!legendVisible(options.showLegend, named.length)) return []
+  return named.map((entry) => ({ color: entry.color, text: entry.name!.trim() }))
+}
+
+/**
+ * The rings and their key in the chart's box: the key in a column beside
+ * the rings when the box is wider than tall, else in rows under them, at
+ * the largest text that leaves the rings most of the box, the two centred
+ * together. Without a key the rings take the largest centred square.
+ */
+function ringKeyLayout(
+  width: number,
+  height: number,
+  entries: ReadonlyArray<{ color: string; text: string }>,
+): Pick<ChartRingGeometry, 'ring' | 'legend' | 'legendFont'> {
+  const square = Math.max(1, Math.min(width, height))
+  if (entries.length === 0) return { ring: { x: (width - square) / 2, y: (height - square) / 2, side: square }, legend: [], legendFont: 0 }
+  // An entry: the chip, a gap and the words (the view draws the chip 0.62 of the text size wide).
+  const entryWidth = (text: string, font: number) => font * 0.96 + chartLabelWidth(text, font)
+  const beside = (font: number) => {
+    const keyWidth = Math.max(...entries.map((entry) => entryWidth(entry.text, font)))
+    const keyHeight = entries.length * font * RING_KEY_ROW
+    const gap = font * 1.6
+    const side = Math.min(height, width - keyWidth - gap)
+    if (keyHeight > height || side <= 0) return null
+    const left = (width - (side + gap + keyWidth)) / 2
+    const top = (height - keyHeight) / 2
+    return {
+      side,
+      ring: { x: left, y: (height - side) / 2, side },
+      legend: entries.map((entry, index) => ({
+        x: left + side + gap,
+        y: top + index * font * RING_KEY_ROW + font * 1.15,
+        color: entry.color,
+        text: entry.text,
+      })),
+    }
+  }
+  const below = (font: number) => {
+    const spacing = font * 1.2
+    const rows: Array<Array<{ entry: { color: string; text: string }; width: number }>> = [[]]
+    let rowWidth = 0
+    for (const entry of entries) {
+      const itemWidth = entryWidth(entry.text, font)
+      if (rows[rows.length - 1].length > 0 && rowWidth + spacing + itemWidth > width) {
+        rows.push([])
+        rowWidth = 0
+      }
+      const row = rows[rows.length - 1]
+      rowWidth += (row.length > 0 ? spacing : 0) + itemWidth
+      row.push({ entry, width: itemWidth })
+    }
+    const keyHeight = rows.length * font * RING_KEY_ROW
+    const gap = font * 0.8
+    const side = Math.max(1, Math.min(width, height - keyHeight - gap))
+    const top = Math.max(0, (height - (side + gap + keyHeight)) / 2)
+    const legend = rows.flatMap((row, rowIndex) => {
+      const across = row.reduce((sum, item) => sum + item.width, 0) + spacing * (row.length - 1)
+      let x = Math.max(0, (width - across) / 2)
+      const y = top + side + gap + rowIndex * font * RING_KEY_ROW + font * 1.15
+      return row.map((item) => {
+        const placed = { x, y, color: item.entry.color, text: item.entry.text }
+        x += item.width + spacing
+        return placed
+      })
+    })
+    return { side, ring: { x: (width - side) / 2, y: top, side }, legend }
+  }
+  const largest = Math.floor(Math.max(10, Math.min(CHART_FONT_SIZE_MAX, square * 0.05)))
+  for (const place of width > height * 1.15 ? [beside, below] : [below, beside]) {
+    // The words shrink before the rings give up more of the box.
+    for (let font = largest; font >= 10; font -= 1) {
+      const placed = place(font)
+      if (placed && placed.side >= square * RING_KEY_MIN_SIDE) return { ring: placed.ring, legend: placed.legend, legendFont: font }
+    }
+  }
+  const smallest = below(10)
+  return { ring: smallest.ring, legend: smallest.legend, legendFont: 10 }
 }
 
 /** Chart numbers stay short: integers as-is, decimals to one place. */

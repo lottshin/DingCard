@@ -152,11 +152,13 @@ test('switches kinds and styles with one history entry each', async ({ page }) =
   await insertChart(page)
   const chart = page.getByTestId('freeform-chart')
 
-  // Ring: three sample segments with the 50%-largest labelled only when asked.
+  // Ring: no bars, the sample's four segments, a key naming them, and no
+  // percentages until values are asked for.
   await page.getByTestId('chart-kind-ring').click()
-  await expect(chart.locator('rect')).toHaveCount(0)
+  await expect(chart.locator('rect:not([data-testid="freeform-chart-legend-item"] rect)')).toHaveCount(0)
   const segments = chart.locator('[data-testid="freeform-chart-segment"]')
   await expect(segments).toHaveCount(4)
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(4)
   await expect(chart.getByText('%')).toHaveCount(0)
 
   // Line: a polyline with a dot per point.
@@ -212,10 +214,11 @@ test('adds a second series with grouped bars, a legend and nested rings', async 
   await page.getByTestId('chart-kind-ring').click()
   await expect(chart.locator('[data-testid="freeform-chart-segment"]')).toHaveCount(8)
 
-  // Removing the second series leaves the first, legend gone with it.
+  // Removing the second series leaves one ring: its key names its four slices, not the series.
   await page.getByTestId('chart-series-remove').click()
   await expect(chart.locator('[data-testid="freeform-chart-segment"]')).toHaveCount(4)
-  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(0)
+  await expect(chart.locator('[data-testid="freeform-chart-legend-item"]')).toHaveCount(4)
+  await expect(chart.getByText('去年')).toHaveCount(0)
 })
 
 test('recolors every series at once with one-tap palettes', async ({ page }) => {

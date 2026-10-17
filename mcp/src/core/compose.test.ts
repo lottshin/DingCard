@@ -389,11 +389,13 @@ describe('deck data elements', () => {
     }
     const nodes = composed.document.slides.flatMap((slide) => slide.nodes)
     const chart = nodes.find((node) => node.type === 'chart')
+    // A ring is parts of a whole: its values are on, so its key gives each slice its share.
     expect(chart).toMatchObject({
       type: 'chart',
       chartKind: 'ring',
       labels: ['一月', '二月', '三月'],
       series: [{ name: '阅读', values: [120, 240, 480] }],
+      showValues: true,
     })
     const table = nodes.find((node) => node.type === 'table')
     expect(table).toMatchObject({

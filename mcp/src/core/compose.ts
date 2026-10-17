@@ -1038,6 +1038,8 @@ function elementNode(
         values: [...entry.values],
         color: entry.color ?? colors[index],
       })),
+      // A ring is parts of a whole: its key gives each slice its share.
+      ...(chart.kind === 'ring' ? { showValues: true as const } : {}),
       ink: palette.ink,
     }
   }
