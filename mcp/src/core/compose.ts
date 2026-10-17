@@ -972,8 +972,9 @@ function drawingWants(
     }
     case 'timeline': {
       const items = element.timeline.items.length
-      // Down a spine when the page has the height for it, else side by side.
-      const stacked = items * (feature ? 120 : 104)
+      // Down a spine when the page has the height for it, else side by side;
+      // a data page's rows are tall enough for display-sized words.
+      const stacked = items * (feature ? 150 : 104)
       if (room >= stacked * 0.8 || items > 5 || width < 600) {
         return { height: stacked, minHeight: items * 56, minWidth: 320 }
       }

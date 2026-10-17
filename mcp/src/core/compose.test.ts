@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { TIMELINE_FONT_SIZE_MAX, timelineGeometry } from '../../../src/freeform/timeline'
 import type { FreeformDocument, FreeformLineElement, FreeformTextElement } from '../../../src/freeform/types'
 import { FREEFORM_DECK_LAYOUTS } from '../../../src/templates/registry'
 import { composeDeck, largestFreeRectangleFor, layoutFor, normalizeDeckContent, type DeckContent } from './compose'
@@ -441,11 +442,12 @@ describe('deck data elements', () => {
     const [stacked, across] = nodes.filter((node) => node.type === 'timeline')
     if (stacked?.type !== 'timeline' || across?.type !== 'timeline') throw new Error('no timelines')
     // Under a section page's words there is the height for three entries stacked, body-sized;
-    // a data page gives each entry more of it.
+    // a data page gives each entry rows tall enough for display-sized words.
     expect(stacked.horizontal).toBeUndefined()
     expect(stacked.height).toBeGreaterThanOrEqual(3 * 104 * 0.8)
     expect(across.horizontal).toBeUndefined()
-    expect(across.height).toBe(3 * 120)
+    expect(across.height).toBe(3 * 150)
+    expect(timelineGeometry(across.width, across.height, across.items).fontSize).toBe(TIMELINE_FONT_SIZE_MAX)
   })
 
   test('takes the page column and the page colours', () => {

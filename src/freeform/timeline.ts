@@ -60,8 +60,12 @@ export interface TimelineGeometry {
   spineWidth: number
 }
 
-/** The largest entry text a timeline draws: body copy on a 1080px card. */
-export const TIMELINE_FONT_SIZE_MAX = 32
+/**
+ * The largest entry text a timeline draws: a page's feature on a 1080px
+ * card. The rows set the size (a third of a row), so a timeline drawn at
+ * body size keeps body-size words.
+ */
+export const TIMELINE_FONT_SIZE_MAX = 44
 
 export function timelineGeometry(
   width: number,

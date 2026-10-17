@@ -71,9 +71,9 @@ describe('timeline element', () => {
       { text: '中间没有标签的一步' },
       { label: '12 月', text: '结尾' },
     ]
-    // Rows of 100 on a card-sized timeline: body-copy text, bigger dots.
+    // Rows of 100 on a card-sized timeline: text a third of a row, bigger dots.
     const roomy = timelineGeometry(480, 300, items)
-    expect(roomy.fontSize).toBe(32)
+    expect(roomy.fontSize).toBe(34)
     expect(roomy.dotRadius).toBeGreaterThan(5)
     expect(roomy.entries[0].textLines[0].x).toBeGreaterThan(roomy.spine.x1 + roomy.dotRadius)
     // No entry is cut short at the grown size.
@@ -85,6 +85,9 @@ describe('timeline element', () => {
     ])
     expect(narrow.fontSize).toBeLessThan(32)
     expect(narrow.entries[0].textLines.some((line) => line.text.endsWith('…'))).toBe(false)
+    // A data page's rows of 150 set its words at the feature size, and taller rows no larger.
+    expect(timelineGeometry(904, 600, items.slice(0, 2).concat(items[2], items[0])).fontSize).toBe(44)
+    expect(timelineGeometry(904, 1200, items).fontSize).toBe(44)
   })
 
   it('lays horizontal entries side by side under a top spine, centred on their dots', () => {
