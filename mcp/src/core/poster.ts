@@ -19,7 +19,7 @@ import { FREEFORM_POSTER_TEXT_ONLY, TEMPLATE_REGISTRY } from '../../../src/templ
 import { FREEFORM_POSTER_SLOTS, posterTextOnlySlots, type PosterCentre, type PosterDetail, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
 import { tableNodes, tableShape } from '../../../src/templates/tables'
 import type { FreeformPosterSeriesId } from '../../../src/templates/types'
-import { balancedHeading, fillingHeading, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
+import { fillingHeading, fittingFontSize, measureText, MIN_FIT_SCALE, textFits, withSampleRoom, wordBrokenHeading } from './textFit'
 
 export interface PosterContent {
   title: string
@@ -938,7 +938,17 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       next = { ...next, fontSize: size ?? smallest }
     }
     if (isTitle && slots.titleFit?.align) next = { ...next, verticalAlign: slots.titleFit.align }
-    if (isTitle && !filled) next = { ...next, text: balancedHeading(next, next.text, next.fontSize) }
+    if (isTitle && !filled) {
+      // Between words, a little smaller when it must, no smaller than copy shrinks to.
+      const { height } = withSampleRoom({ ...next, fontSize: node.fontSize }, node.text)
+      const set = wordBrokenHeading({ ...next, height }, next.text, next.fontSize, Math.max(10, Math.floor(node.fontSize * MIN_FIT_SCALE)))
+      if (set.fontSize !== next.fontSize) {
+        const entry = shrunk.find((item) => item.node === node.name)
+        if (entry) entry.to = set.fontSize
+        else shrunk.push({ node: node.name, from: next.fontSize, to: set.fontSize })
+      }
+      next = { ...next, fontSize: set.fontSize, text: set.text }
+    }
     return [next]
   })
 

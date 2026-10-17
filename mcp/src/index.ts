@@ -117,7 +117,7 @@ ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle 
 - group：+ children（非空节点数组；组没有 width/height）
 全文档节点 id 必须唯一。`
 
-const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。每套模板每页按内容挑版式（summary.pages[].layout）：一段话或一两条要点用观点页（页码放大、标题、正文），三条以上要点用清单页（要点少时在行间匀开），只带一个数据元素（最多一两条要点）用数据页（元素放大摆在中间，进度画成圆环），有引文的用内页；只有一两句话的结尾页用收尾页；page.layout 可以指定 section / statement / list / data。封面没给副标题时，导语位列出各页标题。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放在这页文字的下面、沿模板的版心铺满宽度，颜色取这一页的正文色和强调色（没给颜色的系列先用浅的、最后一个用强调色），字号按卡片正文的大小画；放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId、角色和版式，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
+const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%；标题只在词和词之间换行，断不开时也缩小一点），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。每套模板每页按内容挑版式（summary.pages[].layout）：一段话或一两条要点用观点页（页码放大、标题、正文），三条以上要点用清单页（要点少时在行间匀开），只带一个数据元素（最多一两条要点）用数据页（元素放大摆在中间，进度画成圆环），有引文的用内页；只有一两句话的结尾页用收尾页；page.layout 可以指定 section / statement / list / data。封面没给副标题时，导语位列出各页标题。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放在这页文字的下面、沿模板的版心铺满宽度，颜色取这一页的正文色和强调色（没给颜色的系列先用浅的、最后一个用强调色），字号按卡片正文的大小画；放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId、角色和版式，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
 
 const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "# 总标题"：封面标题；它下面、第一个 "##" 之前的文字是封面副标题。
@@ -176,7 +176,7 @@ const GUIDE_SECTIONS = {
 - details：信息行，一条一行，如 "时间：10 月 18 日 14:00"、"地点：…"，冒号前是标签；菜单、价目表写 "拿铁：28"；成长记录一条一个节点，如 "3 月：接到第一单商单"，最多 5 条。
 - table：表格（课程表、对比表）：第一行是表头，如 ["节次", "周一", …]，之后每行第一格是节次，如 ["第 1 节\\n8:00", "语文", …]；课程表按给的行数列数重画、同一科目同一个颜色；对比表换成表格元素本身，最多 12 行 6 列、每格 24 字，参差的行按最宽的行补齐、只有一行时补一个空行，超出 12 行 6 列的格子列在 summary.unplaced，模板的配色和列宽比例保留（加列时新列均分），没给 table 时对比表的示例表格原样保留。
 - chart：图表（数据盘点）：{ kind?: "bar" | "ring" | "line" | "radar", labels?: 类目数组, series: [{ name?, values: 数值数组, color? }] }，替换模板图表的类目和系列，颜色缺省沿用模板的，kind 换图表类型，不给时跟模板走，堆叠方式跟模板走。
-- 位置不够时：页面有空就照最后一行的样子接着往下排，没空就放进下面空着的署名、正文或副标题位；模板没有位置的文字放进空着的同类位置（按钮、署名放进空着的信息行，正文、获得者放进空着的副标题），放到哪里写在 summary.moved；还放不下的信息和画不下的表格格子列在 summary.unplaced，没有位置的内容列在 summary.unused，这时 summary.hint 说明怎么办。缩小的文字在 summary.shrunk（角标最多缩到 50%，其余 72%），还放不下的在 summary.overflowing。
+- 位置不够时：页面有空就照最后一行的样子接着往下排，没空就放进下面空着的署名、正文或副标题位；模板没有位置的文字放进空着的同类位置（按钮、署名放进空着的信息行，正文、获得者放进空着的副标题），放到哪里写在 summary.moved；还放不下的信息和画不下的表格格子列在 summary.unplaced，没有位置的内容列在 summary.unused，这时 summary.hint 说明怎么办。缩小的文字在 summary.shrunk（角标最多缩到 50%，其余 72%；标题只在词和词之间换行，断不开时也缩小一点），还放不下的在 summary.overflowing。
 - 给 documentId 时海报加成那份文档的一页（放在 afterSlideId 后面或最后），返回的 added 是这一页的 slideId。`,
   },
   'html-import': { title: '网页转文档：create_document_from_html 的 HTML 怎么写', text: HTML_IMPORT_GUIDE },

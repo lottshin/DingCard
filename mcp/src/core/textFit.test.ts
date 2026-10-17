@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { FreeformTextElement } from '../../../src/freeform/types'
-import { balancedHeading, fillingHeading, fittingFontSize, measureText, textFits } from './textFit'
+import { balancedHeading, displayWords, fillingHeading, fittingFontSize, measureText, textFits, wordBrokenHeading } from './textFit'
 
 const box = (overrides: Partial<FreeformTextElement> = {}): FreeformTextElement => ({
   id: 'text',
@@ -80,6 +80,30 @@ describe('text fitting', () => {
     expect(balancedHeading(heading, '先把睡眠\n时间固定下来', 112)).toBe('先把睡眠\n时间固定下来')
     const long = '一二三四五六七八九十'.repeat(4)
     expect(balancedHeading(heading, long, 112)).toBe(long)
+  })
+
+  test('reads words the segmenter cuts into characters as a reader does', () => {
+    // 复盘 and 栏目 come out as single characters: they pair up, but not with a word of its own
+    // (的, 都); a measure word stays with its number, 第 or 每; a verb keeps its result.
+    expect(displayWords('把复盘固定成每个月都更新的栏目')).toEqual(['把', '复盘', '固定成', '每个月', '都', '更新', '的', '栏目'])
+    expect(displayWords('独立开发者的第一年收入复盘')).toEqual(['独立', '开发者', '的', '第一年', '收入', '复盘'])
+  })
+
+  test('breaks a title between words, a little smaller when it must', () => {
+    // Six characters don't fit this line at 140px: the even break is set at the size it
+    // fits (a CJK line measured as wide as it sets), not left to the browser to cut 时间 in
+    // two. A title that fits a line keeps its size.
+    const cover = box({ name: '主标题', width: 800, height: 400, fontSize: 140, fontWeight: 'bold' })
+    expect(wordBrokenHeading(cover, '先把睡眠时间固定下来', 140, 100)).toEqual({ fontSize: 129, text: '先把睡眠时间\n固定下来' })
+    expect(wordBrokenHeading(cover, '早起', 140, 100)).toEqual({ fontSize: 140, text: '早起' })
+    // A narrow column takes the lines it needs, more than three, none a lone character.
+    const column = box({ name: '主标题', width: 370, height: 520, fontSize: 88, fontWeight: 'bold' })
+    expect(wordBrokenHeading(column, '用一套固定的流程把内容做成系列', 88, 63)).toEqual({ fontSize: 85, text: '用一套\n固定的\n流程\n把内容\n做成系列' })
+    // An even break that would start a line with 的, or one only inside a word, gives way to
+    // one a little smaller that breaks well.
+    const wide = box({ name: '标题', width: 920, height: 300, fontSize: 103, fontWeight: 'bold' })
+    expect(wordBrokenHeading(wide, '城郊三条适合新手的周末徒步路线', 103, 74)).toEqual({ fontSize: 99, text: '城郊三条适合新手的\n周末徒步路线' })
+    expect(wordBrokenHeading(wide, '把复盘固定成每个月都更新的栏目', 103, 74)).toEqual({ fontSize: 99, text: '把复盘固定成每个月\n都更新的栏目' })
   })
 
   test('fills a display box with a title as large as it breaks between words', () => {

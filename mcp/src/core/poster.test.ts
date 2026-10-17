@@ -242,6 +242,12 @@ describe('composePoster', () => {
     expect((named(long, '标题') as FreeformTextElement).fontSize).toBeLessThan(80)
     const invitation = compose('invitation-freeform', { title: '乔迁小聚', details: ['时间：11 月 16 日 12:00'] })
     expect((named(invitation, '标题') as FreeformTextElement).fontSize).toBeGreaterThan(108)
+    // A title that breaks between words nowhere at its size is set a little smaller where it
+    // does, not cut inside 十二个 by the browser.
+    const talk = compose('talk-poster-freeform', { ...TALK, title: '周年庆的十二个幕后故事', image: 'https://example.com/hall.jpg' })
+    const talkTitle = named(talk, '标题') as FreeformTextElement
+    expect(talkTitle.text).toBe('周年庆的十二个\n幕后故事')
+    expect(talk.summary.shrunk).toContainEqual({ node: '标题', from: 152, to: talkTitle.fontSize })
   })
 
   test('moves a short invitation to the middle of its frame, and makes a short receipt for a short price list', () => {

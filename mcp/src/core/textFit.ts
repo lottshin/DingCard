@@ -12,6 +12,8 @@ const DEFAULT_LINE_HEIGHT = 1.18
 export const MIN_FIT_SCALE = 0.72
 /** Slack against glyph-width guesses: assume lines run this much longer. */
 const WIDTH_SAFETY = 1.06
+/** A CJK character sets in one em, bold or not: measured close, it gets only this much slack. */
+const WIDE_SLACK = 1.01
 
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦　-〿—…“”‘’]/
 const UPPER = /[A-Z0-9]/
@@ -143,30 +145,51 @@ const PAUSE = /[，、；：,;:]$/
 const STRONG_PAUSE = /[：；！？—｜:;!?|]$/
 
 /**
- * A heading that takes two or three lines, broken where they come out most
- * even ("先把睡眠时间\n固定下来" rather than a lone "下来" under a full line):
- * at word boundaries, never starting a line with closing punctuation or ending
- * one with an opening mark, longer lines first on a tie, and preferring breaks
- * after a pause (，、；：). A heading with its own line breaks, one that fits a
- * line, or one that needs more than three is left as it is.
+ * A heading that takes two or three lines (up to `maxLines`), broken where
+ * they come out most even ("先把睡眠时间\n固定下来" rather than a lone "下来"
+ * under a full line): at word boundaries, never starting a line with closing
+ * punctuation or ending one with an opening mark, lines that break well
+ * first (breaksWell), longer lines first on a tie, and preferring breaks
+ * after a pause (，、；：). A heading with its own line breaks, one that fits
+ * a line, one that needs more lines, or one with no break between words that
+ * fits is left as it is.
  */
-export function balancedHeading(node: FreeformTextElement, text: string, fontSize: number): string {
+export function balancedHeading(
+  node: FreeformTextElement,
+  text: string,
+  fontSize: number,
+  { maxLines = 3, close = false }: { maxLines?: number; close?: boolean } = {},
+): string {
   if (text.includes('\n') || node.vertical) return text
   const lines = measureText(node, text, fontSize, true).lines
-  if (lines < 2 || lines > 3) return text
-  // Room for the longest line, kept a little short of the box so it never wraps again.
-  const available = (node.width - PADDING * 2) / WIDTH_SAFETY
+  if (lines < 2 || lines > maxLines) return text
+  // Room for the longest line, kept a little short of the box so it never wraps again;
+  // measured `close`, a CJK character is the em it sets in and only Latin gets the slack.
   const spacing = node.letterSpacing ?? 0
-  const width = (part: string) => [...part].reduce((sum, char) => sum + glyphEm(char) * fontSize + spacing, 0)
+  const weight = node.fontWeight === 'bold' ? 1.04 : 1
+  const available = close ? node.width - PADDING * 2 : (node.width - PADDING * 2) / WIDTH_SAFETY
+  const glyph = close
+    ? (char: string) => (WIDE.test(char) ? fontSize * WIDE_SLACK : glyphEm(char) * fontSize * weight * WIDTH_SAFETY)
+    : (char: string) => glyphEm(char) * fontSize
+  const width = (part: string) => [...part].reduce((sum, char) => sum + glyph(char) + spacing, 0)
   const words = displayWords(text)
   if (words.length < lines || words.length > 40) return text
+  // Every way to cut the words into that many lines, no line but the last wider than the room.
   const splits: number[][] = []
-  for (let first = 1; first < words.length; first += 1) {
-    if (lines === 2) splits.push([first])
-    else for (let second = first + 1; second < words.length; second += 1) splits.push([first, second])
+  const cut = (start: number, cuts: number[]) => {
+    if (cuts.length === lines - 1) {
+      splits.push(cuts)
+      return
+    }
+    for (let end = start + 1; end <= words.length - (lines - 1 - cuts.length); end += 1) {
+      if (width(words.slice(start, end).join('').trim()) > available) break
+      cut(end, [...cuts, end])
+    }
   }
+  cut(0, [])
   let best = text
   let bestScore = Infinity
+  let bestWell = false
   for (const cuts of splits) {
     const bounds = [0, ...cuts, words.length]
     const parts = bounds.slice(1).map((end, index) => words.slice(bounds[index], end).join('').trim())
@@ -174,16 +197,20 @@ export function balancedHeading(node: FreeformTextElement, text: string, fontSiz
     const widths = parts.map(width)
     const longest = Math.max(...widths)
     if (longest > available) continue
-    // Evenest wins: the longest line first, then how ragged the rest are. A later line longer
-    // than the one before it costs a little, a pause at a break earns a little.
+    // Lines that break well first (breaksWell: no 的 starting one, no 每 or 越 ending one, no
+    // lone character); then the evenest: the longest line first, then how ragged the rest
+    // are. A later line longer than the one before it costs a little, a pause at a break
+    // earns a little.
+    const well = breaksWell(parts)
     const ragged = widths.reduce((sum, value) => sum + ((longest - value) / longest) ** 2, 0)
     const rising = widths.slice(1).filter((value, index) => value > widths[index]).length
     const pauses = parts.slice(0, -1).filter((part) => PAUSE.test(part)).length
     const strong = parts.slice(0, -1).filter((part) => STRONG_PAUSE.test(part)).length
     const score = longest + (ragged * 0.5 + rising * 0.25 - pauses * 0.5 - strong * 1) * fontSize
-    if (score < bestScore) {
+    if ((well && !bestWell) || (well === bestWell && score < bestScore)) {
       best = parts.join('\n')
       bestScore = score
+      bestWell = well
     }
   }
   return best
@@ -216,24 +243,52 @@ export function balancedSentence(node: FreeformTextElement, text: string, fontSi
 /** Particles that end the phrase before them: a display line doesn't start with one. */
 const NO_DISPLAY_LINE_START = /^[的了着过地得们吗呢吧啊之]/
 /** Words that lead into the one after them: a display line doesn't end with one. */
-const NO_DISPLAY_LINE_END = /(?:第|和|与|及|或|在|从|把|被|对|向|为)$/
-/** Characters that end a word as a suffix (开发者, 设计师, 会员日, 读书角, 作品集). */
-const SUFFIX = /^[者性化们庆节季日角师员家集线液界论感式型率度区馆店室站]$/
+const NO_DISPLAY_LINE_END = /(?:第|和|与|及|或|在|从|把|被|对|向|为|每|越|最|更)$/
+/** Characters that end a word as a suffix (开发者, 设计师, 会员日, 读书角, 作品集) or a verb's result (固定成). */
+const SUFFIX = /^[者性化们庆节季日角师员家集线液界论感式型率度区馆店室站成]$/
+/** Measure words and units of time: they end the number, 第 or 每 before them (第一年, 每个月, 2026年). */
+const MEASURE = /^[年月日天周次个条元岁位种步章期届号页本张名家只道句篇课]$/
+const COUNTED = /^(?:[第每]|[0-9一二三四五六七八九十百千万两几]+$)/
+/** Characters that are words on their own (的, 和, 把, 都, 越): they don't pair with a neighbour. */
+const ALONE = /^[的了着过地得吗呢吧啊之和与及或在从把被对向为都也就才又再还很越更最不没]$/
 const IDEOGRAPH = /^\p{Script=Han}$/u
+
+/** Whether lines break where a line may: none starts with a closing mark or ends with an opening one. */
+function breaksAtAll(parts: readonly string[]): boolean {
+  return parts.every((part, index) => (
+    (index === 0 || !NO_LINE_START.test(part)) && (index === parts.length - 1 || !NO_LINE_END.test(part))
+  ))
+}
+
+/**
+ * Whether the lines of a display title break well: as they may at all
+ * (breaksAtAll), none starting with a particle, none ending in a word that
+ * leads into the next, and none of several a lone character.
+ */
+function breaksWell(parts: readonly string[]): boolean {
+  return breaksAtAll(parts) && parts.every((part, index) => (
+    (index === 0 || !NO_DISPLAY_LINE_START.test(part))
+    && (index === parts.length - 1 || !NO_DISPLAY_LINE_END.test(part))
+    && (parts.length === 1 || !IDEOGRAPH.test(part))
+  ))
+}
 
 /**
  * A title's words as a display break sees them. The segmenter cuts Chinese
- * finer than a reader does (乔 | 迁 | 小 | 聚, 开发 | 者), so a suffix joins the
- * word before it and characters left on their own pair up, as most words are
- * two characters: 乔迁 | 小聚, 开发者, 全场.
+ * finer than a reader does (乔 | 迁 | 小 | 聚, 开发 | 者, 每 | 个 | 月), so a
+ * suffix joins the word before it, a measure word the number before it, and
+ * characters left on their own pair up, as most words are two characters
+ * (乔迁 | 小聚, 开发者, 每个月, 全场), all but those that are words by
+ * themselves (的 | 栏目, not 的栏 | 目).
  */
 export function displayWords(text: string): string[] {
   const joined: string[] = []
   for (const { segment } of new Intl.Segmenter('zh', { granularity: 'word' }).segment(text)) {
     const previous = joined[joined.length - 1]
-    if (previous !== undefined && SUFFIX.test(segment) && [...previous].length >= 2 && [...previous].every((char) => IDEOGRAPH.test(char))) {
-      joined[joined.length - 1] = previous + segment
-    } else joined.push(segment)
+    const suffix = previous !== undefined && SUFFIX.test(segment) && [...previous].length >= 2 && [...previous].every((char) => IDEOGRAPH.test(char))
+    const counted = previous !== undefined && MEASURE.test(segment) && COUNTED.test(previous)
+    if (suffix || counted) joined[joined.length - 1] = previous + segment
+    else joined.push(segment)
   }
   const words: string[] = []
   let run: string[] = []
@@ -242,7 +297,7 @@ export function displayWords(text: string): string[] {
     run = []
   }
   for (const word of joined) {
-    if (IDEOGRAPH.test(word)) run.push(word)
+    if (IDEOGRAPH.test(word) && !ALONE.test(word)) run.push(word)
     else {
       flush()
       words.push(word)
@@ -255,18 +310,18 @@ export function displayWords(text: string): string[] {
 /**
  * A display title set to fill its box: the largest size, from `maxSize` down
  * to the node's own, at which it breaks at word boundaries into lines that
- * fit (up to `maxLines`, a line more only when it buys a tenth more size),
- * no line starting with a particle or closing mark, none ending in a word
- * that leads into the next. A break after a strong pause (：！？) counts as a
- * fifth more size and may go a tenth below the box's own. A title with its
- * own line breaks keeps them. Null when no break reaches the box's own size:
- * the usual fit applies.
+ * fit (up to `maxLines`, a line more only when it buys a tenth more size)
+ * and break well (breaksWell, or the `rule` given). A break after a strong
+ * pause (：！？) counts as a fifth more size and may go a tenth below the
+ * box's own. A title with its own line breaks keeps them. Null when no break
+ * reaches the box's own size: the usual fit applies.
  */
 export function fillingHeading(
   node: FreeformTextElement,
   text: string,
   maxSize: number,
   maxLines = 3,
+  { rule = breaksWell, close = false }: { rule?: (parts: readonly string[]) => boolean; close?: boolean } = {},
 ): { fontSize: number; text: string } | null {
   if (node.vertical || maxSize <= node.fontSize) return null
   const along = node.width - PADDING * 2
@@ -275,10 +330,11 @@ export function fillingHeading(
   const spacing = node.letterSpacing ?? 0
   const weight = node.fontWeight === 'bold' ? 1.04 : 1
   // Ems and characters of a line, measured as textFits measures (with its
-  // slack), so its widest size is (room - spacing) / ems.
+  // slack), or `close` as balancedHeading can, so its widest size is
+  // (room - spacing) / ems.
   const span = (part: string) => {
     const chars = [...part]
-    const ems = chars.reduce((sum, char) => sum + glyphEm(char) * weight * WIDTH_SAFETY, 0)
+    const ems = chars.reduce((sum, char) => sum + (close && WIDE.test(char) ? WIDE_SLACK : glyphEm(char) * weight * WIDTH_SAFETY), 0)
     return { ems, chars: chars.length }
   }
   const widest = (parts: readonly string[]) => Math.min(...parts.map((part) => {
@@ -300,10 +356,7 @@ export function fillingHeading(
         if (left === 1) {
           const last = words.slice(start).join('').trim()
           const all = [...parts, last]
-          if (!last || all.some((part, index) => (
-            (index > 0 && (NO_LINE_START.test(part) || NO_DISPLAY_LINE_START.test(part)))
-            || (index < all.length - 1 && (NO_LINE_END.test(part) || NO_DISPLAY_LINE_END.test(part)))
-          ))) return
+          if (!last || !rule(all)) return
           const fontSize = Math.min(maxSize, widest(all), tall(all.length))
           const strong = all.slice(0, -1).filter((part) => STRONG_PAUSE.test(part)).length
           if (fontSize < node.fontSize * (strong > 0 ? 0.9 : 1)) return
@@ -319,6 +372,8 @@ export function fillingHeading(
         }
         for (let end = start + 1; end <= words.length - left + 1; end += 1) {
           const part = words.slice(start, end).join('').trim()
+          // A longer line only sets smaller: one under the smallest size ends the search.
+          if (part && widest([part]) < node.fontSize * 0.9) break
           if (part) visit(end, left - 1, [...parts, part])
         }
       }
@@ -333,6 +388,49 @@ export function fillingHeading(
   }
   if (!chosen) return null
   return { fontSize: Math.floor(chosen.fontSize), text: chosen.text }
+}
+
+/** The most lines a title is broken into between words. */
+const TITLE_MAX_LINES = 6
+
+/**
+ * A title broken between words: as balancedHeading breaks it at `fontSize`,
+ * in up to six lines measured close (a CJK line as wide as it sets, so no
+ * title is set smaller than the line it fits); when no break there fits or
+ * breaks well (breaksWell), at the largest size down to `floor` at which one
+ * does (fillingHeading), with a line more if it needs one and the box has
+ * the depth, so no word is split across two lines. When nothing breaks well
+ * even at `floor`, the largest size that breaks between words at all; as it
+ * is when it fits a line, has its own breaks, or breaks between words nowhere.
+ */
+export function wordBrokenHeading(
+  node: FreeformTextElement,
+  text: string,
+  fontSize: number,
+  floor: number,
+): { fontSize: number; text: string } {
+  const broken = balancedHeading(node, text, fontSize, { maxLines: TITLE_MAX_LINES, close: true })
+  if (text.includes('\n') || node.vertical || floor >= fontSize) return { fontSize, text: broken }
+  if (broken !== text && breaksWell(broken.split('\n'))) return { fontSize, text: broken }
+  const lines = measureText(node, text, fontSize, true).lines
+  if (lines < 2) return { fontSize, text }
+  // fillingHeading lets a break at a strong pause go a tenth under its floor: not this one.
+  const step = (rule: (parts: readonly string[]) => boolean) => {
+    const set = fillingHeading({ ...node, fontSize: floor }, text, fontSize, Math.min(TITLE_MAX_LINES, lines + 1), { rule, close: true })
+    return set && set.fontSize >= floor ? set : null
+  }
+  const stepped = step(breaksWell)
+  if (stepped) return stepped
+  if (broken !== text) return { fontSize, text: broken }
+  // Nothing breaks well down to the floor: the largest size that breaks between words at all.
+  return step(breaksAtAll) ?? { fontSize, text }
+}
+
+/** `node`'s box as deep as its sample's lines when they run deeper: the room textFits lends it. */
+export function withSampleRoom(node: FreeformTextElement, sample: string | undefined): FreeformTextElement {
+  if (sample === undefined || node.vertical) return node
+  const depth = measureText(node, sample, node.fontSize, true).depth + PADDING * 2
+  return depth > node.height ? { ...node, height: depth } : node
 }
 
 /** Titles joined with " · ", a line broken only between titles where the next would not fit. */

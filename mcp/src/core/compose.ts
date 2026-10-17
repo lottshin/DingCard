@@ -23,7 +23,7 @@ import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformSceneNod
 import { FREEFORM_DECK_LAYOUTS, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { FREEFORM_TEMPLATE_SLOTS, type SlideSlots, type SlotItem } from '../../../src/templates/slots'
 import type { DeckLayoutId, FreeformDeckSeriesId } from '../../../src/templates/types'
-import { balancedHeading, balancedSentence, contentsLines, displayWords, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
+import { balancedSentence, contentsLines, displayWords, emWidth, fittingFontSize, measureText, MIN_FIT_SCALE, textFits, withSampleRoom, wordBrokenHeading } from './textFit'
 import { blockingBoxes, drawingBox, pagePalette, seriesColors, type PagePalette } from './dataPlacement'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -746,13 +746,25 @@ function fillSlide(template: FreeformSlide, slots: SlideSlots, fill: SlideFill):
     ...(slots.quote ? [slots.quote.text] : []),
     ...(displayLead && displayLead.fontSize >= 52 ? [displayLead.name] : []),
   ])
-  // Points, quotes and display paragraphs prefer a break after a pause ("要点：说明"); titles break evenly.
+  // Points, quotes and display paragraphs prefer a break after a pause ("要点：说明"); titles break
+  // evenly, and between words: a little smaller when they must, no smaller than copy shrinks to.
   const titles = new Set(typeof slots.title === 'string' ? [slots.title] : [])
   nodes.forEach((node, index) => {
-    if (node.type === 'text' && headings.has(node.name) && texts.has(node.name)) {
-      const balance = titles.has(node.name) ? balancedHeading : balancedSentence
-      nodes[index] = { ...node, text: balance(node, node.text, node.fontSize) }
+    if (node.type !== 'text' || !headings.has(node.name) || !texts.has(node.name)) return
+    if (!titles.has(node.name)) {
+      nodes[index] = { ...node, text: balancedSentence(node, node.text, node.fontSize) }
+      return
     }
+    const drawn = textNodeNamed(slide, node.name)
+    const size = drawn?.fontSize ?? node.fontSize
+    const { height } = withSampleRoom({ ...node, fontSize: size }, drawn ? sampleOf(drawn) : undefined)
+    const set = wordBrokenHeading({ ...node, height }, node.text, node.fontSize, Math.max(10, Math.floor(size * MIN_FIT_SCALE)))
+    if (set.fontSize !== node.fontSize) {
+      const entry = shrunk.find((item) => item.node === node.name)
+      if (entry) entry.to = set.fontSize
+      else shrunk.push({ node: node.name, from: node.fontSize, to: set.fontSize })
+    }
+    nodes[index] = { ...node, fontSize: set.fontSize, text: set.text }
   })
   return { slide: { ...slide, nodes }, shrunk, overflowing }
 }

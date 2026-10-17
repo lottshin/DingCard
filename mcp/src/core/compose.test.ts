@@ -195,6 +195,21 @@ describe('composeDeck', () => {
     expect(heading('signal-freeform', 0, '标题下')).toBe('早起习惯')
   })
 
+  test('sets a title between words a little smaller when its even break does not fit at its size', () => {
+    const content = { title: '先把睡眠时间固定下来', pages: [{ title: '用一套固定的流程把内容做成系列', points: ['早睡一小时', '手机放门外', '每天同一时间起'] }] }
+    // Six characters don't fit the brutalist cover's line at 140px: 时间 stays whole on the first line.
+    const brutalist = compose('brutalist-freeform', content)
+    const cover = brutalist.document.slides[0].nodes.find((node) => node.name === '主标题') as FreeformTextElement
+    expect(cover.text).toBe('先把睡眠时间\n固定下来')
+    expect(cover.fontSize).toBeLessThan(140)
+    expect(cover.fontSize).toBeGreaterThanOrEqual(140 * 0.72)
+    expect(brutalist.summary.shrunk).toContainEqual(expect.objectContaining({ page: 1, node: '主标题', from: 140, to: cover.fontSize }))
+    // The signal list page's narrow title column takes five lines, each whole words.
+    const signal = compose('signal-freeform', content)
+    expect((signal.document.slides[1].nodes.find((node) => node.name === '主标题') as FreeformTextElement).text)
+      .toBe('用一套\n固定的\n流程\n把内容\n做成系列')
+  })
+
   test('takes a page from another deck template when the page names one', () => {
     const mixed = compose('editorial-freeform', {
       title: '一周早餐不重样',
