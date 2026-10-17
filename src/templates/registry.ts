@@ -1644,7 +1644,9 @@ function createBlueprintDocument(): FreeformDocument {
       textNode('按图施工，\n按图验收', 80, 236, 920, 310, { name: '主标题', fontSize: 120, textFill: solid(chalk), fontWeight: 'bold', lineHeight: 1.2 }),
       textNode('对不上图的地方，先改图，再改计划。', 88, 590, 860, 130, { name: '导语', fontSize: 40, textFill: solid(line), lineHeight: 1.55 }),
       textNode('全部核对通过', 123, 870, 560, 100, { name: '签收标题', fontSize: 64, textFill: solid(yellow), fontWeight: 'bold', align: 'center', rotation: -6 }),
-      textNode('APPROVED · 可交付', 133, 990, 560, 50, { name: '签收状态', fontSize: 30, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', align: 'center', letterSpacing: 4, rotation: -6 }),
+      // Turned, a line's words take up more height the wider they set: the
+      // status keeps clear of the title in a wider system font (Linux).
+      textNode('APPROVED · 可交付', 133, 1000, 560, 50, { name: '签收状态', fontSize: 30, fontFamily: UI, textFill: solid(yellow), fontWeight: 'bold', align: 'center', letterSpacing: 4, rotation: -6 }),
       textNode('签名 / DATE', 760, 1112, 232, 40, { name: '签名标注', fontSize: 22, fontFamily: UI, textFill: solid(line), align: 'right', letterSpacing: 3 }),
       textNode('BLUEPRINT / FINAL', 88, 1318, 600, 44, { name: '页脚', fontSize: 22, fontFamily: UI, textFill: solid(line), letterSpacing: 6 }),
       textNode('PLAN A APPROVED', 592, 1318, 400, 44, { name: '比例', fontSize: 22, fontFamily: UI, textFill: solid(line), align: 'right', letterSpacing: 6 }),
