@@ -5,6 +5,7 @@
 // to stay in the box the template drew for it.
 
 import { createDefaultImageFraming } from '../../../src/freeform/imageFraming'
+import { parsePathData } from '../../../src/freeform/pathData'
 import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import { TABLE_CELL_MAX_CHARS, TABLE_COLS_MAX, TABLE_ROWS_MAX } from '../../../src/freeform/tables'
 import {
@@ -15,7 +16,7 @@ import {
 } from '../../../src/freeform/timeline'
 import type { FreeformDocument, FreeformSceneNode, FreeformTextElement } from '../../../src/freeform/types'
 import { FREEFORM_POSTER_TEXT_ONLY, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
-import { FREEFORM_POSTER_SLOTS, posterTextOnlySlots, type PosterDetail, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
+import { FREEFORM_POSTER_SLOTS, posterTextOnlySlots, type PosterCentre, type PosterDetail, type PosterSlots, type SlotItem } from '../../../src/templates/slots'
 import { tableNodes, tableShape } from '../../../src/templates/tables'
 import type { FreeformPosterSeriesId } from '../../../src/templates/types'
 import { balancedHeading, fillingHeading, fittingFontSize, measureText, MIN_FIT_SCALE, textFits } from './textFit'
@@ -271,13 +272,245 @@ function inkSpan(node: FreeformSceneNode): { top: number; bottom: number } | nul
   return { top, bottom: top + depth }
 }
 
+/** How far down the page each y moves when the cuts close: by every cut at or above it. */
+function cutShift(cuts: readonly Cut[], y: number): number {
+  return -cuts.reduce((sum, cut) => sum + (y >= cut.at ? cut.by : 0), 0)
+}
+
+interface Cut {
+  /** Where the closed room began down the page. */
+  at: number
+  by: number
+}
+
+/** Path data with every y value passed through `move`. Only absolute path data can be; anything else comes back null. */
+function movedPath(d: string, move: (y: number) => number): string | null {
+  const segments = parsePathData(d)
+  if (!segments || segments.some((segment) => segment.command !== 'z' && segment.command === segment.command.toLowerCase())) return null
+  // Which arguments of each command are y values, by position in its group.
+  const ys: Record<string, readonly number[]> = { M: [1], L: [1], T: [1], V: [0], C: [1, 3, 5], S: [1, 3], Q: [1, 3], A: [6], H: [], Z: [], z: [] }
+  const sizes: Record<string, number> = { M: 2, L: 2, T: 2, V: 1, H: 1, C: 6, S: 4, Q: 4, A: 7, Z: 1, z: 1 }
+  const number = (value: number) => String(Math.round(value * 100) / 100)
+  return segments.map(({ command, values }) => {
+    const moved = values.map((value, index) => (ys[command].includes(index % sizes[command]) ? move(value) : value))
+    return [command, ...moved.map(number)].join(' ')
+  }).join(' ')
+}
+
+/** A card the cuts run across: shorter by them, its drawing cut where they are, so a torn receipt keeps its teeth. */
+function shortened(node: FreeformSceneNode, cuts: readonly Cut[]): FreeformSceneNode {
+  if (node.type === 'group') return node
+  const foot = node.y + node.height
+  // A cut reaching past the card's foot takes only what lies inside it.
+  const across = cuts.filter((cut) => cut.at > node.y && cut.at < foot).map((cut) => ({ at: cut.at, by: Math.min(cut.by, foot - cut.at) }))
+  const by = across.reduce((sum, cut) => sum + cut.by, 0)
+  if (by <= 0) return node
+  const height = Math.max(1, node.height - by)
+  if (node.type !== 'path') return { ...node, height }
+  const scale = node.viewBox.height / node.height
+  // From the lowest cut up, so each one is still where the drawing has it:
+  // what is below the cut moves up, what is inside it closes to its top.
+  let d: string | null = node.d
+  for (const cut of [...across].sort((a, b) => b.at - a.at)) {
+    if (d === null) break
+    const at = node.viewBox.y + (cut.at - node.y) * scale
+    const room = cut.by * scale
+    d = movedPath(d, (y) => (y >= at + room ? y - room : y > at ? at : y))
+  }
+  // Path data that can't be cut is squeezed instead.
+  return d === null ? { ...node, height } : { ...node, d, height, viewBox: { ...node.viewBox, height: node.viewBox.height - by * scale } }
+}
+
+/** A card room opens across: taller by it, its drawing opened where the room goes, not stretched. */
+function lengthened(node: FreeformSceneNode, opens: readonly Cut[]): FreeformSceneNode {
+  if (node.type === 'group') return node
+  const across = opens.filter((open) => open.at > node.y && open.at <= node.y + node.height + 1 && open.by > 0)
+  const by = across.reduce((sum, open) => sum + open.by, 0)
+  if (by <= 0) return node
+  const height = node.height + by
+  if (node.type !== 'path') return { ...node, height }
+  const scale = node.viewBox.height / node.height
+  const page = (y: number) => node.y + (y - node.viewBox.y) / scale
+  const d = movedPath(node.d, (y) => y + across.reduce((sum, open) => sum + (page(y) >= open.at ? open.by : 0), 0) * scale)
+  // Path data that can't be opened is stretched instead.
+  return d === null ? { ...node, height } : { ...node, d, height, viewBox: { ...node.viewBox, height: node.viewBox.height + by * scale } }
+}
+
+/** The share of the page a closed-up block may leave empty above or below it once it is centred. */
+const CLOSED_MARGIN = 0.2
+
+/**
+ * Inside the centre span, the room of each part of the template the content
+ * left without words closes: parts overlapping down the page count as one,
+ * a run of emptied ones closes to the wider of the gaps around it, what sits
+ * below moves up, and the cards shorten by what closed across them. Room at
+ * the foot of a span with no card stays for the centring to share. What is
+ * pinned keeps its place; what stands aside moves as one piece. `grow` then
+ * takes back up to its own height of what closed. A block so short that
+ * centring it would leave more than CLOSED_MARGIN of the page empty above or
+ * below keeps that room, shared out between its parts.
+ */
+function closeUp(
+  nodes: FreeformSceneNode[],
+  template: readonly FreeformSceneNode[],
+  centre: PosterCentre,
+  pageHeight: number,
+  together: ReadonlyMap<string, string>,
+  refit: (node: FreeformTextElement) => FreeformTextElement,
+): FreeformSceneNode[] {
+  const { top, bottom, pinned = [], close = {} } = centre
+  const cards = new Set(close.cards ?? [])
+  const aside = new Set(close.aside ?? [])
+  const fixed = new Set([...pinned, ...cards, ...aside])
+  const kept = new Set(nodes.map((node) => node.name))
+  const within = (box: Box) => box.y >= top - 1 && box.y + box.height <= bottom + 1 && box.height < (bottom - top) * 0.9
+  const drawn = new Map<string, Box>()
+  for (const node of template) {
+    const box = boxOf(node)
+    if (box && within(box) && !fixed.has(node.name)) drawn.set(node.name, box)
+  }
+  const blocks: Array<{ top: number; bottom: number; kept: boolean }> = []
+  for (const [name, box] of [...drawn].sort((a, b) => a[1].y - b[1].y)) {
+    const last = blocks[blocks.length - 1]
+    if (last && box.y < last.bottom) {
+      last.bottom = Math.max(last.bottom, box.y + box.height)
+      last.kept ||= kept.has(name)
+    } else {
+      blocks.push({ top: box.y, bottom: box.y + box.height, kept: kept.has(name) })
+    }
+  }
+  const cardBoxes = template.filter((node) => cards.has(node.name)).map((node) => boxOf(node)).filter((box): box is Box => box !== null)
+  const card = cardBoxes.length > 0 ? union(cardBoxes) : null
+  const cuts: Cut[] = []
+  for (let first = 0; first < blocks.length; first += 1) {
+    if (blocks[first].kept) continue
+    let last = first
+    while (last + 1 < blocks.length && !blocks[last + 1].kept) last += 1
+    const above = first > 0 ? blocks[first - 1].bottom : card?.y ?? top
+    const below = last + 1 < blocks.length ? blocks[last + 1].top : card ? card.y + card.height : null
+    if (below !== null) {
+      const keep = Math.max(blocks[first].top - above, below - blocks[last].bottom, 0)
+      if (below - above - keep > 0) cuts.push({ at: blocks[first].top, by: below - above - keep })
+    }
+    first = last
+  }
+  if (cuts.length === 0) return nodes
+  // What stands aside moves as one piece, by what closed above its middle:
+  // a price circle keeps its words where it drew them.
+  const asideBoxes = template.filter((node) => aside.has(node.name)).map((node) => boxOf(node)).filter((box): box is Box => box !== null)
+  const asideBox = asideBoxes.length > 0 ? union(asideBoxes) : null
+  const asideAt = asideBox ? asideBox.y + asideBox.height / 2 : null
+  const asideShift = asideAt === null || asideAt < top - 1 || asideAt > bottom + 1 ? 0 : cutShift(cuts, asideAt)
+  let result = nodes.map((node) => {
+    if (pinned.includes(node.name)) return node
+    if (cards.has(node.name)) return shifted(shortened(node, cuts), cutShift(cuts.filter((cut) => cut.at <= node.y), node.y))
+    if (aside.has(node.name)) return shifted(node, asideShift)
+    // Rows the template didn't draw (lines past its last row) move from where they are.
+    const at = drawn.get(node.name)?.y ?? (template.some((other) => other.name === node.name) ? null : node.y)
+    return at === null || at < top - 1 || at > bottom + 1 ? node : shifted(node, cutShift(cuts, at))
+  })
+  const grower = close.grow ? result.find((node) => node.name === close.grow) : undefined
+  if (grower && grower.type !== 'group') {
+    const by = Math.min(cuts.reduce((sum, cut) => sum + cut.by, 0), grower.height)
+    const foot = grower.y + grower.height
+    const asideBelow = asideAt !== null && asideAt + asideShift >= foot - 1
+    result = result.map((node) => {
+      if (node === grower) return node.type === 'text' ? refit({ ...node, height: node.height + by }) : { ...node, height: node.height + by }
+      if (pinned.includes(node.name)) return node
+      if (aside.has(node.name)) return asideBelow ? shifted(node, by) : node
+      const box = boxOf(node)
+      if (!box) return node
+      if (cards.has(node.name) && box.y < foot) return lengthened(node, [{ at: foot, by }])
+      // Within the span: a footer below it keeps its place.
+      return box.y >= foot - 1 && box.y <= bottom + 1 ? shifted(node, by) : node
+    })
+  }
+  // The words of the block, top to bottom, as the parts that now sit apart
+  // (a row with its rule, a button with its plate, what stands aside, count as one).
+  const parts: Array<{ top: number; bottom: number; nodes: FreeformSceneNode[] }> = []
+  const asideKey = Symbol('aside')
+  const grouped = new Map<string | symbol, (typeof parts)[number]>()
+  for (const node of result) {
+    const box = boxOf(node)
+    if (!box || cards.has(node.name) || pinned.includes(node.name) || !within(box)) continue
+    const span = inkSpan(node)
+    if (!span) continue
+    const key = aside.has(node.name) ? asideKey : together.get(node.name)
+    const group = key === undefined ? undefined : grouped.get(key)
+    if (group) {
+      group.top = Math.min(group.top, span.top)
+      group.bottom = Math.max(group.bottom, span.bottom)
+      group.nodes.push(node)
+      continue
+    }
+    const part = { ...span, nodes: [node] }
+    parts.push(part)
+    if (key !== undefined) grouped.set(key, part)
+  }
+  parts.sort((a, b) => a.top - b.top)
+  const merged: typeof parts = []
+  for (const part of parts) {
+    const last = merged[merged.length - 1]
+    if (last && part.top < last.bottom) {
+      last.bottom = Math.max(last.bottom, part.bottom)
+      last.nodes.push(...part.nodes)
+    } else {
+      merged.push({ ...part, nodes: [...part.nodes] })
+    }
+  }
+  if (merged.length < 2) return result
+  // The page left empty above and below the block once it is centred: down to
+  // what sits outside the span (a masthead, a footer), else the page's edge.
+  const ink = merged[merged.length - 1].bottom - merged[0].top
+  const outside = result.flatMap((node) => {
+    const box = boxOf(node)
+    return box && !within(box) && box.height < pageHeight * 0.9 ? [box] : []
+  })
+  const above = Math.max(0, ...outside.filter((box) => box.y + box.height <= top + 1).map((box) => box.y + box.height))
+  const below = Math.min(pageHeight, ...outside.filter((box) => box.y >= bottom - 1).map((box) => box.y))
+  const margin = Math.max(top - above, below - bottom) + (bottom - top - ink) / 2
+  const back = Math.round(2 * (margin - pageHeight * CLOSED_MARGIN))
+  if (back <= 0) return result
+  // Shared between the gaps, none more than doubling: a title, a line and its
+  // rule don't drift apart, and what is still missing stays round the block.
+  const gaps = merged.slice(1).map((part, index) => Math.max(0, part.top - merged[index].bottom))
+  const room = gaps.reduce((sum, gap) => sum + gap, 0)
+  const opened = Math.min(back, room, cuts.reduce((sum, cut) => sum + cut.by, 0))
+  if (opened <= 0) return result
+  const moves = new Map<FreeformSceneNode, number>()
+  // Where each gap opens, down the page, for the cards round the parts.
+  const opens: Cut[] = []
+  let moved = 0
+  merged.forEach((part, index) => {
+    if (index > 0) {
+      const share = (opened * gaps[index - 1]) / room
+      opens.push({ at: (merged[index - 1].bottom + part.top) / 2, by: Math.round(moved + share) - Math.round(moved) })
+      moved += share
+    }
+    part.nodes.forEach((node) => moves.set(node, Math.round(moved)))
+  })
+  return result.map((node) => {
+    const by = moves.get(node)
+    if (by !== undefined) return shifted(node, by)
+    return cards.has(node.name) ? lengthened(node, opens) : node
+  })
+}
+
 /**
  * Close up what the content left open: fewer lines than rows spread over the
  * rows' span and sit in its middle (spreadDetails), a title shorter than its
- * sample pulls up what sits below it (titleFlow), and a column moves to the
- * middle of its span (centre).
+ * sample pulls up what sits below it (titleFlow), parts left without words
+ * close up (centre.close), and a column moves to the middle of its span
+ * (centre).
  */
-function settle(nodes: FreeformSceneNode[], template: readonly FreeformSceneNode[], slots: PosterSlots, used: number): FreeformSceneNode[] {
+function settle(
+  nodes: FreeformSceneNode[],
+  template: readonly FreeformSceneNode[],
+  slots: PosterSlots,
+  used: number,
+  page: { height: number; title: string },
+): FreeformSceneNode[] {
+  const { height: pageHeight, title } = page
   let result = nodes
   const rows = slots.details ?? []
   const filled = Math.min(used, rows.length)
@@ -307,12 +540,35 @@ function settle(nodes: FreeformSceneNode[], template: readonly FreeformSceneNode
       if (room > 1) result = result.map((node) => (node.y >= below && !pinned.has(node.name) ? shifted(node, -room) : node))
     }
   }
+  if (slots.centre?.close) {
+    // What belongs together: an item with its note and extras, a row with its
+    // label and the rule under it (a rule above a row parts it from the last).
+    const together = new Map<string, string>()
+    const items = [slots.subtitle, slots.body, slots.recipient, slots.cta, slots.tag, slots.brand].filter((item): item is SlotItem => item !== undefined)
+    for (const item of items) for (const name of [item.text, item.note, ...(item.extras ?? [])]) if (name) together.set(name, item.text)
+    const topOf = (name: string) => template.find((node) => node.name === name)?.y ?? 0
+    for (const row of rows) {
+      const below = (row.extras ?? []).filter((name) => topOf(name) >= topOf(row.value))
+      for (const name of [row.label, row.value, ...below]) if (name) together.set(name, row.value)
+    }
+    const sample = template.find((node) => node.name === slots.title)
+    // A title given the room fills its taller box: up to twice the size it may
+    // take there, on up to three lines, its words settled on what follows.
+    const refit = (node: FreeformTextElement): FreeformTextElement => {
+      if (sample?.type !== 'text' || node.height <= sample.height) return node
+      const scale = (slots.titleFit?.maxScale ?? 1) * Math.min(2, node.height / sample.height)
+      const filled = fillingHeading({ ...node, fontSize: sample.fontSize }, title, Math.round(sample.fontSize * scale), Math.max(3, slots.titleFit?.maxLines ?? 0))
+      if (!filled || filled.fontSize <= node.fontSize) return node
+      return { ...node, fontSize: filled.fontSize, text: filled.text, verticalAlign: node.verticalAlign === 'middle' ? 'middle' : 'bottom' }
+    }
+    result = closeUp(result, template, slots.centre, pageHeight, together, refit)
+  }
   if (slots.centre) {
-    const { top, bottom } = slots.centre
+    const { top, bottom, pinned = [] } = slots.centre
     // What lies inside the span moves; a frame reaching across it stays.
     const inside = result.filter((node) => {
       const box = boxOf(node)
-      return box !== null && box.y >= top - 1 && box.y + box.height <= bottom + 1 && box.height < (bottom - top) * 0.9
+      return box !== null && !pinned.includes(node.name) && box.y >= top - 1 && box.y + box.height <= bottom + 1 && box.height < (bottom - top) * 0.9
     })
     const spans = inside.map(inkSpan).filter((span): span is { top: number; bottom: number } => span !== null)
     if (spans.length > 0) {
@@ -686,7 +942,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
     return [next]
   })
 
-  const placed = settle(nodes, slide.nodes, slots, filledRows)
+  const placed = settle(nodes, slide.nodes, slots, filledRows, { height: slide.height, title: content.title })
   const document = normalizeFreeformDocument({ documentVersion: made.documentVersion, activeSlideId: slide.id, slides: [{ ...slide, nodes: placed }] })
   if (!document) return { ok: false, error: '生成的海报没有通过文档校验，请反馈。' }
   const left = [

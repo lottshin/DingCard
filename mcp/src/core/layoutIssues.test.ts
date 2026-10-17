@@ -161,6 +161,23 @@ describe('layout issues', () => {
     ]))
   })
 
+  test('texts that overlap on the same card are still reported', () => {
+    // A label and a price set on one circle or panel overlap just the same: the card doesn't excuse it.
+    const document = deck([card('价格底', '#f2e8d8', { x: 80, y: 80, width: 600, height: 300 }), text('价格标签'), text('角标', { y: 120 })])
+    const issues = layoutIssues(document, measured(
+      [
+        { id: '价格底', rect: { x: 80, y: 80, width: 600, height: 300 } },
+        { id: '价格标签', rect: { x: 100, y: 100, width: 400, height: 100 } },
+        { id: '角标', rect: { x: 100, y: 120, width: 400, height: 100 } },
+      ],
+      [
+        { id: '价格标签', area: { x: 108, y: 108, width: 300, height: 48 } },
+        { id: '角标', area: { x: 108, y: 128, width: 300, height: 48 } },
+      ],
+    ))
+    expect(kinds(issues)).toContain('text-overlap:价格标签')
+  })
+
   test('low contrast against the card behind, but not the colours a template pairs on purpose', () => {
     const document = deck([
       card('底板', '#d63b24', { x: 80, y: 80, width: 600, height: 300 }),

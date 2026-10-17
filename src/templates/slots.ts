@@ -431,6 +431,23 @@ export interface PosterTable {
   sample: readonly (readonly string[])[]
 }
 
+/** Where a poster's column sits (PosterSlots.centre). */
+export interface PosterCentre {
+  top: number
+  bottom: number
+  pinned?: readonly string[]
+  /**
+   * Before it moves, the block closes up: the room of each part of the
+   * template the content leaves without words (rows without a line, a
+   * missing subtitle) goes, and `cards`, the panel the block sits on,
+   * shorten with it — a receipt for three items is a short receipt. `grow`
+   * (a chart, the title) takes back up to its own height of that room;
+   * `aside` (a price circle beside the list, its words on it) moves with the
+   * block as one piece, its own room never closing.
+   */
+  close?: { cards?: readonly string[]; grow?: string; aside?: readonly string[] }
+}
+
 /** Where a one-page template's content goes. Anything it doesn't name is decoration. */
 export interface PosterSlots {
   title: string
@@ -461,9 +478,10 @@ export interface PosterSlots {
   titleFit?: { maxScale: number; maxLines?: number; align?: 'middle' | 'bottom' }
   /**
    * Content between `top` and `bottom` (page px) moves as one block to the
-   * middle of that span, so a short invitation doesn't leave its foot empty.
+   * middle of that span, so a short invitation doesn't leave its foot empty;
+   * `pinned` keeps its place (a seal in a corner).
    */
-  centre?: { top: number; bottom: number }
+  centre?: PosterCentre
   /** A grid of cells: row 0 is the column headings, column 0 the row labels (a timetable). */
   table?: PosterTable
   /** A v34 table element: filled with `table` content (row 0 is the header);
@@ -541,7 +559,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '品牌' },
     image: { node: '主图' },
-    textOnly: { titleFit: { maxScale: 1.5, maxLines: 3 } },
+    // Without its lines and button the circle comes down to the middle of the page.
+    textOnly: { titleFit: { maxScale: 1.5, maxLines: 3 }, centre: { top: 0, bottom: 1920, close: {} } },
   },
   'hiring-poster': {
     title: '标题',
@@ -569,8 +588,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     // 敬请回复 is what most invitations ask.
     generic: ['按钮文字'],
     titleFit: { maxScale: 1.5, maxLines: 2, align: 'middle' },
-    // Inside the frame, under its masthead.
-    centre: { top: 330, bottom: 1840 },
+    // Inside the frame, under its masthead, closed up.
+    centre: { top: 330, bottom: 1840, close: {} },
   },
   'quote-card': {
     title: '标题',
@@ -591,6 +610,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     textOnly: {
       titleFit: { maxScale: 1.2, maxLines: 1 },
       tag: { text: '角标', extras: ['价格底', '价格标签', '价格圈'] },
+      // A short column closes up in the middle of the card, its title taking the room.
+      centre: { top: 0, bottom: 1080, close: { grow: '标题', aside: ['价格圈', '价格底', '价格标签', '角标'] } },
     },
   },
   'video-cover': {
@@ -607,7 +628,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     image: { node: '主图', fallback: block('#26385e') },
     // Without a tag the column still sits in the middle of the cover.
     // The rule leads into the sign-off and goes with it.
-    textOnly: { titleFit: { maxScale: 1.5, maxLines: 2 }, centre: { top: 40, bottom: 726 }, brand: { text: '品牌', extras: ['标题线'] } },
+    textOnly: { titleFit: { maxScale: 1.5, maxLines: 2 }, centre: { top: 40, bottom: 726, close: { grow: '标题' } }, brand: { text: '品牌', extras: ['标题线'] } },
   },
   'note-cover': {
     title: '标题',
@@ -627,7 +648,7 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     image: { node: '主图', fallback: block('#d9cbb8') },
     // The title sits on the card: nothing below it moves.
-    textOnly: { titleFit: { maxScale: 1.6, maxLines: 3 }, titleFlow: undefined },
+    textOnly: { titleFit: { maxScale: 1.6, maxLines: 3 }, titleFlow: undefined, centre: { top: 0, bottom: 1440, close: {} } },
   },
   menu: {
     title: '标题',
@@ -646,7 +667,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     body: { text: '正文' },
     tag: { text: '角标' },
     details: rows(8, (n) => `项目${n}`, (n) => `价格${n}`, (n) => (n === '一' ? [] : [`隔线${n}`])),
-    spreadDetails: true,
+    // Fewer items make a shorter receipt, in the middle of the page.
+    centre: { top: 0, bottom: 1920, close: { cards: ['小票'] } },
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '品牌' },
     generic: ['标题', ...['一', '二', '三', '四', '五', '六', '七', '八'].map((n) => `价格${n}`)],
@@ -658,6 +680,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     details: rows(2, () => undefined, (n) => `信息${n}`),
     brand: { text: '颁发单位', extras: ['签名线'] },
     generic: ['标题'],
+    // Inside the frame; the medal and the number in the corner keep their places.
+    centre: { top: 68, bottom: 1172, pinned: ['奖章', '信息二'], close: {} },
   },
   'moments-grid': {
     title: '标题',
@@ -682,8 +706,9 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     image: { node: '主图' },
     remove: [{ text: '页脚' }],
-    // The details move into the arch; the text-only page draws no footer to take away.
-    textOnly: { remove: [] },
+    // The details move into the arch, in its middle; the text-only page draws
+    // no footer to take away, and its column sits between the two rules.
+    textOnly: { remove: [], spreadDetails: true, centre: { top: 160, bottom: 1610, close: {} } },
   },
   'data-roundup': {
     title: '标题',
@@ -695,6 +720,10 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     chart: { node: '图表' },
     // A year is what the badge usually says.
     generic: ['角标'],
+    // A one-line title pulls up what follows; between the masthead rule and the
+    // footer rule the chart takes the room.
+    titleFlow: { pinned: ['页脚线', '品牌'] },
+    centre: { top: 140, bottom: 1790, close: { grow: '图表' } },
   },
   'birthday-card': {
     title: '标题',
@@ -703,6 +732,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '署名' },
     // 生日快乐 is what most birthday cards say.
     generic: ['标题'],
+    // The confetti stays at the corners.
+    centre: { top: 40, bottom: 1040, pinned: Array.from({ length: 18 }, (_, index) => `彩纸${index + 1}`), close: {} },
   },
   'compare-table': {
     title: '标题',

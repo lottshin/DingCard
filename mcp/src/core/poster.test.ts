@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'vitest'
-import type { FreeformImageElement, FreeformShapeElement, FreeformTableElement, FreeformTextElement } from '../../../src/freeform/types'
+import type {
+  FreeformChartElement,
+  FreeformImageElement,
+  FreeformPathElement,
+  FreeformSceneNode,
+  FreeformShapeElement,
+  FreeformTableElement,
+  FreeformTextElement,
+} from '../../../src/freeform/types'
+import { FREEFORM_POSTER_TEXT_ONLY, TEMPLATE_REGISTRY } from '../../../src/templates/registry'
 import { composePoster, normalizePosterContent } from './poster'
 import { templateMarks } from './layoutIssues'
 import { posterTemplateIds } from './templates'
@@ -235,17 +244,66 @@ describe('composePoster', () => {
     expect((named(invitation, '标题') as FreeformTextElement).fontSize).toBeGreaterThan(108)
   })
 
-  test('moves a short invitation to the middle of its frame, and a short list to the middle of its rows', () => {
+  test('moves a short invitation to the middle of its frame, and makes a short receipt for a short price list', () => {
     const full = compose('invitation-freeform', { title: '年度设计之夜', subtitle: '诚邀您参加', details: ['时间：12 月 20 日', '地点：外滩源', '着装：深色正装'], cta: '敬请回复', brand: '叮卡团队' })
     const short = compose('invitation-freeform', { title: '乔迁小聚', details: ['时间：11 月 16 日 12:00'] })
     // With less on it, the column comes down from under the masthead.
     expect((named(short, '标题') as FreeformTextElement).y).toBeGreaterThan((named(full, '标题') as FreeformTextElement).y + 100)
+
     const prices = compose('price-list-freeform', { title: '理发价目表', details: ['剪发：45', '剪+吹：58'] })
+    const ticket = named(prices, '小票') as FreeformPathElement
     const first = named(prices, '项目一') as FreeformTextElement
     const second = named(prices, '项目二') as FreeformTextElement
-    // Two rows of eight: 1.6 times as far apart at most, in the middle of the rows' span.
-    expect(second.y - first.y).toBeCloseTo(96 * 1.6, 0)
-    expect(first.y).toBeCloseTo(676 + (96 * 7 - 96 * 1.6) / 2, 0)
+    // Two items of eight: the receipt closes up round them, in the middle of the page.
+    expect(ticket.height).toBeLessThan(1720 * 0.7)
+    expect(Math.abs(ticket.y - (1920 - ticket.y - ticket.height))).toBeLessThan(4)
+    expect(first.y).toBeGreaterThan(ticket.y)
+    expect(second.y + second.height).toBeLessThan(ticket.y + ticket.height)
+    // What closed opens again between the rows, at most to twice their room.
+    expect(second.y - first.y).toBeGreaterThanOrEqual(96)
+    expect(second.y - first.y).toBeLessThanOrEqual(96 * 2)
+    // Its drawing is cut and opened where the room went, not squeezed: the teeth keep their depth.
+    const drawn = TEMPLATE_REGISTRY.find((template) => template.id === 'price-list-freeform')!.createFreeform!().slides[0].nodes
+      .find((node) => node.name === '小票') as FreeformPathElement
+    const teeth = (path: FreeformPathElement) => {
+      const ys = [...path.d.matchAll(/L [\d.]+ ([\d.]+)/g)].map((match) => Number(match[1]))
+      return [Math.max(...ys.slice(0, 8)), path.viewBox.height - Math.min(...ys.slice(-8))]
+    }
+    expect(ticket.viewBox.height).toBeCloseTo(ticket.height, 0)
+    expect(teeth(ticket)).toEqual(teeth(drawn))
+  })
+
+  test('moves a price circle beside a short list as one piece', () => {
+    const drawn = FREEFORM_POSTER_TEXT_ONLY['product-card']!().nodes
+    const at = (nodes: readonly FreeformSceneNode[], name: string) => nodes.find((node) => node.name === name)!.y
+    for (const details of [['72 小时持续补水', '无酒精 · 无香精'], ['72 小时持续补水'], []]) {
+      const card = compose('product-card-freeform', { title: '植物精华水', details, tag: '¥59' })
+      expect(card.summary.layout).toBe('text-only')
+      const nodes = card.document.slides[0].nodes
+      // The circle, its ground, 到手价 and the price keep their places in it.
+      const moves = ['价格圈', '价格底', '价格标签', '角标'].map((name) => at(nodes, name) - at(drawn, name))
+      expect(new Set(moves).size, details.join('/')).toBe(1)
+    }
+  })
+
+  test('gives a chart the room a short data page left, and keeps what is pinned or outside the span in place', () => {
+    const drawnOf = (id: string) => TEMPLATE_REGISTRY.find((template) => template.id === id)!.createFreeform!().slides[0].nodes
+    const at = (nodes: readonly FreeformSceneNode[], name: string) => nodes.find((node) => node.name === name)!
+    const chart = { labels: ['一季度', '二季度', '三季度', '四季度'], series: [{ name: '本数', values: [5, 7, 4, 8] }] }
+    const data = compose('data-roundup-freeform', { title: '今年读了 24 本书', chart })
+    const plot = named(data, '图表') as FreeformChartElement
+    const drawnPlot = at(drawnOf('data-roundup-freeform'), '图表') as FreeformChartElement
+    // No year, subtitle or stats: the chart takes their room, above the footer rule, which stays.
+    expect(plot.height).toBeGreaterThan(drawnPlot.height * 1.5)
+    expect(named(data, '页脚线')!.y).toBe(at(drawnOf('data-roundup-freeform'), '页脚线').y)
+    expect(plot.y + plot.height).toBeLessThan(named(data, '页脚线')!.y)
+    // A certificate's medal and a birthday card's confetti keep their corners.
+    const certificate = compose('certificate-freeform', { title: '荣誉证书', recipient: '林一' })
+    expect([named(certificate, '奖章')!.x, named(certificate, '奖章')!.y]).toEqual([at(drawnOf('certificate-freeform'), '奖章').x, at(drawnOf('certificate-freeform'), '奖章').y])
+    const birthday = compose('birthday-card-freeform', { title: '生日快乐', recipient: '小满' })
+    const confetti = drawnOf('birthday-card-freeform').filter((node) => node.name.startsWith('彩纸'))
+    expect(confetti.length).toBeGreaterThan(0)
+    expect(confetti.map((node) => named(birthday, node.name)!.y)).toEqual(confetti.map((node) => node.y))
   })
 
   test('shrinks a badge\'s words further than copy so they stay inside it', () => {
