@@ -94,6 +94,8 @@ const ALIGNMENT_ISSUES_PER_PAGE = 3
 const EMPTY_BAND = 0.25
 /** A block set in the page's middle may leave up to this share empty above it and below it, each. */
 const CENTRED_BAND = 0.35
+/** A drawing under this share of the page, set beside the words (a certificate's medal), hangs off them on purpose. */
+const SIDE_ORNAMENT_SHARE = 0.05
 /** A shape over this share of the page is the page's ground, not something on it. */
 const BACKDROP_SHARE = 0.6
 /** What is smaller than this share of the page (a dot, a sparkle) doesn't fill a band. */
@@ -205,6 +207,14 @@ export function templateMarks(): TemplateMarks {
       if (background) result.colourPairs.add(colourKey(colour, background))
     })
   }
+}
+
+function enclosing(rects: readonly Rect[]): Rect {
+  const x = Math.min(...rects.map((rect) => rect.x))
+  const y = Math.min(...rects.map((rect) => rect.y))
+  const right = Math.max(...rects.map((rect) => rect.x + rect.width))
+  const bottom = Math.max(...rects.map((rect) => rect.y + rect.height))
+  return { x, y, width: right - x, height: bottom - y }
 }
 
 function intersection(a: Rect, b: Rect): number {
@@ -758,10 +768,24 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         const top = Math.min(...held.map((other) => other.rect.y))
         const bottom = Math.max(...held.map((other) => other.rect.y + other.rect.height))
         if (Math.abs((top - rect.y) - (rect.y + rect.height - bottom)) > rect.height * 0.2) return []
-        return [{ rect }]
+        return [entry]
       })
+      // A little drawing beside the words, taken whole with the group it is
+      // part of (a certificate's medal in its corner), hangs off them on purpose.
+      const words = shown.filter((entry) => entry.node.type === 'text').map((entry) => entry.rect)
+      const block = words.length > 0 ? enclosing(words) : null
+      const unitOf = (entry: Shown) => nodes.get(entry.node.id)!.path[0]
+      const units = new Map<string, Rect[]>()
+      for (const entry of shown) units.set(unitOf(entry), [...(units.get(unitOf(entry)) ?? []), entry.rect])
+      const besideWords = (entry: Shown) => {
+        if (!block || entry.node.type === 'text' || isPicture(entry.node)) return false
+        const unit = enclosing(units.get(unitOf(entry))!)
+        return (unit.width * unit.height) / pageArea < SIDE_ORNAMENT_SHARE
+          && (unit.x >= block.x + block.width || unit.x + unit.width <= block.x)
+      }
+      const spanOf = ({ rect }: Shown) => [Math.max(0, rect.y), Math.min(slide.height, rect.y + rect.height)] as const
       const spans = [...fills, ...margins]
-        .map(({ rect }) => [Math.max(0, rect.y), Math.min(slide.height, rect.y + rect.height)] as const)
+        .map(spanOf)
         .filter(([top, bottom]) => bottom > top)
         .sort((a, b) => a[0] - b[0])
       if (spans.length === 0) {
@@ -777,7 +801,11 @@ export function layoutIssues(document: FreeformDocument, inspected: readonly Ins
         const foot = slide.height - reach
         // Even room above and below a block set in the middle frames it,
         // up to a point; room on one side only is a page left unfinished.
-        const centred = Math.abs(head - foot) <= slide.height * 0.1 && Math.max(head, foot) <= slide.height * CENTRED_BAND
+        const even = (head: number, foot: number) => Math.abs(head - foot) <= slide.height * 0.1 && Math.max(head, foot) <= slide.height * CENTRED_BAND
+        // A drawing hanging off the words doesn't move the block off the middle.
+        const column = [...fills, ...margins].filter((entry) => !besideWords(entry)).map(spanOf).filter(([top, bottom]) => bottom > top)
+        const centred = even(head, foot) || (column.length > 0
+          && even(Math.min(...column.map(([top]) => top)), slide.height - Math.max(...column.map(([, bottom]) => bottom))))
         if (!centred) {
           if (head > gap.bottom - gap.top) gap = { top: 0, bottom: head }
           if (foot > gap.bottom - gap.top) gap = { top: reach, bottom: slide.height }

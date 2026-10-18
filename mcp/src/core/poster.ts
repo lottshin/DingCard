@@ -348,7 +348,8 @@ const CLOSED_MARGIN = 0.2
  * pinned keeps its place; what stands aside moves as one piece. `grow` then
  * takes back up to its own height of what closed. A block so short that
  * centring it would leave more than CLOSED_MARGIN of the page empty above or
- * below keeps that room, shared out between its parts.
+ * below keeps that room, or the room left at its foot, shared out between
+ * its parts.
  */
 function closeUp(
   nodes: FreeformSceneNode[],
@@ -382,6 +383,8 @@ function closeUp(
   const cardBoxes = template.filter((node) => cards.has(node.name)).map((node) => boxOf(node)).filter((box): box is Box => box !== null)
   const card = cardBoxes.length > 0 ? union(cardBoxes) : null
   const cuts: Cut[] = []
+  // What the parts left without words took at the foot of the span.
+  let footRoom = 0
   for (let first = 0; first < blocks.length; first += 1) {
     if (blocks[first].kept) continue
     let last = first
@@ -391,10 +394,12 @@ function closeUp(
     if (below !== null) {
       const keep = Math.max(blocks[first].top - above, below - blocks[last].bottom, 0)
       if (below - above - keep > 0) cuts.push({ at: blocks[first].top, by: below - above - keep })
+    } else {
+      footRoom = Math.max(0, blocks[last].bottom - above)
     }
     first = last
   }
-  if (cuts.length === 0) return nodes
+  if (cuts.length === 0 && footRoom === 0) return nodes
   // What stands aside moves as one piece, by what closed above its middle:
   // a price circle keeps its words where it drew them.
   const asideBoxes = template.filter((node) => aside.has(node.name)).map((node) => boxOf(node)).filter((box): box is Box => box !== null)
@@ -410,7 +415,7 @@ function closeUp(
     return at === null || at < top - 1 || at > bottom + 1 ? node : shifted(node, cutShift(cuts, at))
   })
   const grower = close.grow ? result.find((node) => node.name === close.grow) : undefined
-  if (grower && grower.type !== 'group') {
+  if (grower && grower.type !== 'group' && cuts.length > 0) {
     const by = Math.min(cuts.reduce((sum, cut) => sum + cut.by, 0), grower.height)
     const foot = grower.y + grower.height
     const asideBelow = asideAt !== null && asideAt + asideShift >= foot - 1
@@ -475,7 +480,7 @@ function closeUp(
   // rule don't drift apart, and what is still missing stays round the block.
   const gaps = merged.slice(1).map((part, index) => Math.max(0, part.top - merged[index].bottom))
   const room = gaps.reduce((sum, gap) => sum + gap, 0)
-  const opened = Math.min(back, room, cuts.reduce((sum, cut) => sum + cut.by, 0))
+  const opened = Math.min(back, room, cuts.reduce((sum, cut) => sum + cut.by, 0) + footRoom)
   if (opened <= 0) return result
   const moves = new Map<FreeformSceneNode, number>()
   // Where each gap opens, down the page, for the cards round the parts.

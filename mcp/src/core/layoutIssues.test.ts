@@ -681,6 +681,29 @@ describe('how full a page is', () => {
     expect(found(high).map((issue) => issue.message)).toEqual([expect.stringContaining('页面 420px 以下都是空的')])
   })
 
+  test('a little drawing beside a centred block hangs off it; under it, large, or one of a large group, it is part of the block', () => {
+    // 1440 tall: words from 470 to 970 leave 470 above and below.
+    const words = [text('标题', { y: 470, height: 200 }), text('正文', { y: 700, height: 270 })]
+    // A medal beside the words (3% of the page) reaching down to 1150: the words are still in the middle.
+    expect(found(onPage([...words, drawing('奖章', { x: 800, y: 900, width: 200, height: 250 })]))).toEqual([])
+    // Under the words it is part of the block, which then leaves more room above than below.
+    expect(found(onPage([...words, drawing('奖章', { x: 300, y: 1000, width: 200, height: 250 })]))[0].message).toContain('页面最上面 470px 都是空的')
+    // Beside them, a tenth of the page is something of its own.
+    expect(found(onPage([...words, drawing('插画', { x: 600, y: 800, width: 400, height: 400 })]))[0].message).toContain('页面最上面 470px 都是空的')
+    // Two pieces each 3% of the page hang off the words alone; as one group (7%) they don't.
+    const pieces = [drawing('圆章', { x: 800, y: 800, width: 230, height: 230 }), drawing('绶带', { x: 800, y: 1030, width: 230, height: 230 })]
+    expect(found(onPage([...words, ...pieces]))).toEqual([])
+    const group: FreeformSceneNode = { id: '奖章', name: '奖章', locked: false, hidden: false, type: 'group', x: 0, y: 0, rotation: 0, scale: 1, children: pieces }
+    const grouped = {
+      document: deck([...words, group]),
+      inspected: measured(
+        [...words, ...pieces].map((node) => ({ id: node.id, rect: { x: node.x, y: node.y, width: node.width, height: node.height } })),
+        words.map((node) => ({ id: node.id, area: { x: node.x, y: node.y, width: node.width, height: node.height } })),
+      ),
+    }
+    expect(found(grouped)[0].message).toContain('页面最上面 470px 都是空的')
+  })
+
   test('rules fill the rows they run along, a card is judged by what it holds, and a picture page is never blank', () => {
     // A title and a rule every 300px: no band runs a quarter of the page.
     expect(found(onPage([text('标题', { y: 80, height: 120 }), ...[400, 700, 1000, 1300].map((y, index) => rule(`分隔线${index}`, y))]))).toEqual([])

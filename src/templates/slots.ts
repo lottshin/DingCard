@@ -442,8 +442,9 @@ export interface PosterCentre {
    * missing subtitle) goes, and `cards`, the panel the block sits on,
    * shorten with it — a receipt for three items is a short receipt. `grow`
    * (a chart, the title) takes back up to its own height of that room;
-   * `aside` (a price circle beside the list, its words on it) moves with the
-   * block as one piece, its own room never closing.
+   * `aside` (a price circle beside the list, its words on it; an
+   * invitation's masthead above its column) moves with the block as one
+   * piece, its own room never closing or opening.
    */
   close?: { cards?: readonly string[]; grow?: string; aside?: readonly string[] }
 }
@@ -547,6 +548,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '主办' },
     image: { node: '主图', fallback: block('#d8d0c2') },
+    // 公开讲座 is what many talks are.
+    generic: ['角标'],
     // The panel's words sit in its middle when there are few of them.
     textOnly: { titleFit: { maxScale: 1.8, maxLines: 3 }, centre: { top: 1120, bottom: 1880 } },
   },
@@ -559,6 +562,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '品牌' },
     image: { node: '主图' },
+    // 立即领券 is what many sales ask.
+    generic: ['按钮文字'],
     // Without its lines and button the circle comes down to the middle of the page.
     textOnly: { titleFit: { maxScale: 1.5, maxLines: 3 }, centre: { top: 0, bottom: 1920, close: {} } },
   },
@@ -588,8 +593,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     // 敬请回复 is what most invitations ask.
     generic: ['按钮文字'],
     titleFit: { maxScale: 1.5, maxLines: 2, align: 'middle' },
-    // Inside the frame, under its masthead, closed up.
-    centre: { top: 330, bottom: 1840, close: {} },
+    // Inside the frame, closed up, its masthead moving with the column as one piece.
+    centre: { top: 74, bottom: 1840, close: { aside: ['英文标语', '饰线左', '饰线右', '菱形'] } },
   },
   'quote-card': {
     title: '标题',

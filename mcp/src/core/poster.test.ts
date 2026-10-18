@@ -253,8 +253,17 @@ describe('composePoster', () => {
   test('moves a short invitation to the middle of its frame, and makes a short receipt for a short price list', () => {
     const full = compose('invitation-freeform', { title: '年度设计之夜', subtitle: '诚邀您参加', details: ['时间：12 月 20 日', '地点：外滩源', '着装：深色正装'], cta: '敬请回复', brand: '叮卡团队' })
     const short = compose('invitation-freeform', { title: '乔迁小聚', details: ['时间：11 月 16 日 12:00'] })
-    // With less on it, the column comes down from under the masthead.
+    // With less on it, the column comes down into the middle of the frame, its masthead
+    // with it as one piece; a full one keeps the masthead where the template draws it.
     expect((named(short, '标题') as FreeformTextElement).y).toBeGreaterThan((named(full, '标题') as FreeformTextElement).y + 100)
+    const masthead = (result: ReturnType<typeof compose>) => ['英文标语', '饰线左', '菱形'].map((name) => named(result, name)!.y)
+    expect(masthead(full)).toEqual([180, 278, 269])
+    expect(masthead(short)[0]).toBeGreaterThan(300)
+    expect(masthead(short).map((y) => y - masthead(short)[0])).toEqual([0, 98, 89])
+    // The room the missing rows, button and sign-off took is shared out between what
+    // is left, so no band a quarter of the page tall stays empty under it.
+    const info = named(short, '信息一') as FreeformTextElement
+    expect(1920 - (info.y + info.height)).toBeLessThan(1920 * 0.25)
 
     const prices = compose('price-list-freeform', { title: '理发价目表', details: ['剪发：45', '剪+吹：58'] })
     const ticket = named(prices, '小票') as FreeformPathElement
@@ -338,6 +347,14 @@ describe('composePoster', () => {
     const short = compose('menu-freeform', { title: '午市', details: ['牛肉面：28', '小馄饨：18'] })
     expect(named(short, '菜品三')).toBeUndefined()
     expect(named(short, '虚线三')).toBeUndefined()
+  })
+
+  test('takes a talk\'s 公开讲座 and a sale\'s 立即领券 for words a poster may keep, not for copy left over', () => {
+    const samples = templateMarks().samples
+    expect(samples.has('公开讲座')).toBe(false)
+    expect(samples.has('立即领券')).toBe(false)
+    // Another shop's name still is.
+    expect(samples.get('DINGCARD COFFEE')).toEqual(new Set(['品牌']))
   })
 
   test('puts the name on a certificate, and drops its line when there is none', () => {
