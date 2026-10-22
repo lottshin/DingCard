@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import type {
   FreeformChartElement,
   FreeformImageElement,
+  FreeformLineElement,
   FreeformPathElement,
   FreeformSceneNode,
   FreeformShapeElement,
@@ -349,22 +350,66 @@ describe('composePoster', () => {
     expect(named(short, '虚线三')).toBeUndefined()
   })
 
-  test('takes a talk\'s 公开讲座 and a sale\'s 立即领券 for words a poster may keep, not for copy left over', () => {
+  test('takes a talk\'s 公开讲座, a sale\'s 立即领券 and an invitation\'s 诚邀您参加 for words a poster may keep, not for copy left over', () => {
     const samples = templateMarks().samples
     expect(samples.has('公开讲座')).toBe(false)
     expect(samples.has('立即领券')).toBe(false)
+    expect(samples.has('诚邀您参加')).toBe(false)
     // Another shop's name still is.
     expect(samples.get('DINGCARD COFFEE')).toEqual(new Set(['品牌']))
   })
 
-  test('puts the name on a certificate, and drops its line when there is none', () => {
+  test('closes up a menu, a growth timeline and a book list with one line, and keeps a longer list spread', () => {
+    const y = (result: ReturnType<typeof compose>, name: string) => named(result, name)!.y
+    const bottom = (result: ReturnType<typeof compose>, name: string) => {
+      const node = named(result, name) as { y: number; height: number }
+      return node.y + node.height
+    }
+    // One dish stays under the rule, as the first row is drawn, and the rest of the
+    // list closes: the column sits in the middle of the frame, not a dish alone in it.
+    const menu = compose('menu-freeform', { title: '巷口手作面包', details: ['全麦乡村：22'] })
+    expect(y(menu, '菜品一') - bottom(menu, '分隔线')).toBeLessThan(200)
+    expect(Math.abs((y(menu, '标题') - 80) - (1680 - bottom(menu, '底线')))).toBeLessThan(60)
+    // Five dishes still spread over the rows' room, as far apart as before.
+    const full = compose('menu-freeform', { title: '巷口手作面包', details: ['全麦乡村：22', '黄油可颂：15', '碱水结：12', '当日套餐：28', '咖啡任选：减 3'] })
+    expect(y(full, '菜品二') - y(full, '菜品一')).toBeCloseTo(112 * 1.6, 0)
+    expect(y(full, '底线')).toBeGreaterThan(bottom(full, '虚线五'))
+
+    // One step has nothing to join: no axis, and the footer comes up under it.
+    const one = compose('growth-timeline-freeform', { title: '从 0 到一万人', details: ['3 月：发出第一篇笔记'] })
+    expect(named(one, '时间轴')).toBeUndefined()
+    expect(y(one, '页脚线') - bottom(one, '信息一')).toBeLessThan(200)
+    // More steps: the axis runs from the first dot to the last, wherever they went.
+    const centre = (result: ReturnType<typeof compose>, name: string) => y(result, name) + 13
+    for (const count of [3, 5]) {
+      const steps = compose('growth-timeline-freeform', { title: '从 0 到一万人', details: ['1 月：一', '3 月：二', '5 月：三', '8 月：四', '11 月：五'].slice(0, count) })
+      const axis = named(steps, '时间轴') as FreeformLineElement
+      const last = ['节点一', '节点二', '节点三', '节点四', '节点五'][count - 1]
+      expect(axis.y + axis.height / 2 - axis.width / 2).toBeCloseTo(centre(steps, '节点一'), 0)
+      expect(axis.y + axis.height / 2 + axis.width / 2).toBeCloseTo(centre(steps, last), 0)
+    }
+
+    // One book: the shelf and its line come down between the heading and the foot of the page.
+    const books = compose('book-list-freeform', { title: '年度书单', details: ['小王子：圣埃克苏佩里 · 写给大人的童话'] })
+    expect(y(books, '书脊一')).toBeGreaterThan(340)
+    expect(1440 - bottom(books, '推荐一')).toBeLessThan(1440 * 0.25)
+  })
+
+  test('puts the name on a certificate, and leaves its line blank to write one on when there is none', () => {
     const named_ = compose('certificate-freeform', { title: '荣誉证书', recipient: '王小明', body: '在本学期表现优异，特发此证。', brand: '叮卡小学', details: ['二〇二六年七月'] })
     expect((named(named_, '获得者') as FreeformTextElement).text).toBe('王小明')
     expect(named(named_, '姓名线')).toBeDefined()
     expect(named(named_, '信息二')).toBeUndefined()
     const anonymous = compose('certificate-freeform', { title: '结业证书' })
     expect(named(anonymous, '获得者')).toBeUndefined()
-    expect(named(anonymous, '姓名线')).toBeUndefined()
+    // The line comes up under the title, with room above it for a hand to write the name.
+    const title = named(anonymous, '标题') as FreeformTextElement
+    const line = named(anonymous, '姓名线') as FreeformLineElement
+    expect(line.y - (title.y + title.height)).toBeGreaterThan(100)
+    // Title and line sit in the middle of the frame, the medal in its corner.
+    const english = named(anonymous, '英文标题') as FreeformTextElement
+    expect(Math.abs((english.y - 68) - (1172 - (line.y + line.height)))).toBeLessThan(80)
+    expect(named(anonymous, '奖章')!.y).toBe(named(named_, '奖章')!.y)
     // Without a name line, a name takes the free subtitle, or is left out when that is taken too.
     expect(compose('talk-poster-freeform', { title: '讲座', recipient: '某人' }).summary.moved).toEqual([{ content: 'recipient', text: '某人', node: '副标题' }])
     expect(compose('talk-poster-freeform', { title: '讲座', subtitle: '一场分享', recipient: '某人' }).summary.unused).toEqual(['recipient'])

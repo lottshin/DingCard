@@ -465,6 +465,25 @@ describe('deck data elements', () => {
     expect(timelineGeometry(across.width, across.height, across.items).fontSize).toBe(TIMELINE_FONT_SIZE_MAX)
   })
 
+  test('a signal data page without a lead gives its drawing the lead\'s room', () => {
+    const entries = Array.from({ length: 8 }, (_, index) => ({ label: `${index + 1} 月`, text: '一件值得记下的事' }))
+    const timelineOf = (page: Record<string, unknown>) => {
+      const composed = composeDeck('signal-freeform', { title: '这一年', pages: [{ title: '节点', timeline: entries, ...page }] })
+      if (!composed.ok) throw new Error(composed.error)
+      const node = composed.document.slides[1].nodes.find((entry) => entry.type === 'timeline')
+      if (node?.type !== 'timeline') throw new Error('no timeline')
+      return node
+    }
+    // Eight entries under the band: the rule comes up into the lead's place and the entries
+    // take its room, their words as large as the other decks set eight (28px, was 24px).
+    const bare = timelineOf({})
+    expect(bare.y).toBeLessThan(640)
+    expect(timelineGeometry(bare.width, bare.height, bare.items).fontSize).toBeGreaterThanOrEqual(28)
+    // With a lead the drawing keeps to the room under it.
+    const led = timelineOf({ body: '一年里最重要的八个时刻。' })
+    expect(led.y).toBeGreaterThan(bare.y + 100)
+  })
+
   test('takes the page column and the page colours', () => {
     const composed = composeDeck('night-flight-freeform', {
       title: '复盘',

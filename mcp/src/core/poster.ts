@@ -345,7 +345,8 @@ const CLOSED_MARGIN = 0.2
  * a run of emptied ones closes to the wider of the gaps around it, what sits
  * below moves up, and the cards shorten by what closed across them. Room at
  * the foot of a span with no card stays for the centring to share. What is
- * pinned keeps its place; what stands aside moves as one piece. `grow` then
+ * pinned keeps its place; what stands aside moves as one piece; the room of
+ * what is `held` (rows a spread list took over) stays. `grow` then
  * takes back up to its own height of what closed. A block so short that
  * centring it would leave more than CLOSED_MARGIN of the page empty above or
  * below keeps that room, or the room left at its foot, shared out between
@@ -358,46 +359,49 @@ function closeUp(
   pageHeight: number,
   together: ReadonlyMap<string, string>,
   refit: (node: FreeformTextElement) => FreeformTextElement,
+  held: ReadonlySet<string>,
 ): FreeformSceneNode[] {
   const { top, bottom, pinned = [], close = {} } = centre
   const cards = new Set(close.cards ?? [])
   const aside = new Set(close.aside ?? [])
   const fixed = new Set([...pinned, ...cards, ...aside])
-  const kept = new Set(nodes.map((node) => node.name))
+  const kept = new Set([...nodes.map((node) => node.name), ...held])
   const within = (box: Box) => box.y >= top - 1 && box.y + box.height <= bottom + 1 && box.height < (bottom - top) * 0.9
   const drawn = new Map<string, Box>()
   for (const node of template) {
     const box = boxOf(node)
     if (box && within(box) && !fixed.has(node.name)) drawn.set(node.name, box)
   }
-  const blocks: Array<{ top: number; bottom: number; kept: boolean }> = []
-  for (const [name, box] of [...drawn].sort((a, b) => a[1].y - b[1].y)) {
-    const last = blocks[blocks.length - 1]
-    if (last && box.y < last.bottom) {
-      last.bottom = Math.max(last.bottom, box.y + box.height)
-      last.kept ||= kept.has(name)
-    } else {
-      blocks.push({ top: box.y, bottom: box.y + box.height, kept: kept.has(name) })
-    }
+  // The bands down the page the content still fills (parts overlapping count as one).
+  const bands: Array<{ top: number; bottom: number }> = []
+  for (const [, box] of [...drawn].filter(([name]) => kept.has(name)).sort((a, b) => a[1].y - b[1].y)) {
+    const last = bands[bands.length - 1]
+    if (last && box.y < last.bottom) last.bottom = Math.max(last.bottom, box.y + box.height)
+    else bands.push({ top: box.y, bottom: box.y + box.height })
   }
+  // What was left without words, as the room it took between those bands: a
+  // part beside a band (a picture beside the heading) leaves only what reaches past it.
+  const emptied = [...drawn].filter(([name]) => !kept.has(name)).map(([, box]) => box)
   const cardBoxes = template.filter((node) => cards.has(node.name)).map((node) => boxOf(node)).filter((box): box is Box => box !== null)
   const card = cardBoxes.length > 0 ? union(cardBoxes) : null
   const cuts: Cut[] = []
   // What the parts left without words took at the foot of the span.
   let footRoom = 0
-  for (let first = 0; first < blocks.length; first += 1) {
-    if (blocks[first].kept) continue
-    let last = first
-    while (last + 1 < blocks.length && !blocks[last + 1].kept) last += 1
-    const above = first > 0 ? blocks[first - 1].bottom : card?.y ?? top
-    const below = last + 1 < blocks.length ? blocks[last + 1].top : card ? card.y + card.height : null
+  for (let index = 0; index <= bands.length; index += 1) {
+    const above = index > 0 ? bands[index - 1].bottom : card?.y ?? top
+    const below = index < bands.length ? bands[index].top : card ? card.y + card.height : null
+    const pieces = emptied
+      .map((box) => ({ top: Math.max(box.y, above), bottom: Math.min(box.y + box.height, below ?? Infinity) }))
+      .filter((piece) => piece.bottom > piece.top)
+    if (pieces.length === 0) continue
+    const first = Math.min(...pieces.map((piece) => piece.top))
+    const last = Math.max(...pieces.map((piece) => piece.bottom))
     if (below !== null) {
-      const keep = Math.max(blocks[first].top - above, below - blocks[last].bottom, 0)
-      if (below - above - keep > 0) cuts.push({ at: blocks[first].top, by: below - above - keep })
+      const keep = Math.max(first - above, below - last, 0)
+      if (below - above - keep > 0) cuts.push({ at: first, by: below - above - keep })
     } else {
-      footRoom = Math.max(0, blocks[last].bottom - above)
+      footRoom = Math.max(0, last - above)
     }
-    first = last
   }
   if (cuts.length === 0 && footRoom === 0) return nodes
   // What stands aside moves as one piece, by what closed above its middle:
@@ -519,7 +523,9 @@ function settle(
   let result = nodes
   const rows = slots.details ?? []
   const filled = Math.min(used, rows.length)
-  if (slots.spreadDetails && filled >= 1 && filled < rows.length) {
+  // Rows a spread list takes the room of: that room stays when the column closes up.
+  const held = new Set<string>()
+  if (slots.spreadDetails && filled >= 1 && filled < rows.length && !(filled === 1 && slots.closeLoneLine)) {
     const top = (row: (typeof rows)[number]) => template.find((node) => node.name === row.value)?.y
     const first = top(rows[0])
     const second = top(rows[1])
@@ -533,6 +539,7 @@ function settle(
         for (const name of [row.label, row.value, ...(row.extras ?? [])]) if (name) offsets.set(name, lead + index * (spread - pitch))
       })
       result = result.map((node) => shifted(node, offsets.get(node.name) ?? 0))
+      for (const row of rows.slice(filled)) for (const name of [row.label, row.value, ...(row.extras ?? [])]) if (name) held.add(name)
     }
   }
   if (slots.titleFlow) {
@@ -566,7 +573,7 @@ function settle(
       if (!filled || filled.fontSize <= node.fontSize) return node
       return { ...node, fontSize: filled.fontSize, text: filled.text, verticalAlign: node.verticalAlign === 'middle' ? 'middle' : 'bottom' }
     }
-    result = closeUp(result, template, slots.centre, pageHeight, together, refit)
+    result = closeUp(result, template, slots.centre, pageHeight, together, refit, held)
   }
   if (slots.centre) {
     const { top, bottom, pinned = [] } = slots.centre
@@ -582,7 +589,32 @@ function settle(
       result = result.map((node) => (moving.has(node) ? shifted(node, by) : node))
     }
   }
-  return result
+  return slots.link ? linked(result, slots.link, rows.slice(0, filled)) : result
+}
+
+/**
+ * The line joining the rows' marks, laid from the first row's mark to the
+ * last's wherever the rows ended up. A line turned upright runs down the
+ * page; one lying flat runs across it.
+ */
+function linked(nodes: FreeformSceneNode[], name: string, rows: readonly PosterDetail[]): FreeformSceneNode[] {
+  const centreOf = (row: PosterDetail) => {
+    const mark = nodes.find((node) => node.name === (row.extras?.[0] ?? row.value))
+    const box = mark && boxOf(mark)
+    return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null
+  }
+  const first = rows.length >= 2 ? centreOf(rows[0]) : null
+  const last = rows.length >= 2 ? centreOf(rows[rows.length - 1]) : null
+  if (!first || !last) return nodes
+  return nodes.map((node) => {
+    if (node.name !== name || node.type !== 'line') return node
+    const upright = Math.abs(Math.abs(node.rotation % 180) - 90) < 1
+    const length = Math.round(upright ? last.y - first.y : last.x - first.x)
+    if (length <= 0) return node
+    // A turned line turns about its middle: its box is laid flat round the middle of the run.
+    const middle = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 }
+    return { ...node, width: length, x: Math.round((middle.x - length / 2) * 10) / 10, y: Math.round((middle.y - node.height / 2) * 10) / 10 }
+  })
 }
 
 export function composePoster(templateId: string, value: unknown): PosterSuccess | PosterError {
@@ -610,7 +642,9 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   const dropItem = (item: SlotItem) => {
     remove.add(item.text)
     if (item.note) remove.add(item.note)
-    item.extras?.forEach((name) => remove.add(name))
+    item.extras?.forEach((name) => {
+      if (!item.blank?.includes(name)) remove.add(name)
+    })
   }
 
   texts.set(slots.title, content.title)
@@ -909,6 +943,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
   }
   const filledRows = Math.min(rows.length, lines.length) + rowsTaken.length
   if (filledRows === 0) slots.detailsExtras?.forEach((name) => remove.add(name))
+  if (filledRows < 2 && slots.link) remove.add(slots.link)
   unplaced.unshift(...leftLines)
 
   const nodes: FreeformSceneNode[] = working.flatMap((node): FreeformSceneNode[] => {

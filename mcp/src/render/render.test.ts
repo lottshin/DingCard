@@ -1006,6 +1006,27 @@ describe('checkDocument', () => {
     expect(problems).toEqual([])
   }, 420_000)
 
+  test('finds a short poster finished: one dish, one step, one book, a certificate with only its title', async () => {
+    // The pages the eval never draws: a list poster with a single line, a certificate
+    // with nothing but its title (its name line left blank), an invitation that begins
+    // as most do. Composed in one document, none reads as unfinished or as sample copy.
+    const posters = [
+      composePoster('menu-freeform', { title: '巷口手作面包', details: ['全麦乡村：22'] }),
+      composePoster('growth-timeline-freeform', { title: '从 0 到一万人', details: ['3 月：发出第一篇笔记'] }),
+      composePoster('book-list-freeform', { title: '年度书单', details: ['小王子：圣埃克苏佩里 · 写给大人的童话'] }),
+      composePoster('certificate-freeform', { title: '最佳新人奖' }),
+      composePoster('invitation-freeform', { title: '乔迁小聚', subtitle: '诚邀您参加', details: ['时间：11 月 16 日 12:00'] }),
+    ]
+    const slides = posters.map((poster) => {
+      if (!poster.ok) throw new Error(poster.error)
+      return poster.document.slides[0]
+    })
+    const document: FreeformDocument = { documentVersion: FREEFORM_DOCUMENT_VERSION, activeSlideId: slides[0].id, slides }
+    const result = await checkDocument(document)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.issues.map((issue) => `${issue.page} ${issue.kind}: ${issue.message}`)).toEqual([])
+  }, 420_000)
+
   test('refuses invalid documents without a browser', async () => {
     const result = await checkDocument({ documentVersion: 4 })
     expect(result.ok).toBe(false)

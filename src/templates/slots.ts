@@ -15,6 +15,8 @@ export interface SlotItem {
   note?: string
   /** Removed together with the item when there is nothing to put in it. */
   extras?: readonly string[]
+  /** Extras that stay, blank, when there is nothing to put in the item: a line to write it on by hand. */
+  blank?: readonly string[]
 }
 
 export interface SlideSlots {
@@ -214,6 +216,8 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       data: {
         title: '主标题',
         lead: '导语',
+        // Without a lead the drawing's rule comes up under the band, and the drawing takes the room.
+        leadFlow: { pinned: ['页脚线', '页脚'] },
         numbers: ['页码', '页脚'],
         remove: [{ text: '示例图表' }],
       },
@@ -461,10 +465,22 @@ export interface PosterSlots {
   /** Decoration for the lines as a whole (the card they sit on), removed when there are none. */
   detailsExtras?: readonly string[]
   /**
+   * A line joining the rows' marks (a timeline's axis, each row's first extra
+   * its mark): it runs from the first filled row's mark to the last's, and
+   * goes when fewer than two rows are filled.
+   */
+  link?: string
+  /**
    * Fewer lines than rows spread out over the rows' span (at most 1.6 times
    * as far apart) and sit in the middle of it, so a list fills its card.
    */
   spreadDetails?: boolean
+  /**
+   * A list with no card round it, in a column that closes up (centre.close):
+   * a lone line isn't spread to the middle of the rows, where it would leave
+   * a hole on each side, but stays where the first row is, the rest closing.
+   */
+  closeLoneLine?: boolean
   /**
    * When the title takes fewer lines than its sample, everything whose top is
    * below the title moves up by the room it left, except `pinned` (a footer
@@ -590,8 +606,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
     cta: { text: '按钮文字', extras: ['按钮底板'] },
     brand: { text: '品牌' },
-    // 敬请回复 is what most invitations ask.
-    generic: ['按钮文字'],
+    // 诚邀您参加 is how most invitations begin, 敬请回复 what most of them ask.
+    generic: ['副标题', '按钮文字'],
     titleFit: { maxScale: 1.5, maxLines: 2, align: 'middle' },
     // Inside the frame, closed up, its masthead moving with the column as one piece.
     centre: { top: 74, bottom: 1840, close: { aside: ['英文标语', '饰线左', '饰线右', '菱形'] } },
@@ -662,9 +678,12 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     tag: { text: '刊头' },
     details: rows(8, (n) => `菜品${n}`, (n) => `价格${n}`, (n) => [`虚线${n}`]),
     spreadDetails: true,
+    closeLoneLine: true,
     brand: { text: '品牌' },
     image: { node: '主图' },
     generic: ['标题', ...['一', '二', '三', '四', '五', '六', '七', '八'].map((n) => `价格${n}`)],
+    // Inside the frame, closed up.
+    centre: { top: 80, bottom: 1680, close: {} },
   },
   'price-list': {
     title: '标题',
@@ -680,7 +699,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
   },
   certificate: {
     title: '标题',
-    recipient: { text: '获得者', extras: ['姓名线'] },
+    // Without a name, its line stays to write one on.
+    recipient: { text: '获得者', extras: ['姓名线'], blank: ['姓名线'] },
     body: { text: '正文' },
     details: rows(2, () => undefined, (n) => `信息${n}`),
     brand: { text: '颁发单位', extras: ['签名线'] },
@@ -755,8 +775,12 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     body: { text: '结论' },
     details: rows(5, (n) => `标签${n}`, (n) => `信息${n}`, (n) => [`节点${n}`]),
     spreadDetails: true,
+    closeLoneLine: true,
+    link: '时间轴',
     brand: { text: '品牌' },
     generic: ['角标'],
+    // The whole column, closed up: its footer comes up with it.
+    centre: { top: 96, bottom: 1874, close: { grow: '标题' } },
   },
   'exhibition-poster': {
     title: '标题',
@@ -853,6 +877,8 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     subtitle: { text: '副标题' },
     details: rows(5, (n) => `书名${n}`, (n) => `推荐${n}`, (n) => [`书脊${n}`, `书标${n}`, `书标${n}下`, `序号${n}`]),
     brand: { text: '品牌' },
+    // The shelf and its list, between the heading and the brand, closed up.
+    centre: { top: 296, bottom: 1328, close: {} },
   },
   'word-of-year': {
     title: '标题',
@@ -903,6 +929,7 @@ export function posterSlotNames(slots: PosterSlots): string[] {
   for (const item of [...posterItems(slots), ...(slots.remove ?? [])]) names.push(item.text, ...(item.note ? [item.note] : []), ...(item.extras ?? []))
   for (const detail of slots.details ?? []) names.push(...(detail.label ? [detail.label] : []), detail.value, ...(detail.extras ?? []))
   names.push(...(slots.detailsExtras ?? []))
+  if (slots.link) names.push(slots.link)
   if (slots.image) names.push(slots.image.node, ...(slots.image.extras ?? []))
   if (slots.chart) names.push(slots.chart.node)
   if (slots.tableElement) names.push(slots.tableElement.node)
