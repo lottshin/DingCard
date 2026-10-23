@@ -90,6 +90,23 @@ describe('timeline element', () => {
     expect(timelineGeometry(904, 1200, items).fontSize).toBe(44)
   })
 
+  it('takes a little smaller size before it leaves one character alone on a line', () => {
+    // At 44px a 456-wide column fits eight characters a line: 立下每周一篇的目 / 标.
+    const items: FreeformTimelineItem[] = [
+      { label: '1 月', text: '立下每周一篇的目标' },
+      { label: '2 月', text: '第一篇破千赞' },
+      { label: '3 月', text: '接到第一单合作' },
+      { label: '4 月', text: '粉丝破万' },
+    ]
+    const geometry = timelineGeometry(456, 680, items)
+    expect(geometry.fontSize).toBeLessThan(44)
+    expect(geometry.fontSize).toBeGreaterThanOrEqual(Math.ceil(44 * 0.85))
+    expect(geometry.entries[0].textLines.map((line) => line.text)).toEqual(['立下每周一篇的目标'])
+    // A long entry that must wrap anyway keeps the largest size its lines allow.
+    const long = timelineGeometry(456, 680, [{ label: '1 月', text: '立下每周一篇的目标，写满一整年，再把它们编成一本小书' }, ...items.slice(1)])
+    expect(long.entries[0].textLines.every((line) => [...line.text].length > 1)).toBe(true)
+  })
+
   it('lays horizontal entries side by side under a top spine, centred on their dots', () => {
     const items: FreeformTimelineItem[] = [
       { label: '1 月', text: '起步' },

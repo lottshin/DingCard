@@ -23,6 +23,15 @@ export interface TimelineItem {
   text: string
 }
 
+/** The gap between two columns of entries, when a long timeline is set in two. */
+export const TIMELINE_COLUMN_GAP = 40
+
+/** The entries split into two columns down the page, the left one taking the odd one. */
+export function timelineHalves<T>(items: readonly T[]): [T[], T[]] {
+  const half = Math.ceil(items.length / 2)
+  return [items.slice(0, half), items.slice(half)]
+}
+
 /** One timeline entry, 2–8 of them; every text 1–48 characters, labels 1–12. */
 export function isValidTimelineItems(value: unknown): value is TimelineItem[] {
   return Array.isArray(value)
@@ -86,15 +95,24 @@ export function timelineGeometry(
   }
   // The text size: as large as the room allows (up to TIMELINE_FONT_SIZE_MAX),
   // shrinking only until every entry fits whole; when nothing larger fits, the
-  // 15px-capped size timelines always had, which may cut words short.
-  const sized = (room: number, fits: (fontSize: number) => boolean) => {
+  // 15px-capped size timelines always had, which may cut words short. A size
+  // that leaves one character alone on an entry's last line gives way to one a
+  // little smaller (down to 85%) that keeps it with the rest.
+  const sized = (room: number, fits: (fontSize: number) => boolean, alone: (fontSize: number) => boolean) => {
     const largest = Math.max(9, Math.min(room, TIMELINE_FONT_SIZE_MAX))
     const floor = Math.max(9, Math.min(room, 15))
     for (let fontSize = Math.floor(largest); fontSize > floor; fontSize -= 1) {
-      if (fits(fontSize)) return fontSize
+      if (!fits(fontSize)) continue
+      if (!alone(fontSize)) return fontSize
+      for (let smaller = fontSize - 1; smaller >= Math.max(floor + 1, Math.ceil(fontSize * 0.85)); smaller -= 1) {
+        if (fits(smaller) && !alone(smaller)) return smaller
+      }
+      return fontSize
     }
     return floor
   }
+  // An entry whose words wrap with one character left on the last line.
+  const lonely = (lines: readonly string[]) => lines.length > 1 && [...lines[lines.length - 1]].length === 1
 
   if (options.horizontal) {
     // The spine runs along the top; the entries sit side by side under it,
@@ -115,7 +133,7 @@ export function timelineGeometry(
         const lines = wrapCellLines(item.text, size, columnWidth - 10).length
         return contentY + (item.label !== undefined ? labelHeight : 0) + lines * lineHeight <= height - 4
       })
-    })
+    }, (size) => items.some((item) => lonely(wrapCellLines(item.text, size, columnWidth - 10))))
     const { dotRadius, spineWidth, spineY, contentY, lineHeight, labelHeight, maxTextLines } = layout(fontSize)
     const labelPx = labelSize(fontSize)
     const entries = items.map((item, index) => {
@@ -156,7 +174,7 @@ export function timelineGeometry(
       const lines = wrapCellLines(item.text, size, width - contentX - 4).length
       return (item.label !== undefined ? labelHeight : 0) + lines * lineHeight <= rowHeight - 6
     })
-  })
+  }, (size) => items.some((item) => lonely(wrapCellLines(item.text, size, width - layout(size).contentX - 4))))
   const { dotRadius, spineWidth, spineX, contentX, lineHeight, labelHeight, maxTextLines } = layout(fontSize)
   const labelPx = labelSize(fontSize)
 

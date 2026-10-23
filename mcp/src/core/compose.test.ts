@@ -484,6 +484,28 @@ describe('deck data elements', () => {
     expect(led.y).toBeGreaterThan(bare.y + 100)
   })
 
+  test('sets eight timeline entries in two columns when one column would leave them small', () => {
+    const entries = Array.from({ length: 8 }, (_, index) => ({ label: `${index + 1} 月`, text: '一件值得记下的事' }))
+    for (const body of [undefined, '一年里最重要的八个时刻。']) {
+      const composed = composeDeck('signal-freeform', { title: '这一年', pages: [{ title: '节点', ...(body ? { body } : {}), timeline: entries }] })
+      if (!composed.ok) throw new Error(composed.error)
+      const drawn = composed.document.slides[1].nodes.filter((node) => node.type === 'timeline')
+      if (drawn[0]?.type !== 'timeline' || drawn[1]?.type !== 'timeline') throw new Error('expected two columns')
+      // The left column takes the odd one; both read at display size, which one column of eight cannot.
+      expect(drawn[0].items.map((item) => item.label)).toEqual(['1 月', '2 月', '3 月', '4 月'])
+      expect(drawn[1].items.map((item) => item.label)).toEqual(['5 月', '6 月', '7 月', '8 月'])
+      expect(drawn[1].x).toBeGreaterThan(drawn[0].x + drawn[0].width)
+      expect(drawn[1].y).toBe(drawn[0].y)
+      for (const node of drawn) expect(timelineGeometry(node.width, node.height, node.items).fontSize).toBe(TIMELINE_FONT_SIZE_MAX)
+      // One column of eight in the same room would set its words at 28px.
+      expect(timelineGeometry(952, 680, entries).fontSize).toBeLessThanOrEqual(28)
+    }
+    // Four entries read at display size in one column already.
+    const four = composeDeck('signal-freeform', { title: '这一年', pages: [{ title: '节点', timeline: entries.slice(0, 4) }] })
+    if (!four.ok) throw new Error(four.error)
+    expect(four.document.slides[1].nodes.filter((node) => node.type === 'timeline')).toHaveLength(1)
+  })
+
   test('takes the page column and the page colours', () => {
     const composed = composeDeck('night-flight-freeform', {
       title: '复盘',

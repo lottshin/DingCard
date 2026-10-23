@@ -16,7 +16,7 @@ import {
 } from '../../../src/freeform/document'
 import { CHART_POINTS_MAX, isValidChartKind, isValidChartLabel, isValidChartSeriesName, isValidChartValue } from '../../../src/freeform/charts'
 import { isValidTableCells, isValidTableCellText, isValidTableCols, isValidTableRows } from '../../../src/freeform/tables'
-import { isValidTimelineItems } from '../../../src/freeform/timeline'
+import { isValidTimelineItems, TIMELINE_COLUMN_GAP, timelineGeometry, timelineHalves } from '../../../src/freeform/timeline'
 import { isValidProgressLabel, isValidProgressValue } from '../../../src/freeform/progress'
 import { isHexColor } from '../../../src/freeform/paint'
 import { FREEFORM_DOCUMENT_VERSION, type FreeformDocument, type FreeformSceneNode, type FreeformSlide, type FreeformTextElement } from '../../../src/freeform/types'
@@ -971,7 +971,7 @@ function drawingWants(
   width: number,
   room: number,
   feature = false,
-): { height: number; minHeight: number; minWidth: number; horizontal?: boolean; ring?: boolean } {
+): { height: number; minHeight: number; minWidth: number; horizontal?: boolean; ring?: boolean; columns?: 1 | 2 } {
   switch (element.kind) {
     case 'chart':
       return element.chart.kind === 'ring' || element.chart.kind === 'radar'
@@ -983,12 +983,28 @@ function drawingWants(
       return { height: rows * (feature ? 96 : 84), minHeight: rows * 44, minWidth: 320 }
     }
     case 'timeline': {
-      const items = element.timeline.items.length
+      const items = element.timeline.items
+      const count = items.length
       // Down a spine when the page has the height for it, else side by side;
       // a data page's rows are tall enough for display-sized words.
-      const stacked = items * (feature ? 150 : 104)
-      if (room >= stacked * 0.8 || items > 5 || width < 600) {
-        return { height: stacked, minHeight: items * 56, minWidth: 320 }
+      const stacked = count * (feature ? 150 : 104)
+      if (room >= stacked * 0.8 || count > 5 || width < 600) {
+        // Six or more entries leave each row short of its words when the page
+        // is wide: over two columns each row has twice the room, and the eye
+        // reads the left column down, then the right.
+        if (count >= 6 && width >= 560) {
+          const [left, right] = timelineHalves(items)
+          const height = Math.min(room, stacked)
+          const column = Math.floor((width - TIMELINE_COLUMN_GAP) / 2)
+          const two = Math.min(
+            timelineGeometry(column, height, left).fontSize,
+            timelineGeometry(column, height, right).fontSize,
+          )
+          const one = timelineGeometry(width, height, items).fontSize
+          // A body-sized column in two helps nobody: the split is for words too small to read.
+          if (two > one * 1.15 && two >= 20) return { height: stacked, minHeight: count * 56, minWidth: 320, columns: 2 }
+        }
+        return { height: stacked, minHeight: count * 56, minWidth: 320 }
       }
       return { height: 300, minHeight: 200, minWidth: 600, horizontal: true }
     }
@@ -1013,15 +1029,30 @@ function placeElement(
   const free = largestFreeRectangleFor(slide.width, slide.height, blockingBoxes(slide))
   let horizontal = false
   let ring = false
+  let columns = 1
   const drawn = drawingBox(slide, free, (width) => {
     const wants = drawingWants(element, width, free.height, feature)
     horizontal = wants.horizontal === true
     ring = wants.ring === true
+    columns = wants.columns ?? 1
     return wants
   }, feature)
   if (!drawn) return null
   // A ring is square, in the middle of the column.
   const box = ring ? { x: Math.round(drawn.x + (drawn.width - drawn.height) / 2), y: drawn.y, width: drawn.height, height: drawn.height } : drawn
+  if (element.kind === 'timeline' && columns === 2) {
+    // Two columns of entries side by side: the left takes the odd one.
+    const [left, right] = timelineHalves(element.timeline.items)
+    const column = Math.floor((box.width - TIMELINE_COLUMN_GAP) / 2)
+    const nodes = [left, right].map((items, index) => {
+      const node = elementNode({ kind: 'timeline', timeline: { ...element.timeline, items } }, slide, {
+        x: box.x + index * (column + TIMELINE_COLUMN_GAP), y: box.y, width: column, height: box.height,
+      }, pagePalette(slide), false)
+      return index === 0 ? node : { ...node, name: '时间线二' }
+    })
+    slide.nodes = [...slide.nodes, ...nodes]
+    return { name: nodes[0].name, box }
+  }
   const placed = elementNode(element, slide, box, pagePalette(slide), horizontal, ring)
   slide.nodes = [...slide.nodes, placed]
   return { name: placed.name, box }
