@@ -199,7 +199,7 @@ test('CI invokes repository contracts and existing verification commands', () =>
   assert.match(workflow, /pathlib\.Path\('\.github\/workflows'\)\.glob\('\*\.yml'\)/)
   assert.match(workflow, /publish-image\.yml/)
   assert.match(workflow, /^  static:\n    runs-on: ubuntu-24\.04\n    timeout-minutes: 10$/m)
-  assert.match(workflow, /^  browser:\n    needs: static\n    runs-on: ubuntu-24\.04\n    timeout-minutes: 20$/m)
+  assert.match(workflow, /^  browser:\n    needs: static\n    runs-on: ubuntu-24\.04\n(?:    #.*\n)*    timeout-minutes: 40$/m)
   assert.match(workflow, /^  container:\n    needs: static\n    runs-on: ubuntu-24\.04\n    timeout-minutes: 15$/m)
   assert.doesNotMatch(workflow, /ubuntu-latest/, 'CI runs on a pinned Ubuntu')
 })

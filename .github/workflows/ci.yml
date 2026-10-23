@@ -47,7 +47,9 @@ jobs:
   browser:
     needs: static
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # The tests take about 15 minutes; a slow mirror has made installing
+    # Chrome and the CJK fonts take 20 more (2026-10-23).
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
