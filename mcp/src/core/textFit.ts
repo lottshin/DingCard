@@ -143,6 +143,27 @@ const NO_LINE_END = /[（「『《〈(\[{“‘]$/
 const PAUSE = /[，、；：,;:]$/
 /** A pause a title is read in two halves at (周末去哪儿：城郊三条徒步线): the line breaks after it if it can. */
 const STRONG_PAUSE = /[：；！？—｜:;!?|]$/
+/** A dot set between a title's halves (年终好价节 · 全场五折起): a line that breaks at it drops it. */
+const SEPARATOR_START = /^[·・•]\s*/
+const SEPARATOR_END = /\s*[·・•]$/
+
+/** A title's lines without the separator dots they break at, and how many breaks fell at one. */
+function unseparated(parts: readonly string[]): { lines: string[]; separated: number } {
+  let separated = 0
+  const lines = parts.map((part, index) => {
+    let line = part
+    if (index > 0 && SEPARATOR_START.test(line)) {
+      line = line.replace(SEPARATOR_START, '')
+      separated += 1
+    }
+    if (index < parts.length - 1 && SEPARATOR_END.test(line)) {
+      line = line.replace(SEPARATOR_END, '')
+      separated += 1
+    }
+    return line
+  })
+  return { lines, separated }
+}
 
 /**
  * A heading that takes two or three lines (up to `maxLines`), broken where
@@ -192,7 +213,7 @@ export function balancedHeading(
   let bestWell = false
   for (const cuts of splits) {
     const bounds = [0, ...cuts, words.length]
-    const parts = bounds.slice(1).map((end, index) => words.slice(bounds[index], end).join('').trim())
+    const { lines: parts, separated } = unseparated(bounds.slice(1).map((end, index) => words.slice(bounds[index], end).join('').trim()))
     if (parts.some((part, index) => !part || (index > 0 && NO_LINE_START.test(part)) || (index < parts.length - 1 && NO_LINE_END.test(part)))) continue
     const widths = parts.map(width)
     const longest = Math.max(...widths)
@@ -204,7 +225,7 @@ export function balancedHeading(
     const well = breaksWell(parts)
     const ragged = widths.reduce((sum, value) => sum + ((longest - value) / longest) ** 2, 0)
     const rising = widths.slice(1).filter((value, index) => value > widths[index]).length
-    const pauses = parts.slice(0, -1).filter((part) => PAUSE.test(part)).length
+    const pauses = parts.slice(0, -1).filter((part) => PAUSE.test(part)).length + separated
     const strong = parts.slice(0, -1).filter((part) => STRONG_PAUSE.test(part)).length
     const score = longest + (ragged * 0.5 + rising * 0.25 - pauses * 0.5 - strong * 1) * fontSize
     if ((well && !bestWell) || (well === bestWell && score < bestScore)) {
@@ -355,8 +376,8 @@ export function fillingHeading(
       const visit = (start: number, left: number, parts: string[]) => {
         if (left === 1) {
           const last = words.slice(start).join('').trim()
-          const all = [...parts, last]
-          if (!last || !rule(all)) return
+          const { lines: all, separated } = unseparated([...parts, last])
+          if (all.some((part) => !part) || !rule(all)) return
           const fontSize = Math.min(maxSize, widest(all), tall(all.length))
           const strong = all.slice(0, -1).filter((part) => STRONG_PAUSE.test(part)).length
           if (fontSize < node.fontSize * (strong > 0 ? 0.9 : 1)) return
@@ -365,7 +386,7 @@ export function fillingHeading(
           // first (周年庆 / 全场, not 周年 / 庆全场).
           const ems = all.map((part) => span(part).ems)
           const ragged = ems.reduce((sum, value) => sum + ((Math.max(...ems) - value) / Math.max(...ems)) ** 2, 0)
-          const pauses = all.slice(0, -1).filter((part) => PAUSE.test(part)).length
+          const pauses = all.slice(0, -1).filter((part) => PAUSE.test(part)).length + separated
           const rising = ems.slice(1).filter((value, index) => value > ems[index]).length
           splits.push({ fontSize, text: all.join('\n'), score: fontSize * (1 - ragged * 0.02 + pauses * 0.02 + strong * 0.2 - rising * 0.002) })
           return

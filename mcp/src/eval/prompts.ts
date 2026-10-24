@@ -407,4 +407,29 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'flyer-freeform',
     content: { title: '社区读书角开张', subtitle: '每周三晚上，一起读一本书', details: ['时间：每周三 19:30', '地点：社区活动中心二楼', '费用：免费，自带水杯'], cta: '扫码进群', tag: '免费', brand: '城南社区' },
   },
+  // Holidays: a sale, a card, a calendar page and a red envelope.
+  {
+    id: 'poster-double-eleven',
+    kind: 'poster',
+    templateId: 'double-eleven-freeform',
+    content: { title: '双十一囤货节', subtitle: '全场 5 折起 · 跨店每满 200 减 30', tag: '¥30', details: ['时间：11 月 10 日 20:00 — 11 月 11 日 24:00', '方式：小程序下单，门店自提'], cta: '立即领券', brand: '山野咖啡 · 双十一特惠' },
+  },
+  {
+    id: 'poster-christmas',
+    kind: 'poster',
+    templateId: 'christmas-card-freeform',
+    content: { title: '圣诞快乐', recipient: '致 小满', body: '今年也谢谢你，\n陪我把日子过得热热闹闹。', details: ['平安夜 · 12 月 24 日'], brand: '—— 阿澄' },
+  },
+  {
+    id: 'poster-new-year',
+    kind: 'poster',
+    templateId: 'new-year-calendar-freeform',
+    content: { title: '新年第一天', subtitle: '元旦 · 星期五', tag: '2027', details: ['宜：出门看日出', '忌：赖床'], brand: '阿澄的新年日历' },
+  },
+  {
+    id: 'poster-spring-festival',
+    kind: 'poster',
+    templateId: 'spring-festival-freeform',
+    content: { title: '恭喜发财', subtitle: '羊年大吉 · 阖家欢乐', body: '感谢一年来的支持，\n祝新春快乐，万事如意。', details: ['放假：2 月 5 日 — 2 月 11 日', '营业：2 月 12 日（正月初七）照常营业'], brand: '山野咖啡 全体同仁' },
+  },
 ]

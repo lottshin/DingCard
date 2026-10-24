@@ -917,6 +917,51 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     generic: ['角标'],
   },
+  // The coupon and its 11.11 stay; the column under it closes up and sits in the room left.
+  'double-eleven': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '券额' },
+    details: rows(2, (n) => `标签${n}`, (n) => `信息${n}`),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+    // 立即抢购 is what most sales ask.
+    generic: ['按钮文字'],
+    centre: { top: 860, bottom: 1920, close: {} },
+  },
+  // Between the yoke and the hem.
+  'christmas-card': {
+    title: '标题',
+    recipient: { text: '名字' },
+    // The rule parts the title from the wish: without one it goes.
+    body: { text: '正文', extras: ['分隔线'] },
+    details: rows(1, () => undefined, (n) => `信息${n}`),
+    brand: { text: '署名' },
+    // 圣诞快乐 is what most Christmas cards say.
+    generic: ['标题'],
+    centre: { top: 378, bottom: 1308, close: {} },
+  },
+  // A line's label is its stamp (宜, 忌); the page shortens with what it holds.
+  'new-year-calendar': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '年份' },
+    details: rows(2, (n) => `标签${n}`, (n) => `信息${n}`, (n) => [`标签底${n}`]),
+    brand: { text: '品牌' },
+    // The year and the day's name (元旦 · 星期五) are what the page says that day.
+    generic: ['年份', '副标题'],
+    centre: { top: 0, bottom: 1440, close: { cards: ['日历页', '页厚一', '页厚二'] } },
+  },
+  'spring-festival': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    details: rows(2, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    // 新春快乐 is what most New Year greetings say.
+    generic: ['标题'],
+    centre: { top: 790, bottom: 1860, close: {} },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

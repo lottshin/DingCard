@@ -2792,7 +2792,7 @@ function createLaunchPosterDocument(): FreeformDocument {
       shapeNode('rect', 112, 1572, 336, 100, solid(white), { name: '按钮底板', cornerRadius: 50 }),
       pathNode('M 12 12 L 128 128 M 128 40 L 128 128 L 40 128', 760, 540, 140, 140, { name: '箭头', stroke: white, strokeWidth: 16, cap: 'square', join: 'miter' }),
       textNode('STUDIO DING', 64, 72, 560, 48, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(white), fontWeight: 'bold', letterSpacing: 6 }),
-      textNode('11.11', 716, 66, 300, 56, { name: '角标', fontSize: 40, fontFamily: ARCHIVO, textFill: solid(white), align: 'right' }),
+      textNode('09.20', 716, 66, 300, 56, { name: '角标', fontSize: 40, fontFamily: ARCHIVO, textFill: solid(white), align: 'right' }),
       textNode('COMING\nSOON', 52, 300, 976, 420, { name: '英文标语', fontSize: 200, fontFamily: ARCHIVO, textFill: solid(white), lineHeight: 1, letterSpacing: -6 }),
       textNode('秋冬系列 · 第 4 季', 112, 1180, 856, 48, { name: '副标题', fontSize: 32, fontFamily: SANS, textFill: solid(mist), letterSpacing: 6 }),
       textNode('新品即将上线', 112, 1246, 856, 136, { name: '标题', fontSize: 108, fontFamily: SANS, textFill: solid(white), fontWeight: 'bold', letterSpacing: 2 }),
@@ -3375,6 +3375,220 @@ function createDesignWeekDocument(): FreeformDocument {
   ])
 }
 
+/** A coupon: a rounded ticket with a half-round notch cut into each side where its stub tears off. */
+function couponPath(width: number, height: number, tearAt: number, notch: number, corner: number): string {
+  return [
+    `M ${corner} 0 L ${width - corner} 0 Q ${width} 0 ${width} ${corner}`,
+    `L ${width} ${tearAt - notch} A ${notch} ${notch} 0 0 0 ${width} ${tearAt + notch}`,
+    `L ${width} ${height - corner} Q ${width} ${height} ${width - corner} ${height}`,
+    `L ${corner} ${height} Q 0 ${height} 0 ${height - corner}`,
+    `L 0 ${tearAt + notch} A ${notch} ${notch} 0 0 0 0 ${tearAt - notch}`,
+    `L 0 ${corner} Q 0 0 ${corner} 0 Z`,
+  ].join(' ')
+}
+
+function createDoubleElevenDocument(): FreeformDocument {
+  const red = '#c8102e'
+  const deep = '#8f0a20'
+  const cream = '#fff4e1'
+  const yellow = '#ffe27a'
+  const ticket = { x: 88, y: 196, width: 904, height: 720, tear: 520 }
+  const row = (index: number, label: string, value: string) => {
+    const y = 1334 + index * 136
+    const n = NUMBERED[index]
+    return [
+      textNode(label, 88, y, 904, 44, { name: `标签${n}`, fontSize: 30, fontFamily: SANS, textFill: solid(yellow), fontWeight: 'bold', align: 'center', letterSpacing: 8 }),
+      textNode(value, 88, y + 50, 904, 60, { name: `信息${n}`, fontSize: 42, fontFamily: SANS, textFill: solid(cream), align: 'center' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('海报', stopsPaint([[0, '#d81b33'], [1, '#a50c25']], 180), [
+      pathNode(couponPath(ticket.width, ticket.height, ticket.tear, 40, 28), ticket.x, ticket.y, ticket.width, ticket.height, {
+        name: '优惠券', fill: solid(cream), strokeWidth: 0, shadow: { color: '#6e0716', blur: 40, offsetX: 0, offsetY: 16 },
+      }),
+      lineNode(ticket.x + 64, ticket.y + ticket.tear - 6, ticket.width - 128, red, 4, { name: '撕线', dash: 14, cap: 'butt', opacity: 0.6 }),
+      textNode('DOUBLE ELEVEN', ticket.x, ticket.y + 64, ticket.width, 48, { name: '英文标语', fontSize: 32, fontFamily: ARCHIVO, textFill: solid(red), align: 'center', letterSpacing: 14 }),
+      textNode('11.11', ticket.x + 14, ticket.y + 166, ticket.width - 48, 290, {
+        name: '大字', fontSize: 256, fontFamily: ARCHIVO, textFill: solid(red), align: 'center', letterSpacing: -4, lineHeight: 1.05,
+        effect: { type: 'extrude', color: deep, amount: 60, angle: 45 },
+      }),
+      textNode('COUPON', ticket.x + 72, ticket.y + ticket.tear + 64, 400, 72, { name: '券名', fontSize: 52, fontFamily: ARCHIVO, textFill: solid(red), letterSpacing: 6 }),
+      textNode('¥50', ticket.x + 452, ticket.y + ticket.tear + 40, 380, 120, { name: '券额', fontSize: 96, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', align: 'right' }),
+      textNode('叮卡生活馆 · 官方旗舰店', 88, 96, 904, 48, { name: '品牌', fontSize: 30, fontFamily: SANS, textFill: solid(cream), fontWeight: 'bold', align: 'center', letterSpacing: 6 }),
+      textNode('年终好价节', 88, 868, 904, 320, {
+        name: '标题', fontSize: 132, fontFamily: SANS, textFill: solid(cream), fontWeight: 'bold', align: 'center', letterSpacing: 12, lineHeight: 1.15, verticalAlign: 'bottom',
+      }),
+      textNode('跨店每满 300 减 50 · 全场包邮', 88, 1208, 904, 64, { name: '副标题', fontSize: 44, fontFamily: SANS, textFill: solid(yellow), fontWeight: 'bold', align: 'center', letterSpacing: 2 }),
+      ...row(0, '活动时间', '11 月 1 日 — 11 月 11 日'),
+      ...row(1, '参与方式', '线上旗舰店 · 全国门店同享'),
+      shapeNode('rect', 320, 1658, 440, 104, solid(yellow), { name: '按钮底板', cornerRadius: 52 }),
+      textNode('立即抢购', 320, 1682, 440, 56, { name: '按钮文字', fontSize: 40, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', align: 'center', letterSpacing: 10 }),
+    ], STORY),
+  ])
+}
+
+/** Knit stitches: a "V" for each `#` of a chart, `cell` px a stitch, as one path. */
+function knitStitches(chart: readonly string[], cell: number): string {
+  const half = cell / 2
+  const dip = Math.round(cell * 0.28)
+  const side = Math.round(cell * 0.72)
+  const parts: string[] = []
+  chart.forEach((line, row) => {
+    for (let col = 0; col < line.length; col += 1) {
+      if (line[col] !== '#') continue
+      const x = col * cell
+      const y = row * cell
+      parts.push(`M ${x} ${y} L ${x + half} ${y + dip} L ${x + cell} ${y} L ${x + cell} ${y + side} L ${x + half} ${y + cell} L ${x} ${y + side} Z`)
+    }
+  })
+  return parts.join(' ')
+}
+
+/** A chart `columns` stitches wide: each row drawn by `stitch(column, row)`. */
+function knitChart(columns: number, rows: number, stitch: (column: number, row: number) => boolean): string[] {
+  return Array.from({ length: rows }, (_, row) => Array.from({ length: columns }, (_, column) => (stitch(column, row) ? '#' : '.')).join(''))
+}
+
+const SNOWFLAKE = ['....#....', '.#..#..#.', '..#.#.#..', '...###...', '#########', '...###...', '..#.#.#..', '.#..#..#.', '....#....']
+const KNIT_TREE = ['....#....', '...###...', '..#####..', '...###...', '..#####..', '.#######.', '#########', '....#....', '....#....']
+
+function createChristmasCardDocument(): FreeformDocument {
+  const red = '#b3202a'
+  const green = '#1f5a3d'
+  const rib = '#164530'
+  const cream = '#f7efe2'
+  const cell = 18
+  // 61 stitches from 9px off the left edge: stitch 30 sits on the middle of the page.
+  const columns = 61
+  const motif = (column: number, row: number) => {
+    const centre = [6, 18, 30, 42, 54].find((at) => Math.abs(column - at) <= 4)
+    if (centre === undefined) return false
+    const chart = centre === 18 || centre === 42 ? KNIT_TREE : SNOWFLAKE
+    return chart[row][column - centre + 4] === '#'
+  }
+  const zigzag = (column: number, row: number) => (row === 1 ? column % 2 === 1 : column % 4 === (row === 0 ? 0 : 2))
+  // The yoke, row by row: dots, a zigzag, the snowflakes and trees, the zigzag turned over.
+  const yoke = knitChart(columns, 21, (column, row) => {
+    if (row === 1) return column % 4 === 2
+    if (row >= 3 && row <= 5) return zigzag(column, row - 3)
+    if (row >= 7 && row <= 15) return motif(column, row - 7)
+    if (row >= 17 && row <= 19) return zigzag(column, 19 - row)
+    return false
+  })
+  const yokeHeight = 21 * cell
+  const hemTop = 1308
+  const ribs = Array.from({ length: columns }, (_, index) => `M ${index * cell + 5} 0 L ${index * cell + 13} 0 L ${index * cell + 13} ${1440 + TEMPLATE_EDGE_BLEED - hemTop} L ${index * cell + 5} ${1440 + TEMPLATE_EDGE_BLEED - hemTop} Z`).join(' ')
+  return documentFromSlides([
+    slide('贺卡', solid(red), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, yokeHeight + TEMPLATE_EDGE_BLEED, solid(green), { name: '领口' }),
+      pathNode(knitStitches(yoke, cell), -cell / 2, 0, columns * cell, yokeHeight, { name: '领口花样', fill: solid(cream), strokeWidth: 0 }),
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, hemTop, 1080 + TEMPLATE_EDGE_BLEED * 2, 1440 + TEMPLATE_EDGE_BLEED - hemTop, solid(green), { name: '下摆' }),
+      pathNode(ribs, -cell / 2, hemTop, columns * cell, 1440 + TEMPLATE_EDGE_BLEED - hemTop, { name: '罗纹', fill: solid(rib), strokeWidth: 0 }),
+      textNode('致 亲爱的你', 88, 444, 904, 48, { name: '名字', fontSize: 34, fontFamily: SANS, textFill: solid(cream), align: 'center', letterSpacing: 6 }),
+      textNode('MERRY\nCHRISTMAS', 88, 516, 904, 258, { name: '英文标语', fontSize: 112, fontFamily: ARCHIVO, textFill: solid(cream), align: 'center', letterSpacing: 6, lineHeight: 1.1 }),
+      textNode('圣诞快乐', 88, 788, 904, 160, {
+        name: '标题', fontSize: 84, fontFamily: SANS, textFill: solid(cream), fontWeight: 'bold', align: 'center', letterSpacing: 20, lineHeight: 1.2, verticalAlign: 'middle',
+      }),
+      lineNode(500, 962, 80, cream, 3, { name: '分隔线', cap: 'butt' }),
+      textNode('愿你今晚有热可可、有礼物，\n也有想见的人。', 88, 992, 904, 120, { name: '正文', fontSize: 34, fontFamily: SANS, textFill: solid(cream), align: 'center', lineHeight: 1.7 }),
+      textNode('12 月 24 日 · 平安夜', 88, 1136, 904, 44, { name: '信息一', fontSize: 30, fontFamily: SANS, textFill: solid(cream), align: 'center', letterSpacing: 4 }),
+      textNode('—— 叮卡 敬上', 88, 1196, 904, 48, { name: '署名', fontSize: 32, fontFamily: SANS, textFill: solid(cream), fontWeight: 'bold', align: 'center', letterSpacing: 4 }),
+    ]),
+  ])
+}
+
+/** The ragged strip a torn-off page leaves under the binding, the same jags every time. */
+function tornStrip(width: number, height: number, depth: number): string {
+  const jags = [0.4, 0.9, 0.2, 0.7, 0.5, 1, 0.3, 0.8, 0.1, 0.6, 0.9, 0.4, 0.7, 0.2, 1, 0.5, 0.8, 0.3, 0.6, 0.9, 0.2, 0.7, 0.4, 1, 0.6, 0.3, 0.8, 0.5]
+  const step = width / (jags.length - 1)
+  const edge = jags.map((jag, index) => `L ${Math.round(index * step)} ${Math.round(height - depth + jag * depth)}`).reverse()
+  return `M 0 0 L ${width} 0 ${edge.join(' ')} Z`
+}
+
+function createNewYearCalendarDocument(): FreeformDocument {
+  const navy = '#1d2a47'
+  const paper = '#fbf6ea'
+  const red = '#c93a2e'
+  const ink = '#2a2622'
+  const muted = '#6e665b'
+  const sheet = { x: 160, y: 172, width: 760, height: 1080 }
+  const inner = { x: 216, width: 648 }
+  const row = (index: number, label: string, value: string, stamp: string) => {
+    const y = 1066 + index * 66
+    const n = NUMBERED[index]
+    return [
+      shapeNode('rect', inner.x, y, 48, 48, solid(stamp), { name: `标签底${n}`, cornerRadius: 6 }),
+      textNode(label, inner.x, y + 2, 48, 44, { name: `标签${n}`, fontSize: 30, fontFamily: SERIF, textFill: solid(paper), fontWeight: 'bold', align: 'center' }),
+      textNode(value, inner.x + 72, y - 2, inner.width - 72, 52, { name: `信息${n}`, fontSize: 36, fontFamily: SERIF, textFill: solid(ink), letterSpacing: 4 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('日历', solid(navy), [
+      shapeNode('rect', sheet.x + 12, sheet.y + sheet.height - 10, sheet.width - 24, 28, solid('#d6ccb6'), { name: '页厚二', cornerRadius: 4 }),
+      shapeNode('rect', sheet.x + 6, sheet.y + sheet.height - 10, sheet.width - 12, 20, solid('#e9e1cf'), { name: '页厚一', cornerRadius: 4 }),
+      shapeNode('rect', sheet.x, sheet.y, sheet.width, sheet.height, solid(paper), { name: '日历页', cornerRadius: 6, shadow: { color: '#0b1222', blur: 36, offsetX: 0, offsetY: 18 } }),
+      pathNode(tornStrip(sheet.width, 64, 22), sheet.x, 192, sheet.width, 64, { name: '撕痕', fill: solid('#eee5d2'), strokeWidth: 0, shadow: { color: '#d3c8b1', blur: 3, offsetX: 0, offsetY: 2 } }),
+      shapeNode('rect', sheet.x, 96, sheet.width, 96, solid(red), { name: '日历头', cornerRadius: 16 }),
+      shapeNode('ellipse', 300, 133, 22, 22, solid(navy), { name: '挂孔一' }),
+      shapeNode('ellipse', 758, 133, 22, 22, solid(navy), { name: '挂孔二' }),
+      textNode('2027', sheet.x, 116, sheet.width, 56, { name: '年份', fontSize: 40, fontFamily: PLAYFAIR, textFill: solid(paper), fontWeight: 'bold', align: 'center', letterSpacing: 10 }),
+      textNode('JANUARY', inner.x, 280, 360, 48, { name: '月份', fontSize: 34, fontFamily: PLAYFAIR, textFill: solid(red), letterSpacing: 8 }),
+      textNode('一月', inner.x + inner.width - 200, 280, 200, 48, { name: '月份中文', fontSize: 34, fontFamily: SERIF, textFill: solid(red), fontWeight: 'bold', align: 'right', letterSpacing: 6 }),
+      lineNode(inner.x, 338, inner.width, ink, 2, { name: '刊头线', cap: 'butt' }),
+      textNode('1', inner.x, 336, inner.width, 470, { name: '日期', fontSize: 510, fontFamily: SERIF, textFill: solid(red), fontWeight: 'bold', align: 'center', lineHeight: 0.9 }),
+      textNode('元旦 · 星期五', inner.x, 818, inner.width, 56, { name: '副标题', fontSize: 40, fontFamily: SERIF, textFill: solid(muted), align: 'center', letterSpacing: 8 }),
+      textNode('你好，2027', inner.x, 888, inner.width, 160, {
+        name: '标题', fontSize: 80, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 4, lineHeight: 1.2, verticalAlign: 'middle',
+      }),
+      ...row(0, '宜', '重新开始　早睡早起', red),
+      ...row(1, '忌', '回头看　熬夜', ink),
+      textNode('叮卡 · 新年快乐', 88, 1318, 904, 48, { name: '品牌', fontSize: 30, fontFamily: SERIF, textFill: solid(paper), align: 'center', letterSpacing: 8 }),
+    ]),
+  ])
+}
+
+function createSpringFestivalDocument(): FreeformDocument {
+  const red = '#b90f27'
+  const flap = '#a00b22'
+  const gold = '#efc66b'
+  const pale = '#f8e5b5'
+  const seal = '#e6b85a'
+  const row = (index: number, label: string, value: string) => {
+    const y = 1468 + index * 122
+    const n = NUMBERED[index]
+    return [
+      textNode(label, 140, y, 800, 44, { name: `标签${n}`, fontSize: 30, fontFamily: SERIF, textFill: solid(pale), align: 'center', letterSpacing: 10 }),
+      textNode(value, 140, y + 46, 800, 64, { name: `信息${n}`, fontSize: 44, fontFamily: SERIF, textFill: solid(pale), fontWeight: 'bold', align: 'center' }),
+    ]
+  }
+  // The flap folds over the top, its edge one curve down to the seal.
+  const flapBox = { x: -TEMPLATE_EDGE_BLEED, y: -TEMPLATE_EDGE_BLEED, width: 1080 + TEMPLATE_EDGE_BLEED * 2, height: 680 }
+  const side = 436
+  const flapShape = `M 0 0 L ${flapBox.width} 0 L ${flapBox.width} ${side} Q ${flapBox.width / 2} 916 0 ${side} Z`
+  return documentFromSlides([
+    slide('红包', solid(red), [
+      shapeNode('rect', 56, 56, 968, 1808, { type: 'transparent' }, { name: '金框', stroke: gold, strokeWidth: 2, cornerRadius: 0 }),
+      pathNode(flapShape, flapBox.x, flapBox.y, flapBox.width, flapBox.height, {
+        name: '封口', fill: solid(flap), stroke: gold, strokeWidth: 4, shadow: { color: '#6b0715', blur: 30, offsetX: 0, offsetY: 10 },
+      }),
+      pathNode(circlePath(118, 118, 118), 422, 542, 236, 236, { name: '圆章', fill: solid(seal), strokeWidth: 0, shadow: { color: '#6b0715', blur: 16, offsetX: 0, offsetY: 6 } }),
+      pathNode(circlePath(100, 100, 100), 440, 560, 200, 200, { name: '圆章内圈', stroke: '#b3862f', strokeWidth: 3 }),
+      textNode('福', 422, 566, 236, 188, { name: '福字', fontSize: 150, fontFamily: BRUSH, textFill: solid(flap), align: 'center', lineHeight: 1.2 }),
+      textNode('新春快乐', 88, 806, 904, 336, {
+        name: '标题', fontSize: 200, fontFamily: BRUSH, textFill: solid(gold), align: 'center', letterSpacing: 16, lineHeight: 1.1, verticalAlign: 'middle',
+      }),
+      textNode('丁未羊年 · 万事顺意', 88, 1150, 904, 70, { name: '副标题', fontSize: 48, fontFamily: SERIF, textFill: solid(gold), align: 'center', letterSpacing: 10 }),
+      lineNode(392, 1246, 120, gold, 2, { name: '饰线左', cap: 'butt' }),
+      lineNode(568, 1246, 120, gold, 2, { name: '饰线右', cap: 'butt' }),
+      shapeNode('rect', 530, 1242, 20, 20, solid(gold), { name: '菱形', cornerRadius: 0, rotation: 45 }),
+      textNode('愿新的一年，日子有盼头，\n心里有光，身边有人。', 88, 1290, 904, 144, { name: '正文', fontSize: 38, fontFamily: SERIF, textFill: solid(pale), align: 'center', lineHeight: 1.8 }),
+      ...row(0, '除夕', '2 月 5 日 · 周五'),
+      ...row(1, '春节', '2 月 6 日 · 周六'),
+      textNode('叮卡 敬贺', 88, 1744, 904, 52, { name: '品牌', fontSize: 34, fontFamily: SERIF, textFill: solid(pale), align: 'center', letterSpacing: 10 }),
+    ], STORY),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -3489,6 +3703,10 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'music-festival': poster('音乐节', '夜空里一轮被地平线切开的渐变太阳和霓虹网格，配大字标题和演出阵容，适合音乐节、演出和派对。', ['音乐', '活动'], 'story'),
   'travel-postcard': poster('旅行明信片', '红蓝航空信封边、带齿孔的邮票和邮戳，霞鹜文楷写在横线上，适合旅行分享、问候和祝福。', ['旅行', '问候'], 'xhs'),
   'design-week': poster('设计周', '黑字大号数字压在一个红圆上，下面三栏信息，国际主义版式，适合设计周、展会和论坛。', ['展会', '设计'], 'story'),
+  'double-eleven': poster('双十一', '一张大优惠券上印着立体的 11.11，下面是活动名、满减、时间和抢购按钮，适合双十一、年货节和店铺大促。', ['双十一', '促销'], 'story'),
+  'christmas-card': poster('圣诞', '毛衣花样织在领口：雪花、圣诞树和锯齿纹，下摆是罗纹，中间写 MERRY CHRISTMAS 和祝福，适合圣诞贺卡、平安夜问候和圣诞活动。', ['圣诞', '节日'], 'xhs'),
+  'new-year-calendar': poster('元旦', '一本手撕日历：去年最后一页刚撕掉，新的一页印着大大的 1、今天的标题和宜忌，适合元旦、跨年和新年计划。', ['元旦', '新年'], 'xhs'),
+  'spring-festival': poster('春节', '整张是一个红包：封口压着金色的福字圆章，下面是毛笔大字、祝福和日期，适合春节拜年、新春祝福和放假通知。', ['春节', '国风'], 'story'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -3534,6 +3752,10 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'music-festival': createMusicFestivalDocument,
   'travel-postcard': createTravelPostcardDocument,
   'design-week': createDesignWeekDocument,
+  'double-eleven': createDoubleElevenDocument,
+  'christmas-card': createChristmasCardDocument,
+  'new-year-calendar': createNewYearCalendarDocument,
+  'spring-festival': createSpringFestivalDocument,
 }
 
 /**
@@ -3603,7 +3825,11 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'talk-poster',
   'launch-poster',
   'sale-poster',
+  'double-eleven',
   'hiring-poster',
+  'spring-festival',
+  'new-year-calendar',
+  'christmas-card',
   'festival-poster',
   'solar-term',
   'word-of-year',

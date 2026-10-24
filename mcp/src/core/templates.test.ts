@@ -45,9 +45,9 @@ describe('listTemplates', () => {
     expect(listTemplates({ kind: 'poster', q: 'PPT' }).map((template) => template.id)).toContain('pitch-cover-freeform')
   })
 
-  test('freeform template ids cover the six decks, poster ids the thirty-six posters', () => {
+  test('freeform template ids cover the six decks, poster ids the forty posters', () => {
     expect(freeformTemplateIds()).toHaveLength(6)
-    expect(posterTemplateIds()).toHaveLength(36)
+    expect(posterTemplateIds()).toHaveLength(40)
   })
 
   test('says what each template makes and the size it is drawn at, and what a poster has room for', () => {

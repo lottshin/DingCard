@@ -72,6 +72,8 @@ describe('text fitting', () => {
     expect(balancedHeading(heading, '坚持的秘诀，是降低门槛', 112)).toBe('坚持的秘诀，\n是降低门槛')
     // A line never starts with closing punctuation.
     expect(balancedHeading(heading, '先别急着把它修成成品。', 112).split('\n')[1]).not.toMatch(/^。/)
+    // A dot between the halves goes where the line breaks at it.
+    expect(balancedHeading(box({ width: 760, fontSize: 112 }), '年终好价节 · 全场五折起', 112)).toBe('年终好价节\n全场五折起')
     // Three lines come out even too, broken between words.
     const poster = box({ width: 752, fontSize: 158 })
     expect(balancedHeading(poster, '坚持的秘诀是降低门槛', 158)).toBe('坚持的\n秘诀是\n降低门槛')
@@ -116,6 +118,8 @@ describe('text fitting', () => {
     // A title in two halves breaks after its colon.
     const card = box({ name: '标题', width: 728, height: 640, fontSize: 112, fontWeight: 'bold', lineHeight: 1.24, letterSpacing: -2 })
     expect(fillingHeading(card, '周末去哪儿：城郊三条徒步线', 179, 3)?.text.split('\n')[0]).toBe('周末去哪儿：')
+    // A dot between the halves goes where the title breaks at it.
+    expect(fillingHeading(card, '双十一囤货节 · 全场五折起', 179, 3)?.text).toBe('双十一\n囤货节\n全场五折起')
     // Two one-character words are kept together: 用好 stays one word.
     expect(fill('设计师如何用好 AI')?.text.split('\n').some((line) => line.startsWith('好'))).toBe(false)
     // Short titles grow to the width; no title grows past the cap.
