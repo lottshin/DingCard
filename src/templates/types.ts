@@ -20,6 +20,7 @@ export type FreeformDeckSeriesId =
   | 'night-flight'
   | 'brutalist'
   | 'blueprint'
+  | 'spotlight'
 
 /**
  * Pages a deck can draw besides its section and closing pages, picked by what

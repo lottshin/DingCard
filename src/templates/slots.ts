@@ -373,6 +373,36 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       },
     },
   },
+  // 16:9: words on the left, points or the drawing on the right; the foot carries page / total.
+  spotlight: {
+    // The presenter and the date are the template's own, content has no place for them; their rule goes with them.
+    cover: { title: '主标题', lead: '导语', remove: [{ text: '署名', extras: ['封面线'] }, { text: '日期' }] },
+    section: {
+      title: '标题',
+      lead: '导语',
+      items: (['一', '二', '三'] as const).map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`标记${n}`, `要点线${n}`] })),
+      quote: { text: '引文', extras: ['引文竖线'] },
+      numbers: ['大页码', '页码'],
+    },
+    ending: {
+      title: '主标题',
+      lead: '收束句',
+      items: (['一', '二', '三'] as const).map((n) => ({ text: `行动${n}`, extras: [`编号底${n}`, `编号${n}`] })),
+      numbers: ['页码'],
+    },
+    layouts: {
+      statement: { title: '主标题', lead: '导语', numbers: ['大页码', '页码'] },
+      list: {
+        title: '标题',
+        lead: '导语',
+        items: FIVE.map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`编号底${n}`, `编号${n}`, `要点线${n}`] })),
+        spreadItems: true,
+        numbers: ['大页码', '页码'],
+      },
+      data: { title: '标题', lead: '导语', numbers: ['大页码', '页码'], remove: [{ text: '示例图表' }] },
+      closing: { title: '主标题', lead: '收束句', numbers: ['页码'] },
+    },
+  },
 }
 
 /** Every name a slot spec points at, for checking the spec against its template. */

@@ -76,6 +76,7 @@ export const TEMPLATE_FACETS: Record<TemplateSeriesId, TemplateFacets> = {
   'night-flight': facets(['carousel'], ['literary'], ['black', 'blue']),
   brutalist: facets(['carousel'], ['bold'], ['yellow', 'black']),
   blueprint: facets(['carousel'], ['business'], ['blue']),
+  spotlight: facets(['carousel', 'office'], ['minimal', 'business'], ['orange', 'white']),
   // Posters
   'note-cover': facets(['social'], ['fresh'], ['beige', 'yellow']),
   'photo-cover': facets(['social'], ['retro'], ['beige', 'black']),

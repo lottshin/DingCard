@@ -180,7 +180,11 @@ export function pagePalette(slide: FreeformSlide): PagePalette {
   for (const { node, box } of all) {
     if (node.type === 'line') add(node.stroke, box.width * Math.max(1, node.strokeWidth))
     else if (node.type === 'shape' && !isBackdrop(node, box, slide) && (node.opacity ?? 1) >= 1) add(solidOf(node.fill), Math.sqrt(box.width * box.height) * 2)
-    else if (node.type === 'path') add(node.stroke, Math.sqrt(box.width * box.height))
+    else if (node.type === 'path') {
+      add(node.stroke, Math.sqrt(box.width * box.height))
+      // A mark drawn as a path (a sun, a seal) shows its fill as a shape would.
+      if ((node.opacity ?? 1) >= 1) add(solidOf(node.fill), Math.sqrt(box.width * box.height) * 2)
+    }
     else if (node.type === 'text') add(solidOf(node.textFill), node.text.length * node.fontSize * 0.5)
   }
   // The most shown colour that reads (or nearly does); a deck without one

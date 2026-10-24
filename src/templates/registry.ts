@@ -1754,6 +1754,139 @@ const A4 = { width: 1240, height: 1754 }
 const MOMENTS_GRID = { width: 3240, height: 3240 }
 const A4_LANDSCAPE = { width: 1754, height: 1240 }
 
+const SPOTLIGHT = { paper: '#f5f3ee', ink: '#151515', orange: '#ff5a1f', muted: '#5b5852', rule: '#d9d5cc', dim: '#c9c5bd', night: '#2a2a28' }
+
+/** The running foot every spotlight page has: a rule, the deck's name and the page number (page / total). */
+function spotlightFoot(color: string, rule: string, number = '02 / 06'): FreeformSceneNode[] {
+  return [
+    lineNode(120, 984, 1680, rule, 2, { name: '页脚线', cap: 'butt' }),
+    textNode('DINGCARD KEYNOTE', 120, 1010, 600, 40, { name: '页脚', fontSize: 22, fontFamily: SANS, textFill: solid(color), fontWeight: 'bold', letterSpacing: 6 }),
+    textNode(number, 1500, 1006, 300, 44, { name: '页码', fontSize: 26, fontFamily: ARCHIVO, textFill: solid(color), align: 'right', letterSpacing: 2 }),
+  ]
+}
+
+function createSpotlightDocument(): FreeformDocument {
+  const { paper, ink, orange, muted, rule, dim, night } = SPOTLIGHT
+  // A point on the section page: a square of orange, the point, its note, a rule under it.
+  const point = (index: number, text: string, note: string) => {
+    const y = 236 + index * 230
+    const n = NUMBERED[index]
+    return [
+      shapeNode('rect', 1040, y + 14, 22, 22, solid(orange), { name: `标记${n}`, cornerRadius: 0 }),
+      textNode(text, 1086, y, 714, 64, { name: `要点${n}`, fontSize: 46, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.25 }),
+      textNode(note, 1086, y + 72, 714, 92, { name: `说明${n}`, fontSize: 30, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.5 }),
+      lineNode(1040, y + 186, 760, rule, 2, { name: `要点线${n}`, cap: 'butt' }),
+    ]
+  }
+  // An action on the ending page, in paper on ink.
+  const action = (index: number, text: string) => {
+    const y = 260 + index * 150
+    const n = NUMBERED[index]
+    return [
+      pathNode(circlePath(30, 30, 30), 1060, y + 4, 60, 60, { name: `编号底${n}`, fill: solid(orange), strokeWidth: 0 }),
+      textNode(String(index + 1), 1060, y + 10, 60, 48, { name: `编号${n}`, fontSize: 30, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center' }),
+      textNode(text, 1150, y + 2, 650, 64, { name: `行动${n}`, fontSize: 44, fontFamily: SANS, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.25 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      pathNode(circlePath(480, 480, 480), 1040, 70, 960, 960, { name: '橙色大圆', fill: solid(orange), strokeWidth: 0 }),
+      pathNode(circlePath(520, 520, 520), 1000, 30, 1040, 1040, { name: '光晕', stroke: ink, strokeWidth: 1.5 }),
+      textNode('DINGCARD KEYNOTE', 120, 92, 700, 40, { name: '刊头', fontSize: 24, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('把复杂的事\n讲简单', 110, 290, 1180, 360, { name: '主标题', fontSize: 150, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.12, letterSpacing: -4 }),
+      textNode('一套为汇报、路演和课程准备的演示模板', 120, 694, 900, 60, { name: '导语', fontSize: 40, fontFamily: SANS, textFill: solid(muted), letterSpacing: 1 }),
+      lineNode(120, 930, 880, ink, 2, { name: '封面线', cap: 'butt' }),
+      textNode('主讲人  林一', 120, 956, 400, 44, { name: '署名', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('2026 年 11 月', 560, 956, 440, 44, { name: '日期', fontSize: 28, fontFamily: SANS, textFill: solid(muted), align: 'right', letterSpacing: 2 }),
+    ], LANDSCAPE),
+    slide('内页', solid(paper), [
+      pathNode(circlePath(170, 170, 170), -70, -70, 340, 340, { name: '角圆', fill: solid(orange), strokeWidth: 0 }),
+      textNode('02', 56, 64, 160, 80, { name: '大页码', fontSize: 64, fontFamily: ARCHIVO, textFill: solid(ink), letterSpacing: -2 }),
+      textNode('先讲结论，\n再讲为什么', 112, 290, 800, 230, { name: '标题', fontSize: 84, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.22, letterSpacing: -2 }),
+      textNode('听众在前三十秒决定要不要继续听。把最重要的判断放在第一页，其余的页面都在回答它。', 120, 546, 760, 200, { name: '导语', fontSize: 36, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.65 }),
+      shapeNode('rect', 120, 800, 8, 110, solid(orange), { name: '引文竖线', cornerRadius: 0 }),
+      textNode('“一页只讲一件事。”', 154, 806, 760, 100, { name: '引文', fontSize: 42, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.4 }),
+      ...point(0, '结论放在第一页', '一句话说清你希望听众记住什么'),
+      ...point(1, '每页只回答一个问题', '标题就是这一页的答案'),
+      ...point(2, '数据跟在判断后面', '先说意味着什么，再给数字'),
+      ...spotlightFoot(ink, ink, '02 / 03'),
+    ], LANDSCAPE),
+    slide('结尾', solid(ink), [
+      // The sun sets on the foot's rule, the page number clear of it on the dark.
+      pathNode('M 0 300 A 300 300 0 0 1 600 300 Z', 1240, 690, 600, 300, { name: '落日', fill: solid(orange), strokeWidth: 0 }),
+      textNode('谢谢\n大家', 110, 220, 820, 420, { name: '主标题', fontSize: 170, fontFamily: SANS, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.12, letterSpacing: -4 }),
+      textNode('有问题，会后随时找我聊。', 120, 690, 820, 120, { name: '收束句', fontSize: 40, fontFamily: SANS, textFill: solid(dim), lineHeight: 1.6 }),
+      ...action(0, '本周确认方案'),
+      ...action(1, '下周给出排期'),
+      ...action(2, '月底上线第一版'),
+      ...spotlightFoot(paper, night, '03 / 03'),
+    ], LANDSCAPE),
+  ])
+}
+
+/** The spotlight deck's other inner pages (DeckLayoutId). */
+const SPOTLIGHT_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
+  // A claim on a page of orange, the page number set large.
+  statement: () => {
+    const { ink } = SPOTLIGHT
+    return slide('观点页', solid(SPOTLIGHT.orange), [
+      pathNode(circlePath(300, 300, 300), 1260, 240, 600, 600, { name: '圆环', stroke: ink, strokeWidth: 2 }),
+      textNode('02', 112, 96, 400, 150, { name: '大页码', fontSize: 130, fontFamily: ARCHIVO, textFill: solid(ink), letterSpacing: -4, lineHeight: 1.05 }),
+      textNode('好的演示，\n一页只讲一件事', 110, 330, 1400, 330, { name: '主标题', fontSize: 124, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -3 }),
+      textNode('其余的话，留给下一页。', 120, 712, 1100, 120, { name: '导语', fontSize: 42, fontFamily: SANS, textFill: solid(ink), lineHeight: 1.55 }),
+      ...spotlightFoot(ink, ink),
+    ], LANDSCAPE)
+  },
+  // Up to five points, each by an orange number, a rule under it.
+  list: () => {
+    const { paper, ink, orange, muted, rule } = SPOTLIGHT
+    const row = (index: number, text: string, note: string) => {
+      const y = 140 + index * 164
+      const n = NUMBERED[index]
+      return [
+        pathNode(circlePath(28, 28, 28), 880, y + 6, 56, 56, { name: `编号底${n}`, fill: solid(orange), strokeWidth: 0 }),
+        textNode(String(index + 1), 880, y + 12, 56, 44, { name: `编号${n}`, fontSize: 28, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center' }),
+        textNode(text, 968, y, 832, 60, { name: `要点${n}`, fontSize: 42, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.25 }),
+        textNode(note, 968, y + 66, 832, 46, { name: `说明${n}`, fontSize: 28, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.45 }),
+        lineNode(880, y + 140, 920, rule, 2, { name: `要点线${n}`, cap: 'butt' }),
+      ]
+    }
+    return slide('要点页', solid(paper), [
+      pathNode(circlePath(170, 170, 170), -70, -70, 340, 340, { name: '角圆', fill: solid(orange), strokeWidth: 0 }),
+      textNode('02', 56, 64, 160, 80, { name: '大页码', fontSize: 64, fontFamily: ARCHIVO, textFill: solid(ink), letterSpacing: -2 }),
+      textNode('五步做一份\n好懂的汇报', 112, 290, 680, 230, { name: '标题', fontSize: 84, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.22, letterSpacing: -2 }),
+      textNode('每条一句话，要补充的写在下面那一行。', 120, 546, 640, 130, { name: '导语', fontSize: 36, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.65 }),
+      ...row(0, '先写结论', '第一页就说清楚要什么'),
+      ...row(1, '再给依据', '一条依据只说一件事'),
+      ...row(2, '配一张图', '让数字自己说话'),
+      ...row(3, '讲清代价', '要多少人、多少钱、多久'),
+      ...row(4, '留一个动作', '散会前就能开始做的事'),
+      ...spotlightFoot(ink, ink),
+    ], LANDSCAPE)
+  },
+  // Words on the left, the drawing across the right.
+  data: () => {
+    const { paper, ink, orange, muted } = SPOTLIGHT
+    return slide('数据页', solid(paper), [
+      pathNode(circlePath(170, 170, 170), -70, -70, 340, 340, { name: '角圆', fill: solid(orange), strokeWidth: 0 }),
+      textNode('02', 56, 64, 160, 80, { name: '大页码', fontSize: 64, fontFamily: ARCHIVO, textFill: solid(ink), letterSpacing: -2 }),
+      chartNode('bar', ['一月', '二月', '三月', '四月', '五月', '六月'], [{ name: '用户数', values: [32, 51, 46, 84, 97, 128], color: orange }], 880, 150, 920, 760, { name: '示例图表', showValues: true }),
+      textNode('增长来自\n老用户推荐', 112, 290, 680, 230, { name: '标题', fontSize: 84, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.22, letterSpacing: -2 }),
+      textNode('半年里用户数翻了两番，六成新用户来自老用户的推荐。', 120, 546, 640, 200, { name: '导语', fontSize: 36, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.65 }),
+      ...spotlightFoot(ink, ink),
+    ], LANDSCAPE)
+  },
+  closing: () => {
+    const { paper, ink, orange, dim, night } = SPOTLIGHT
+    return slide('结尾', solid(ink), [
+      pathNode('M 0 300 A 300 300 0 0 1 600 300 Z', 1240, 690, 600, 300, { name: '落日', fill: solid(orange), strokeWidth: 0 }),
+      textNode('下一步，\n从今天开始', 110, 260, 1300, 360, { name: '主标题', fontSize: 130, fontFamily: SANS, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.16, letterSpacing: -3 }),
+      textNode('谢谢大家。', 120, 680, 1000, 120, { name: '收束句', fontSize: 42, fontFamily: SANS, textFill: solid(dim), lineHeight: 1.55 }),
+      ...spotlightFoot(paper, night, '06 / 06'),
+    ], LANDSCAPE)
+  },
+}
+
 /** A shape filled with a picture (a slot the poster's own picture replaces). */
 function pictureShape(
   name: string,
@@ -3990,6 +4123,7 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'night-flight': deck('夜航', '沿时间和路线展开一段记录，适合随笔与灵感。', ['随笔', '灵感']),
   brutalist: deck('粗野', '黄黑撞色、硬阴影和粗线，适合宣言与规则清单。', ['宣言', '海报']),
   blueprint: deck('蓝图', '工程网格、尺寸标注和图签，适合计划与结构拆解。', ['计划', '结构']),
+  spotlight: { title: '聚光', description: '16:9 演示套图：暖白底上一轮橙色大圆，黑色粗体大标题、细线和大页码，观点页整页铺橙色，适合汇报、路演、课程和分享。', pageCount: 3, tags: ['演示', '汇报'], format: 'landscape' },
   'talk-poster': poster('讲座', '大图配大标题，时间、地点、嘉宾一目了然，适合讲座、分享会和活动报名。', ['活动', '讲座'], 'story'),
   'sale-poster': poster('促销', '大字优惠配产品插画，适合新品、折扣和门店活动。', ['促销', '门店'], 'story'),
   'hiring-poster': poster('招聘', '团队头像排成一格，空着的那格留给新人，下面列职位和投递方式，适合招聘和团队介绍。', ['招聘', '团队'], 'story'),
@@ -4047,6 +4181,7 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'night-flight': createNightFlightDocument,
   brutalist: createBrutalistDocument,
   blueprint: createBlueprintDocument,
+  spotlight: createSpotlightDocument,
   'talk-poster': createTalkPosterDocument,
   'sale-poster': createSalePosterDocument,
   'hiring-poster': createHiringPosterDocument,
@@ -4109,6 +4244,7 @@ export const FREEFORM_DECK_LAYOUTS: Partial<Record<FreeformDeckSeriesId, Record<
   'night-flight': NIGHT_FLIGHT_LAYOUTS,
   brutalist: BRUTALIST_LAYOUTS,
   blueprint: BLUEPRINT_LAYOUTS,
+  spotlight: SPOTLIGHT_LAYOUTS,
 }
 
 /**
@@ -4146,6 +4282,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'night-flight',
   'brutalist',
   'blueprint',
+  'spotlight',
   // Posters, the scenes asked for most first.
   'note-cover',
   'photo-cover',

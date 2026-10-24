@@ -101,6 +101,8 @@ export const data: Record<string, Translation> = {
   '柔光': 'Soft Light',
   '蓝图': 'Blueprint',
   '工程网格、尺寸标注和图签，适合计划与结构拆解。': 'Drafting grids, dimension marks and a title block, for plans and structure breakdowns.',
+  '聚光': 'Spotlight',
+  '16:9 演示套图：暖白底上一轮橙色大圆，黑色粗体大标题、细线和大页码，观点页整页铺橙色，适合汇报、路演、课程和分享。': 'A 16:9 presentation deck: a big orange sun on warm white, bold black headlines, hairlines and big page numbers, and a statement page all in orange, for reports, pitches, courses and talks.',
   // Posters (one page each)
   '讲座': 'Talk',
   '大图配大标题，时间、地点、嘉宾一目了然，适合讲座、分享会和活动报名。': 'A big photo and a big title with the time, place and speaker at a glance, for talks, meetups and sign-ups.',

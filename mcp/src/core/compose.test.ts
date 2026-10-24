@@ -531,6 +531,19 @@ describe('deck data elements', () => {
     expect(table.ink).toBe(chart.ink)
   })
 
+  test('takes the accent from a mark drawn as a path', () => {
+    // Spotlight's only colour is the orange sun in the corner, a filled path.
+    const composed = composeDeck('spotlight-freeform', {
+      title: '复盘',
+      pages: [{ title: '季度营收', chart: { kind: 'bar', labels: ['Q1', 'Q2', 'Q3'], series: [{ values: [3, 4, 6] }] } }],
+    })
+    if (!composed.ok) throw new Error(composed.error)
+    const chart = composed.document.slides.flatMap((slide) => slide.nodes).find((node) => node.type === 'chart')
+    if (!chart || chart.type !== 'chart') throw new Error('no chart')
+    // The sun's orange, deepened a step to read on the paper.
+    expect(chart.series[0].color).toBe('#e6511c')
+  })
+
   test('rejects two data elements on one page and bad data', () => {
     expect(composeDeck('editorial-freeform', {
       title: 'a',

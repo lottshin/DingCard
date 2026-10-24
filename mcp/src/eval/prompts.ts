@@ -481,4 +481,40 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'countdown-freeform',
     content: { title: '冬季限定饮品上市', subtitle: '距离新品开售还有', tag: '7', details: ['12 月 1 日 10:00 · 全国门店同步'], brand: '山野咖啡' },
   },
+  // A 16:9 deck read off a screen: a quarterly review, and a course outline.
+  {
+    id: 'deck-spotlight-review',
+    kind: 'deck',
+    templateId: 'spotlight-freeform',
+    content: {
+      title: '第三季度业务回顾',
+      subtitle: '增长、问题和下季度的三件事',
+      pages: [
+        { title: '一句话结论', body: '用户数翻了两番，但留存还没跟上。下季度只做一件事：把新用户留下来。' },
+        { title: '增长来自推荐', body: '六成新用户来自老用户推荐，投放带来的不到两成。', chart: { kind: 'bar', labels: ['七月', '八月', '九月'], series: [{ name: '新用户', values: [3200, 5100, 8400] }] } },
+        { title: '留存的三个问题', points: ['新手引导太长：第一天流失四成', '推送太多：每周关闭通知的人在涨', '缺少回访理由：老用户一周只来一次'], quote: '先修漏水的桶，再往里倒水。' },
+        { title: '下季度做这五件事', points: ['引导缩到三步', '推送减半', '每周一个新玩法', '老带新奖励改成双向', '每月一次用户访谈'] },
+      ],
+      ending: { title: '谢谢大家', body: '有问题会后随时找我。', points: ['周五前定下引导方案', '下周一排好开发计划', '十月底上线新版引导'] },
+    },
+  },
+  {
+    id: 'outline-spotlight-course',
+    kind: 'outline',
+    templateId: 'spotlight-freeform',
+    outline: `# 写作课第一讲
+把一件事讲清楚
+
+## 先想清楚再写
+- 一句话说出你的观点：写不出来，说明还没想清楚
+- 读者是谁：他已经知道什么
+- 读完要他做什么
+
+## 结构
+> 金字塔原理：结论先行，以上统下。
+先结论，后理由，最后是例子。
+
+## 结尾：下次课
+带一篇你写过的文章来。`,
+  },
 ]
