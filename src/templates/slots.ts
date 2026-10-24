@@ -962,6 +962,78 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     generic: ['标题'],
     centre: { top: 790, bottom: 1860, close: {} },
   },
+  // The red block stays without a number; its Nº goes with it.
+  'listicle-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标', extras: ['编号'] },
+    brand: { text: '品牌' },
+    // A list of seven says 07.
+    generic: ['角标'],
+  },
+  'ridge-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+  },
+  'summit-visual': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(2, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    // A year is what the corner usually says.
+    generic: ['角标'],
+  },
+  'gala-backdrop': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(2, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    // The year, and 年会盛典, are what most galas say.
+    generic: ['角标', '标题'],
+    // Inside the frame the column closes up and sits in the middle; the lower corners keep their places.
+    centre: { top: 100, bottom: 1000, pinned: ['角饰三', '角饰四'], close: {} },
+  },
+  // A session to a row; fewer sessions spread over the rows.
+  'agenda-sheet': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    details: rows(6, (n) => `标签${n}`, (n) => `信息${n}`, (n) => [`行线${n}`]),
+    spreadDetails: true,
+    brand: { text: '品牌' },
+  },
+  'annual-report': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(1, () => undefined, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    // The year, and 年度报告 itself, are what most reports say.
+    generic: ['角标', '标题'],
+  },
+  'stat-card': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标', extras: ['色条'] },
+    brand: { text: '品牌' },
+    generic: ['角标'],
+    // Without a number its room closes, the line under it grows into some of it, and the column sits in the middle.
+    titleFit: { maxScale: 1.6, maxLines: 3 },
+    centre: { top: 88, bottom: 1000, close: { grow: '标题' } },
+  },
+  // Without a number the dial stays, empty in the middle like a clock face; DAYS goes with the number.
+  countdown: {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标', extras: ['单位'] },
+    details: rows(1, () => undefined, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    generic: ['角标'],
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

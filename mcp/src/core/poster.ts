@@ -85,7 +85,8 @@ export interface PosterError {
   error: string
 }
 
-const LABEL_SEPARATOR = /\s*[：:]\s*/
+// A colon between digits is part of a time or a ratio (09:30, 3:4), not a label's end.
+const LABEL_SEPARATOR = /\s*(?:：|(?<!\d):|:(?!\d))\s*/
 
 /** A badge's few words may shrink further than copy: they have to stay inside the badge. */
 const TAG_MIN_FIT_SCALE = 0.5

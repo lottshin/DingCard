@@ -47,6 +47,15 @@ describe('composePoster', () => {
     expect(text('主办')).toBe('叮卡设计组')
   })
 
+  test('a time keeps its colon: the label ends at the colon after it', () => {
+    const result = compose('agenda-sheet-freeform', { title: '年会', details: ['09:30：开幕致辞', '10:00 主题演讲', 'Q&A: 自由交流'] })
+    const text = (name: string) => (named(result, name) as FreeformTextElement | undefined)?.text
+    expect([text('标签一'), text('信息一')]).toEqual(['09:30', '开幕致辞'])
+    // A time with no label colon after it stays whole, as the line's words.
+    expect([text('标签二'), text('信息二')]).toEqual([undefined, '10:00 主题演讲'])
+    expect([text('标签三'), text('信息三')]).toEqual(['Q&A', '自由交流'])
+  })
+
   test('leaves no sample text on any poster, and drops what it was not given with its frame', () => {
     const samples = templateMarks().samples
     for (const templateId of posterTemplateIds()) {

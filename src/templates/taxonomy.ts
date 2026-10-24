@@ -117,6 +117,14 @@ export const TEMPLATE_FACETS: Record<TemplateSeriesId, TemplateFacets> = {
   'christmas-card': facets(['festival', 'invite'], ['retro', 'handdrawn'], ['red', 'green']),
   'new-year-calendar': facets(['festival', 'social'], ['retro', 'minimal'], ['blue', 'red', 'beige']),
   'spring-festival': facets(['festival', 'invite'], ['chinese'], ['red', 'yellow']),
+  'listicle-cover': facets(['social'], ['editorial', 'minimal'], ['red', 'beige']),
+  'ridge-cover': facets(['social'], ['literary', 'fresh'], ['blue', 'beige']),
+  'summit-visual': facets(['event'], ['business', 'bold'], ['black', 'blue', 'green']),
+  'gala-backdrop': facets(['event', 'festival'], ['elegant', 'retro'], ['black', 'yellow']),
+  'agenda-sheet': facets(['event', 'office'], ['business', 'minimal'], ['blue', 'white']),
+  'annual-report': facets(['office'], ['business', 'elegant'], ['white', 'blue']),
+  'stat-card': facets(['social', 'office'], ['minimal', 'bold'], ['blue']),
+  'countdown': facets(['event', 'promo'], ['minimal'], ['beige', 'black']),
 }
 
 export function templateFacets(template: Pick<TemplateDefinition, 'series'>): TemplateFacets {

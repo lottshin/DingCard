@@ -146,8 +146,8 @@ test('Freeform gallery renders real layers and starts a fresh history', async ({
   await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(46)
-  await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(47)
+  await expect(dialog.locator('.template-tile')).toHaveCount(54)
+  await expect(dialog.locator('.template-freeform-artboard')).toHaveCount(55)
   await expect(dialog.locator('.template-freeform-artboard .freeform-preview-element').first()).toBeVisible()
 
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()
@@ -195,13 +195,13 @@ test('favorites shortlist templates and follow the browser across reloads', asyn
   await page.goto('/#/edit/canvas')
   await openFreeformTemplateGallery(page)
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(46)
+  await expect(dialog.locator('.template-tile')).toHaveCount(54)
 
   // A heart favorites its tile without picking it; the list itself stays whole.
   await page.getByTestId('template-favorite-podcast-cover-freeform').click()
   await expect(page.getByTestId('template-favorite-podcast-cover-freeform')).toHaveClass(/on/)
   await page.getByTestId('template-favorite-autumn-market-freeform').click()
-  await expect(dialog.locator('.template-tile')).toHaveCount(46)
+  await expect(dialog.locator('.template-tile')).toHaveCount(54)
 
   // The 收藏 filter narrows to the hearts, in registry order.
   await page.getByTestId('template-filter-favorites').click()
@@ -216,7 +216,7 @@ test('favorites shortlist templates and follow the browser across reloads', asyn
 
   // Turning the filter off brings the whole list back.
   await page.getByTestId('template-filter-favorites').click()
-  await expect(dialog.locator('.template-tile')).toHaveCount(46)
+  await expect(dialog.locator('.template-tile')).toHaveCount(54)
 
   // The hearts live in this browser: a reload keeps the shortlist.
   await page.reload()
@@ -238,7 +238,7 @@ test('gallery search narrows the list by keyword and combines with the size filt
   await openFreeformTemplateGallery(page)
 
   const dialog = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(dialog.locator('.template-tile')).toHaveCount(46)
+  await expect(dialog.locator('.template-tile')).toHaveCount(54)
 
   const search = dialog.getByTestId('template-search')
 
@@ -285,7 +285,7 @@ test('gallery uses narrow the list to one kind of template', async ({ page }) =>
   await dialog.getByTestId('template-format-a4').click()
   await expect(dialog.locator('.template-tile')).toHaveCount(2)
   await uses.getByRole('button', { name: '全部', exact: true }).click()
-  await expect(dialog.locator('.template-tile')).toHaveCount(3)
+  await expect(dialog.locator('.template-tile')).toHaveCount(4)
 })
 
 test('Freeform sidebar mounts scene nodes only near the visible thumbnails', async ({ page }) => {
@@ -410,7 +410,7 @@ test('templates come from the repository only; the editors offer no way to save 
   await insertFreeformText(page)
   await openFreeformTemplateGallery(page)
   const gallery = page.getByRole('dialog', { name: '从一套成品开始' })
-  await expect(gallery.locator('.template-tile')).toHaveCount(46)
+  await expect(gallery.locator('.template-tile')).toHaveCount(54)
   await expect(gallery.getByText('我的模板')).toHaveCount(0)
   await expect(gallery.getByRole('button', { name: '删除此模板' })).toHaveCount(0)
   await gallery.getByRole('button', { name: '使用这套模板', exact: true }).click()

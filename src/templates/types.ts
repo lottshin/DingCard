@@ -71,6 +71,14 @@ export type FreeformPosterSeriesId =
   | 'christmas-card'
   | 'new-year-calendar'
   | 'spring-festival'
+  | 'listicle-cover'
+  | 'ridge-cover'
+  | 'summit-visual'
+  | 'gala-backdrop'
+  | 'agenda-sheet'
+  | 'annual-report'
+  | 'stat-card'
+  | 'countdown'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

@@ -126,7 +126,8 @@ export interface ComposeError {
 }
 
 const MAX_SECTIONS = MAX_FREEFORM_SLIDES - 2
-const NOTE_SEPARATOR = /\s*[：:]\s*/
+// A colon between digits is part of a time or a ratio (09:30, 3:4), not where a point's note starts.
+const NOTE_SEPARATOR = /\s*(?:：|(?<!\d):|:(?!\d))\s*/
 const QUOTE_SOURCE = /\s+[—–-]{1,2}\s*/
 
 function clean(value: unknown): string {

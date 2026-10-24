@@ -432,4 +432,53 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'spring-festival-freeform',
     content: { title: '恭喜发财', subtitle: '羊年大吉 · 阖家欢乐', body: '感谢一年来的支持，\n祝新春快乐，万事如意。', details: ['放假：2 月 5 日 — 2 月 11 日', '营业：2 月 12 日（正月初七）照常营业'], brand: '山野咖啡 全体同仁' },
   },
+  // The sizes that had few templates: WeChat headers, landscape key visuals, A4 sheets and squares.
+  {
+    id: 'poster-listicle-cover',
+    kind: 'poster',
+    templateId: 'listicle-cover-freeform',
+    content: { title: '新手做咖啡最容易踩的坑', subtitle: '从磨豆到萃取，一篇讲清', tag: '05', brand: '山野咖啡 · 第 12 期' },
+  },
+  {
+    id: 'poster-ridge-cover',
+    kind: 'poster',
+    templateId: 'ridge-cover-freeform',
+    content: { title: '在大理慢下来', subtitle: '洱海边住了一周，我学会了什么都不做', tag: '旅居手记', brand: '阿澄的周末' },
+  },
+  {
+    id: 'poster-summit-visual',
+    kind: 'poster',
+    templateId: 'summit-visual-freeform',
+    content: { title: '开源的下一站', subtitle: '第三届 · 开发者大会', tag: '2027', details: ['时间：3 月 21 — 22 日', '地点：杭州国际博览中心'], brand: 'OPEN DEV CONF' },
+  },
+  {
+    id: 'poster-gala-backdrop',
+    kind: 'poster',
+    templateId: 'gala-backdrop-freeform',
+    content: { title: '星光之夜', subtitle: '感恩同行 · 共赴新程', tag: '2027', details: ['时间：1 月 23 日 18:00', '地点：杭州西湖国宾馆'], brand: '山野咖啡 年度盛典' },
+  },
+  {
+    id: 'poster-agenda-sheet',
+    kind: 'poster',
+    templateId: 'agenda-sheet-freeform',
+    content: { title: '咖啡行业年会', subtitle: '第三届 · 产业论坛', body: '12 月 6 日 · 星期六\n杭州国际博览中心 3 号厅', details: ['09:00：签到入场', '09:30：开幕致辞', '10:30：圆桌：精品咖啡还能火几年', '14:00：工作坊：门店菜单设计'], brand: 'COFFEE FORUM' },
+  },
+  {
+    id: 'poster-annual-report',
+    kind: 'poster',
+    templateId: 'annual-report-freeform',
+    content: { title: '社会责任报告', subtitle: '每一杯咖啡都更可持续', tag: '2026', details: ['2027 年 4 月发布'], brand: '山野咖啡集团' },
+  },
+  {
+    id: 'poster-stat-card',
+    kind: 'poster',
+    templateId: 'stat-card-freeform',
+    content: { title: '的人每天至少喝一杯咖啡', subtitle: '城市白领的咖啡习惯', tag: '64%', brand: '数据来源：2026 城市咖啡消费调查' },
+  },
+  {
+    id: 'poster-countdown',
+    kind: 'poster',
+    templateId: 'countdown-freeform',
+    content: { title: '冬季限定饮品上市', subtitle: '距离新品开售还有', tag: '7', details: ['12 月 1 日 10:00 · 全国门店同步'], brand: '山野咖啡' },
+  },
 ]

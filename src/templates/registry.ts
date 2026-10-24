@@ -3589,6 +3589,329 @@ function createSpringFestivalDocument(): FreeformDocument {
   ])
 }
 
+const roundTenth = (value: number) => Math.round(value * 10) / 10
+
+/** A smooth line through `points` (Catmull–Rom as cubic curves), as path data from its first point. */
+function smoothThrough(points: ReadonlyArray<readonly [number, number]>, closed: boolean): string {
+  const at = (index: number) => closed
+    ? points[(index + points.length) % points.length]
+    : points[Math.min(points.length - 1, Math.max(0, index))]
+  const parts = [`M ${roundTenth(points[0][0])} ${roundTenth(points[0][1])}`]
+  const segments = closed ? points.length : points.length - 1
+  for (let index = 0; index < segments; index += 1) {
+    const [before, from, to, after] = [at(index - 1), at(index), at(index + 1), at(index + 2)]
+    parts.push(`C ${roundTenth(from[0] + (to[0] - before[0]) / 6)} ${roundTenth(from[1] + (to[1] - before[1]) / 6)} ${roundTenth(to[0] - (after[0] - from[0]) / 6)} ${roundTenth(to[1] - (after[1] - from[1]) / 6)} ${roundTenth(to[0])} ${roundTenth(to[1])}`)
+  }
+  return parts.join(' ') + (closed ? ' Z' : '')
+}
+
+/** One layer of a mountain range: a ridge through `points`, closed down to `bottom`. */
+function ridgePath(points: ReadonlyArray<readonly [number, number]>, bottom: number): string {
+  const first = points[0]
+  const last = points[points.length - 1]
+  return `${smoothThrough(points, false)} L ${last[0]} ${bottom} L ${first[0]} ${bottom} Z`
+}
+
+/** Closed contour lines round a centre, each ring wobbling its own way: a patch of a topographic map, its box fitted round it. */
+function contourNode(name: string, cx: number, cy: number, rings: number, step: number, stretch: number, stroke: string, opacity: number): FreeformSceneNode {
+  const loops = Array.from({ length: rings }, (_, ring) => Array.from({ length: 28 }, (__, index) => {
+    const angle = (index / 28) * Math.PI * 2
+    const radius = (ring + 1) * step
+    const wobble = 1 + 0.09 * Math.sin(angle * 3 + (ring + 1) * 0.42) + 0.05 * Math.sin(angle * 5 - (ring + 1) * 0.7) + 0.03 * Math.sin(angle * 2 + ring + 1)
+    return [cx + Math.cos(angle) * radius * wobble * stretch, cy + Math.sin(angle) * radius * wobble] as const
+  }))
+  // The curves swing a little past their points: room for that round the box.
+  const margin = step
+  const xs = loops.flat().map(([x]) => x)
+  const ys = loops.flat().map(([, y]) => y)
+  const left = Math.floor(Math.min(...xs) - margin)
+  const top = Math.floor(Math.min(...ys) - margin)
+  const width = Math.ceil(Math.max(...xs) + margin) - left
+  const height = Math.ceil(Math.max(...ys) + margin) - top
+  const d = loops.map((points) => smoothThrough(points.map(([x, y]) => [x - left, y - top] as const), true)).join(' ')
+  return pathNode(d, left, top, width, height, { name, stroke, strokeWidth: 2, opacity })
+}
+
+/** A dial's marks: of `count` ticks round a centre, the ones `keep` picks, each from `radius` in by `length`. */
+function dialTicks(cx: number, cy: number, radius: number, length: number, count: number, keep: (index: number) => boolean): string {
+  const marks: string[] = []
+  for (let index = 0; index < count; index += 1) {
+    if (!keep(index)) continue
+    const angle = (index / count) * Math.PI * 2 - Math.PI / 2
+    const [cos, sin] = [Math.cos(angle), Math.sin(angle)]
+    marks.push(`M ${roundTenth(cx + cos * radius)} ${roundTenth(cy + sin * radius)} L ${roundTenth(cx + cos * (radius - length))} ${roundTenth(cy + sin * (radius - length))}`)
+  }
+  return marks.join(' ')
+}
+
+/**
+ * Rays fanning out of a point between two angles (degrees, 0 to the right, -90 up), from `inner` to `outer`,
+ * each cut where it leaves the `width` × `height` box so the drawing stays inside its node.
+ */
+function raysPath(cx: number, cy: number, inner: number, outer: number, from: number, to: number, count: number, width = Infinity, height = Infinity): string {
+  return Array.from({ length: count }, (_, index) => {
+    const angle = ((from + ((to - from) * index) / (count - 1)) * Math.PI) / 180
+    const [cos, sin] = [Math.cos(angle), Math.sin(angle)]
+    // How far along the ray it can go before leaving the box (Liang–Barsky, the ray starting inside).
+    const exits = [cos > 0 ? (width - cx) / cos : cos < 0 ? -cx / cos : Infinity, sin > 0 ? (height - cy) / sin : sin < 0 ? -cy / sin : Infinity]
+    const end = Math.min(outer, ...exits)
+    return `M ${roundTenth(cx + cos * inner)} ${roundTenth(cy + sin * inner)} L ${roundTenth(cx + cos * end)} ${roundTenth(cy + sin * end)}`
+  }).join(' ')
+}
+
+function createListicleCoverDocument(): FreeformDocument {
+  const paper = '#f3efe7'
+  const ink = '#1b1a18'
+  const red = '#c0341d'
+  const muted = '#635e56'
+  return documentFromSlides([
+    slide('首图', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 720 + TEMPLATE_EDGE_BLEED, 766 + TEMPLATE_EDGE_BLEED * 2, solid(red), { name: '色块', cornerRadius: 0 }),
+      // A ring round the number like a seal; without a number the block still holds a drawing.
+      pathNode(circlePath(300, 300, 300), 60, 83, 600, 600, { name: '圆环', stroke: paper, strokeWidth: 3, opacity: 0.45 }),
+      textNode('Nº', 72, 40, 200, 76, { name: '编号', fontSize: 64, fontFamily: PLAYFAIR, textFill: solid(paper), italic: true }),
+      textNode('07', 24, 120, 672, 560, { name: '角标', fontSize: 460, fontFamily: ARCHIVO, textFill: solid(paper), align: 'center', letterSpacing: -12, lineHeight: 1.1 }),
+      textNode('叮卡排版课 · 第 38 期', 800, 150, 904, 40, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('让文章更好读的\n排版习惯', 796, 214, 908, 270, { name: '标题', fontSize: 96, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.3, letterSpacing: 2, verticalAlign: 'middle' }),
+      lineNode(800, 512, 88, ink, 6, { name: '标题线', cap: 'butt' }),
+      textNode('从字号、行距到留白，一次讲清', 800, 548, 904, 56, { name: '副标题', fontSize: 36, fontFamily: SANS, textFill: solid(muted), letterSpacing: 1 }),
+    ], WECHAT_COVER),
+  ])
+}
+
+function createRidgeCoverDocument(): FreeformDocument {
+  const ink = '#1d3640'
+  const deep = '#355d6b'
+  const bottom = 766 + TEMPLATE_EDGE_BLEED
+  // Each layer is drawn on the whole width plus the bleed, its points in page px.
+  const ridge = (name: string, color: string, points: ReadonlyArray<readonly [number, number]>) => pathNode(
+    ridgePath(points.map(([x, y]) => [x + TEMPLATE_EDGE_BLEED, y] as const), bottom),
+    -TEMPLATE_EDGE_BLEED, 0, 1800 + TEMPLATE_EDGE_BLEED * 2, bottom,
+    { name, fill: solid(color), strokeWidth: 0 },
+  )
+  const bird = (name: string, x: number, y: number, size: number) => pathNode(
+    `M 2 ${roundTenth(size * 0.42)} Q ${roundTenth(size * 0.26)} 2 ${roundTenth(size * 0.5)} ${roundTenth(size * 0.42)} Q ${roundTenth(size * 0.74)} 2 ${size - 2} ${roundTenth(size * 0.42)}`,
+    x, y, size, Math.round(size * 0.5),
+    { name, stroke: ink, strokeWidth: 2.5, cap: 'round', join: 'round', opacity: 0.7 },
+  )
+  return documentFromSlides([
+    slide('首图', stopsPaint([[0, '#dbe5e8'], [0.6, '#f0e3d6'], [1, '#f5d9c3']], 180), [
+      shapeNode('ellipse', 1060, 110, 540, 440, solid('#f9d3b2'), { name: '霞光', filter: { blur: 80 }, opacity: 0.65 }),
+      pathNode(circlePath(64, 64, 64), 1256, 266, 128, 128, { name: '太阳', fill: solid('#efa678'), strokeWidth: 0 }),
+      bird('飞鸟一', 1096, 214, 44),
+      bird('飞鸟二', 1156, 246, 30),
+      ridge('远山一', '#c4d2d6', [[-16, 520], [180, 506], [380, 520], [560, 492], [760, 470], [940, 430], [1100, 380], [1230, 332], [1330, 302], [1430, 322], [1540, 292], [1660, 318], [1816, 340]]),
+      ridge('远山二', '#9fb7bf', [[-16, 574], [220, 560], [460, 574], [700, 548], [900, 520], [1080, 470], [1220, 440], [1360, 452], [1500, 410], [1650, 432], [1816, 418]]),
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, 540, 1800 + TEMPLATE_EDGE_BLEED * 2, 64, solid('#eef1f0'), { name: '山雾', filter: { blur: 30 }, opacity: 0.45, cornerRadius: 0 }),
+      ridge('远山三', '#73949f', [[-16, 624], [300, 610], [580, 630], [860, 596], [1120, 566], [1340, 544], [1560, 560], [1816, 536]]),
+      ridge('远山四', '#46697a', [[-16, 674], [340, 656], [700, 680], [1040, 652], [1340, 628], [1600, 650], [1816, 624]]),
+      ridge('远山五', '#20404d', [[-16, 716], [420, 700], [860, 722], [1260, 700], [1560, 714], [1816, 690]]),
+      textNode('旅行笔记', 96, 96, 400, 40, { name: '角标', fontSize: 26, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('叮卡周刊', 1404, 96, 300, 40, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', align: 'right', letterSpacing: 6 }),
+      textNode('去山里\n住三天', 90, 150, 900, 260, { name: '标题', fontSize: 100, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.25, letterSpacing: 4, verticalAlign: 'middle' }),
+      textNode('一个人的徒步与慢生活', 96, 426, 800, 52, { name: '副标题', fontSize: 34, fontFamily: SANS, textFill: solid(deep), letterSpacing: 2 }),
+    ], WECHAT_COVER),
+  ])
+}
+
+function createSummitVisualDocument(): FreeformDocument {
+  const night = '#0a0e1c'
+  const white = '#f4f6ff'
+  const muted = '#9aa3c2'
+  const lime = '#d4ff3a'
+  const ring = '#33416e'
+  const [cx, cy] = [1440, 540]
+  const orbit = (name: string, rx: number, ry: number, rotation: number, color: string, width: number, opacity?: number) =>
+    shapeNode('ellipse', cx - rx, cy - ry, rx * 2, ry * 2, { type: 'transparent' }, { name, stroke: color, strokeWidth: width, rotation, opacity })
+  // A moon on an orbit: the point at `degrees` round the ellipse, turned with it.
+  const moon = (name: string, rx: number, ry: number, rotation: number, degrees: number, size: number, color: string) => {
+    const [t, turn] = [(degrees * Math.PI) / 180, (rotation * Math.PI) / 180]
+    const x = cx + rx * Math.cos(t) * Math.cos(turn) - ry * Math.sin(t) * Math.sin(turn)
+    const y = cy + rx * Math.cos(t) * Math.sin(turn) + ry * Math.sin(t) * Math.cos(turn)
+    return pathNode(circlePath(size / 2, size / 2, size / 2), roundTenth(x - size / 2), roundTenth(y - size / 2), size, size, { name, fill: solid(color), strokeWidth: 0 })
+  }
+  const row = (index: number, label: string, value: string) => {
+    const x = 120 + index * 420
+    const n = NUMBERED[index]
+    return [
+      textNode(label, x, 852, 380, 40, { name: `标签${n}`, fontSize: 26, fontFamily: SANS, textFill: solid(muted), letterSpacing: 6 }),
+      textNode(value, x, 896, 400, 56, { name: `信息${n}`, fontSize: 38, fontFamily: SANS, textFill: solid(white), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('主视觉', solid(night), [
+      shapeNode('ellipse', 900, 0, 1100, 1080, solid('#2c4bff'), { name: '光晕', filter: { blur: 100 }, opacity: 0.4 }),
+      orbit('轨道一', 560, 560, 0, ring, 2),
+      orbit('轨道二', 420, 420, 0, ring, 2),
+      orbit('轨道三', 300, 300, 0, ring, 1.5),
+      orbit('轨道四', 620, 210, -18, lime, 2.5, 0.85),
+      orbit('轨道五', 520, 160, 28, '#7f8fd6', 2, 0.7),
+      pathNode(circlePath(150, 150, 150), cx - 150, cy - 150, 300, 300, {
+        name: '核心',
+        fill: { type: 'radial-gradient', stops: [{ offset: 0, color: '#f4ffc2' }, { offset: 0.55, color: '#cdf53e' }, { offset: 1, color: '#2fbfa4' }] },
+        strokeWidth: 0,
+        shadow: { color: '#b8f03a', blur: 90, offsetX: 0, offsetY: 0 },
+      }),
+      moon('卫星一', 620, 210, -18, 110, 22, lime),
+      moon('卫星二', 520, 160, 28, 24, 16, white),
+      moon('卫星三', 420, 420, 0, 300, 12, '#7f8fd6'),
+      textNode('DINGCARD SUMMIT', 120, 96, 800, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(white), fontWeight: 'bold', letterSpacing: 8 }),
+      textNode('2026', 1500, 92, 300, 52, { name: '角标', fontSize: 40, fontFamily: ARCHIVO, textFill: solid(lime), align: 'right' }),
+      textNode('第五届 · 设计与智能大会', 120, 318, 1000, 56, { name: '副标题', fontSize: 38, fontFamily: SANS, textFill: solid(lime), letterSpacing: 4 }),
+      textNode('未来的\n设计工具', 110, 386, 1100, 360, { name: '标题', fontSize: 150, fontFamily: SANS, textFill: solid(white), fontWeight: 'bold', lineHeight: 1.15, letterSpacing: 2, verticalAlign: 'middle' }),
+      lineNode(120, 790, 96, lime, 6, { name: '标题线', cap: 'butt' }),
+      ...row(0, '时间', '11 月 18 — 19 日'),
+      ...row(1, '地点', '上海西岸艺术中心'),
+    ], LANDSCAPE),
+  ])
+}
+
+function createGalaBackdropDocument(): FreeformDocument {
+  const black = '#0d0b08'
+  const gold = '#d4b06a'
+  const champagne = '#f2e4c2'
+  const goldLeaf = stopsPaint([[0, '#b8924f'], [0.5, '#f6dfa4'], [1, '#b8924f']], 90)
+  // An art deco corner: two nested right angles opening into the page.
+  const corner = (name: string, x: number, y: number, flipX: boolean, flipY: boolean) => {
+    const px = (value: number) => (flipX ? 64 - value : value)
+    const py = (value: number) => (flipY ? 64 - value : value)
+    return pathNode(
+      `M ${px(0)} ${py(64)} L ${px(0)} ${py(0)} L ${px(64)} ${py(0)} M ${px(16)} ${py(64)} L ${px(16)} ${py(16)} L ${px(64)} ${py(16)}`,
+      x, y, 64, 64, { name, stroke: gold, strokeWidth: 3, cap: 'butt', join: 'miter' },
+    )
+  }
+  const row = (index: number, label: string, value: string) => {
+    const x = 400 + index * 640
+    const n = NUMBERED[index]
+    return [
+      textNode(label, x, 808, 480, 40, { name: `标签${n}`, fontSize: 26, fontFamily: SERIF, textFill: solid(gold), align: 'center', letterSpacing: 10 }),
+      textNode(value, x, 852, 480, 56, { name: `信息${n}`, fontSize: 38, fontFamily: SERIF, textFill: solid(champagne), fontWeight: 'bold', align: 'center', letterSpacing: 2 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('主视觉', solid(black), [
+      pathNode(raysPath(960, 1140, 380, 1600, -170, -10, 41, 1920, 1080), 0, 0, 1920, 1080, { name: '光芒', stroke: gold, strokeWidth: 2, opacity: 0.13 }),
+      shapeNode('rect', 56, 56, 1808, 968, { type: 'transparent' }, { name: '外框', stroke: gold, strokeWidth: 3, cornerRadius: 0 }),
+      shapeNode('rect', 76, 76, 1768, 928, { type: 'transparent' }, { name: '内框', stroke: gold, strokeWidth: 1.5, cornerRadius: 0, opacity: 0.7 }),
+      corner('角饰一', 92, 92, false, false),
+      corner('角饰二', 1764, 92, true, false),
+      corner('角饰三', 92, 924, false, true),
+      corner('角饰四', 1764, 924, true, true),
+      pathNode(`M 4 104 A 96 96 0 0 1 196 104 ${raysPath(100, 104, 30, 84, -180, 0, 13)}`, 860, 112, 200, 108, { name: '扇饰', stroke: gold, strokeWidth: 2.5, cap: 'butt' }),
+      textNode('2027', 560, 228, 800, 110, { name: '角标', fontSize: 88, fontFamily: PLAYFAIR, textFill: solid(gold), align: 'center', letterSpacing: 30 }),
+      textNode('年会盛典', 160, 348, 1600, 320, { name: '标题', fontSize: 180, fontFamily: SERIF, textFill: goldLeaf, fontWeight: 'bold', align: 'center', letterSpacing: 40, lineHeight: 1.15, verticalAlign: 'middle' }),
+      textNode('同心致远 · 感谢每一位同行者', 160, 676, 1600, 64, { name: '副标题', fontSize: 42, fontFamily: SERIF, textFill: solid(champagne), align: 'center', letterSpacing: 10 }),
+      lineNode(660, 772, 260, gold, 2, { name: '饰线左', cap: 'butt' }),
+      shapeNode('rect', 950, 768, 20, 20, solid(gold), { name: '菱形', cornerRadius: 0, rotation: 45 }),
+      lineNode(1000, 772, 260, gold, 2, { name: '饰线右', cap: 'butt' }),
+      ...row(0, '时间', '2027.01.16  18:30'),
+      ...row(1, '地点', '外滩华尔道夫酒店'),
+      textNode('叮卡科技 · 全体同仁', 160, 950, 1600, 44, { name: '品牌', fontSize: 28, fontFamily: SERIF, textFill: solid(gold), align: 'center', letterSpacing: 12 }),
+    ], LANDSCAPE),
+  ])
+}
+
+function createAgendaSheetDocument(): FreeformDocument {
+  const paper = '#f7f6f2'
+  const ink = '#151618'
+  const blue = '#2747d6'
+  const pale = '#d3dbff'
+  const muted = '#646873'
+  const rule = '#d7d6cf'
+  const row = (index: number, time: string, session: string) => {
+    const y = 214 + index * 150
+    const n = NUMBERED[index]
+    return [
+      textNode(time, 720, y + 48, 170, 52, { name: `标签${n}`, fontSize: 36, fontFamily: ARCHIVO, textFill: solid(blue) }),
+      textNode(session, 900, y + 46, 760, 56, { name: `信息${n}`, fontSize: 38, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold' }),
+      lineNode(720, y + 140, 940, rule, 2, { name: `行线${n}`, cap: 'butt' }),
+    ]
+  }
+  // Quarter circles round the panel's lower corner.
+  const arcs = [160, 240, 320].map((radius) => `M 0 ${320 - radius} A ${radius} ${radius} 0 0 1 ${radius} 320`).join(' ')
+  return documentFromSlides([
+    slide('议程', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 636, 1240 + TEMPLATE_EDGE_BLEED * 2, solid(blue), { name: '色块', cornerRadius: 0 }),
+      pathNode(arcs, 0, 920, 320, 320, { name: '弧线', stroke: '#6f88ff', strokeWidth: 2, opacity: 0.55 }),
+      textNode('DINGCARD FORUM', 96, 96, 460, 40, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 8 }),
+      textNode('第五届年度大会', 96, 296, 460, 48, { name: '副标题', fontSize: 32, fontFamily: SANS, textFill: solid(pale), letterSpacing: 4 }),
+      textNode('设计与\n智能峰会', 88, 352, 480, 304, { name: '标题', fontSize: 104, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', lineHeight: 1.15, letterSpacing: 2, verticalAlign: 'middle' }),
+      textNode('11 月 18 日 · 星期三\n上海西岸艺术中心 B 馆', 96, 684, 460, 110, { name: '正文', fontSize: 32, fontFamily: SANS, textFill: solid('#ffffff'), lineHeight: 1.65 }),
+      textNode('TIME', 720, 136, 170, 36, { name: '表头一', fontSize: 22, fontFamily: SANS, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('SESSION', 900, 136, 400, 36, { name: '表头二', fontSize: 22, fontFamily: SANS, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 6 }),
+      lineNode(720, 190, 940, ink, 3, { name: '表头线', cap: 'butt' }),
+      ...row(0, '09:30', '开幕致辞 · 林一'),
+      ...row(1, '10:00', '主题演讲：设计工具的下一个十年'),
+      ...row(2, '11:30', '圆桌：AI 会取代设计师吗'),
+      ...row(3, '14:00', '工作坊：用模板做一套海报'),
+      ...row(4, '16:00', '案例分享：从品牌到落地'),
+      ...row(5, '17:30', '闭幕与合影'),
+    ], A4_LANDSCAPE),
+  ])
+}
+
+function createAnnualReportDocument(): FreeformDocument {
+  const paper = '#f5f3ee'
+  const navy = '#132548'
+  const gold = '#b3925a'
+  const muted = '#586174'
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      contourNode('等高线', 930, 940, 8, 50, 1.25, gold, 0.8),
+      textNode('叮卡科技有限公司', 100, 100, 640, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(navy), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('ANNUAL REPORT', 640, 104, 500, 40, { name: '英文', fontSize: 24, fontFamily: SANS, textFill: solid(navy), fontWeight: 'bold', align: 'right', letterSpacing: 8 }),
+      lineNode(100, 166, 1040, navy, 2, { name: '刊头线', cap: 'butt' }),
+      textNode('2026', 84, 210, 1080, 400, { name: '角标', fontSize: 360, fontFamily: ARCHIVO, textFill: solid(navy), letterSpacing: -10, lineHeight: 1.05 }),
+      textNode('年度报告', 100, 1196, 1040, 324, { name: '标题', fontSize: 128, fontFamily: SERIF, textFill: solid(navy), fontWeight: 'bold', letterSpacing: 16, lineHeight: 1.25, verticalAlign: 'bottom' }),
+      textNode('稳健增长 · 长期主义', 104, 1530, 1000, 60, { name: '副标题', fontSize: 40, fontFamily: SANS, textFill: solid(muted), letterSpacing: 6 }),
+      lineNode(100, 1640, 1040, navy, 2, { name: '页脚线', cap: 'butt' }),
+      textNode('2027 年 3 月发布', 100, 1662, 700, 44, { name: '信息一', fontSize: 28, fontFamily: SANS, textFill: solid(muted), letterSpacing: 2 }),
+    ], A4),
+  ])
+}
+
+function createStatCardDocument(): FreeformDocument {
+  const blue = '#1f3fd0'
+  const pale = '#c3ceff'
+  const yellow = '#ffd447'
+  return documentFromSlides([
+    slide('数据卡', solid(blue), [
+      textNode('年轻人的屏幕时间', 88, 88, 904, 48, { name: '副标题', fontSize: 34, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4 }),
+      lineNode(88, 160, 904, pale, 2, { name: '刊头线', cap: 'butt', opacity: 0.7 }),
+      textNode('87%', 56, 190, 980, 460, { name: '角标', fontSize: 400, fontFamily: ARCHIVO, textFill: solid('#ffffff'), letterSpacing: -12, lineHeight: 1.1 }),
+      shapeNode('rect', 92, 650, 140, 14, solid(yellow), { name: '色条', cornerRadius: 0 }),
+      textNode('的年轻人每天刷手机\n超过 4 小时', 88, 694, 904, 170, { name: '标题', fontSize: 60, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', lineHeight: 1.35, verticalAlign: 'middle' }),
+      textNode('数据来源：2026 数字生活调查', 88, 952, 904, 44, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(pale), letterSpacing: 1 }),
+    ], SQUARE),
+  ])
+}
+
+function createCountdownDocument(): FreeformDocument {
+  const cream = '#f1ebe0'
+  const ink = '#1c1a17'
+  const red = '#d23c22'
+  const muted = '#625c56'
+  const [cx, cy, radius] = [540, 452, 322]
+  const ring = radius + 34
+  // The dial's box is the ring's square; ticks are drawn in its coordinates.
+  const box = { x: cx - ring, y: cy - ring, size: ring * 2 }
+  return documentFromSlides([
+    slide('倒计时', solid(cream), [
+      pathNode(circlePath(ring, ring, ring), box.x, box.y, box.size, box.size, { name: '外圈', stroke: ink, strokeWidth: 2 }),
+      pathNode(dialTicks(ring, ring, radius, 16, 60, (index) => index % 5 !== 0), box.x, box.y, box.size, box.size, { name: '刻度', stroke: ink, strokeWidth: 3, cap: 'butt' }),
+      pathNode(dialTicks(ring, ring, radius, 36, 60, (index) => index % 5 === 0), box.x, box.y, box.size, box.size, { name: '大刻度', stroke: ink, strokeWidth: 6, cap: 'butt' }),
+      pathNode('M 0 0 L 28 0 L 14 24 Z', cx - 14, box.y - 30, 28, 24, { name: '指针', fill: solid(red), strokeWidth: 0 }),
+      textNode('叮卡', 88, 64, 400, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('COUNTDOWN', 592, 68, 400, 40, { name: '英文', fontSize: 22, fontFamily: SANS, textFill: solid(muted), fontWeight: 'bold', align: 'right', letterSpacing: 8 }),
+      textNode('距离新品发布还有', 290, 268, 500, 48, { name: '副标题', fontSize: 34, fontFamily: SANS, textFill: solid(ink), align: 'center', letterSpacing: 2 }),
+      textNode('3', 290, 338, 500, 296, { name: '角标', fontSize: 280, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center', lineHeight: 1.05 }),
+      textNode('DAYS', 290, 644, 500, 52, { name: '单位', fontSize: 40, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', align: 'center', letterSpacing: 16 }),
+      textNode('叮卡 App 3.0 发布会', 88, 838, 904, 80, { name: '标题', fontSize: 60, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', align: 'center' }),
+      textNode('11 月 18 日 20:00 · 线上直播', 88, 934, 904, 48, { name: '信息一', fontSize: 32, fontFamily: SANS, textFill: solid(muted), align: 'center' }),
+    ], SQUARE),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -3707,6 +4030,14 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'christmas-card': poster('圣诞', '毛衣花样织在领口：雪花、圣诞树和锯齿纹，下摆是罗纹，中间写 MERRY CHRISTMAS 和祝福，适合圣诞贺卡、平安夜问候和圣诞活动。', ['圣诞', '节日'], 'xhs'),
   'new-year-calendar': poster('元旦', '一本手撕日历：去年最后一页刚撕掉，新的一页印着大大的 1、今天的标题和宜忌，适合元旦、跨年和新年计划。', ['元旦', '新年'], 'xhs'),
   'spring-festival': poster('春节', '整张是一个红包：封口压着金色的福字圆章，下面是毛笔大字、祝福和日期，适合春节拜年、新春祝福和放假通知。', ['春节', '国风'], 'story'),
+  'listicle-cover': poster('数字清单', '公众号首图：左边一块朱红色压着一个巨大的编号，右边是宋体大标题，适合清单、干货和系列文章。', ['公众号', '清单'], 'wechat-cover'),
+  'ridge-cover': poster('远山', '公众号首图：晨雾里五层山脊叠向远处，太阳半落在山后，宋体标题写在天上，适合旅行、随笔和生活方式。', ['公众号', '旅行'], 'wechat-cover'),
+  'summit-visual': poster('大会主视觉', '横版主视觉：深夜蓝底上几圈轨道绕着一颗发光的球，左边是大标题、时间和地点，适合大会、峰会和发布会的背景板。', ['大会', '主视觉'], 'landscape'),
+  'gala-backdrop': poster('年会', '横版主视觉：黑底金线的装饰艺术风，扇形光芒、双线框和渐变金色大字，适合年会、颁奖礼和晚宴。', ['年会', '主视觉'], 'landscape'),
+  'agenda-sheet': poster('会议议程', 'A4 横版：左边钴蓝色块写会议名、日期和地点，右边细线隔开的六行日程，适合会议、论坛和活动流程。', ['议程', '会议'], 'a4-landscape'),
+  'annual-report': poster('年度报告', 'A4 封面：超大的年份压在金色等高线上，下面是宋体标题，适合年度报告、企业画册和白皮书。', ['报告', '封面'], 'a4'),
+  'stat-card': poster('数据卡', '方图：克莱因蓝底上一个巨大的数字，下面一句话说清它是什么，适合数据发布、调查结论和社交分享。', ['数据', '社交'], 'square'),
+  'countdown': poster('倒计时', '方图：六十格刻度的表盘中间一个大数字，下面写活动和时间，适合发布会、开售和考试倒计时。', ['倒计时', '活动'], 'square'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -3756,6 +4087,14 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'christmas-card': createChristmasCardDocument,
   'new-year-calendar': createNewYearCalendarDocument,
   'spring-festival': createSpringFestivalDocument,
+  'listicle-cover': createListicleCoverDocument,
+  'ridge-cover': createRidgeCoverDocument,
+  'summit-visual': createSummitVisualDocument,
+  'gala-backdrop': createGalaBackdropDocument,
+  'agenda-sheet': createAgendaSheetDocument,
+  'annual-report': createAnnualReportDocument,
+  'stat-card': createStatCardDocument,
+  'countdown': createCountdownDocument,
 }
 
 /**
@@ -3819,11 +4158,13 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'certificate',
   'moments-grid',
   'timetable',
+  'agenda-sheet',
   'exhibition-poster',
   'design-week',
   'music-festival',
   'talk-poster',
   'launch-poster',
+  'countdown',
   'sale-poster',
   'double-eleven',
   'hiring-poster',
@@ -3842,10 +4183,16 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'product-card',
   'video-cover',
   'pitch-cover',
+  'summit-visual',
+  'gala-backdrop',
+  'annual-report',
   'podcast-cover',
   'article-cover',
+  'listicle-cover',
+  'ridge-cover',
   'flyer',
   'data-roundup',
+  'stat-card',
   'compare-table',
   'growth-timeline',
 ]
