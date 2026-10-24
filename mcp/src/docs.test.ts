@@ -173,7 +173,7 @@ describe('list_templates filters', () => {
         arguments: args,
       })) as Content
       return JSON.parse(result.content[0].text ?? '{}') as {
-        templates: Array<{ id: string; kind: string; format: { id: string }; title: string; tags: string[]; uses: string[] }>
+        templates: Array<{ id: string; kind: string; format: string; title: string; description: string; uses: string[] }>
       }
     }
 
@@ -193,22 +193,37 @@ describe('list_templates filters', () => {
     const a4 = await call({ format: 'a4' })
     expect(a4.templates.length).toBeGreaterThan(0)
     expect(a4.templates.length).toBeLessThan(all.templates.length)
-    expect(a4.templates.every((template) => template.format.id.includes('a4'))).toBe(true)
+    expect(a4.templates.every((template) => template.format.includes('a4'))).toBe(true)
 
     const menus = await call({ q: '菜单' })
     expect(menus.templates.length).toBeGreaterThan(0)
     expect(menus.templates.length).toBeLessThan(all.templates.length)
     // A keyword finds a template by its words or by what it is for (a price list is filed under menus).
     for (const template of menus.templates) {
-      expect(`${template.title} ${template.tags.join(' ')} ${template.uses.join(' ')}`).toContain('菜单')
+      expect(`${template.title} ${template.description} ${template.uses.join(' ')}`).toContain('菜单')
     }
 
     const combined = await call({ kind: 'poster', format: 'xhs' })
     expect(combined.templates.every(
-      (template) => template.kind === 'poster' && template.format.id.includes('xhs'),
+      (template) => template.kind === 'poster' && template.format.includes('xhs'),
     )).toBe(true)
 
     const nothing = await call({ q: '不存在的关键词xyz' })
     expect(nothing.templates).toEqual([])
+  })
+
+  test('the default list stays short as templates are added', async () => {
+    // Picking a template costs the model the whole default answer, and every
+    // template added makes it longer, so a card holds only what picking needs
+    // (capacity and the rest come by id) and the answer has a cap. Past it,
+    // trim the cards or page the list rather than raising the cap.
+    const client = await connect()
+    const result = (await client.callTool({ name: 'list_templates', arguments: {} })) as Content
+    const text = result.content[0].text ?? ''
+    expect(text.length).toBeLessThan(20000)
+    const { templates } = JSON.parse(text) as { templates: Array<Record<string, unknown>> }
+    for (const card of templates) {
+      expect(Object.keys(card).sort()).toEqual(['description', 'format', 'id', 'kind', 'styles', 'title', 'uses'])
+    }
   })
 })

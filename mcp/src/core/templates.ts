@@ -157,12 +157,40 @@ export function listTemplates(filter: TemplateFilter = {}): TemplateSummary[] {
   })
 }
 
+/**
+ * What list_templates shows per template unless details are asked for:
+ * enough to pick one. Every template added makes the default answer longer,
+ * so a card stays this short; capacity and the rest come from templateDetails.
+ */
+export interface TemplateCard {
+  id: string
+  title: string
+  description: string
+  kind: TemplateKind
+  /** The page-size id (the details carry its name and pixels). */
+  format: string
+  uses: string[]
+  styles: string[]
+}
+
+export function templateCards(filter: TemplateFilter = {}): TemplateCard[] {
+  return listTemplates(filter).map(({ id, title, description, kind, format, uses, styles }) => ({
+    id, title, description, kind, format: format.id, uses, styles,
+  }))
+}
+
+/** The full summaries of the templates asked for, in the order asked, and the ids no template has. */
+export function templateDetails(ids: readonly string[]): { templates: TemplateSummary[]; unknown: string[] } {
+  const byId = new Map(listTemplates().map((template) => [template.id, template]))
+  return {
+    templates: ids.flatMap((id) => byId.get(id) ?? []),
+    unknown: ids.filter((id) => !byId.has(id)),
+  }
+}
+
 export function instantiateTemplate(templateId: string): TemplateInstantiation {
   const template = TEMPLATE_REGISTRY.find((candidate) => candidate.id === templateId)
-  if (!template) {
-    const known = TEMPLATE_REGISTRY.map((candidate) => candidate.id).join(', ')
-    throw new Error(`未知模板 id：${templateId}。可用模板：${known}`)
-  }
+  if (!template) throw new Error(`未知模板 id：${templateId}（先用 list_templates 查询）。`)
   if (template.workspace === 'freeform') {
     if (!template.createFreeform) throw new Error(`模板 ${templateId} 缺少自由画布工厂`)
     return { workspace: 'freeform', document: template.createFreeform() }

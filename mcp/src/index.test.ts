@@ -229,16 +229,24 @@ describe('dingcard-mcp tool layer', () => {
     }
   })
 
-  test('list_templates returns the registry', async () => {
+  test('list_templates returns a card per template, details by id', async () => {
     const client = await connect()
-    const response = await client.callTool({ name: 'list_templates', arguments: {} })
-    const parsed = parseContent(response as { content: Array<{ type: string; text?: string }> })
-    const templates = (parsed as { templates: Array<{ id: string; capacity?: { sectionPoints: number; sectionQuote: boolean } }> }).templates
-    expect(templates.map((template) => template.id)).toContain('editorial-freeform')
-    // Freeform templates say how much a page holds, so a client can pick one for its content.
-    expect(templates.find((template) => template.id === 'editorial-freeform')?.capacity)
-      .toMatchObject({ sectionPoints: 3, sectionQuote: true })
-    expect(templates.find((template) => template.id === 'column-markdown')?.capacity).toBeUndefined()
+    const list = async (args: Record<string, unknown>) => {
+      const response = await client.callTool({ name: 'list_templates', arguments: args })
+      return parseContent(response as { content: Array<{ type: string; text?: string }> }) as {
+        templates: Array<{ id: string; format: unknown; capacity?: { sectionPoints: number; sectionQuote: boolean } }>
+        unknown?: string[]
+      }
+    }
+    const cards = (await list({})).templates
+    expect(cards.map((template) => template.id)).toContain('editorial-freeform')
+    // A card is for picking: what a page holds is asked for by id.
+    expect(cards.every((template) => template.capacity === undefined && typeof template.format === 'string')).toBe(true)
+    const details = await list({ ids: ['editorial-freeform', 'column-markdown', 'no-such-freeform'] })
+    expect(details.templates.map((template) => template.id)).toEqual(['editorial-freeform', 'column-markdown'])
+    expect(details.templates[0].capacity).toMatchObject({ sectionPoints: 3, sectionQuote: true })
+    expect(details.templates[1].capacity).toBeUndefined()
+    expect(details.unknown).toEqual(['no-such-freeform'])
     await client.close()
   })
 
@@ -722,7 +730,7 @@ describe('dingcard-mcp tool layer', () => {
     })
     const legacyText = (legacy as { content: Array<{ type: string; text?: string }> }).content[0].text ?? ''
     // The v18-only hue key on a v17 document fails strict validation.
-    expect(legacyText).toContain('"ok": false')
+    expect(JSON.parse(legacyText)).toMatchObject({ ok: false })
     await client.close()
   })
 
@@ -780,7 +788,7 @@ describe('dingcard-mcp tool layer', () => {
     })
     expect((response as { isError?: boolean }).isError).toBe(true)
     const content = (response as { content: Array<{ type: string; text?: string }> }).content
-    expect(content[0].text ?? '').toContain('可用模板')
+    expect(content[0].text ?? '').toContain('list_templates')
     await client.close()
   })
 

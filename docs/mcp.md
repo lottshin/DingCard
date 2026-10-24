@@ -20,7 +20,7 @@ server_projects（list / open / save：人在编辑器里存的作品载入，�
 | 工具 | 作用 |
 | --- | --- |
 | `get_guide` | 按主题读完整使用指南：`document-model` 文档模型、`actions` 动作清单、`deck-content` 套图内容、`outline` Markdown 大纲、`poster-content` 海报内容、`html-import` 网页转文档、`templates` 模板清单的字段、`check` 检查项、`render-export` 渲染导出。工具说明只写做什么；动手写参数前先读对应主题。 |
-| `list_templates` | 列出内置模板（id、标题、描述、页数、标签、工作台，以及模板中心用的分类：`uses` 用途、`styles` 风格、`colors` 颜色），每个带 `kind`（`deck` 一整套卡片 / `poster` 单页海报）和 `format`（页面尺寸：小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240，含宽高）。套图模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么；海报模板另有 `posterCapacity`：副标题、正文、获得者（`recipient`）、按钮、角标、署名、主图位有没有，信息能放几行，有没有表格（`table`，最多几行几列）。可选 `kind`/`format`/`q` 参数只取要看的子集（如 `kind: "poster"`、`format: "xhs"`、`q: "菜单"`），返回会小很多；`q` 和模板中心的搜索一样，除了标题、标签和描述，也认用途和风格（`q: "国风"`、`q: "菜单价目"`）。Markdown 模板的 `themeId` 是它的版式（`template-column` 等），`render_markdown` 渲染时带着页眉页码。按内容和尺寸挑模板。 |
+| `list_templates` | 列出内置模板，默认每个模板一张简卡，挑模板用：id、标题、描述、`kind`（`deck` 一整套卡片 / `poster` 单页海报）、`format`（尺寸 id：`xhs` 小红书 3:4、`story` 竖版海报 9:16、`square` 方图 1:1、`landscape` 横版 16:9、`wechat-cover` 公众号首图 2.35:1、`a4` A4 印刷、`a4-landscape` A4 横版、`moments-grid` 朋友圈九宫格 3240×3240），以及模板中心用的分类 `uses` 用途、`styles` 风格。挑出候选后用 `ids`（最多 12 个）取详情：系列、工作台、页数、标签、`colors` 颜色、尺寸的名称和宽高；套图模板另有 `capacity`：内页最多几个要点、有没有正文和引文位、结尾页能放什么；海报模板另有 `posterCapacity`：副标题、正文、获得者（`recipient`）、按钮、角标、署名、主图位有没有，信息能放几行，有没有表格（`table`，最多几行几列）。不存在的 id 列在 `unknown` 里。可选 `kind`/`format`/`q` 参数只取要看的子集（如 `kind: "poster"`、`format: "xhs"`、`q: "菜单"`）；`q` 和模板中心的搜索一样，除了标题、标签和描述，也认用途和风格（`q: "国风"`、`q: "菜单价目"`）。简卡不加筛选时整份不超过 20,000 字（`docs.test.ts` 卡着），模板再多，挑模板的成本也不跟着涨。Markdown 模板的 `themeId` 是它的版式（`template-column` 等），`render_markdown` 渲染时带着页眉页码。 |
 | `create_document_from_template` | 按模板 id 实例化完整文档：自由画布文档保存在服务端，返回 `documentId` 和各页 id、名称；Markdown 返回源文信封。 |
 | `add_template_pages` | 把任意自由画布模板的某几页（`pages`，从 1 起，可重复；不给就全部）加进已有文档：放在 `afterSlideId` 后面（默认最后），或换掉 `replaceSlideId` 那一页；页面保留模板的尺寸和示例文字，返回加进来的页并默认附缩略图（见下文「不同页用不同模板」）。 |
 | `create_poster_from_content` | 按内容生成一张海报（`kind: 'poster'` 的模板）：`{ title, subtitle?, body?, recipient?, details?: ["时间：…"…], table?: [["节次", "周一"…]…], cta?, tag?, brand?, image? }`，尺寸跟模板走（规则见下文「生成海报」）；给 `documentId` 时海报加成那份文档的一页。 |
@@ -185,7 +185,7 @@ server_projects（list / open / save：人在编辑器里存的作品载入，�
 | --- | --- |
 | `dingcard://schema/freeform` | 自由画布当前版本（v44）的文档模型与校验规则说明。 |
 | `dingcard://schema/actions` | `FreeformAction` 动作联合类型说明（`apply_actions` 的入参结构）。 |
-| `dingcard://templates` | 内置模板清单（与 `list_templates` 相同的数据）。 |
+| `dingcard://templates` | 内置模板全集：每个模板的完整信息（与 `list_templates` 用 `ids` 取到的相同）。 |
 | `dingcard://examples/freeform` | 完整自由画布 v44 文档示例（编辑部模板实例）。 |
 | `dingcard://icons` | 内置图标全集：每个图标的 id、中英文名、关键词与 24×24 路径数据 `d`。 |
 | `dingcard://decorations` | 内置装饰素材全集（与 `list_assets` 的 `decorations` 不带筛选时相同）。 |

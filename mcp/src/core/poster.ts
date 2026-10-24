@@ -1013,7 +1013,7 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
       unused,
       moved,
       ...(left.length > 0
-        ? { hint: `海报上没有放下：${left.join('、')}。换一个有这些位置的模板（看 list_templates 的 posterCapacity），或生成后用 apply_actions 加上。` }
+        ? { hint: `海报上没有放下：${left.join('、')}。换一个有这些位置的模板（用 list_templates 的 ids 看 posterCapacity），或生成后用 apply_actions 加上。` }
         : {}),
       ...(textOnly ? { layout: 'text-only' as const } : {}),
     },

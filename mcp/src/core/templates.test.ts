@@ -5,6 +5,8 @@ import {
   posterTemplateIds,
   instantiateTemplate,
   listTemplates,
+  templateCards,
+  templateDetails,
   templatePages,
 } from './templates'
 
@@ -73,6 +75,24 @@ describe('listTemplates', () => {
   })
 })
 
+describe('templateCards and templateDetails', () => {
+  test('a card carries what picking needs, the same filters apply', () => {
+    const cards = templateCards({ kind: 'poster', format: 'a4' })
+    expect(cards.map((card) => card.id)).toEqual(listTemplates({ kind: 'poster', format: 'a4' }).map((template) => template.id))
+    expect(cards.find((card) => card.id === 'menu-freeform')).toEqual({
+      id: 'menu-freeform', title: '菜单', description: expect.any(String), kind: 'poster', format: 'a4', uses: expect.any(Array), styles: expect.any(Array),
+    })
+  })
+
+  test('details come in the order asked, unknown ids named', () => {
+    const { templates, unknown } = templateDetails(['menu-freeform', 'nope-freeform', 'editorial-freeform'])
+    expect(templates.map((template) => template.id)).toEqual(['menu-freeform', 'editorial-freeform'])
+    expect(templates[0].posterCapacity?.details).toBe(8)
+    expect(templates[1].capacity?.sectionPoints).toBe(3)
+    expect(unknown).toEqual(['nope-freeform'])
+  })
+})
+
 describe('instantiateTemplate', () => {
   test('freeform templates produce v7-valid documents', () => {
     for (const id of freeformTemplateIds()) {
@@ -104,8 +124,8 @@ describe('instantiateTemplate', () => {
     expect(instantiation.document.fontFamily.length).toBeGreaterThan(0)
   })
 
-  test('unknown template ids fail with the available list', () => {
-    expect(() => instantiateTemplate('nope-freeform')).toThrow(/可用模板/)
+  test('unknown template ids fail with a pointer to list_templates, not the whole id list', () => {
+    expect(() => instantiateTemplate('nope-freeform')).toThrow(/list_templates/)
   })
 })
 

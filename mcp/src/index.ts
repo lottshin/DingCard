@@ -40,13 +40,15 @@ import { listCollages } from './core/collages'
 import { serverClientFromEnv } from './core/serverClient'
 import { importStockImage, searchStockImages } from './core/stock'
 import { listFilterPresets, listStyles, listTextStyles } from './core/styles'
-import { instantiateTemplate, listTemplates, templatePages } from './core/templates'
+import { instantiateTemplate, listTemplates, templateCards, templateDetails, templatePages } from './core/templates'
 import { checkDocument } from './render/check'
 import { handOff, openInBrowser } from './render/handoff'
 import { importHtml, renderDocument, renderMarkdownDocument, renderPreviews, type RenderPreview, type RenderResult } from './render/renderer'
 
+// Answers are read by a model, not a person, so they carry no indentation:
+// two-space indents were four tenths of a long answer.
 function jsonResult(value: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] }
+  return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] }
 }
 
 /** Previews shown to the model, at most this many per call. */
@@ -70,7 +72,7 @@ function withPreviews(value: Record<string, unknown>, pages: readonly RenderPrev
         text: JSON.stringify({
           ...value,
           previews: `下面附了 ${shown.length} 张缩略图（按页序）${pages.length > shown.length ? `，其余 ${pages.length - shown.length} 页没附` : ''}。`,
-        }, null, 2),
+        }),
       },
       ...shown.map((page) => ({
         type: 'image' as const,
@@ -117,7 +119,7 @@ ColorPaint 渐变支持两段式 { from, to, angle }、多段式 { stops, angle 
 - group：+ children（非空节点数组；组没有 width/height）
 全文档节点 id 必须唯一。`
 
-const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%；标题只在词和词之间换行，断不开时也缩小一点），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。每套模板每页按内容挑版式（summary.pages[].layout）：一段话或一两条要点用观点页（页码放大、标题、正文），三条以上要点用清单页（要点少时在行间匀开），只带一个数据元素（最多一两条要点）用数据页（元素放大摆在中间，进度画成圆环），有引文的用内页；只有一两句话的结尾页用收尾页；page.layout 可以指定 section / statement / list / data。封面没给副标题时，导语位列出各页标题。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放在这页文字的下面、沿模板的版心铺满宽度，颜色取这一页的正文色和强调色（没给颜色的系列先用浅的、最后一个用强调色），字号按卡片正文的大小画；放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId、角色和版式，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
+const COMPOSE_HINT = `生成规则：模板里每块示例文字都会换成你的内容，或者连同只为它画的色块、线条一起删掉，不会留下模板原话；页码按页序自动更新；文字放不下时先占用旁边的空位，再缩小字号（最小到原字号的 72%；标题只在词和词之间换行，断不开时也缩小一点），仍放不下的会列在 summary.overflowing 里，请删短或换模板。要点优先放进模板的条目位（每页条目数见 list_templates 用 ids 取到的 capacity），多出来的接在正文或最后一条后面。没有给结尾页就不出结尾页。每套模板每页按内容挑版式（summary.pages[].layout）：一段话或一两条要点用观点页（页码放大、标题、正文），三条以上要点用清单页（要点少时在行间匀开），只带一个数据元素（最多一两条要点）用数据页（元素放大摆在中间，进度画成圆环），有引文的用内页；只有一两句话的结尾页用收尾页；page.layout 可以指定 section / statement / list / data。封面没给副标题时，导语位列出各页标题。每页还可以带一种数据元素（chart / table / timeline / progress 四选一）：生成器把编辑器同款的图表、表格、时间线或进度条放在这页文字的下面、沿模板的版心铺满宽度，颜色取这一页的正文色和强调色（没给颜色的系列先用浅的、最后一个用强调色），字号按卡片正文的大小画；放下了的在 summary.placed（带位置），放不下的在 summary.unplaced（删短文字或换更松的版式）。返回 { ok, document, summary }：summary.pages 是每页的 slideId、角色和版式，summary.shrunk 是被缩小的文字。生成后建议先 check_document，再 render_document 看缩略图。`
 
 const OUTLINE_SCHEMA_HINT = `outline：Markdown 大纲文本。
 - "# 总标题"：封面标题；它下面、第一个 "##" 之前的文字是封面副标题。
@@ -182,9 +184,11 @@ const GUIDE_SECTIONS = {
   'html-import': { title: '网页转文档：create_document_from_html 的 HTML 怎么写', text: HTML_IMPORT_GUIDE },
   'templates': {
     title: '模板清单：list_templates 返回的字段怎么读',
-    text: `list_templates 返回的字段：
-- kind：deck 一整套（封面、内页、结尾页）或 poster 单页。format：页面尺寸（id、name、ratio、width、height）——小红书 3:4、竖版海报 9:16、方图 1:1、横版封面 16:9、公众号首图 2.35:1、A4 印刷、A4 横版、朋友圈九宫格 3240×3240（这一种用 render_document 的 grid: true 切成九张发朋友圈）。
-- 套图模板的 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）等。
+    text: `list_templates 默认给每个模板一张简卡，挑模板用：id、title、description、kind、format、uses（用途）、styles（风格）。id 以 -freeform 结尾的是自由画布模板；以 -markdown 结尾的是 Markdown 长文版式，用 create_document_from_template 拿文档、render_markdown 渲染。
+- kind：deck 一整套（封面、内页、结尾页）或 poster 单页。
+- format：页面尺寸 id——xhs 小红书 3:4、story 竖版海报 9:16、square 方图 1:1、landscape 横版 16:9、wechat-cover 公众号首图 2.35:1、a4 A4 印刷、a4-landscape A4 横版、moments-grid 朋友圈九宫格 3240×3240（这一种用 render_document 的 grid: true 切成九张发朋友圈）。
+- 挑出两三个候选后，用 ids（最多 12 个）取详情，每个多出 series、workspace、pageCount、tags、colors、format 的名称和像素宽高，以及：
+- 套图模板的 capacity：内页最多几个要点（sectionPoints）、有没有引文位（sectionQuote）、结尾页能放几个要点（endingPoints）、按内容挑的版式（layouts）等。
 - 海报模板的 posterCapacity：有没有副标题、正文、获得者（recipient）、按钮、角标、署名、主图位，能放几行信息（details），有没有表格（table：最多几行几列）、图表位（chart）、时间线位（timeline，吃 details 行）。`,
   },
   'check': {
@@ -310,13 +314,18 @@ export function createDingcardServer(): McpServer {
 
   server.tool(
     'list_templates',
-    '列出叮卡内置模板（id、标题、描述、页数、标签、用途、风格、颜色、工作台、kind、format），按内容和尺寸挑模板、拿 templateId。kind 是 deck（一整套，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页，用 create_poster_from_content 生成）；format 是页面尺寸；套图模板另有 capacity（每页能放多少要点等），海报模板另有 posterCapacity（有没有主图位、表格、图表等）——这些字段的完整含义见 get_guide("templates")。kind / format / q 可选，只取子集（如 kind: "poster"、format: "xhs"、q: "菜单"）。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，create_poster_from_content 给 documentId 时把海报加成那份文档的一页，add_template_pages 把任何模板的某几页加进已有文档。',
+    '列出叮卡内置模板，按内容和尺寸挑模板、拿 templateId。默认每个模板一张简卡：id、标题、描述、kind、format（尺寸 id）、uses（用途）、styles（风格）。kind 是 deck（一整套，用 create_document_from_content / create_document_from_outline 生成）或 poster（单页，用 create_poster_from_content 生成）。kind / format / q 只取子集（如 kind: "poster"、format: "xhs"、q: "菜单"）。挑出两三个候选后用 ids 取详情：每页能放多少要点（capacity）、海报有哪些位置（posterCapacity）、颜色、标签和像素尺寸，字段含义见 get_guide("templates")。不同页可以用不同模板：create_document_from_content 的每页可以写自己的 templateId，add_template_pages 把任何模板的某几页加进已有文档。',
     {
       kind: z.enum(['deck', 'poster']).optional().describe('只列这一类：deck 整套卡片，poster 单页海报'),
       format: z.string().optional().describe('按页面尺寸 id 筛选（不区分大小写的子串匹配，如 "xhs"、"a4"）'),
       q: z.string().optional().describe('关键词，匹配标题、标签、用途、风格和描述（如 "菜单"、"国风"）'),
+      ids: z.array(z.string()).min(1).max(12).optional().describe('要看详情的模板 id；给了就只返回这几个模板的完整信息，不看 kind / format / q'),
     },
-    async ({ kind, format, q }) => jsonResult({ templates: listTemplates({ kind, format, q }) }),
+    async ({ kind, format, q, ids }) => {
+      if (!ids) return jsonResult({ templates: templateCards({ kind, format, q }) })
+      const { templates, unknown } = templateDetails(ids)
+      return jsonResult({ templates, ...(unknown.length > 0 ? { unknown, hint: '没有这些 id 的模板：不带 ids 再调一次，看全部模板的 id。' } : {}) })
+    },
   )
 
   server.tool(
@@ -812,7 +821,7 @@ export function createDingcardServer(): McpServer {
         const dataUrl = await QRCode.toDataURL(share.url, { margin: 1, width: 480 })
         return {
           content: [
-            { type: 'text' as const, text: JSON.stringify(value, null, 2) },
+            { type: 'text' as const, text: JSON.stringify(value) },
             { type: 'image' as const, data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: 'image/png' },
           ],
         }
@@ -1003,12 +1012,12 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
   server.registerResource(
     'templates',
     'dingcard://templates',
-    { description: '内置模板清单（与 list_templates 相同的数据）', mimeType: 'application/json' },
+    { description: '内置模板全集：每个模板的完整信息（与 list_templates 用 ids 取到的相同）', mimeType: 'application/json' },
     async (uri: URL) => ({
       contents: [{
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify({ templates: listTemplates() }, null, 2),
+        text: JSON.stringify({ templates: listTemplates() }),
       }],
     }),
   )
@@ -1020,7 +1029,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
       contents: [{
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify(iconCatalogue(), null, 2),
+        text: JSON.stringify(iconCatalogue()),
       }],
     }),
   )
@@ -1032,7 +1041,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
       contents: [{
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify(listDecorations(), null, 2),
+        text: JSON.stringify(listDecorations()),
       }],
     }),
   )
@@ -1044,7 +1053,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
       contents: [{
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify(instantiateTemplate('editorial-freeform').document, null, 2),
+        text: JSON.stringify(instantiateTemplate('editorial-freeform').document),
       }],
     }),
   )
@@ -1056,7 +1065,7 @@ document 为 Markdown 文档信封：{ source: Markdown 文本（--- 为手动�
       contents: [{
         uri: uri.href,
         mimeType: 'application/json',
-        text: JSON.stringify(instantiateTemplate('column-markdown').document, null, 2),
+        text: JSON.stringify(instantiateTemplate('column-markdown').document),
       }],
     }),
   )
