@@ -20,7 +20,7 @@
 
 ![叮卡自由画布：音乐节海报的标题被选中，上方工具栏是字体、字号、对齐、不透明度、位置和层级](docs/assets/freeform-canvas.webp)
 
-<p align="center"><strong>84</strong> 套模板 · <strong>20</strong> 个 MCP 工具 · <strong>8</strong> 种预设尺寸 · <strong>MIT</strong> 开源</p>
+<p align="center"><strong>84</strong> 套模板 · <strong>22</strong> 个 MCP 工具 · <strong>8</strong> 种预设尺寸 · <strong>MIT</strong> 开源</p>
 
 ## 自由画布
 
@@ -55,7 +55,7 @@
 
 ## MCP 自动化
 
-**AI 客户端，直接出整套卡片。** 仓库自带 stdio MCP 服务器 `dingcard-mcp`，提供 20 个工具。文档校验、编辑和渲染跟编辑器共用同一套代码；工具之间传 `documentId`，图片可以直接写本机路径。
+**AI 客户端，直接出整套卡片。** 仓库自带 stdio MCP 服务器 `dingcard-mcp`，提供 22 个工具。文档校验、编辑和渲染跟编辑器共用同一套代码；工具之间传 `documentId`，图片可以直接写本机路径。
 
 ```bash
 npm --prefix mcp ci
@@ -70,7 +70,7 @@ npm run mcp   # 以 stdio 启动 dingcard-mcp
 | `render_document` | 无头渲染成逐页 PNG、JPG，一个 PDF、一张长图或九宫格切图 |
 | `open_in_editor` | 在叮卡编辑器里打开，由人接着改 |
 
-另外还有按大纲生成整套卡片、生成单张海报、把 HTML 转成可编辑的设计、加入模板页、放装饰素材、生成分享链接、读写服务端作品和渲染 Markdown 长文等工具。完整清单、客户端接入配置和安全边界见 [MCP 自动化接口](docs/mcp.md)。AI 生成的 `.json` 文档也可以拖进「我的项目」，存成项目后在编辑器里打开。
+另外还有按大纲生成整套卡片、生成单张海报、把 HTML 转成可编辑的设计、加入模板页、放装饰素材、搜索和导入在线图库的图片、生成分享链接、读写服务端作品和渲染 Markdown 长文等工具。完整清单、客户端接入配置和安全边界见 [MCP 自动化接口](docs/mcp.md)。AI 生成的 `.json` 文档也可以拖进「我的项目」，存成项目后在编辑器里打开。
 
 ### 作品示例：山月 · 藍染海報
 
