@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import { ErrorBoundary } from './app/ErrorBoundary'
 import { fontLibrary } from './freeform/fontLibrary'
 import './ui/index.css'
 
@@ -9,6 +10,8 @@ void fontLibrary.load()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary scope="page" fullPage>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 )

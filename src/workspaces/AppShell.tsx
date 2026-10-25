@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import logoUrl from '../logo.svg'
 import { AuthModal } from '../AuthModal'
 import { readGuest, readGuestMoveDeclined, writeGuest, writeGuestMoveDeclined } from '../app/guest'
+import { ErrorBoundary } from '../app/ErrorBoundary'
 import { GuestMoveDialog, type GuestMovePhase } from '../app/GuestMoveDialog'
 import { LoginPage } from '../app/LoginPage'
 import { navigate, routes, useRoute, type EditIntent } from '../app/router'
@@ -534,24 +535,26 @@ export function AppShell() {
       )}
 
       {view === 'workbench' && route.name !== 'edit' && route.name !== 'login' && (
-        <Workbench
-          route={route}
-          user={user}
-          ownerId={ownerId}
-          guestLeft={guestLeft}
-          dataVersion={workbenchVersion}
-          onMoveGuestWork={offerGuestMove}
-          theme={appTheme}
-          onToggleTheme={toggleAppTheme}
-          onLogout={() => {
-            void handleLogout().then((loggedOut) => {
-              if (loggedOut) setGuest(false)
-            })
-          }}
-          editorMeta={editorMeta}
-          onProjectRemoved={(system, draftId) => sendRequest(system, { kind: 'removed', draftId })}
-          onProjectRenamed={(system, draftId, title) => sendRequest(system, { kind: 'renamed', draftId, title })}
-        />
+        <ErrorBoundary scope="page" resetKey={route}>
+          <Workbench
+            route={route}
+            user={user}
+            ownerId={ownerId}
+            guestLeft={guestLeft}
+            dataVersion={workbenchVersion}
+            onMoveGuestWork={offerGuestMove}
+            theme={appTheme}
+            onToggleTheme={toggleAppTheme}
+            onLogout={() => {
+              void handleLogout().then((loggedOut) => {
+                if (loggedOut) setGuest(false)
+              })
+            }}
+            editorMeta={editorMeta}
+            onProjectRemoved={(system, draftId) => sendRequest(system, { kind: 'removed', draftId })}
+            onProjectRenamed={(system, draftId, title) => sendRequest(system, { kind: 'renamed', draftId, title })}
+          />
+        </ErrorBoundary>
       )}
 
       {(isMounted('markdown-card') || isMounted('freeform-slide')) && (
@@ -563,16 +566,18 @@ export function AppShell() {
               data-testid="workspace-markdown"
               hidden={activeSystem !== 'markdown-card'}
             >
-              <MarkdownWorkspace
-                isActive={view === 'editor' && activeSystem === 'markdown-card'}
-                user={user}
-                ownerId={ownerId}
-                transfer={transfer}
-                requestAuth={requestAuth}
-                chrome={chrome}
-                request={requests['markdown-card']}
-                onMetaChange={onMarkdownMeta}
-              />
+              <ErrorBoundary scope="editor" resetKey={requests['markdown-card']?.nonce}>
+                <MarkdownWorkspace
+                  isActive={view === 'editor' && activeSystem === 'markdown-card'}
+                  user={user}
+                  ownerId={ownerId}
+                  transfer={transfer}
+                  requestAuth={requestAuth}
+                  chrome={chrome}
+                  request={requests['markdown-card']}
+                  onMetaChange={onMarkdownMeta}
+                />
+              </ErrorBoundary>
             </div>
           )}
           {isMounted('freeform-slide') && (
@@ -582,16 +587,18 @@ export function AppShell() {
               data-testid="workspace-freeform"
               hidden={activeSystem !== 'freeform-slide'}
             >
-              <FreeformWorkspace
-                isActive={view === 'editor' && activeSystem === 'freeform-slide'}
-                user={user}
-                ownerId={ownerId}
-                transfer={transfer}
-                requestAuth={requestAuth}
-                chrome={chrome}
-                request={requests['freeform-slide']}
-                onMetaChange={onFreeformMeta}
-              />
+              <ErrorBoundary scope="editor" resetKey={requests['freeform-slide']?.nonce}>
+                <FreeformWorkspace
+                  isActive={view === 'editor' && activeSystem === 'freeform-slide'}
+                  user={user}
+                  ownerId={ownerId}
+                  transfer={transfer}
+                  requestAuth={requestAuth}
+                  chrome={chrome}
+                  request={requests['freeform-slide']}
+                  onMetaChange={onFreeformMeta}
+                />
+              </ErrorBoundary>
             </div>
           )}
         </div>

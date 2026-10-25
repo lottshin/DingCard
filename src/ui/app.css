@@ -27,6 +27,43 @@
   animation: ui-fade 400ms var(--ease-out);
 }
 
+/* Where a part of the app failed (app/ErrorBoundary.tsx): the error and a way back. */
+.crash-fallback {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 32px 24px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.crash-fallback.is-full-page {
+  min-height: 100vh;
+}
+
+.crash-fallback b {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.crash-fallback-error {
+  max-width: min(560px, 100%);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.crash-fallback-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
 /* Preview frames: a real card or artboard, scaled into a fixed box. */
 .doc-preview {
   position: relative;

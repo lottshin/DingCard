@@ -165,6 +165,41 @@ test('each editor is its own entry, opened straight from a link without an accou
   await expect(page).toHaveURL(/#\/edit\/md$/)
 })
 
+test('an editor that fails shows its error and a way back instead of a blank page', async ({ page }) => {
+  await page.goto('/#/edit/canvas')
+  await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
+  // Break a browser call the editor makes while it lays out the page: inserting a text makes it throw.
+  const breakLayout = () => page.evaluate(() => {
+    const escape = CSS.escape
+    Object.assign(window, { restoreLayout: () => { CSS.escape = escape } })
+    CSS.escape = () => { throw new Error('排版时出了故障') }
+  })
+  const insertTextHere = async () => {
+    await page.getByTestId('freeform-text-tool').click()
+    await page.getByTestId('insert-text').click()
+  }
+  await breakLayout()
+  await insertTextHere()
+
+  const fallback = page.getByTestId('workspace-freeform').getByTestId('crash-fallback')
+  await expect(fallback).toContainText('编辑器出错了')
+  await expect(fallback).toContainText('排版时出了故障')
+  await expect(page.getByTestId('freeform-toolbar')).toHaveCount(0)
+
+  // Opening something else draws the editor again.
+  await page.evaluate(() => (window as unknown as { restoreLayout: () => void }).restoreLayout())
+  await page.goto('/#/edit/canvas/template/editorial-freeform')
+  await expect(page.getByTestId('freeform-thumb')).toHaveCount(3)
+  await expect(fallback).toHaveCount(0)
+
+  // 回到首页 loads the workbench afresh, with no editor reopening what failed.
+  await breakLayout()
+  await insertTextHere()
+  await fallback.getByRole('button', { name: '回到首页' }).click()
+  await expect(page.getByTestId('workbench')).toBeVisible()
+  await expect(page).toHaveURL(/#\/$/)
+})
+
 test('new projects carry their platform and page size and save themselves once edited', async ({ page }) => {
   const username = await registerOnLoginPage(page)
   await expect(page.locator('.hello')).toContainText(username)

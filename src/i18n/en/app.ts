@@ -42,6 +42,10 @@ export const app: Record<string, Translation> = {
   '账号和项目只保存在这台设备的浏览器里，不会上传。不注册也会自动保存；部署服务端后可在多台设备间同步。':
     'Your account and projects stay in this browser and are never uploaded. Projects save automatically even without an account; deploy the server to sync across devices.',
   '出错了，请重试': 'Something went wrong. Please try again.',
+  '编辑器出错了': 'Something went wrong in the editor',
+  '页面出错了': 'Something went wrong on this page',
+  '重新加载': 'Reload',
+  '回到首页': 'Back to home',
   '账户登录与注册': 'Log in or sign up',
   '账号会安全保存到你的服务器，可在登录后跨设备同步草稿。':
     'Your account is stored on your server, and drafts sync across devices once you log in.',
