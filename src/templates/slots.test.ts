@@ -26,6 +26,8 @@ const KEPT_DECORATION: Partial<Record<FreeformTemplateSeriesId, readonly string[
   'travel-postcard': ['80 分'],
   'spring-festival': ['福'],
   'new-year-calendar': ['一月'],
+  'food-review': ['评分'],
+  resume: ['关于我', '工作与教育'],
 }
 
 function freeformTemplates() {

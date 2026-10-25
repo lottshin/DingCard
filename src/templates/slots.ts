@@ -45,6 +45,12 @@ export interface SlideSlots {
   numbers?: readonly string[]
   /** Sample copy with no content of its own: always removed. */
   remove?: readonly SlotItem[]
+  /**
+   * Samples that real content often repeats word for word (a defense's
+   * 恳请各位老师批评指正): check_document doesn't take them for copy left
+   * over from the template.
+   */
+  generic?: readonly string[]
 }
 
 export interface TemplateSlots {
@@ -403,6 +409,38 @@ export const FREEFORM_TEMPLATE_SLOTS: Record<FreeformDeckSeriesId, TemplateSlots
       closing: { title: '主标题', lead: '收束句', numbers: ['页码'] },
     },
   },
+  // 16:9 for a defense: the chapter number large in gold, numerals for the points; the foot carries page / total.
+  thesis: {
+    // The occasion over the title is the template's own (a defense, not a proposal); its rule goes with it.
+    cover: { title: '主标题', lead: '导语', remove: [{ text: '刊头', extras: ['刊头线'] }] },
+    section: {
+      title: '标题',
+      lead: '导语',
+      items: (['一', '二', '三'] as const).map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`序号${n}`, `要点线${n}`] })),
+      quote: { text: '引文', extras: ['引文竖线'] },
+      numbers: ['章节号', '页码'],
+    },
+    ending: {
+      title: '主标题',
+      lead: '收束句',
+      items: (['一', '二', '三'] as const).map((n) => ({ text: `展望${n}`, extras: [`序号${n}`] })),
+      numbers: ['页码'],
+      // 恳请各位老师批评指正 is how most defenses end.
+      generic: ['主标题'],
+    },
+    layouts: {
+      statement: { title: '主标题', lead: '导语', numbers: ['章节号', '页码'] },
+      list: {
+        title: '标题',
+        lead: '导语',
+        items: FIVE.map((n) => ({ text: `要点${n}`, note: `说明${n}`, extras: [`序号${n}`, `要点线${n}`] })),
+        spreadItems: true,
+        numbers: ['章节号', '页码'],
+      },
+      data: { title: '标题', lead: '导语', numbers: ['章节号', '页码'], remove: [{ text: '示例图表' }] },
+      closing: { title: '主标题', lead: '收束句', numbers: ['页码'], generic: ['主标题', '收束句'] },
+    },
+  },
 }
 
 /** Every name a slot spec points at, for checking the spec against its template. */
@@ -433,7 +471,7 @@ export function slotNodeNames(slots: SlideSlots): string[] {
 }
 
 /** The texts a slot spec fills or removes: sample copy that must never reach a finished deck. */
-export function slotSampleNames(slots: SlideSlots): string[] {
+export function slotSampleNames(slots: SlideSlots, { generic = true }: { generic?: boolean } = {}): string[] {
   const names: string[] = []
   const add = (value: string | undefined) => { if (value) names.push(value) }
   if (typeof slots.title === 'string') add(slots.title)
@@ -446,7 +484,9 @@ export function slotSampleNames(slots: SlideSlots): string[] {
   slots.toc?.items?.forEach((item) => { add(item.text); add(item.note) })
   add(slots.toc?.list)
   slots.remove?.forEach((item) => { add(item.text); add(item.note) })
-  return names
+  if (generic) return names
+  const kept = new Set(slots.generic ?? [])
+  return names.filter((name) => !kept.has(name))
 }
 
 // --- Posters ---
@@ -1200,6 +1240,45 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     tag: { text: '角标' },
     brand: { text: '品牌' },
     centre: { top: 60, bottom: 726, pinned: ['引号尾一', '引号球一', '引号尾二', '引号球二'], close: {} },
+  },
+  // Each line is a time and what was done; the header stays, the column under it closes up.
+  resume: {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    body: { text: '正文', extras: ['关于我', '关于我标记'] },
+    details: rows(5, (n) => `标签${n}`, (n) => `信息${n}`),
+    detailsExtras: ['经历', '经历标记', '经历线'],
+    brand: { text: '品牌', extras: ['页脚线'] },
+    centre: { top: 380, bottom: 1386, close: {} },
+  },
+  // The red head is the brand, the file number the badge; the seal goes with the sign-off.
+  notice: {
+    title: '标题',
+    tag: { text: '角标' },
+    recipient: { text: '称呼' },
+    body: { text: '正文' },
+    details: rows(5, () => undefined, (n) => `信息${n}`),
+    subtitle: { text: '落款', extras: ['印章环', '印章星'] },
+    brand: { text: '品牌' },
+    // A short notice closes up and sits in the middle of the page.
+    centre: { top: 100, bottom: 1654, close: {} },
+  },
+  // The score is the badge, its stamp going with it.
+  'food-review': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标', extras: ['评分章', '评分字', '星级'] },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`, (n) => [`行线${n}`]),
+    brand: { text: '品牌' },
+  },
+  // The lesson number is the badge in the yellow circle.
+  'course-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标', extras: ['课号'] },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`, (n) => [`标记${n}`]),
+    brand: { text: '品牌' },
   },
 }
 

@@ -70,7 +70,7 @@ test('release entry documentation matches current versions and commands', () => 
   assert.match(readme, /public\/favicon\.svg/)
   assert.match(readme, /version-0\.57\.0/)
   assert.match(readme, /专栏[\s\S]*备忘录[\s\S]*信笺[\s\S]*手账/)
-  assert.match(readme, /自由画布[\s\S]*七套/)
+  assert.match(readme, /自由画布[\s\S]*八套/)
   assert.match(readme, /独立图片[\s\S]*裁剪[\s\S]*八个黑柄/)
   assert.match(backendPlan, /当前源码版本：前端 `0\.57\.0`，后端 `0\.3\.0`/)
   assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/)

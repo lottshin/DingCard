@@ -574,6 +574,31 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'interview-cover-freeform',
     content: { title: '把一件小事做二十年，它就成了手艺。', subtitle: '对话 老周 · 手工皮具师', body: '他在老城区的巷子里开了一间小作坊，一个包要做三天。', tag: '人物访谈 · 第 8 期', brand: '手艺人' },
   },
+  // Office and everyday pages: a résumé, a notice, a food review and a course cover.
+  {
+    id: 'poster-resume',
+    kind: 'poster',
+    templateId: 'resume-freeform',
+    content: { title: '周以安', subtitle: '前端工程师 · 五年经验', tag: '139 0000 0000\nyian.zhou@example.com\n上海', body: '五年前端开发，做过电商和在线文档，喜欢把页面做快、把代码写清楚。', details: ['2023 — 至今：云笔记 · 高级前端工程师，负责编辑器性能', '2021 — 2023：好物商城 · 前端工程师，重做了下单流程', '2017 — 2021：同济大学 · 软件工程 本科'], brand: 'GitHub  github.com/yian' },
+  },
+  {
+    id: 'poster-notice',
+    kind: 'poster',
+    templateId: 'notice-freeform',
+    content: { title: '关于开展秋季消防演练的通知', brand: '城南物业服务中心', tag: '城南物〔2026〕7 号', recipient: '各位业主、住户：', body: '为提高大家的消防安全意识，物业将于本月组织一次消防演练，具体安排如下：', details: ['一、演练时间：11 月 12 日（星期四）下午 3 点', '二、集合地点：小区中心花园', '三、演练期间请听从工作人员指挥，有序撤离。'], subtitle: '城南物业服务中心\n2026 年 11 月 2 日' },
+  },
+  {
+    id: 'poster-food-review',
+    kind: 'poster',
+    templateId: 'food-review-freeform',
+    content: { title: '菜市场旁边的馄饨铺', subtitle: '一碗鲜肉馄饨，吃了十年', tag: '8.8', details: ['人均：¥ 22', '推荐：鲜肉馄饨、葱油拌面', '地址：东门菜市场 3 号'], brand: '@周末去哪吃' },
+  },
+  {
+    id: 'poster-course-cover',
+    kind: 'poster',
+    templateId: 'course-cover-freeform',
+    content: { title: '三十分钟学会做表格', subtitle: '从录入到透视表，一节课讲完', tag: '07', details: ['讲师：林老师', '时长：30 分钟', '难度：零基础'], brand: '办公技能课' },
+  },
   // A 16:9 deck read off a screen: a quarterly review, and a course outline.
   {
     id: 'deck-spotlight-review',
@@ -609,5 +634,47 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
 
 ## 结尾：下次课
 带一篇你写过的文章来。`,
+  },
+  // A defense: chapters, a finding, a chart and what comes next; and a proposal from an outline.
+  {
+    id: 'deck-thesis-defense',
+    kind: 'deck',
+    templateId: 'thesis-freeform',
+    content: {
+      title: '社区团购对小区便利店经营的影响',
+      subtitle: '答辩人 周以安 · 指导教师 陈老师',
+      pages: [
+        { title: '研究背景', body: '三年里，社区团购覆盖了全市七成小区，便利店的客流明显下降。' },
+        { title: '研究方法', points: ['问卷：调查 40 家便利店店主', '访谈：深度访谈 12 位店主', '数据：对比团购进入前后的流水'], quote: '数据说明发生了什么，访谈说明为什么。' },
+        { title: '流水下降了多少', body: '团购进入后半年，便利店日均流水平均下降 23%。', chart: { kind: 'bar', labels: ['进入前', '三个月后', '半年后'], series: [{ name: '日均流水（元）', values: [4200, 3600, 3230] }] } },
+        { title: '四个发现', points: ['生鲜受冲击最大', '烟酒饮料几乎不受影响', '提供自提点的店流水反升', '店主普遍缺少线上经营能力'] },
+      ],
+      ending: { title: '恳请各位老师批评指正', body: '谢谢！后续研究打算：', points: ['扩大到三个城市', '跟踪两年的经营数据', '研究自提点的长期效果'] },
+    },
+  },
+  {
+    id: 'outline-thesis-proposal',
+    kind: 'outline',
+    templateId: 'thesis-freeform',
+    outline: `# 开题报告：短视频对大学生阅读习惯的影响
+答辩人 林澄 · 指导教师 王老师
+
+## 为什么做这个题目
+每天刷短视频超过两小时的大学生越来越多，它和阅读的关系还没有定论。
+
+## 研究问题
+- 短视频使用时长和纸质阅读时长有没有关系
+- 哪类短视频对阅读影响最大
+- 有没有同学用短视频找书
+
+## 研究计划
+| 阶段 | 时间 | 内容 |
+| --- | --- | --- |
+| 问卷 | 3 月 | 发放 500 份问卷 |
+| 访谈 | 4 月 | 访谈 20 位同学 |
+| 写作 | 5 月 | 完成论文初稿 |
+
+## 结尾
+恳请各位老师批评指正。`,
   },
 ]

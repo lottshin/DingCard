@@ -213,6 +213,7 @@ function pathNode(
     join?: 'round' | 'miter' | 'bevel'
     opacity?: number
     shadow?: ShadowPaint
+    blendMode?: BlendMode
   } = {},
 ): FreeformSceneNode {
   return {
@@ -237,6 +238,7 @@ function pathNode(
     ...(options.join ? { join: options.join } : {}),
     ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
     ...(options.shadow ? { shadow: { ...options.shadow } } : {}),
+    ...(options.blendMode ? { blendMode: options.blendMode } : {}),
   }
 }
 
@@ -1883,6 +1885,191 @@ const SPOTLIGHT_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
       textNode('下一步，\n从今天开始', 110, 260, 1300, 360, { name: '主标题', fontSize: 130, fontFamily: SANS, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.16, letterSpacing: -3 }),
       textNode('谢谢大家。', 120, 680, 1000, 120, { name: '收束句', fontSize: 42, fontFamily: SANS, textFill: solid(dim), lineHeight: 1.55 }),
       ...spotlightFoot(paper, night, '06 / 06'),
+    ], LANDSCAPE)
+  },
+}
+
+const THESIS = { navy: '#14213d', paper: '#f8f6f1', gold: '#c9a55a', goldInk: '#86621a', muted: '#5e6574', rule: '#d8d3c7', pale: '#c3cad8', deep: '#2a3858' }
+
+/** The running foot of a thesis page: a rule, a label and the page number (page / total). */
+function thesisFoot(color: string, rule: string, number = '02 / 12'): FreeformSceneNode[] {
+  return [
+    lineNode(120, 984, 1680, rule, 2, { name: '页脚线', cap: 'butt' }),
+    textNode('ACADEMIC REPORT', 120, 1006, 600, 40, { name: '页脚', fontSize: 22, fontFamily: PLAYFAIR, textFill: solid(color), letterSpacing: 8 }),
+    textNode(number, 1500, 1002, 300, 44, { name: '页码', fontSize: 28, fontFamily: PLAYFAIR, textFill: solid(color), align: 'right', italic: true, letterSpacing: 2 }),
+  ]
+}
+
+/**
+ * A college seal in hairlines, in one box of side 2r at (x, y): two rings with
+ * ticks between them, a laurel of paired leaves up each side, an open book in
+ * the middle and a star over it.
+ */
+function thesisSeal(x: number, y: number, r: number, color: string): FreeformSceneNode[] {
+  const c = r
+  const s = r / 300
+  const at = (radius: number, angle: number) => [c + radius * Math.cos(angle), c + radius * Math.sin(angle)] as const
+  const point = ([px, py]: readonly [number, number]) => `${roundTenth(px)} ${roundTenth(py)}`
+  const wreath = 196 * s
+  const leaves: string[] = []
+  const stems: string[] = []
+  for (const side of [1, -1]) {
+    // Each branch grows from the foot of the seal up its side.
+    const from = Math.PI / 2 + side * 0.36
+    const to = Math.PI / 2 + side * 2.5
+    stems.push(`M ${point(at(wreath, from))} A ${roundTenth(wreath)} ${roundTenth(wreath)} 0 0 ${side > 0 ? 1 : 0} ${point(at(wreath, to))}`)
+    for (let index = 0; index < 6; index += 1) {
+      const angle = from + side * (0.22 + index * 0.36)
+      const tip = [-Math.sin(angle) * side, Math.cos(angle) * side]
+      const out = [Math.cos(angle), Math.sin(angle)]
+      for (const lean of [1, -1]) {
+        const length = Math.hypot(tip[0] + lean * 0.7 * out[0], tip[1] + lean * 0.7 * out[1])
+        const d = [(tip[0] + lean * 0.7 * out[0]) / length, (tip[1] + lean * 0.7 * out[1]) / length]
+        const m = [-d[1], d[0]]
+        const [px, py] = at(wreath + lean * 14 * s, angle)
+        const [half, width] = [26 * s, 9 * s]
+        leaves.push(`M ${point([px - d[0] * half, py - d[1] * half])} Q ${point([px + m[0] * width, py + m[1] * width])} ${point([px + d[0] * half, py + d[1] * half])} Q ${point([px - m[0] * width, py - m[1] * width])} ${point([px - d[0] * half, py - d[1] * half])} Z`)
+      }
+    }
+  }
+  const page = (side: number) => {
+    const edge = c + side * 112 * s
+    return `M ${point([c, c - 46 * s])} Q ${point([c + side * 56 * s, c - 78 * s])} ${point([edge, c - 58 * s])} L ${point([edge, c + 62 * s])} Q ${point([c + side * 56 * s, c + 42 * s])} ${point([c, c + 72 * s])} Z`
+  }
+  const lines = [0, 1, 2].flatMap((index) => [1, -1].map((side) => {
+    const lift = index * 30 * s
+    return `M ${point([c + side * 22 * s, c - 18 * s + lift])} Q ${point([c + side * 56 * s, c - 40 * s + lift])} ${point([c + side * 92 * s, c - 28 * s + lift])}`
+  })).join(' ')
+  const box = (name: string, d: string, options: Parameters<typeof pathNode>[5]) => pathNode(d, x, y, r * 2, r * 2, { name, ...options })
+  return [
+    box('校徽环', `${circlePath(c, c, r - 3 * s)} ${circlePath(c, c, r - 34 * s)}`, { stroke: color, strokeWidth: roundTenth(2.5 * s) }),
+    box('校徽刻度', dialTicks(c, c, r - 12 * s, 12 * s, 72, () => true), { stroke: color, strokeWidth: roundTenth(2 * s) }),
+    box('桂枝', stems.join(' '), { stroke: color, strokeWidth: roundTenth(2.5 * s), cap: 'round' }),
+    box('桂叶', leaves.join(' '), { fill: solid(color), strokeWidth: 0 }),
+    box('书', `${page(-1)} ${page(1)}`, { stroke: color, strokeWidth: roundTenth(3 * s), join: 'round' }),
+    box('书页', lines, { stroke: color, strokeWidth: roundTenth(2 * s), cap: 'round' }),
+    box('星', starPath(c, c - 128 * s, 16 * s, 6.5 * s), { fill: solid(color), strokeWidth: 0 }),
+  ]
+}
+
+function createThesisDocument(): FreeformDocument {
+  const { navy, paper, gold, goldInk, muted, rule, pale, deep } = THESIS
+  // A point on the section page: its numeral in gold, the point, its note, a rule under it.
+  const point = (index: number, text: string, note: string) => {
+    const y = 220 + index * 230
+    const n = NUMBERED[index]
+    return [
+      textNode(['I', 'II', 'III'][index], 970, y - 6, 90, 64, { name: `序号${n}`, fontSize: 46, fontFamily: PLAYFAIR, textFill: solid(goldInk), italic: true, lineHeight: 1.2 }),
+      textNode(text, 1070, y, 730, 64, { name: `要点${n}`, fontSize: 42, fontFamily: SANS, textFill: solid(navy), fontWeight: 'bold', lineHeight: 1.25 }),
+      textNode(note, 1070, y + 72, 730, 92, { name: `说明${n}`, fontSize: 28, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.5 }),
+      lineNode(970, y + 186, 830, rule, 2, { name: `要点线${n}`, cap: 'butt' }),
+    ]
+  }
+  // What comes next, on the ending page: a gold numeral and a line in paper on navy.
+  const next = (index: number, text: string) => {
+    const y = 660 + index * 92
+    const n = NUMBERED[index]
+    return [
+      textNode(['I', 'II', 'III'][index], 120, y - 4, 80, 60, { name: `序号${n}`, fontSize: 40, fontFamily: PLAYFAIR, textFill: solid(gold), italic: true, lineHeight: 1.2 }),
+      textNode(text, 210, y, 900, 56, { name: `展望${n}`, fontSize: 34, fontFamily: SANS, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.3 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('封面', solid(navy), [
+      pathNode(circlePath(370, 370, 370), 1110, 170, 740, 740, { name: '校徽底', fill: solid('#1a2a4b'), strokeWidth: 0 }),
+      ...thesisSeal(1150, 210, 330, gold),
+      textNode('本科毕业论文答辩', 120, 150, 800, 40, { name: '刊头', fontSize: 26, fontFamily: SANS, textFill: solid(gold), fontWeight: 'bold', letterSpacing: 12 }),
+      lineNode(120, 214, 80, gold, 3, { name: '刊头线', cap: 'butt' }),
+      textNode('城市街道绿化对\n居民步行意愿的影响研究', 110, 270, 1010, 360, { name: '主标题', fontSize: 80, fontFamily: SERIF, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.3 }),
+      textNode('答辩人　林澄　　指导教师　王明 教授\n城市规划学院 · 2026 年 6 月', 120, 680, 1000, 110, { name: '导语', fontSize: 30, fontFamily: SANS, textFill: solid(pale), lineHeight: 1.7 }),
+      textNode('ACADEMIC REPORT', 120, 980, 800, 40, { name: '英文刊头', fontSize: 24, fontFamily: PLAYFAIR, textFill: solid(gold), italic: true, letterSpacing: 6 }),
+    ], LANDSCAPE),
+    slide('内页', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 28 + TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, solid(navy), { name: '书脊', cornerRadius: 0 }),
+      textNode('CHAPTER', 120, 74, 300, 32, { name: '章节', fontSize: 22, fontFamily: PLAYFAIR, textFill: solid(goldInk), letterSpacing: 10 }),
+      textNode('02', 110, 108, 400, 150, { name: '章节号', fontSize: 120, fontFamily: PLAYFAIR, textFill: solid(goldInk), italic: true, lineHeight: 1.05 }),
+      textNode('研究方法：\n问卷与街景分析', 112, 290, 760, 200, { name: '标题', fontSize: 64, fontFamily: SERIF, textFill: solid(navy), fontWeight: 'bold', lineHeight: 1.3 }),
+      textNode('在三个片区发放问卷 1,200 份，回收有效问卷 986 份；同时用街景图片计算每条街道的绿视率。', 120, 510, 720, 210, { name: '导语', fontSize: 30, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.7 }),
+      shapeNode('rect', 120, 780, 6, 110, solid(goldInk), { name: '引文竖线', cornerRadius: 0 }),
+      textNode('“街道是城市里最大的公共空间。”', 150, 786, 700, 100, { name: '引文', fontSize: 34, fontFamily: SERIF, textFill: solid(navy), fontWeight: 'bold', lineHeight: 1.45 }),
+      ...point(0, '问卷调查', '步行频率、目的和对街道的感受'),
+      ...point(1, '街景分析', '从街景图片里算出每条街的绿视率'),
+      ...point(2, '回归模型', '控制年龄、收入和距离后看绿化的影响'),
+      ...thesisFoot(navy, rule, '02 / 03'),
+    ], LANDSCAPE),
+    slide('结尾', solid(navy), [
+      ...thesisSeal(1260, 280, 300, deep),
+      textNode('恳请各位老师\n批评指正', 110, 190, 1100, 330, { name: '主标题', fontSize: 110, fontFamily: SERIF, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.25 }),
+      textNode('谢谢！后续研究会从这三件事做起：', 120, 560, 1000, 60, { name: '收束句', fontSize: 36, fontFamily: SANS, textFill: solid(pale), lineHeight: 1.5 }),
+      ...next(0, '把样本扩大到五个城市'),
+      ...next(1, '加入夜间步行的数据'),
+      ...next(2, '和街道改造项目一起做跟踪'),
+      ...thesisFoot(pale, deep, '03 / 03'),
+    ], LANDSCAPE),
+  ])
+}
+
+/** The thesis deck's other inner pages (DeckLayoutId). */
+const THESIS_LAYOUTS: Record<DeckLayoutId, () => FreeformSlide> = {
+  // A finding set large on navy, the chapter number in gold, a ring of the seal beside it.
+  statement: () => {
+    const { navy, paper, gold, pale, deep } = THESIS
+    return slide('观点页', solid(navy), [
+      pathNode(`${circlePath(280, 280, 278)} ${circlePath(280, 280, 250)}`, 1330, 250, 560, 560, { name: '圆环', stroke: gold, strokeWidth: 2 }),
+      textNode('CHAPTER', 120, 80, 300, 32, { name: '章节', fontSize: 22, fontFamily: PLAYFAIR, textFill: solid(gold), letterSpacing: 10 }),
+      textNode('03', 110, 114, 500, 170, { name: '章节号', fontSize: 140, fontFamily: PLAYFAIR, textFill: solid(gold), italic: true, lineHeight: 1.05 }),
+      textNode('绿视率每高 10%，\n步行意愿高 18%', 110, 340, 1240, 300, { name: '主标题', fontSize: 96, fontFamily: SERIF, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.3 }),
+      textNode('控制年龄、收入和到地铁站的距离之后，这个关系依然显著。', 120, 690, 1100, 120, { name: '导语', fontSize: 36, fontFamily: SANS, textFill: solid(pale), lineHeight: 1.6 }),
+      ...thesisFoot(pale, deep),
+    ], LANDSCAPE)
+  },
+  // Up to five points, each by a gold numeral, a rule under it.
+  list: () => {
+    const { navy, paper, goldInk, muted, rule } = THESIS
+    const row = (index: number, text: string, note: string) => {
+      const y = 130 + index * 164
+      const n = NUMBERED[index]
+      return [
+        textNode(['I', 'II', 'III', 'IV', 'V'][index], 870, y - 6, 90, 60, { name: `序号${n}`, fontSize: 42, fontFamily: PLAYFAIR, textFill: solid(goldInk), italic: true, lineHeight: 1.2 }),
+        textNode(text, 968, y, 832, 60, { name: `要点${n}`, fontSize: 40, fontFamily: SANS, textFill: solid(navy), fontWeight: 'bold', lineHeight: 1.25 }),
+        textNode(note, 968, y + 64, 832, 46, { name: `说明${n}`, fontSize: 28, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.45 }),
+        lineNode(870, y + 138, 930, rule, 2, { name: `要点线${n}`, cap: 'butt' }),
+      ]
+    }
+    return slide('要点页', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 28 + TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, solid(navy), { name: '书脊', cornerRadius: 0 }),
+      textNode('CHAPTER', 120, 74, 300, 32, { name: '章节', fontSize: 22, fontFamily: PLAYFAIR, textFill: solid(goldInk), letterSpacing: 10 }),
+      textNode('04', 110, 108, 400, 150, { name: '章节号', fontSize: 120, fontFamily: PLAYFAIR, textFill: solid(goldInk), italic: true, lineHeight: 1.05 }),
+      textNode('五个主要\n发现', 112, 290, 680, 200, { name: '标题', fontSize: 64, fontFamily: SERIF, textFill: solid(navy), fontWeight: 'bold', lineHeight: 1.3 }),
+      textNode('每条一句话，数字写在下面那一行。', 120, 510, 640, 130, { name: '导语', fontSize: 30, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.7 }),
+      ...row(0, '绿化越好，走路越多', '绿视率和步行频率正相关'),
+      ...row(1, '树荫比草坪更重要', '行道树的影响是草坪的两倍'),
+      ...row(2, '老人受影响最大', '六十岁以上的人群效应最强'),
+      ...row(3, '夜间照明同样关键', '照明差的街道绿化效果减半'),
+      ...row(4, '距离仍是第一因素', '离地铁站越远，步行越少'),
+      ...thesisFoot(navy, rule),
+    ], LANDSCAPE)
+  },
+  // Words on the left, the drawing across the right.
+  data: () => {
+    const { navy, paper, goldInk, muted, rule } = THESIS
+    return slide('数据页', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 28 + TEMPLATE_EDGE_BLEED, 1080 + TEMPLATE_EDGE_BLEED * 2, solid(navy), { name: '书脊', cornerRadius: 0 }),
+      textNode('CHAPTER', 120, 74, 300, 32, { name: '章节', fontSize: 22, fontFamily: PLAYFAIR, textFill: solid(goldInk), letterSpacing: 10 }),
+      textNode('03', 110, 108, 400, 150, { name: '章节号', fontSize: 120, fontFamily: PLAYFAIR, textFill: solid(goldInk), italic: true, lineHeight: 1.05 }),
+      chartNode('bar', ['低于 10%', '10–20%', '20–30%', '30% 以上'], [{ name: '每周步行次数', values: [3.1, 4.2, 5.0, 5.8], color: navy }], 880, 150, 920, 760, { name: '示例图表', showValues: true }),
+      textNode('绿视率越高，\n步行越多', 112, 290, 680, 200, { name: '标题', fontSize: 64, fontFamily: SERIF, textFill: solid(navy), fontWeight: 'bold', lineHeight: 1.3 }),
+      textNode('按绿视率把 986 位受访者分成四组，每周步行次数从 3.1 次升到 5.8 次。', 120, 510, 640, 200, { name: '导语', fontSize: 30, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.7 }),
+      ...thesisFoot(navy, rule),
+    ], LANDSCAPE)
+  },
+  closing: () => {
+    const { navy, paper, pale, deep } = THESIS
+    return slide('结尾', solid(navy), [
+      ...thesisSeal(1260, 180, 300, deep),
+      textNode('谢谢各位老师', 110, 300, 1100, 200, { name: '主标题', fontSize: 120, fontFamily: SERIF, textFill: solid(paper), fontWeight: 'bold', lineHeight: 1.25 }),
+      textNode('恳请批评指正。', 120, 560, 1000, 100, { name: '收束句', fontSize: 40, fontFamily: SANS, textFill: solid(pale), lineHeight: 1.55 }),
+      ...thesisFoot(pale, deep, '12 / 12'),
     ], LANDSCAPE)
   },
 }
@@ -4650,6 +4837,212 @@ function createInterviewCoverDocument(): FreeformDocument {
   ])
 }
 
+function createResumeDocument(): FreeformDocument {
+  const ink = '#16181d'
+  const blue = '#2f5bea'
+  const muted = '#646a75'
+  const rule = '#dfe2e8'
+  const heading = (name: string, text: string, y: number) => [
+    shapeNode('rect', 96, y + 15, 14, 14, solid(blue), { name: `${name}标记`, cornerRadius: 0 }),
+    textNode(text, 126, y, 400, 44, { name, fontSize: 30, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+  ]
+  const entry = (index: number, time: string, text: string) => {
+    const y = 744 + index * 136
+    const n = NUMBERED[index]
+    return [
+      textNode(time, 96, y + 4, 260, 40, { name: `标签${n}`, fontSize: 26, fontFamily: SANS, textFill: solid(blue), fontWeight: 'bold', letterSpacing: 1 }),
+      textNode(text, 380, y, 764, 100, { name: `信息${n}`, fontSize: 28, fontFamily: SANS, textFill: solid(ink), lineHeight: 1.65 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('简历', solid('#ffffff'), [
+      textNode('林澄', 96, 112, 640, 140, { name: '标题', fontSize: 110, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 10, lineHeight: 1.15 }),
+      textNode('产品设计师 · 七年经验', 96, 264, 640, 52, { name: '副标题', fontSize: 36, fontFamily: SANS, textFill: solid(blue), fontWeight: 'bold', letterSpacing: 2 }),
+      textNode('138 0000 0000\nlin.cheng@example.com\n浙江 · 杭州', 744, 130, 400, 160, { name: '角标', fontSize: 26, fontFamily: SANS, textFill: solid(muted), align: 'right', lineHeight: 1.7 }),
+      shapeNode('rect', 96, 352, 1048, 10, solid(ink), { name: '粗线', cornerRadius: 0 }),
+      ...heading('关于我', '关于我', 414),
+      textNode('做了七年产品设计，擅长把复杂的流程做简单。喜欢和工程师坐在一起，把想法尽快做成能用的东西。', 96, 476, 1048, 110, { name: '正文', fontSize: 28, fontFamily: SANS, textFill: solid(ink), lineHeight: 1.7 }),
+      ...heading('经历', '工作与教育', 634),
+      lineNode(96, 700, 1048, rule, 2, { name: '经历线', cap: 'butt' }),
+      ...entry(0, '2022 — 至今', '叮卡科技 · 资深产品设计师，负责编辑器和模板中心，带两名设计师'),
+      ...entry(1, '2019 — 2022', '山野咖啡 · 产品设计师，从零做了点单小程序，月活十二万'),
+      ...entry(2, '2017 — 2019', '城市报业 · 视觉设计师，做新闻专题和数据图表'),
+      ...entry(3, '2013 — 2017', '中国美术学院 · 视觉传达设计 本科'),
+      ...entry(4, '技能', 'Figma、原型与动效、用户访谈、基础前端'),
+      lineNode(96, 1520, 1048, rule, 2, { name: '页脚线', cap: 'butt' }),
+      textNode('作品集  lincheng.design', 96, 1546, 700, 40, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 2 }),
+    ], A4),
+  ])
+}
+
+/** A five-pointed star centred on (cx, cy), its points `outer` out and its notches `inner`. */
+function starPath(cx: number, cy: number, outer: number, inner: number): string {
+  return `${Array.from({ length: 10 }, (_, index) => {
+    const angle = -Math.PI / 2 + (index * Math.PI) / 5
+    const r = index % 2 ? inner : outer
+    return `${index ? 'L' : 'M'} ${roundTenth(cx + r * Math.cos(angle))} ${roundTenth(cy + r * Math.sin(angle))}`
+  }).join(' ')} Z`
+}
+
+function createNoticeDocument(): FreeformDocument {
+  const red = '#c8161d'
+  const ink = '#1b1b1b'
+  const item = (index: number, text: string) => textNode(text, 120, 872 + index * 104, 1000, 96, { name: `信息${NUMBERED[index]}`, fontSize: 32, fontFamily: SERIF, textFill: solid(ink), lineHeight: 1.75 })
+  return documentFromSlides([
+    slide('通知', solid('#fffdf8'), [
+      textNode('叮卡科技有限公司', 96, 150, 1048, 140, { name: '品牌', fontSize: 96, fontFamily: SERIF, textFill: solid(red), fontWeight: 'bold', align: 'center', letterSpacing: 10, lineHeight: 1.2 }),
+      textNode('叮卡〔2026〕18 号', 96, 318, 1048, 44, { name: '角标', fontSize: 28, fontFamily: SERIF, textFill: solid(ink), align: 'center', letterSpacing: 2 }),
+      // The red rule across the head, a star at its middle.
+      lineNode(96, 398, 500, red, 4, { name: '红线左', cap: 'butt' }),
+      pathNode(starPath(22, 22, 22, 9), 598, 382, 44, 44, { name: '红星', fill: solid(red), strokeWidth: 0 }),
+      lineNode(644, 398, 500, red, 4, { name: '红线右', cap: 'butt' }),
+      textNode('关于国庆节放假安排的通知', 120, 456, 1000, 160, { name: '标题', fontSize: 52, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', lineHeight: 1.45, verticalAlign: 'middle' }),
+      textNode('各部门、全体员工：', 120, 660, 1000, 50, { name: '称呼', fontSize: 32, fontFamily: SERIF, textFill: solid(ink) }),
+      textNode('根据国家法定节假日安排，结合公司实际情况，现将 2026 年国庆节放假安排通知如下：', 120, 726, 1000, 120, { name: '正文', fontSize: 32, fontFamily: SERIF, textFill: solid(ink), lineHeight: 1.75 }),
+      item(0, '一、放假时间：10 月 1 日至 7 日，10 月 8 日（星期四）正常上班。'),
+      item(1, '二、放假前请各部门做好安全检查，关闭门窗、电源和空调。'),
+      item(2, '三、假期中如有急事，请联系行政部值班电话。'),
+      item(3, '四、外出旅行请注意人身和财产安全。'),
+      item(4, '五、请各部门于 9 月 28 日前把值班表报行政部。'),
+      textNode('叮卡科技有限公司\n2026 年 9 月 21 日', 640, 1430, 480, 130, { name: '落款', fontSize: 32, fontFamily: SERIF, textFill: solid(ink), align: 'right', lineHeight: 1.75 }),
+      // The seal over the sign-off: two rings and a star, in red ink the words show through.
+      pathNode(`${circlePath(100, 100, 96)} ${circlePath(100, 100, 84)}`, 830, 1396, 200, 200, { name: '印章环', stroke: red, strokeWidth: 5, opacity: 0.85, blendMode: 'multiply' }),
+      pathNode(starPath(100, 100, 38, 15), 830, 1396, 200, 200, { name: '印章星', fill: solid(red), strokeWidth: 0, opacity: 0.85, blendMode: 'multiply' }),
+    ], A4),
+  ])
+}
+
+function createFoodReviewDocument(): FreeformDocument {
+  const paper = '#f7efe3'
+  const ink = '#221a14'
+  const red = '#d2462c'
+  const muted = '#6e6157'
+  const blue = '#2f5d8a'
+  const random = seededRandom(38)
+  // A bowl of beef noodles seen from above, drawn in its own 520 × 520 box round (260, 260).
+  const c = 260
+  const soup = 198
+  const noodles = Array.from({ length: 12 }, (_, index) => {
+    const y = -132 + index * 24
+    const half = Math.sqrt(soup * soup - y * y) - 26
+    const steps = Math.max(2, Math.round((half * 2) / 44))
+    const step = (half * 2) / steps
+    let d = `M ${roundTenth(c - half)} ${roundTenth(c + y)}`
+    for (let s = 0; s < steps; s += 1) {
+      const x0 = c - half + s * step
+      d += ` Q ${roundTenth(x0 + step / 2)} ${roundTenth(c + y + ((s + index) % 2 ? 9 : -9))} ${roundTenth(x0 + step)} ${roundTenth(c + y)}`
+    }
+    return d
+  }).join(' ')
+  // A slice of beef: an oval turned by `tilt`, drawn through its rim.
+  const slice = (cx: number, cy: number, a: number, b: number, tilt: number) => {
+    const t = (tilt * Math.PI) / 180
+    return smoothThrough(Array.from({ length: 12 }, (_, index) => {
+      const u = (index / 12) * Math.PI * 2
+      const wobble = 1 + (index % 3 === 0 ? 0.06 : -0.03)
+      return [roundTenth(cx + wobble * (a * Math.cos(u) * Math.cos(t) - b * Math.sin(u) * Math.sin(t))), roundTenth(cy + wobble * (a * Math.cos(u) * Math.sin(t) + b * Math.sin(u) * Math.cos(t)))] as const
+    }), true)
+  }
+  const beef = [slice(338, 196, 74, 42, -18), slice(372, 268, 70, 40, 14), slice(306, 300, 66, 38, 36)].join(' ')
+  const grain = 'M 290 186 Q 336 176 384 194 M 330 262 Q 372 254 412 272 M 270 296 Q 306 290 340 312'
+  const within = (r: number) => {
+    for (;;) {
+      const [x, y] = [c + (random() * 2 - 1) * r, c + (random() * 2 - 1) * r]
+      if (Math.hypot(x - c, y - c) < r) return [roundTenth(x), roundTenth(y)] as const
+    }
+  }
+  const scallions = Array.from({ length: 18 }, () => {
+    const [x, y] = within(170)
+    return `M ${x - 7} ${y} a 7 7 0 1 0 14 0 a 7 7 0 1 0 -14 0 Z`
+  }).join(' ')
+  const chili = Array.from({ length: 16 }, () => {
+    const [x, y] = within(180)
+    const r = roundTenth(3 + random() * 3)
+    return `M ${roundTenth(x - r)} ${y} a ${r} ${r} 0 1 0 ${roundTenth(r * 2)} 0 a ${r} ${r} 0 1 0 ${roundTenth(-r * 2)} 0 Z`
+  }).join(' ')
+  const bowl = { x: 280, y: 470 }
+  const row = (index: number, label: string, value: string) => {
+    const y = 1046 + index * 76
+    const n = NUMBERED[index]
+    return [
+      textNode(label, 88, y, 140, 44, { name: `标签${n}`, fontSize: 28, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode(value, 236, y - 2, 756, 48, { name: `信息${n}`, fontSize: 32, fontFamily: SANS, textFill: solid(ink) }),
+      lineNode(88, y + 60, 904, '#e3d5c2', 2, { name: `行线${n}`, cap: 'butt' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      textNode('巷子里的\n一碗牛肉面', 84, 112, 680, 264, { name: '标题', fontSize: 100, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.22 }),
+      textNode('藏在老小区里，开了二十年', 88, 388, 680, 50, { name: '副标题', fontSize: 34, fontFamily: SANS, textFill: solid(muted), letterSpacing: 1 }),
+      // The score in a stamp: a red ring, the number and five stars.
+      pathNode(`${circlePath(118, 118, 114)} ${circlePath(118, 118, 102)}`, 754, 132, 236, 236, { name: '评分章', stroke: red, strokeWidth: 4 }),
+      textNode('评分', 754, 176, 236, 32, { name: '评分字', fontSize: 22, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', align: 'center', letterSpacing: 8 }),
+      textNode('9.2', 754, 202, 236, 110, { name: '角标', fontSize: 88, fontFamily: ARCHIVO, textFill: solid(red), align: 'center', lineHeight: 1.15 }),
+      pathNode([0, 1, 2, 3, 4].map((index) => starPath(12 + index * 30, 12, 12, 5)).join(' '), 799, 316, 146, 24, { name: '星级', fill: solid(red), strokeWidth: 0 }),
+      pathNode(circlePath(c, c, 250), bowl.x, bowl.y, 520, 520, { name: '碗', fill: solid('#fbfaf6'), strokeWidth: 0, shadow: { color: '#d8c6ae', blur: 30, offsetX: 0, offsetY: 16 } }),
+      pathNode(`${circlePath(c, c, 243)} ${circlePath(c, c, 226)}`, bowl.x, bowl.y, 520, 520, { name: '碗边', stroke: blue, strokeWidth: 4 }),
+      pathNode(circlePath(c, c, soup), bowl.x, bowl.y, 520, 520, { name: '汤', fill: solid('#c8742f'), strokeWidth: 0 }),
+      pathNode(noodles, bowl.x, bowl.y, 520, 520, { name: '面', stroke: '#f3d9a2', strokeWidth: 8, cap: 'round' }),
+      pathNode(beef, bowl.x, bowl.y, 520, 520, { name: '牛肉', fill: solid('#7b3f2a'), strokeWidth: 0 }),
+      pathNode(grain, bowl.x, bowl.y, 520, 520, { name: '肉纹', stroke: '#a65d3f', strokeWidth: 4, cap: 'round' }),
+      pathNode('M 128 196 a 54 46 0 1 0 108 0 a 54 46 0 1 0 -108 0 Z', bowl.x, bowl.y, 520, 520, { name: '蛋白', fill: solid('#fffaf0'), strokeWidth: 0 }),
+      pathNode(circlePath(186, 198, 25), bowl.x, bowl.y, 520, 520, { name: '蛋黄', fill: solid('#f2b632'), strokeWidth: 0 }),
+      pathNode(chili, bowl.x, bowl.y, 520, 520, { name: '辣油', fill: solid('#e0452b'), strokeWidth: 0, opacity: 0.9 }),
+      pathNode(scallions, bowl.x, bowl.y, 520, 520, { name: '葱花', stroke: '#5f9e3c', strokeWidth: 4 }),
+      // Chopsticks resting across the rim.
+      pathNode('M 12 22 L 560 4 L 562 14 L 14 34 Z M 18 58 L 566 52 L 566 62 L 18 70 Z', 470, 600, 580, 80, { name: '筷子', fill: solid('#6f4a2f'), strokeWidth: 0 }),
+      ...row(0, '人均', '¥ 38'),
+      ...row(1, '推荐', '招牌牛肉面、卤蛋、凉拌木耳'),
+      ...row(2, '地址', '南门路 26 号，早上 6 点开门'),
+      textNode('@阿澄吃什么', 88, 1344, 600, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 2 }),
+    ]),
+  ])
+}
+
+function createCourseCoverDocument(): FreeformDocument {
+  const paper = '#f7f6f1'
+  const ink = '#16181d'
+  const yellow = '#ffd23f'
+  const blue = '#3a6df0'
+  const muted = '#5d6370'
+  // Squared paper under everything.
+  const grid = [
+    ...Array.from({ length: 41 }, (_, index) => `M ${index * 48} 0 L ${index * 48} 1080`),
+    ...Array.from({ length: 23 }, (_, index) => `M 0 ${index * 48} L 1920 ${index * 48}`),
+  ].join(' ')
+  const row = (index: number, label: string, value: string) => {
+    const y = 724 + index * 70
+    const n = NUMBERED[index]
+    return [
+      shapeNode('rect', 120, y + 15, 16, 16, solid(blue), { name: `标记${n}`, cornerRadius: 4 }),
+      textNode(label, 156, y, 140, 46, { name: `标签${n}`, fontSize: 30, fontFamily: SANS, textFill: solid(blue), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode(value, 300, y, 760, 46, { name: `信息${n}`, fontSize: 30, fontFamily: SANS, textFill: solid(ink) }),
+    ]
+  }
+  // A pencil lying across the circle's foot, drawn flat in one 520 × 56 box and turned as one.
+  const pencil = (name: string, d: string, options: Parameters<typeof pathNode>[5]) => ({ ...pathNode(d, 1000, 860, 520, 56, { name, ...options }), rotation: -24 })
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      pathNode(grid, 0, 0, 1920, 1080, { name: '方格', stroke: '#dde4ec', strokeWidth: 1.5 }),
+      pathNode(circlePath(330, 330, 330), 1130, 200, 660, 660, { name: '黄圆', fill: solid(yellow), strokeWidth: 0 }),
+      textNode('LESSON', 1130, 300, 660, 70, { name: '课号', fontSize: 52, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center', letterSpacing: 12 }),
+      textNode('12', 1130, 396, 660, 330, { name: '角标', fontSize: 300, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center', letterSpacing: -6, lineHeight: 1.05 }),
+      pencil('笔尖木', 'M 0 28 L 64 0 L 64 56 Z', { fill: solid('#ecd2a8'), strokeWidth: 0 }),
+      pencil('笔芯', 'M 0 28 L 22 18.4 L 22 37.6 Z', { fill: solid(ink), strokeWidth: 0 }),
+      pencil('笔杆', 'M 64 0 L 440 0 L 440 56 L 64 56 Z', { fill: solid('#f4a52c'), strokeWidth: 0 }),
+      pencil('笔棱', 'M 64 19 L 440 19 M 64 37 L 440 37', { stroke: '#d98a17', strokeWidth: 2 }),
+      pencil('笔箍', 'M 440 0 L 478 0 L 478 56 L 440 56 Z', { fill: solid('#c9ced6'), strokeWidth: 0 }),
+      pencil('橡皮', 'M 478 0 L 504 0 Q 520 0 520 16 L 520 40 Q 520 56 504 56 L 478 56 Z', { fill: solid('#ef8fa3'), strokeWidth: 0 }),
+      textNode('叮卡学堂', 120, 100, 600, 44, { name: '品牌', fontSize: 30, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('用 Python\n画一张数据图', 112, 250, 980, 300, { name: '标题', fontSize: 112, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.15, letterSpacing: -2 }),
+      textNode('从读表格到出图，四十分钟学会', 120, 590, 900, 56, { name: '副标题', fontSize: 38, fontFamily: SANS, textFill: solid(muted), letterSpacing: 1 }),
+      ...row(0, '讲师', '阿澄 · 数据分析师'),
+      ...row(1, '时长', '40 分钟'),
+      ...row(2, '难度', '入门，不需要编程基础'),
+    ], LANDSCAPE),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -4728,6 +5121,7 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'night-flight': deck('夜航', '沿时间和路线展开一段记录，适合随笔与灵感。', ['随笔', '灵感']),
   brutalist: deck('粗野', '黄黑撞色、硬阴影和粗线，适合宣言与规则清单。', ['宣言', '海报']),
   blueprint: deck('蓝图', '工程网格、尺寸标注和图签，适合计划与结构拆解。', ['计划', '结构']),
+  thesis: { title: '答辩', description: '16:9 答辩套图：深蓝封面上一枚金色细线校徽，桂枝围着一本打开的书，配衬线大标题；内页米白底，左边一道深蓝书脊，章节号和罗马数字编号用金色斜体，结尾页写着「恳请各位老师批评指正」，适合毕业答辩、开题报告和学术汇报。', pageCount: 3, tags: ['答辩', '学术'], format: 'landscape' },
   spotlight: { title: '聚光', description: '16:9 演示套图：暖白底上一轮橙色大圆，黑色粗体大标题、细线和大页码，观点页整页铺橙色，适合汇报、路演、课程和分享。', pageCount: 3, tags: ['演示', '汇报'], format: 'landscape' },
   'talk-poster': poster('讲座', '大图配大标题，时间、地点、嘉宾一目了然，适合讲座、分享会和活动报名。', ['活动', '讲座'], 'story'),
   'sale-poster': poster('促销', '大字优惠配产品插画，适合新品、折扣和门店活动。', ['促销', '门店'], 'story'),
@@ -4792,6 +5186,10 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'daily-quote': poster('日签', '方图：深蓝夜空里一排月相，中间的满月是今晚，大号日期配一句话，适合日签、晚安和每日打卡。', ["日签", "晚安"], 'square'),
   'masthead-cover': poster('报头首图', '公众号首图：像一份报纸的头版，宋体报头、双线和日期栏，大标题旁边是一张网点印出来的海上日落，适合周刊、专栏和资讯。', ["公众号", "周刊"], 'wechat-cover'),
   'interview-cover': poster('人物访谈', '公众号首图：左边一块赤陶色上压着两个巨大的引号，右边是受访者的一句话、名字和身份，适合人物访谈、对话和用户故事。', ["公众号", "访谈"], 'wechat-cover'),
+  'resume': poster('简历', 'A4：粗黑的名字和蓝色的职位，右上角是联系方式，一道粗线下面写关于我，再按时间排五行工作与教育，适合求职简历和个人履历。', ["简历", "求职"], 'a4'),
+  'notice': poster('红头通知', 'A4：红色的单位名称和文号，红线中间一颗星，下面是通知标题、称呼、正文和五条事项，落款上盖着红章，适合放假通知、公司公告和社团通知。', ["通知", "公告"], 'a4'),
+  'food-review': poster('探店点评', '小红书封面：俯视的一碗牛肉面，筷子架在碗边，右上角一枚红色评分章，下面三行人均、推荐和地址，适合探店、美食点评和餐厅推荐。', ["小红书", "探店"], 'xhs'),
+  'course-cover': poster('课程封面', '16:9 横版封面：方格纸上一个明黄大圆写着课号，一支铅笔斜靠在圆边，左边是课程标题、一句介绍和讲师、时长、难度，适合网课封面、培训和分享会。', ["课程", "封面"], 'landscape'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -4802,6 +5200,7 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   brutalist: createBrutalistDocument,
   blueprint: createBlueprintDocument,
   spotlight: createSpotlightDocument,
+  thesis: createThesisDocument,
   'talk-poster': createTalkPosterDocument,
   'sale-poster': createSalePosterDocument,
   'hiring-poster': createHiringPosterDocument,
@@ -4865,6 +5264,10 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'daily-quote': createDailyQuoteDocument,
   'masthead-cover': createMastheadCoverDocument,
   'interview-cover': createInterviewCoverDocument,
+  'resume': createResumeDocument,
+  'notice': createNoticeDocument,
+  'food-review': createFoodReviewDocument,
+  'course-cover': createCourseCoverDocument,
 }
 
 /**
@@ -4880,6 +5283,7 @@ export const FREEFORM_DECK_LAYOUTS: Partial<Record<FreeformDeckSeriesId, Record<
   brutalist: BRUTALIST_LAYOUTS,
   blueprint: BLUEPRINT_LAYOUTS,
   spotlight: SPOTLIGHT_LAYOUTS,
+  thesis: THESIS_LAYOUTS,
 }
 
 /**
@@ -4918,6 +5322,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'brutalist',
   'blueprint',
   'spotlight',
+  'thesis',
   // Posters, the scenes asked for most first.
   'note-cover',
   'photo-cover',
@@ -4927,6 +5332,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'ranking-cover',
   'fun-fact',
   'trip-route',
+  'food-review',
   'habit-tracker',
   'portfolio-cover',
   'menu',
@@ -4936,6 +5342,8 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'moments-grid',
   'timetable',
   'agenda-sheet',
+  'resume',
+  'notice',
   'exhibition-poster',
   'design-week',
   'music-festival',
@@ -4967,6 +5375,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'product-card',
   'video-cover',
   'pitch-cover',
+  'course-cover',
   'summit-visual',
   'gala-backdrop',
   'annual-report',

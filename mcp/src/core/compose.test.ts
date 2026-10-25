@@ -56,6 +56,14 @@ describe('composeDeck', () => {
     }
   })
 
+  test('takes a defense\'s 恳请各位老师批评指正 for words a deck may keep, not for copy left over', () => {
+    const samples = templateMarks().samples
+    expect(samples.has('恳请各位老师\n批评指正')).toBe(false)
+    expect(samples.has('谢谢各位老师')).toBe(false)
+    // The rest of the deck's samples still count.
+    expect(samples.has('研究方法：\n问卷与街景分析')).toBe(true)
+  })
+
   test('keeps every word it was given, somewhere on its page', () => {
     for (const templateId of freeformTemplateIds()) {
       const { document } = compose(templateId)

@@ -27,8 +27,8 @@ test('the gallery filters templates by size, and a poster opens as one page at i
   expect(preview!.height / preview!.width).toBeCloseTo(16 / 9, 1)
 
   await dialog.getByTestId('template-format-landscape').click()
-  // The 16:9 deck comes first; the video cover is the poster.
-  await expect(dialog.locator('.template-tile')).toHaveCount(5)
+  // The 16:9 decks come first; the video cover is a poster.
+  await expect(dialog.locator('.template-tile')).toHaveCount(7)
   await dialog.getByRole('button', { name: '预览视频封面' }).click()
   await expect(dialog.locator('.template-detail-copy h3')).toHaveText('横版封面 · 1920×1080')
   await dialog.getByRole('button', { name: '使用这套模板', exact: true }).click()

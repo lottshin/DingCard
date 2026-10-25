@@ -77,6 +77,7 @@ export const TEMPLATE_FACETS: Record<TemplateSeriesId, TemplateFacets> = {
   brutalist: facets(['carousel'], ['bold'], ['yellow', 'black']),
   blueprint: facets(['carousel'], ['business'], ['blue']),
   spotlight: facets(['carousel', 'office'], ['minimal', 'business'], ['orange', 'white']),
+  thesis: facets(['carousel', 'office'], ['business', 'elegant'], ['blue', 'white']),
   // Posters
   'note-cover': facets(['social'], ['fresh'], ['beige', 'yellow']),
   'photo-cover': facets(['social'], ['retro'], ['beige', 'black']),
@@ -141,6 +142,10 @@ export const TEMPLATE_FACETS: Record<TemplateSeriesId, TemplateFacets> = {
   'daily-quote': facets(["social"], ["elegant", "literary"], ["blue", "yellow"]),
   'masthead-cover': facets(["social"], ["editorial", "retro"], ["beige", "black"]),
   'interview-cover': facets(["social"], ["editorial", "elegant"], ["orange", "beige"]),
+  'resume': facets(["office"], ["minimal", "business"], ["white", "blue"]),
+  'notice': facets(["office"], ["business"], ["red", "white"]),
+  'food-review': facets(["social"], ["handdrawn", "fresh"], ["beige", "orange"]),
+  'course-cover': facets(["office"], ["fresh", "minimal"], ["yellow", "white"]),
 }
 
 export function templateFacets(template: Pick<TemplateDefinition, 'series'>): TemplateFacets {

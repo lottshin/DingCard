@@ -21,6 +21,7 @@ export type FreeformDeckSeriesId =
   | 'brutalist'
   | 'blueprint'
   | 'spotlight'
+  | 'thesis'
 
 /**
  * Pages a deck can draw besides its section and closing pages, picked by what
@@ -95,6 +96,10 @@ export type FreeformPosterSeriesId =
   | 'daily-quote'
   | 'masthead-cover'
   | 'interview-cover'
+  | 'resume'
+  | 'notice'
+  | 'food-review'
+  | 'course-cover'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

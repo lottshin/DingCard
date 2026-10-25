@@ -173,11 +173,11 @@ export function templateMarks(): TemplateMarks {
     const deck = template.kind === 'deck' ? FREEFORM_TEMPLATE_SLOTS[template.series as FreeformDeckSeriesId] : undefined
     const poster = template.kind === 'poster' ? FREEFORM_POSTER_SLOTS[template.series as FreeformPosterSeriesId] : undefined
     const pages: string[][] = deck
-      ? [deck.cover, deck.section, deck.ending].map(slotSampleNames)
+      ? [deck.cover, deck.section, deck.ending].map((slots) => slotSampleNames(slots, { generic: false }))
       : poster ? [posterSampleNames(poster, { labels: false })] : []
     document.slides.forEach((slide, index) => mark(slide, new Set(pages[index] ?? [])))
   }
-  for (const { slide, slots } of deckLayoutSlides()) mark(slide, new Set(slotSampleNames(slots)))
+  for (const { slide, slots } of deckLayoutSlides()) mark(slide, new Set(slotSampleNames(slots, { generic: false })))
   for (const { slide, slots } of posterTextOnlySlides()) mark(slide, new Set(posterSampleNames(slots, { labels: false })))
   marks = result
   return result
