@@ -47,7 +47,7 @@ import { TemplateGallery } from '../templates/TemplateGallery'
 import { templatesForWorkspace } from '../templates/registry'
 import type { TemplateDefinition } from '../templates/types'
 import { MAX_EFFECTIVE_SCALE, MAX_FREEFORM_SLIDES, MIN_EFFECTIVE_SCALE, PAGE_SIZE_MAX, PAGE_SIZE_MIN } from './constants'
-import { collectTextAutoSize } from './textAutoSize'
+import { collectTextAutoSize, textContentExtent } from './textAutoSize'
 import { FreeformTemplatePanel } from './FreeformTemplatePanel'
 import { nextFontSize } from './fontSizeSteps'
 import {
@@ -2353,7 +2353,7 @@ export function FreeformWorkspace({
         const host = artboard.querySelector(`[data-scene-node-id="${CSS.escape(id)}"]`)
         const textbox = host?.querySelector('.freeform-textbox')
         if (!(textbox instanceof HTMLElement)) return null
-        return vertical ? textbox.scrollWidth : textbox.scrollHeight
+        return textContentExtent(textbox, vertical)
       }
       const updates = collectTextAutoSize(activeSlide.nodes, measure)
       if (updates.length === 0) return

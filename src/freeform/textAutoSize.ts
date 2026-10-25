@@ -14,6 +14,22 @@ export interface TextAutoSizeUpdate {
 }
 
 /**
+ * A text box's content extent along its growth axis: scrollHeight for
+ * horizontal text, scrollWidth for vertical. Words set to the middle or end of
+ * their box (verticalAlign) are read as if they sat at its start: a font whose
+ * glyphs run taller than a tight line height hangs past the last line, and at
+ * the end of the box that overhang stays outside however far the box grows,
+ * so growing to it would never stop.
+ */
+export function textContentExtent(textbox: HTMLElement, vertical: boolean): number {
+  const aligned = textbox.style.justifyContent
+  if (aligned) textbox.style.justifyContent = 'flex-start'
+  const extent = vertical ? textbox.scrollWidth : textbox.scrollHeight
+  if (aligned) textbox.style.justifyContent = aligned
+  return extent
+}
+
+/**
  * Compare each text node's current box against a measured content extent and
  * produce grow-only geometry updates. `measure` receives the node id plus its
  * writing direction and returns the content extent along the growth axis in

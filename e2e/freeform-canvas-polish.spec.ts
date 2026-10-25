@@ -1691,6 +1691,25 @@ test.describe('freeform text auto size', () => {
     })
     expect(overflow).toBeLessThanOrEqual(0)
   })
+
+  test('words set to the bottom of the box leave it at its height', async ({ page }) => {
+    await openFreeform(page)
+    await insertText(page)
+    const element = page.getByTestId('freeform-element').last()
+    expect(await element.evaluate((el) => el.offsetHeight)).toBe(150)
+
+    // 行高压到 0.7 倍，任何字体的字形都会伸出最后一行；文字靠下时这截伸出始终在盒子外，
+    // 自动增高曾经因此一轮轮长个不停，直到 React 放弃、整个页面变空。
+    const lineHeight = page.getByLabel('行高', { exact: true })
+    await lineHeight.fill('0.7')
+    await lineHeight.press('Enter')
+    await page.getByTestId('text-vertical-align').getByRole('button', { name: '文字靠下' }).click()
+    await expect(page.getByTestId('freeform-textbox')).toHaveCSS('justify-content', 'safe flex-end')
+
+    // 一行字放得进 150px：盒子不该长。
+    expect(await element.evaluate((el) => el.offsetHeight)).toBe(150)
+    await expect(page.getByTestId('freeform-canvas')).toBeVisible()
+  })
 })
 
 test.describe('freeform editing chrome', () => {

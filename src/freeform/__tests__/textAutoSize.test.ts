@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collectTextAutoSize } from '../textAutoSize'
+import { collectTextAutoSize, textContentExtent } from '../textAutoSize'
 import type {
   FreeformGroupNode,
   FreeformSceneNode,
@@ -120,5 +120,38 @@ describe('collectTextAutoSize', () => {
     for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -10]) {
       expect(collectTextAutoSize([node], () => bad)).toEqual([])
     }
+  })
+})
+
+describe('textContentExtent', () => {
+  /** A box whose words need `start` px at its start, and read `end` px pushed to its end (overhang included). */
+  function box(justifyContent: string, start: number, end: number): HTMLElement {
+    const style = { justifyContent }
+    const read = () => (style.justifyContent === '' || style.justifyContent === 'flex-start' ? start : end)
+    return {
+      style,
+      get scrollHeight() { return read() },
+      get scrollWidth() { return read() },
+    } as unknown as HTMLElement
+  }
+
+  it('reads words set to the end of their box as if they sat at its start, and puts the alignment back', () => {
+    // A 440px box: the words need 305px, but at its end their glyphs hang 25px past it.
+    const textbox = box('safe flex-end', 305, 465)
+
+    expect(textContentExtent(textbox, false)).toBe(305)
+    expect(textbox.style.justifyContent).toBe('safe flex-end')
+    expect(collectTextAutoSize([textNode({ height: 440 })], () => textContentExtent(textbox, false))).toEqual([])
+  })
+
+  it('reads vertical text across, and centred words the same way', () => {
+    const textbox = box('safe center', 208, 230)
+
+    expect(textContentExtent(textbox, true)).toBe(208)
+    expect(textbox.style.justifyContent).toBe('safe center')
+  })
+
+  it('reads words at the top as they are', () => {
+    expect(textContentExtent(box('', 180, 999), false)).toBe(180)
   })
 })
