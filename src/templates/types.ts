@@ -90,6 +90,11 @@ export type FreeformPosterSeriesId =
   | 'live-show'
   | 'qixi-stars'
   | 'dragon-boat'
+  | 'vinyl-cover'
+  | 'intro-card'
+  | 'daily-quote'
+  | 'masthead-cover'
+  | 'interview-cover'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

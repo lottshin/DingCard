@@ -4462,6 +4462,194 @@ function createDragonBoatDocument(): FreeformDocument {
   ])
 }
 
+function createVinylCoverDocument(): FreeformDocument {
+  const paper = '#ebe5da'
+  const ink = '#151515'
+  const navy = '#1f3550'
+  const cream = '#f3ead8'
+  const orange = '#e8603c'
+  const muted = '#5f5a52'
+  // The record slides out of its sleeve to the right: fine grooves, a sheen, a coloured label.
+  const r = 280
+  const record = { x: 470, y: 170 }
+  const grooves = Array.from({ length: 13 }, (_, index) => circlePath(r, r, 124 + index * 12)).join(' ')
+  const wedge = (from: number, to: number) => {
+    const [a, b] = [from, to].map((deg) => (deg * Math.PI) / 180)
+    const reach = r - 12
+    return `M ${r} ${r} L ${roundTenth(r + reach * Math.cos(a))} ${roundTenth(r + reach * Math.sin(a))} A ${reach} ${reach} 0 0 1 ${roundTenth(r + reach * Math.cos(b))} ${roundTenth(r + reach * Math.sin(b))} Z`
+  }
+  const track = (index: number, text: string) => {
+    const y = 796 + index * 62
+    const n = NUMBERED[index]
+    return [
+      textNode(String(index + 1).padStart(2, '0'), 88, y + 4, 64, 40, { name: `编号${n}`, fontSize: 26, fontFamily: ARCHIVO, textFill: solid(orange) }),
+      textNode(text, 160, y, 832, 48, { name: `信息${n}`, fontSize: 32, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold' }),
+    ]
+  }
+  const lift = { color: '#9c9282', blur: 26, offsetX: 0, offsetY: 12 }
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      textNode('阿澄的深夜电台', 88, 88, 600, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('STEREO · 33 RPM', 692, 94, 300, 36, { name: '转速', fontSize: 20, fontFamily: ARCHIVO, textFill: solid(muted), align: 'right', letterSpacing: 4 }),
+      pathNode(circlePath(r, r, r), record.x, record.y, r * 2, r * 2, { name: '唱片', fill: solid(ink), strokeWidth: 0, shadow: lift }),
+      pathNode(grooves, record.x, record.y, r * 2, r * 2, { name: '纹路', stroke: '#2e2e2e', strokeWidth: 2 }),
+      pathNode(`${wedge(-70, -38)} ${wedge(110, 142)}`, record.x, record.y, r * 2, r * 2, { name: '反光', fill: solid('#ffffff'), strokeWidth: 0, opacity: 0.08 }),
+      pathNode(circlePath(96, 96, 96), record.x + r - 96, record.y + r - 96, 192, 192, { name: '唱片标', fill: solid(orange), strokeWidth: 0 }),
+      textNode('SIDE A', record.x + r - 96, record.y + r - 64, 192, 30, { name: '唱片标字', fontSize: 18, fontFamily: ARCHIVO, textFill: solid(cream), align: 'center', letterSpacing: 4 }),
+      pathNode(circlePath(9, 9, 9), record.x + r - 9, record.y + r - 9, 18, 18, { name: '中孔', fill: solid(paper), strokeWidth: 0 }),
+      // The sleeve over the record's left half, the playlist's name printed on it.
+      shapeNode('rect', 88, 170, 560, 560, solid(navy), { name: '封套', cornerRadius: 6, shadow: lift }),
+      textNode('VOL.07', 136, 214, 300, 40, { name: '角标', fontSize: 26, fontFamily: ARCHIVO, textFill: solid(orange), letterSpacing: 4 }),
+      textNode('深夜\n歌单', 132, 268, 472, 340, { name: '标题', fontSize: 120, fontFamily: SERIF, textFill: solid(cream), fontWeight: 'bold', lineHeight: 1.15 }),
+      lineNode(136, 630, 64, orange, 4, { name: '封套线', cap: 'butt' }),
+      textNode('十二首适合一个人听的歌', 136, 650, 464, 40, { name: '副标题', fontSize: 28, fontFamily: SANS, textFill: solid('#b9c5d6'), letterSpacing: 2 }),
+      lineNode(88, 764, 904, ink, 2, { name: '分隔线', cap: 'butt' }),
+      ...track(0, '凌晨三点的便利店'),
+      ...track(1, '海边的末班车'),
+      ...track(2, '月亮不睡我不睡'),
+    ], SQUARE),
+  ])
+}
+
+function createIntroCardDocument(): FreeformDocument {
+  const bg = '#f6efe4'
+  const red = '#e5352b'
+  const ink = '#1c1a17'
+  const muted = '#6a6259'
+  const field = (index: number, label: string, value: string) => {
+    const x = 88 + index * 312
+    const n = NUMBERED[index]
+    return [
+      textNode(label, x, 786, 280, 36, { name: `标签${n}`, fontSize: 24, fontFamily: SANS, textFill: solid(muted), letterSpacing: 4 }),
+      textNode(value, x, 824, 280, 96, { name: `信息${n}`, fontSize: 34, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.35 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('封面', solid(bg), [
+      // The name sticker: HELLO on its red band, the name written on the white, three strokes off its corner.
+      shapeNode('rect', 100, 96, 880, 640, solid(red), { name: '贴纸', cornerRadius: 40, shadow: { color: '#cdbca8', blur: 30, offsetX: 0, offsetY: 14 } }),
+      pathNode('M 5 30 L 8 6 M 20 38 L 40 20 M 24 54 L 48 50', 980, 46, 60, 60, { name: '强调线', stroke: ink, strokeWidth: 5, cap: 'round' }),
+      textNode('HELLO', 100, 106, 880, 150, { name: '贴纸字', fontSize: 130, fontFamily: ARCHIVO, textFill: solid('#ffffff'), align: 'center', letterSpacing: 6, lineHeight: 1.1 }),
+      textNode('my name is', 100, 262, 880, 76, { name: '贴纸小字', fontSize: 56, fontFamily: VIBES, textFill: solid('#ffffff'), align: 'center', lineHeight: 1.2 }),
+      shapeNode('rect', 130, 346, 820, 340, solid('#ffffff'), { name: '名字底', cornerRadius: 20 }),
+      textNode('小满', 130, 354, 820, 324, { name: '标题', fontSize: 176, fontFamily: BRUSH, textFill: solid(ink), align: 'center', lineHeight: 1.15, verticalAlign: 'middle' }),
+      ...field(0, '坐标', '杭州'),
+      ...field(1, '职业', '插画师'),
+      ...field(2, '爱好', '爬山和猫'),
+      textNode('初次见面', 88, 972, 500, 40, { name: '角标', fontSize: 26, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('@阿澄的日常', 592, 972, 400, 40, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(muted), align: 'right', letterSpacing: 2 }),
+    ], SQUARE),
+  ])
+}
+
+/** The lit part of a moon of radius r at (cx, cy): `k` runs from -1 (new) through 0 (half) to 1 (full); waxing lights the right. */
+function moonPhasePath(cx: number, cy: number, r: number, k: number, waxing: boolean): string {
+  const rx = roundTenth(r * Math.abs(k))
+  // Down the lit limb, then back up the terminator: bowing toward the limb for a crescent, away from it past half.
+  const limb = waxing ? 1 : 0
+  const terminator = (k < 0) === waxing ? 0 : 1
+  return `M ${cx} ${cy - r} A ${r} ${r} 0 0 ${limb} ${cx} ${cy + r} A ${rx} ${r} 0 0 ${terminator} ${cx} ${cy - r} Z`
+}
+
+function createDailyQuoteDocument(): FreeformDocument {
+  const pale = '#f3e6b4'
+  const muted = '#9aa3c4'
+  const random = seededRandom(1024)
+  // The month's moons in a row, the full one in the middle standing for tonight.
+  const row = { x: 86, y: 136, width: 908, height: 148 }
+  const small = 30
+  const phases: Array<[number, number, boolean]> = [[64, -0.6, true], [184, -0.04, true], [304, 0.55, true], [604, 0.55, false], [724, -0.04, false], [844, -0.6, false]]
+  const dims = phases.map(([x]) => circlePath(x, 74, small)).join(' ')
+  const lit = phases.map(([x, k, waxing]) => moonPhasePath(x, 74, small, k, waxing)).join(' ')
+  const craters = [[430, 50, 12], [478, 92, 16], [452, 114, 8], [496, 50, 7]].map(([x, y, r]) => circlePath(x, y, r)).join(' ')
+  const stars = Array.from({ length: 80 }, () => {
+    const x = 20 + random() * 1040
+    const y = 20 + random() * 1040
+    const r = roundTenth(0.8 + random() * 1.4)
+    return `M ${roundTenth(x - r)} ${roundTenth(y)} a ${r} ${r} 0 1 0 ${roundTenth(r * 2)} 0 a ${r} ${r} 0 1 0 ${roundTenth(-r * 2)} 0 Z`
+  }).join(' ')
+  return documentFromSlides([
+    slide('日签', stopsPaint([[0, '#0c1430'], [1, '#1d2a5c']], 180), [
+      pathNode(stars, 0, 0, 1080, 1080, { name: '星', fill: solid('#ffffff'), strokeWidth: 0, opacity: 0.5 }),
+      shapeNode('ellipse', 400, 90, 280, 240, solid(pale), { name: '月光', filter: { blur: 60 }, opacity: 0.3 }),
+      pathNode(dims, row.x, row.y, row.width, row.height, { name: '月相暗面', fill: solid(pale), strokeWidth: 0, opacity: 0.16 }),
+      pathNode(lit, row.x, row.y, row.width, row.height, { name: '月相', fill: solid(pale), strokeWidth: 0 }),
+      pathNode(circlePath(454, 74, 74), row.x, row.y, row.width, row.height, { name: '满月', fill: solid(pale), strokeWidth: 0, shadow: { color: '#fff3c4', blur: 30, offsetX: 0, offsetY: 0 } }),
+      pathNode(craters, row.x, row.y, row.width, row.height, { name: '环形山', fill: solid('#e2d29b'), strokeWidth: 0 }),
+      textNode('10.24', 88, 330, 904, 230, { name: '角标', fontSize: 200, fontFamily: PLAYFAIR, textFill: solid('#ffffff'), align: 'center', lineHeight: 1.1 }),
+      textNode('星期六 · 农历九月十五', 88, 566, 904, 44, { name: '副标题', fontSize: 28, fontFamily: SANS, textFill: solid(muted), align: 'center', letterSpacing: 6 }),
+      lineNode(500, 648, 80, pale, 2, { name: '短线', cap: 'butt' }),
+      textNode('慢慢来，比较快。', 120, 690, 840, 200, { name: '标题', fontSize: 60, fontFamily: SERIF, textFill: solid('#ffffff'), align: 'center', lineHeight: 1.5, verticalAlign: 'middle' }),
+      textNode('叮卡日签', 88, 968, 904, 40, { name: '品牌', fontSize: 24, fontFamily: SANS, textFill: solid(muted), align: 'center', letterSpacing: 10 }),
+    ], SQUARE),
+  ])
+}
+
+function createMastheadCoverDocument(): FreeformDocument {
+  const paper = '#f1ede3'
+  const ink = '#1a1a1a'
+  const muted = '#57524a'
+  // The front page's picture in newsprint dots: a sun going down over the sea, its light broken on the water.
+  const picture = { x: 1236, y: 312, width: 468, height: 364, step: 26 }
+  const horizon = 236
+  const dots: string[] = []
+  for (let cy = picture.step / 2; cy < picture.height; cy += picture.step) {
+    for (let cx = picture.step / 2; cx < picture.width; cx += picture.step) {
+      const fromSun = Math.hypot(cx - 170, cy - 150)
+      const glint = Math.abs(cx - 170) < 64 * (1 - (cy - horizon) / 200) && Math.floor((cy - horizon) / picture.step) % 2 === 0
+      const dark = cy < horizon
+        ? (fromSun < 70 ? 0 : 0.06 + 0.42 * Math.min(1, (fromSun - 70) / 420))
+        : (glint ? 0.3 : 0.85)
+      const r = roundTenth((picture.step / 2) * Math.sqrt(dark))
+      if (r >= 0.8) dots.push(`M ${roundTenth(cx - r)} ${cy} a ${r} ${r} 0 1 0 ${roundTenth(r * 2)} 0 a ${r} ${r} 0 1 0 ${roundTenth(-r * 2)} 0 Z`)
+    }
+  }
+  return documentFromSlides([
+    slide('首图', solid(paper), [
+      textNode('叮卡周报', 80, 36, 1640, 150, { name: '品牌', fontSize: 112, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 30, lineHeight: 1.2 }),
+      lineNode(80, 194, 1640, ink, 4, { name: '报头线', cap: 'butt' }),
+      lineNode(80, 202, 1640, ink, 1.5, { name: '报头细线', cap: 'butt' }),
+      textNode('第 128 期 · 2026 年 10 月 24 日 · 星期六', 80, 220, 1100, 36, { name: '角标', fontSize: 24, fontFamily: SANS, textFill: solid(muted), letterSpacing: 2 }),
+      textNode('WEEKEND EDITION', 1220, 218, 500, 36, { name: '版别', fontSize: 24, fontFamily: PLAYFAIR, textFill: solid(muted), align: 'right', italic: true, letterSpacing: 2 }),
+      lineNode(80, 264, 1640, ink, 1.5, { name: '日期线', cap: 'butt' }),
+      textNode('一座城市的夜晚，\n从一碗面开始', 80, 296, 1100, 220, { name: '标题', fontSize: 80, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.25 }),
+      textNode('我们在凌晨的街头，吃遍了还亮着灯的面馆', 80, 532, 1100, 50, { name: '副标题', fontSize: 32, fontFamily: SANS, textFill: solid(ink), letterSpacing: 1 }),
+      textNode('十二家面馆，从晚上十点开到早上六点。来吃面的有出租车司机、夜班护士和刚下班的厨师，他们是这座城市夜里最熟悉的面孔。', 80, 600, 1100, 100, { name: '正文', fontSize: 24, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.6 }),
+      verticalLineNode(1206, 300, 700, ink, 1.5, { name: '栏线' }),
+      pathNode(dots.join(' '), picture.x, picture.y, picture.width, picture.height, { name: '网点图', fill: solid(ink), strokeWidth: 0 }),
+      shapeNode('rect', picture.x, picture.y, picture.width, picture.height, { type: 'transparent' }, { name: '图框', stroke: ink, strokeWidth: 1.5, cornerRadius: 0 }),
+      lineNode(80, 726, 1640, ink, 3, { name: '底线', cap: 'butt' }),
+    ], WECHAT_COVER),
+  ])
+}
+
+function createInterviewCoverDocument(): FreeformDocument {
+  const paper = '#f4efe6'
+  const clay = '#c8573a'
+  const cream = '#f6e7d8'
+  const ink = '#1d1a17'
+  const muted = '#6a625a'
+  // An opening quote mark, two of them: a ball with a tail curling up to the right, at scale s.
+  const s = 1.3
+  const mark = (n: string, x: number, y: number) => [
+    pathNode(`M ${12 * s} ${128 * s} C ${10 * s} ${70 * s} ${52 * s} ${18 * s} ${128 * s} 0 L ${136 * s} ${22 * s} C ${88 * s} ${40 * s} ${66 * s} ${72 * s} ${72 * s} ${86 * s} Z`, x, y, 140 * s, 130 * s, { name: `引号尾${n}`, fill: solid(cream), strokeWidth: 0 }),
+    pathNode(circlePath(66 * s, 66 * s, 66 * s), x + 9 * s, y + 74 * s, 132 * s, 132 * s, { name: `引号球${n}`, fill: solid(cream), strokeWidth: 0 }),
+  ]
+  return documentFromSlides([
+    slide('首图', solid(paper), [
+      shapeNode('rect', -TEMPLATE_EDGE_BLEED, -TEMPLATE_EDGE_BLEED, 600 + TEMPLATE_EDGE_BLEED, 766 + TEMPLATE_EDGE_BLEED * 2, solid(clay), { name: '色块', cornerRadius: 0 }),
+      ...mark('一', 99, 249),
+      ...mark('二', 318, 249),
+      textNode('人物访谈 · 第 12 期', 680, 150, 640, 40, { name: '角标', fontSize: 26, fontFamily: SANS, textFill: solid(clay), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('叮卡人物', 1320, 150, 400, 40, { name: '品牌', fontSize: 24, fontFamily: SANS, textFill: solid(muted), fontWeight: 'bold', align: 'right', letterSpacing: 6 }),
+      textNode('开一家书店，是为了让陌生人\n有个地方坐一会儿。', 680, 210, 1040, 210, { name: '标题', fontSize: 64, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.4 }),
+      lineNode(680, 452, 72, clay, 4, { name: '短线', cap: 'butt' }),
+      textNode('对话 阿澄 · 独立书店「慢读」店主', 680, 484, 1040, 50, { name: '副标题', fontSize: 34, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold' }),
+      textNode('书店开到第七年，我们聊了熬过的冬天，和那些一坐就是一下午的老读者。', 680, 546, 1040, 80, { name: '正文', fontSize: 26, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.5 }),
+    ], WECHAT_COVER),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -4599,6 +4787,11 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'live-show': poster('直播预告', '黑底上亮着红色的 ON AIR 灯牌，大标题、开播时间和平台，底部一排声波，适合直播预告、带货专场和线上发布。', ["直播", "预告"], 'story'),
   'qixi-stars': poster('七夕', '靛紫夜空里一条银河，织女星和牛郎星隔河相望，鹊桥连起两颗星，金色宋体大字，适合七夕、情人节和纪念日。', ["七夕", "节日"], 'story'),
   'dragon-boat': poster('端午', '一条龙舟划过朱红的太阳，下面是海水纹，竖排毛笔大字配一方朱印，左边写日子和放假安排，适合端午问候、放假通知和门店活动。', ["端午", "国风"], 'story'),
+  'vinyl-cover': poster('黑胶歌单', '方图：一张黑胶唱片从深蓝封套里滑出半张，封套上印着歌单名，下面三行曲目，适合歌单、播客和音乐推荐。', ["歌单", "音乐"], 'square'),
+  'intro-card': poster('自我介绍', '方图：一张红色的 HELLO 姓名贴，白底上手写你的名字，下面三栏写坐标、职业和爱好，适合自我介绍、新人报到和社群破冰。', ["自我介绍", "社交"], 'square'),
+  'daily-quote': poster('日签', '方图：深蓝夜空里一排月相，中间的满月是今晚，大号日期配一句话，适合日签、晚安和每日打卡。', ["日签", "晚安"], 'square'),
+  'masthead-cover': poster('报头首图', '公众号首图：像一份报纸的头版，宋体报头、双线和日期栏，大标题旁边是一张网点印出来的海上日落，适合周刊、专栏和资讯。', ["公众号", "周刊"], 'wechat-cover'),
+  'interview-cover': poster('人物访谈', '公众号首图：左边一块赤陶色上压着两个巨大的引号，右边是受访者的一句话、名字和身份，适合人物访谈、对话和用户故事。', ["公众号", "访谈"], 'wechat-cover'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -4667,6 +4860,11 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'live-show': createLiveShowDocument,
   'qixi-stars': createQixiStarsDocument,
   'dragon-boat': createDragonBoatDocument,
+  'vinyl-cover': createVinylCoverDocument,
+  'intro-card': createIntroCardDocument,
+  'daily-quote': createDailyQuoteDocument,
+  'masthead-cover': createMastheadCoverDocument,
+  'interview-cover': createInterviewCoverDocument,
 }
 
 /**
@@ -4764,6 +4962,8 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'travel-postcard',
   'autumn-market',
   'quote-card',
+  'daily-quote',
+  'intro-card',
   'product-card',
   'video-cover',
   'pitch-cover',
@@ -4771,9 +4971,12 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'gala-backdrop',
   'annual-report',
   'podcast-cover',
+  'vinyl-cover',
   'article-cover',
   'listicle-cover',
   'ridge-cover',
+  'masthead-cover',
+  'interview-cover',
   'flyer',
   'data-roundup',
   'stat-card',

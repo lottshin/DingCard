@@ -297,8 +297,8 @@ test('templates start a new project in the matching editor', async ({ page }) =>
     .toHaveAttribute('href', /docs\/templates\.md$/)
   await page.getByRole('group', { name: '按系统筛选' }).getByRole('button', { name: /^自由编辑/ }).click()
   await expect(page).toHaveURL(/#\/templates\?system=canvas$/)
-  // Seven decks and fifty-eight posters.
-  await expect(page.getByTestId('template-card')).toHaveCount(65)
+  // Seven decks and sixty-three posters.
+  await expect(page.getByTestId('template-card')).toHaveCount(70)
 
   await page.getByRole('button', { name: '用「夜航」新建项目' }).click()
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
@@ -312,7 +312,7 @@ test('the template center finds templates by words, use, size and style, and pre
   await page.getByRole('link', { name: '模板中心' }).click()
   const cards = page.getByTestId('template-card')
   // Unfiltered, every template once, under what it is for.
-  await expect(cards).toHaveCount(74)
+  await expect(cards).toHaveCount(79)
   await expect(page.getByRole('heading', { level: 2, name: '长文卡片' })).toBeVisible()
 
   // Words find titles and what a template is for: a price list is filed under menus.
@@ -330,7 +330,7 @@ test('the template center finds templates by words, use, size and style, and pre
   await page.getByRole('option', { name: '竖版海报 · 9:16' }).click()
   await expect(cards).toHaveCount(7)
   await page.getByRole('button', { name: '清除筛选' }).first().click()
-  await expect(cards).toHaveCount(74)
+  await expect(cards).toHaveCount(79)
 
   // A style from its menu.
   await page.getByTestId('template-filter-style').click()

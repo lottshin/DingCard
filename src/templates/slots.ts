@@ -1157,6 +1157,50 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     generic: ['标题', '印章文字'],
   },
+  // Each track is a line; the record and its sleeve move with the column as it closes up.
+  'vinyl-cover': {
+    title: '标题',
+    subtitle: { text: '副标题', extras: ['封套线'] },
+    tag: { text: '角标' },
+    details: rows(3, () => undefined, (n) => `信息${n}`, (n) => [`编号${n}`]),
+    detailsExtras: ['分隔线'],
+    brand: { text: '品牌' },
+    centre: { top: 60, bottom: 1020, close: {} },
+  },
+  // The name on the sticker is the title, the three fields under it the lines.
+  'intro-card': {
+    title: '标题',
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    centre: { top: 40, bottom: 1022, close: {} },
+  },
+  // The date is the badge, the weekday and lunar date the subtitle, the day's line the title.
+  'daily-quote': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+    centre: { top: 300, bottom: 950, close: {} },
+  },
+  // The masthead is the brand, the dateline the badge; without a masthead the page closes up in the middle.
+  'masthead-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+    centre: { top: 0, bottom: 766, close: {} },
+  },
+  // The quote is the title, who said it the subtitle; the marks keep their place on the block.
+  'interview-cover': {
+    title: '标题',
+    subtitle: { text: '副标题', extras: ['短线'] },
+    body: { text: '正文' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+    centre: { top: 60, bottom: 726, pinned: ['引号尾一', '引号球一', '引号尾二', '引号球二'], close: {} },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

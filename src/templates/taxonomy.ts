@@ -136,6 +136,11 @@ export const TEMPLATE_FACETS: Record<TemplateSeriesId, TemplateFacets> = {
   'live-show': facets(["promo", "event"], ["bold"], ["black", "red"]),
   'qixi-stars': facets(["festival", "invite"], ["elegant", "chinese"], ["purple", "blue"]),
   'dragon-boat': facets(["festival"], ["chinese"], ["red", "beige"]),
+  'vinyl-cover': facets(["social"], ["retro"], ["blue", "black"]),
+  'intro-card': facets(["social"], ["bold"], ["red", "beige"]),
+  'daily-quote': facets(["social"], ["elegant", "literary"], ["blue", "yellow"]),
+  'masthead-cover': facets(["social"], ["editorial", "retro"], ["beige", "black"]),
+  'interview-cover': facets(["social"], ["editorial", "elegant"], ["orange", "beige"]),
 }
 
 export function templateFacets(template: Pick<TemplateDefinition, 'series'>): TemplateFacets {

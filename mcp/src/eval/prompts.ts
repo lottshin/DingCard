@@ -543,6 +543,37 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'dragon-boat-freeform',
     content: { title: '粽情端午', subtitle: '吃粽子　看龙舟　挂艾草', tag: '安康', details: ['农历五月初五', '端午假期：6 月 19 日至 21 日', '粽子礼盒全店八折'], brand: '阿澄面包' },
   },
+  // Square posts and WeChat covers: a playlist, an introduction, a daily card, a front page and an interview.
+  {
+    id: 'poster-vinyl-cover',
+    kind: 'poster',
+    templateId: 'vinyl-cover-freeform',
+    content: { title: '周末早晨歌单', subtitle: '煮咖啡时听的十首歌', tag: 'VOL.09', details: ['阳光照进厨房', '慢慢醒来的猫', '面包刚出炉'], brand: '周末电台' },
+  },
+  {
+    id: 'poster-intro-card',
+    kind: 'poster',
+    templateId: 'intro-card-freeform',
+    content: { title: '小鹿', tag: '新人报到', details: ['坐标：成都', '职业：产品经理', '爱好：徒步和咖啡'], brand: '@小鹿在成都' },
+  },
+  {
+    id: 'poster-daily-quote',
+    kind: 'poster',
+    templateId: 'daily-quote-freeform',
+    content: { title: '今天也要好好吃饭。', subtitle: '星期一 · 农历九月十七', tag: '10.26', brand: '每日一签' },
+  },
+  {
+    id: 'poster-masthead-cover',
+    kind: 'poster',
+    templateId: 'masthead-cover-freeform',
+    content: { title: '城市里最后一家胶片冲印店', subtitle: '老板守了二十年，说还想再守二十年', body: '我们在一个下雨的周三下午走进这家店，听他讲胶片、相机和那些来取照片的老顾客。', tag: '第 36 期 · 2026 年 11 月 2 日', brand: '街角周刊' },
+  },
+  {
+    id: 'poster-interview-cover',
+    kind: 'poster',
+    templateId: 'interview-cover-freeform',
+    content: { title: '把一件小事做二十年，它就成了手艺。', subtitle: '对话 老周 · 手工皮具师', body: '他在老城区的巷子里开了一间小作坊，一个包要做三天。', tag: '人物访谈 · 第 8 期', brand: '手艺人' },
+  },
   // A 16:9 deck read off a screen: a quarterly review, and a course outline.
   {
     id: 'deck-spotlight-review',

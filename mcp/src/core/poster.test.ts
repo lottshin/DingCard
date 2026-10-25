@@ -226,6 +226,14 @@ describe('composePoster', () => {
     expect(named(sale, '信息三')).toBeUndefined()
   })
 
+  test('counts on the number beside a continued row', () => {
+    // The playlist numbers its three tracks; a fourth is numbered 04, not a second 03.
+    const result = compose('vinyl-cover-freeform', { title: '歌单', details: ['一', '二', '三', '四'] })
+    expect(result.summary.moved).toEqual([{ content: 'details', text: '四', node: '信息四' }])
+    expect((named(result, '编号三') as FreeformTextElement).text).toBe('03')
+    expect((named(result, '编号四') as FreeformTextElement).text).toBe('04')
+  })
+
   test('words without their own slot take a free one of a similar kind', () => {
     // A certificate's date line in its empty information row, a birthday card's subtitle in its message.
     const certificate = compose('certificate-freeform', { title: '最佳新人奖', recipient: '小林', cta: '颁奖日期：12 月 31 日' })

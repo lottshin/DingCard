@@ -161,6 +161,13 @@ function nextRowName(name: string, index: number): string {
   return /[一二三四五六七八九十]+$/.test(name) ? name.replace(/[一二三四五六七八九十]+$/, numeral) : `${name}${index + 1}`
 }
 
+/** A row's own number in a mark beside it, counted on for the next row ("03" → "04", "3" → "4"); other words stay. */
+function countedOn(text: string, from: number, to: number): string {
+  const match = /^(\D*)(\d+)(\D*)$/.exec(text)
+  if (!match || Number(match[2]) !== from) return text
+  return `${match[1]}${String(to).padStart(match[2].length, '0')}${match[3]}`
+}
+
 /** A line's label and value: "标签：内容" splits at the colon when both sides have words. */
 function splitLine(line: string): { label: string; value: string } | null {
   const match = LABEL_SEPARATOR.exec(line)
@@ -882,7 +889,10 @@ export function composePoster(templateId: string, value: unknown): PosterSuccess
         const rowIndex = rows.length + index
         const names = new Map(rowNames(last).map((name) => [name, nextRowName(name, rowIndex)]))
         for (const node of lastNodes) {
-          added.push({ ...structuredClone(node), id: crypto.randomUUID(), name: names.get(node.name) ?? node.name, y: Math.round((node.y + by) * 10) / 10 } as FreeformSceneNode)
+          const clone = { ...structuredClone(node), id: crypto.randomUUID(), name: names.get(node.name) ?? node.name, y: Math.round((node.y + by) * 10) / 10 } as FreeformSceneNode
+          // The row's number beside it counts on with the row (a playlist's 03 → 04).
+          if (clone.type === 'text' && node.name !== last.label && node.name !== last.value) clone.text = countedOn(clone.text, rows.length, rowIndex + 1)
+          added.push(clone)
         }
         fillRow({ ...(last.label ? { label: names.get(last.label) } : {}), value: names.get(last.value)! }, line)
         moved.push({ content: 'details', text: line, node: names.get(last.value)! })
