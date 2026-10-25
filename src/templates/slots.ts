@@ -1105,6 +1105,58 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     // Above the foot's rule, a little high of the page's middle, as a title-led column reads.
     centre: { top: 40, bottom: 1300, close: { grow: '标题' } },
   },
+  // The offers are the lines, the opening day and the address the paragraph.
+  'grand-opening': {
+    title: '标题',
+    subtitle: { text: '副标题', extras: ['饰线'] },
+    details: rows(3, () => undefined, (n) => `信息${n}`, (n) => [`菱形${n}`]),
+    body: { text: '正文' },
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+    // 开业大吉 is what most openings say.
+    generic: ['标题'],
+    // The double frame shortens with its column and sits in the middle of its room.
+    centre: { top: 580, bottom: 1730, close: { cards: ['外框', '内框'] } },
+  },
+  // The number on the bib is the badge; a year, or a runner's number.
+  'race-bib': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标', extras: ['号码说明'] },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`, (n) => [`行线${n}`]),
+    brand: { text: '品牌' },
+    generic: ['角标'],
+    // Fewer lines, no sign-off: the title, the bib and its lines close up in the middle, the stripes stay.
+    centre: { top: 60, bottom: 1935, close: {} },
+  },
+  'live-show': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    details: rows(2, (n) => `标签${n}`, (n) => `信息${n}`),
+    cta: { text: '按钮文字', extras: ['按钮底板'] },
+    brand: { text: '品牌' },
+    // 预约直播 is what most live shows ask.
+    generic: ['按钮文字'],
+    // Between the sign and the sound levels, the column closes up in the middle.
+    centre: { top: 560, bottom: 1582, close: {} },
+  },
+  'qixi-stars': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    details: rows(1, () => undefined, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    // 七夕 is what the day is called.
+    generic: ['标题'],
+  },
+  // The seal's words are the badge; the date lines the details.
+  'dragon-boat': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '印章文字', extras: ['印章'] },
+    details: rows(3, () => undefined, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+    generic: ['标题', '印章文字'],
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

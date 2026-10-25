@@ -85,6 +85,11 @@ export type FreeformPosterSeriesId =
   | 'fun-fact'
   | 'trip-route'
   | 'ranking-cover'
+  | 'grand-opening'
+  | 'race-bib'
+  | 'live-show'
+  | 'qixi-stars'
+  | 'dragon-boat'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

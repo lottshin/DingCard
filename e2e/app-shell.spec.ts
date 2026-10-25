@@ -297,8 +297,8 @@ test('templates start a new project in the matching editor', async ({ page }) =>
     .toHaveAttribute('href', /docs\/templates\.md$/)
   await page.getByRole('group', { name: '按系统筛选' }).getByRole('button', { name: /^自由编辑/ }).click()
   await expect(page).toHaveURL(/#\/templates\?system=canvas$/)
-  // Seven decks and fifty-three posters.
-  await expect(page.getByTestId('template-card')).toHaveCount(60)
+  // Seven decks and fifty-eight posters.
+  await expect(page.getByTestId('template-card')).toHaveCount(65)
 
   await page.getByRole('button', { name: '用「夜航」新建项目' }).click()
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
@@ -312,7 +312,7 @@ test('the template center finds templates by words, use, size and style, and pre
   await page.getByRole('link', { name: '模板中心' }).click()
   const cards = page.getByTestId('template-card')
   // Unfiltered, every template once, under what it is for.
-  await expect(cards).toHaveCount(69)
+  await expect(cards).toHaveCount(74)
   await expect(page.getByRole('heading', { level: 2, name: '长文卡片' })).toBeVisible()
 
   // Words find titles and what a template is for: a price list is filed under menus.
@@ -325,17 +325,17 @@ test('the template center finds templates by words, use, size and style, and pre
 
   // A use, then a size: the facets combine and offer only what is left.
   await page.getByTestId('template-use-festival').click()
-  await expect(cards).toHaveCount(9)
+  await expect(cards).toHaveCount(11)
   await page.getByTestId('template-filter-format').click()
   await page.getByRole('option', { name: '竖版海报 · 9:16' }).click()
-  await expect(cards).toHaveCount(5)
+  await expect(cards).toHaveCount(7)
   await page.getByRole('button', { name: '清除筛选' }).first().click()
-  await expect(cards).toHaveCount(69)
+  await expect(cards).toHaveCount(74)
 
   // A style from its menu.
   await page.getByTestId('template-filter-style').click()
   await page.getByRole('option', { name: '国风' }).click()
-  await expect(cards).toHaveCount(5)
+  await expect(cards).toHaveCount(7)
 
   // The preview steps through the results, shows every page, and opens the template.
   await page.getByRole('button', { name: '预览宣纸' }).click()

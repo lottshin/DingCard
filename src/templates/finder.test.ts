@@ -33,7 +33,7 @@ describe('findTemplates', () => {
   it('narrows by use, size, style and colour together', () => {
     expect(ids(findTemplates(TEMPLATE_REGISTRY, { use: 'menu' }))).toEqual(['menu-freeform', 'dessert-menu-freeform', 'price-list-freeform'])
     expect(ids(findTemplates(TEMPLATE_REGISTRY, { use: 'menu', format: 'a4' }))).toEqual(['menu-freeform', 'dessert-menu-freeform'])
-    expect(ids(findTemplates(TEMPLATE_REGISTRY, { style: 'chinese' }))).toEqual(['xuan-markdown', 'spring-festival-freeform', 'festival-poster-freeform', 'solar-term-freeform', 'word-of-year-freeform'])
+    expect(ids(findTemplates(TEMPLATE_REGISTRY, { style: 'chinese' }))).toEqual(['xuan-markdown', 'spring-festival-freeform', 'qixi-stars-freeform', 'dragon-boat-freeform', 'festival-poster-freeform', 'solar-term-freeform', 'word-of-year-freeform'])
     expect(findTemplates(TEMPLATE_REGISTRY, { color: 'black', use: 'article' }).map((template) => template.series)).toEqual(['night'])
     expect(ids(findTemplates(TEMPLATE_REGISTRY, { only: new Set(['memo-markdown', 'menu-freeform']) }))).toEqual(['memo-markdown', 'menu-freeform'])
   })
@@ -45,7 +45,7 @@ describe('findTemplates', () => {
     // A use's own words: a PPT is office work.
     expect(ids(findTemplates(TEMPLATE_REGISTRY, { text: 'ppt' }))).toContain('pitch-cover-freeform')
     // Both words must hit; the one titled 节气 comes first.
-    expect(ids(findTemplates(TEMPLATE_REGISTRY, { text: '国风 节气' }))).toEqual(['solar-term-freeform', 'xuan-markdown', 'spring-festival-freeform', 'word-of-year-freeform', 'festival-poster-freeform'])
+    expect(ids(findTemplates(TEMPLATE_REGISTRY, { text: '国风 节气' }))).toEqual(['solar-term-freeform', 'xuan-markdown', 'spring-festival-freeform', 'dragon-boat-freeform', 'word-of-year-freeform', 'qixi-stars-freeform', 'festival-poster-freeform'])
     expect(findTemplates(TEMPLATE_REGISTRY, { text: '没有这种模板' })).toEqual([])
   })
 

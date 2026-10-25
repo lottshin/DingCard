@@ -512,6 +512,37 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'ranking-cover-freeform',
     content: { title: '年度最爱 App', subtitle: '每天打开超过十次的五个', tag: '2026', details: ['记账本', '天气预报', '读书', '健身', '地图'], brand: '效率工具控' },
   },
+  // Story posters for a shop, a race, a live show and two festivals.
+  {
+    id: 'poster-grand-opening',
+    kind: 'poster',
+    templateId: 'grand-opening-freeform',
+    content: { title: '新店开业', subtitle: '阿澄面包 · 南门店', details: ['开业首周，面包买二送一', '前 50 位到店，送手作果酱', '每周三会员日，全场九折'], body: '11 月 8 日上午 9 点开门\n南门路 26 号，地铁 B 口出来就到', cta: '领取开业券', brand: 'ACHENG BAKERY' },
+  },
+  {
+    id: 'poster-race-bib',
+    kind: 'poster',
+    templateId: 'race-bib-freeform',
+    content: { title: '城市夜跑节', subtitle: '10 KM · 夏季站', tag: '0618', details: ['时间：6 月 18 日 19:30 出发', '起点：湖滨体育中心', '报名：小程序搜索“夜跑节”'], brand: '湖滨跑团' },
+  },
+  {
+    id: 'poster-live-show',
+    kind: 'poster',
+    templateId: 'live-show-freeform',
+    content: { title: '年货节直播专场', subtitle: '工厂直发 · 全场三折起', details: ['开播：1 月 18 日 19:00', '直播间：抖音 · 视频号'], cta: '预约提醒', brand: 'NEW YEAR LIVE' },
+  },
+  {
+    id: 'poster-qixi-stars',
+    kind: 'poster',
+    templateId: 'qixi-stars-freeform',
+    content: { title: '星河有约', subtitle: '七夕晚上，一起去看星星', details: ['8 月 19 日 20:00 · 天文台观星坪'], brand: '城市天文社' },
+  },
+  {
+    id: 'poster-dragon-boat',
+    kind: 'poster',
+    templateId: 'dragon-boat-freeform',
+    content: { title: '粽情端午', subtitle: '吃粽子　看龙舟　挂艾草', tag: '安康', details: ['农历五月初五', '端午假期：6 月 19 日至 21 日', '粽子礼盒全店八折'], brand: '阿澄面包' },
+  },
   // A 16:9 deck read off a screen: a quarterly review, and a course outline.
   {
     id: 'deck-spotlight-review',

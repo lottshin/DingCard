@@ -4210,6 +4210,258 @@ function createRankingCoverDocument(): FreeformDocument {
   ])
 }
 
+/** A seeded run of numbers in [0, 1): the same scatter every time a template is drawn. */
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+    return state / 4294967296
+  }
+}
+
+function createGrandOpeningDocument(): FreeformDocument {
+  const cream = '#fbf4e4'
+  const red = '#c9382a'
+  const ink = '#2a1d17'
+  const muted = '#6b5a4f'
+  const gold = '#c59a3e'
+  // The awning: eight stripes with scalloped ends, red and pale in turn.
+  const stripe = 135
+  const awningDepth = 250
+  const stripes = (indices: number[]) => indices.map((index) => {
+    const x = index * stripe
+    return `M ${x} 0 L ${x + stripe} 0 L ${x + stripe} ${awningDepth} A ${stripe / 2} ${stripe / 2} 0 0 1 ${x} ${awningDepth} Z`
+  }).join(' ')
+  const edge = Array.from({ length: 8 }, (_, index) => {
+    const x = index * stripe
+    return `M ${x} 2 A ${stripe / 2} ${stripe / 2} 0 0 0 ${x + stripe} 2`
+  }).join(' ')
+  const offer = (index: number, text: string) => {
+    const y = 1046 + index * 92
+    const n = NUMBERED[index]
+    return [
+      shapeNode('rect', 532, y + 22, 16, 16, solid(gold), { name: `菱形${n}`, cornerRadius: 0, rotation: 45 }),
+      textNode(text, 88, y + 44, 904, 48, { name: `信息${n}`, fontSize: 36, fontFamily: SANS, textFill: solid(ink), align: 'center', letterSpacing: 1 }),
+    ]
+  }
+  const awningShadow = { color: '#8a2a1e', blur: 18, offsetX: 0, offsetY: 10 }
+  return documentFromSlides([
+    slide('海报', solid(cream), [
+      pathNode(stripes([1, 3, 5, 7]), 0, 0, 1080, awningDepth + stripe / 2, { name: '篷底', fill: solid('#f6e9cf'), strokeWidth: 0, shadow: { ...awningShadow, color: '#c9b48c' } }),
+      pathNode(stripes([0, 2, 4, 6]), 0, 0, 1080, awningDepth + stripe / 2, { name: '遮阳篷', fill: solid(red), strokeWidth: 0, shadow: awningShadow }),
+      pathNode(edge, 0, awningDepth - 2, 1080, stripe / 2 + 4, { name: '篷边', stroke: red, strokeWidth: 3 }),
+      verticalLineNode(430, 300, 380, ink, 3, { name: '挂绳左' }),
+      verticalLineNode(650, 300, 380, ink, 3, { name: '挂绳右' }),
+      shapeNode('rect', 360, 380, 360, 140, solid(ink), { name: '招牌', cornerRadius: 18 }),
+      textNode('OPEN', 360, 398, 360, 104, { name: '招牌字', fontSize: 84, fontFamily: ARCHIVO, textFill: solid(cream), align: 'center', letterSpacing: 8, lineHeight: 1.15 }),
+      // A shop sign's double frame round the words.
+      shapeNode('rect', 64, 580, 952, 1150, { type: 'transparent' }, { name: '外框', stroke: red, strokeWidth: 3, cornerRadius: 28 }),
+      shapeNode('rect', 78, 594, 924, 1122, { type: 'transparent' }, { name: '内框', stroke: red, strokeWidth: 1.5, cornerRadius: 20 }),
+      textNode('开业大吉', 88, 606, 904, 290, { name: '标题', fontSize: 160, fontFamily: SERIF, textFill: solid(red), fontWeight: 'bold', align: 'center', letterSpacing: 12, lineHeight: 1.15, verticalAlign: 'middle' }),
+      textNode('山野咖啡 · 城西新店', 88, 906, 904, 60, { name: '副标题', fontSize: 42, fontFamily: SERIF, textFill: solid(ink), align: 'center', letterSpacing: 8 }),
+      lineNode(392, 1000, 296, gold, 2, { name: '饰线', cap: 'butt' }),
+      ...offer(0, '开业三天，全场饮品 8 折'),
+      ...offer(1, '前 100 位到店，送限定杯套'),
+      ...offer(2, '充值 200 元，再送 50 元'),
+      textNode('10 月 30 日 正式营业\n城西万象城一层 108 号', 88, 1372, 904, 120, { name: '正文', fontSize: 34, fontFamily: SANS, textFill: solid(muted), align: 'center', lineHeight: 1.7 }),
+      shapeNode('rect', 320, 1556, 440, 108, solid(red), { name: '按钮底板', cornerRadius: 54 }),
+      textNode('到店领券', 320, 1582, 440, 56, { name: '按钮文字', fontSize: 40, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 10 }),
+      textNode('SHANYE COFFEE', 88, 1792, 904, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 10 }),
+    ], STORY),
+  ])
+}
+
+function createRaceBibDocument(): FreeformDocument {
+  const orange = '#ff5b2e'
+  const light = '#ff7c55'
+  const ink = '#141414'
+  const bib = { x: 120, y: 330, width: 840, height: 760, band: 150 }
+  // Speed stripes across the page behind the bib.
+  const slope = -0.4
+  const width = 1080 + TEMPLATE_EDGE_BLEED * 2
+  const stripes = [[420, 540], [880, 1060], [1500, 1600]].map(([a, b]) => `M 0 ${a} L ${width} ${roundTenth(a + slope * width)} L ${width} ${roundTenth(b + slope * width)} L 0 ${b} Z`).join(' ')
+  const hole = (name: string, x: number, y: number) => pathNode(circlePath(14, 14, 14), x - 14, y - 14, 28, 28, { name, fill: solid(orange), strokeWidth: 0 })
+  const row = (index: number, label: string, value: string) => {
+    const y = 1190 + index * 110
+    const n = NUMBERED[index]
+    return [
+      textNode(label, 120, y + 6, 160, 48, { name: `标签${n}`, fontSize: 32, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode(value, 290, y, 670, 60, { name: `信息${n}`, fontSize: 40, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold' }),
+      lineNode(120, y + 84, 840, ink, 2, { name: `行线${n}`, cap: 'butt', opacity: 0.35 }),
+    ]
+  }
+  return documentFromSlides([
+    slide('海报', solid(orange), [
+      pathNode(stripes, -TEMPLATE_EDGE_BLEED, 0, 1080 + TEMPLATE_EDGE_BLEED * 2, 1920, { name: '速度线', fill: solid(light), strokeWidth: 0 }),
+      textNode('城市半程马拉松', 88, 66, 904, 216, { name: '标题', fontSize: 104, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: -2, lineHeight: 1.18, verticalAlign: 'bottom' }),
+      shapeNode('rect', bib.x, bib.y, bib.width, bib.height, solid('#ffffff'), { name: '号码布', cornerRadius: 24, shadow: { color: '#b33a17', blur: 30, offsetX: 0, offsetY: 14 } }),
+      pathNode(`M 0 24 A 24 24 0 0 1 24 0 L ${bib.width - 24} 0 A 24 24 0 0 1 ${bib.width} 24 L ${bib.width} ${bib.band} L 0 ${bib.band} Z`, bib.x, bib.y, bib.width, bib.band, { name: '号码布顶', fill: solid(ink), strokeWidth: 0 }),
+      // Punched where the pins go, one in each corner.
+      hole('孔一', bib.x + 40, bib.y + 40), hole('孔二', bib.x + bib.width - 40, bib.y + 40),
+      hole('孔三', bib.x + 40, bib.y + bib.height - 40), hole('孔四', bib.x + bib.width - 40, bib.y + bib.height - 40),
+      textNode('21.0975 KM · 秋季站', bib.x, bib.y + 44, bib.width, 64, { name: '副标题', fontSize: 42, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 4 }),
+      textNode('2026', bib.x, bib.y + 230, bib.width, 360, { name: '角标', fontSize: 320, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center', letterSpacing: -8, lineHeight: 1.1 }),
+      textNode('RUNNER No.', bib.x, bib.y + 620, bib.width, 44, { name: '号码说明', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 10 }),
+      ...row(0, '时间', '11 月 16 日 7:30 鸣枪'),
+      ...row(1, '起点', '滨江公园南门'),
+      ...row(2, '报名', '即日起至 10 月 31 日'),
+      textNode('城市体育局 · 叮卡跑团', 88, 1800, 904, 48, { name: '品牌', fontSize: 30, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 6 }),
+    ], STORY),
+  ])
+}
+
+function createLiveShowDocument(): FreeformDocument {
+  const black = '#0f0f12'
+  const red = '#ff3b3b'
+  const muted = '#a1a1aa'
+  // Level bars across the foot, tall in the middle like a voice.
+  const levels = Array.from({ length: 33 }, (_, index) => {
+    const height = 30 + Math.round(110 * Math.abs(Math.sin(index * 0.9)) * Math.exp(-((index - 16) ** 2) / 120))
+    const x = index * 28 + 4
+    return `M ${x} ${150 - height} L ${x} 150`
+  }).join(' ')
+  const row = (index: number, label: string, value: string) => {
+    const y = 1150 + index * 100
+    const n = NUMBERED[index]
+    return [
+      textNode(label, 88, y, 904, 40, { name: `标签${n}`, fontSize: 28, fontFamily: SANS, textFill: solid(muted), align: 'center', letterSpacing: 8 }),
+      textNode(value, 88, y + 42, 904, 52, { name: `信息${n}`, fontSize: 38, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('海报', solid(black), [
+      shapeNode('ellipse', 140, 160, 800, 420, solid(red), { name: '红光', filter: { blur: 100 }, opacity: 0.35 }),
+      shapeNode('rect', 240, 270, 600, 200, { type: 'transparent' }, { name: '灯牌', stroke: red, strokeWidth: 8, cornerRadius: 36, shadow: { color: red, blur: 40, offsetX: 0, offsetY: 0 } }),
+      pathNode(circlePath(18, 18, 18), 292, 352, 36, 36, { name: '红点', fill: solid(red), strokeWidth: 0, shadow: { color: red, blur: 20, offsetX: 0, offsetY: 0 } }),
+      textNode('ON AIR', 340, 300, 480, 140, { name: '灯牌字', fontSize: 104, fontFamily: ARCHIVO, textFill: solid(red), align: 'center', lineHeight: 1.2, effect: { type: 'neon', color: '#ff3b3b', amount: 30 } }),
+      textNode('LIVE STUDIO', 88, 96, 904, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 10 }),
+      textNode('双十一\n直播专场', 88, 590, 904, 370, { name: '标题', fontSize: 140, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', lineHeight: 1.15, letterSpacing: 4, verticalAlign: 'middle' }),
+      textNode('主播小满带你逛 · 全场直降', 88, 972, 904, 60, { name: '副标题', fontSize: 40, fontFamily: SANS, textFill: solid(muted), align: 'center', letterSpacing: 4 }),
+      ...row(0, '开播时间', '11 月 10 日 20:00'),
+      ...row(1, '直播平台', '视频号 · 小红书 同步'),
+      shapeNode('rect', 320, 1420, 440, 108, solid(red), { name: '按钮底板', cornerRadius: 54 }),
+      textNode('预约直播', 320, 1446, 440, 56, { name: '按钮文字', fontSize: 40, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', align: 'center', letterSpacing: 10 }),
+      pathNode(levels, 72, 1640, 936, 150, { name: '声波', stroke: red, strokeWidth: 8, cap: 'round', opacity: 0.85 }),
+    ], STORY),
+  ])
+}
+
+function createQixiStarsDocument(): FreeformDocument {
+  const gold = '#f3e3b5'
+  const lilac = '#c9c3f0'
+  const random = seededRandom(77)
+  // A dot in relative arcs, short enough that a few hundred fit the path length cap.
+  const dot = (x: number, y: number, r: number) => `M ${roundTenth(x - r)} ${roundTenth(y)} a ${r} ${r} 0 1 0 ${roundTenth(r * 2)} 0 a ${r} ${r} 0 1 0 ${roundTenth(-r * 2)} 0 Z`
+  // The Milky Way: dots thick along a diagonal band, thin at its edges, in two layers for depth.
+  const band = (count: number, spread: number, size: [number, number]) => Array.from({ length: count }, () => {
+    const t = random()
+    const offset = (random() + random() + random() - 1.5) * spread
+    const x = -60 + t * 1200 + offset * 0.5
+    const y = 1500 - t * 1180 + offset
+    const r = roundTenth(size[0] + random() * (size[1] - size[0]))
+    if (x - r < 0 || x + r > 1080 || y - r < 0 || y + r > 1600) return ''
+    return dot(x, y, r)
+  }).filter(Boolean).join(' ')
+  const far = band(260, 90, [1, 2.6])
+  const near = band(90, 60, [2, 4])
+  // Faint stars all over the sky.
+  const field = Array.from({ length: 150 }, () => dot(20 + random() * 1040, 30 + random() * 1160, roundTenth(0.8 + random() * 1.6))).join(' ')
+  const sparkle = (name: string, cx: number, cy: number, r: number) => pathNode(
+    `M ${r} 0 Q ${r * 1.12} ${r * 0.88} ${r * 2} ${r} Q ${r * 1.12} ${r * 1.12} ${r} ${r * 2} Q ${r * 0.88} ${r * 1.12} 0 ${r} Q ${r * 0.88} ${r * 0.88} ${r} 0 Z`,
+    cx - r, cy - r, r * 2, r * 2, { name, fill: solid(gold), strokeWidth: 0, shadow: { color: '#fff3c4', blur: 30, offsetX: 0, offsetY: 0 } },
+  )
+  const [vega, altair] = [[250, 560], [820, 930]] as const
+  // The seventh night of the month has a waxing moon, lit on its right.
+  const moon = { x: 860, y: 230, r: 56 }
+  // The stories' stars in fine gold: the weaver's shuttle hanging off Vega,
+  // the cowherd's shoulder pole through Altair, a child in a basket at each end.
+  const shuttle = [[296, 598], [332, 610], [318, 668], [282, 656]] as const
+  const pole = [[774, 888], [866, 972]] as const
+  const figures = `M ${vega[0]} ${vega[1]} L ${shuttle.map(([x, y]) => `${x} ${y}`).join(' L ')} Z M ${pole[0][0]} ${pole[0][1]} L ${altair[0]} ${altair[1]} L ${pole[1][0]} ${pole[1][1]}`
+  const minor = [...shuttle, ...pole].map(([x, y]) => `M ${x - 4} ${y} a 4 4 0 1 0 8 0 a 4 4 0 1 0 -8 0 Z`).join(' ')
+  // The magpie bridge: dots along an arc from one star to the other.
+  const bridge = Array.from({ length: 15 }, (_, index) => {
+    const t = (index + 1) / 16
+    return dot(vega[0] + (altair[0] - vega[0]) * t, vega[1] + (altair[1] - vega[1]) * t - Math.sin(t * Math.PI) * 170, 5)
+  }).join(' ')
+  return documentFromSlides([
+    slide('海报', stopsPaint([[0, '#0b0e2e'], [0.6, '#17124a'], [1, '#26155a']], 180), [
+      // The river's glow under its stars.
+      shapeNode('ellipse', -310, 760, 1700, 300, solid('#8f86d8'), { name: '银河光', rotation: -44.5, filter: { blur: 100 }, opacity: 0.28 }),
+      pathNode(field, 0, 0, 1080, 1200, { name: '星空', fill: solid('#ffffff'), strokeWidth: 0, opacity: 0.55 }),
+      pathNode(far, 0, 0, 1080, 1600, { name: '银河远', fill: solid(lilac), strokeWidth: 0, opacity: 0.5 }),
+      pathNode(near, 0, 0, 1080, 1600, { name: '银河近', fill: solid('#ffffff'), strokeWidth: 0, opacity: 0.75 }),
+      shapeNode('ellipse', vega[0] - 120, vega[1] - 120, 240, 240, solid('#f7e3a1'), { name: '星光一', filter: { blur: 60 }, opacity: 0.45 }),
+      shapeNode('ellipse', altair[0] - 120, altair[1] - 120, 240, 240, solid('#f7e3a1'), { name: '星光二', filter: { blur: 60 }, opacity: 0.45 }),
+      pathNode(bridge, 0, 0, 1080, 1100, { name: '鹊桥', fill: solid(gold), strokeWidth: 0, opacity: 0.85 }),
+      pathNode(figures, 0, 0, 1080, 1100, { name: '星座线', stroke: gold, strokeWidth: 1.5, opacity: 0.55, join: 'round' }),
+      pathNode(minor, 0, 0, 1080, 1100, { name: '小星', fill: solid(gold), strokeWidth: 0, opacity: 0.9 }),
+      pathNode(`M ${moon.r} 0 A ${moon.r} ${moon.r} 0 0 1 ${moon.r} ${moon.r * 2} A ${roundTenth(moon.r * 0.35)} ${moon.r} 0 0 0 ${moon.r} 0 Z`, moon.x - moon.r, moon.y - moon.r, moon.r * 2, moon.r * 2, {
+        name: '月', fill: solid(gold), strokeWidth: 0, shadow: { color: '#fff3c4', blur: 24, offsetX: 0, offsetY: 0 },
+      }),
+      sparkle('织女星', vega[0], vega[1], 34),
+      sparkle('牛郎星', altair[0], altair[1], 30),
+      textNode('VEGA', vega[0] - 230, vega[1] - 18, 180, 36, { name: '星名一', fontSize: 22, fontFamily: PLAYFAIR, textFill: solid(gold), align: 'right', letterSpacing: 8, italic: true }),
+      textNode('ALTAIR', altair[0] + 48, altair[1] - 52, 180, 36, { name: '星名二', fontSize: 22, fontFamily: PLAYFAIR, textFill: solid(gold), letterSpacing: 8, italic: true }),
+      textNode('七夕', 88, 1110, 904, 440, { name: '标题', fontSize: 230, fontFamily: SERIF, textFill: solid(gold), fontWeight: 'bold', align: 'center', letterSpacing: 30, lineHeight: 1.15, verticalAlign: 'bottom' }),
+      textNode('一年一会，鹊桥相见', 88, 1570, 904, 64, { name: '副标题', fontSize: 44, fontFamily: SERIF, textFill: solid(gold), align: 'center', letterSpacing: 14 }),
+      textNode('农历七月初七 · 8 月 19 日', 88, 1660, 904, 48, { name: '信息一', fontSize: 30, fontFamily: SANS, textFill: solid(lilac), align: 'center', letterSpacing: 6 }),
+      textNode('叮卡 敬贺', 88, 1800, 904, 44, { name: '品牌', fontSize: 28, fontFamily: SERIF, textFill: solid(gold), align: 'center', letterSpacing: 12 }),
+    ], STORY),
+  ])
+}
+
+function createDragonBoatDocument(): FreeformDocument {
+  const cream = '#f3efe2'
+  const ink = '#1f2a24'
+  const red = '#b8322a'
+  const teal = '#3f7f86'
+  const muted = '#55625a'
+  const gold = '#c59a3e'
+  // 海水纹: rows of nested half-circles, each row offset by half a wave, down past the foot.
+  const wave = 120
+  const waves = Array.from({ length: 8 }, (_, rowIndex) => Array.from({ length: 10 }, (_, col) => {
+    const cx = col * wave + (rowIndex % 2 ? wave / 2 : 0) + 56
+    const cy = rowIndex * 70 + 70
+    return [56, 40, 24].map((r) => `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`).join(' ')
+  }).join(' ')).join(' ')
+  // The dragon boat, drawn in its own 940 × 200 box: a slender hull, the head
+  // raised at the bow, a curled tail, a flag, and a crew leaning on their paddles.
+  const crew = Array.from({ length: 13 }, (_, index) => 190 + index * 46)
+  const heads = crew.map((x) => `M ${x - 7} 90 a 7 7 0 1 0 14 0 a 7 7 0 1 0 -14 0 Z`).join(' ')
+  const bodies = crew.map((x) => `M ${x - 1} 101 L ${x - 12} 128`).join(' ')
+  const paddles = crew.map((x) => `M ${x + 18} 92 L ${x - 28} 182`).join(' ')
+  const blades = crew.map((x) => `M ${x - 25} 176 L ${x - 31} 188`).join(' ')
+  return documentFromSlides([
+    slide('海报', solid(cream), [
+      pathNode(circlePath(250, 250, 250), 100, 770, 500, 500, { name: '红日', fill: solid('#d9583b'), strokeWidth: 0, opacity: 0.92 }),
+      pathNode(waves, -110, 1380, 1300, 560, { name: '海水纹', stroke: teal, strokeWidth: 3, opacity: 0.75 }),
+      pathNode(paddles, 70, 1210, 940, 200, { name: '船桨', stroke: ink, strokeWidth: 4, cap: 'round' }),
+      pathNode(blades, 70, 1210, 940, 200, { name: '桨叶', stroke: ink, strokeWidth: 9, cap: 'round' }),
+      pathNode('M 60 120 Q 460 160 860 112 L 846 140 Q 460 196 84 150 Z', 70, 1210, 940, 200, { name: '龙舟', fill: solid(ink), strokeWidth: 0 }),
+      pathNode('M 92 134 Q 460 172 838 124', 70, 1210, 940, 200, { name: '船线', stroke: gold, strokeWidth: 4, cap: 'round' }),
+      pathNode('M 842 120 C 872 104 882 78 872 56', 70, 1210, 940, 200, { name: '龙颈', stroke: ink, strokeWidth: 18, cap: 'round' }),
+      pathNode('M 874 34 C 864 18 852 10 836 8 M 884 31 C 880 16 872 8 860 2 M 866 68 C 852 76 840 78 828 76 M 870 82 C 858 92 846 96 834 96', 70, 1210, 940, 200, { name: '龙角', stroke: ink, strokeWidth: 5, cap: 'round' }),
+      // The head, its jaws open to the right.
+      pathNode('M 858 62 C 856 44 870 30 890 30 L 926 32 C 934 33 938 38 934 42 L 906 46 L 930 54 C 934 56 932 62 926 62 L 892 64 C 878 66 864 68 858 62 Z', 70, 1210, 940, 200, { name: '龙头', fill: solid(ink), strokeWidth: 0 }),
+      pathNode('M 892.5 40 a 3.5 3.5 0 1 0 7 0 a 3.5 3.5 0 1 0 -7 0 Z', 70, 1210, 940, 200, { name: '龙眼', fill: solid(cream), strokeWidth: 0 }),
+      pathNode('M 72 126 C 40 118 26 94 36 72 C 44 56 64 58 66 72 C 68 82 58 86 52 80', 70, 1210, 940, 200, { name: '龙尾', stroke: ink, strokeWidth: 10, cap: 'round' }),
+      pathNode('M 130 124 L 130 30 M 130 32 L 176 46 L 130 60 Z', 70, 1210, 940, 200, { name: '旗', fill: solid(red), stroke: ink, strokeWidth: 4, join: 'round' }),
+      pathNode(bodies, 70, 1210, 940, 200, { name: '划手', stroke: ink, strokeWidth: 11, cap: 'round' }),
+      pathNode(heads, 70, 1210, 940, 200, { name: '划手头', fill: solid(ink), strokeWidth: 0 }),
+      textNode('端午安康', 668, 130, 322, 860, { name: '标题', fontSize: 190, fontFamily: BRUSH, textFill: solid(ink), vertical: true, lineHeight: 1.1 }),
+      textNode('粽叶飘香　龙舟竞渡', 600, 180, 80, 640, { name: '副标题', fontSize: 40, fontFamily: SERIF, textFill: solid(ink), vertical: true, letterSpacing: 10, lineHeight: 1.2 }),
+      // The sign-off under the subtitle, set the same way.
+      textNode('叮卡 敬贺', 604, 860, 72, 340, { name: '品牌', fontSize: 30, fontFamily: SERIF, textFill: solid(muted), vertical: true, letterSpacing: 8, lineHeight: 1.2 }),
+      shapeNode('rect', 96, 150, 110, 110, solid(red), { name: '印章', cornerRadius: 8, rotation: -4 }),
+      textNode('端午', 96, 166, 110, 78, { name: '印章文字', fontSize: 44, fontFamily: BRUSH, textFill: solid('#ffffff'), align: 'center', rotation: -4, lineHeight: 1.2 }),
+      textNode('五月初五', 96, 320, 420, 72, { name: '信息一', fontSize: 54, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('6 月 19 日 · 星期五', 96, 404, 460, 48, { name: '信息二', fontSize: 32, fontFamily: SANS, textFill: solid(muted), letterSpacing: 2 }),
+      textNode('放假三天：6 月 19 日 — 21 日', 96, 462, 460, 48, { name: '信息三', fontSize: 30, fontFamily: SANS, textFill: solid(muted) }),
+    ], STORY),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -4342,6 +4594,11 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'fun-fact': poster('冷知识', '小红书封面：明黄底上一个巨大的白色问号，问题写成大标题，下面一段解答，适合冷知识、科普和问答。', ["小红书", "科普"], 'xhs'),
   'trip-route': poster('旅行攻略', '小红书封面：海岸线边的手绘地图，虚线路线串起四个编号地点，每站一行名字，适合旅行攻略、路线规划和城市漫游。', ["小红书", "旅行"], 'xhs'),
   'ranking-cover': poster('年度排行', '小红书封面：黑底上五条由长到短的橙色名次条，每条写一个名字，适合排行榜、年度推荐和好物清单。', ["小红书", "排行"], 'xhs'),
+  'grand-opening': poster('开业大吉', '红白条纹的遮阳篷下挂着 OPEN 招牌，复古双线框里是宋体红字大标题、三行开业优惠、营业时间地址和领券按钮，适合开业、新店开张和周年庆。', ["开业", "门店"], 'story'),
+  'race-bib': poster('马拉松', '橙色速度线上别着一张号码布：大号码、赛事名和公里数，下面三行时间、起点和报名，适合马拉松、夜跑和运动赛事。', ["运动", "赛事"], 'story'),
+  'live-show': poster('直播预告', '黑底上亮着红色的 ON AIR 灯牌，大标题、开播时间和平台，底部一排声波，适合直播预告、带货专场和线上发布。', ["直播", "预告"], 'story'),
+  'qixi-stars': poster('七夕', '靛紫夜空里一条银河，织女星和牛郎星隔河相望，鹊桥连起两颗星，金色宋体大字，适合七夕、情人节和纪念日。', ["七夕", "节日"], 'story'),
+  'dragon-boat': poster('端午', '一条龙舟划过朱红的太阳，下面是海水纹，竖排毛笔大字配一方朱印，左边写日子和放假安排，适合端午问候、放假通知和门店活动。', ["端午", "国风"], 'story'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -4405,6 +4662,11 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'fun-fact': createFunFactDocument,
   'trip-route': createTripRouteDocument,
   'ranking-cover': createRankingCoverDocument,
+  'grand-opening': createGrandOpeningDocument,
+  'race-bib': createRaceBibDocument,
+  'live-show': createLiveShowDocument,
+  'qixi-stars': createQixiStarsDocument,
+  'dragon-boat': createDragonBoatDocument,
 }
 
 /**
@@ -4479,15 +4741,20 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'exhibition-poster',
   'design-week',
   'music-festival',
+  'race-bib',
   'talk-poster',
   'launch-poster',
   'countdown',
+  'grand-opening',
   'sale-poster',
   'double-eleven',
+  'live-show',
   'hiring-poster',
   'spring-festival',
   'new-year-calendar',
   'christmas-card',
+  'qixi-stars',
+  'dragon-boat',
   'festival-poster',
   'solar-term',
   'word-of-year',
