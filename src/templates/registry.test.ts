@@ -36,9 +36,9 @@ function geometrySignature(nodes: FreeformSceneNode[]): string {
 }
 
 describe('template registry', () => {
-  it('exposes nine markdown series, seven freeform decks and forty-eight posters with unique IDs', () => {
-    expect(TEMPLATE_REGISTRY).toHaveLength(64)
-    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(64)
+  it('exposes nine markdown series, seven freeform decks and fifty-three posters with unique IDs', () => {
+    expect(TEMPLATE_REGISTRY).toHaveLength(69)
+    expect(new Set(TEMPLATE_REGISTRY.map((template) => template.id)).size).toBe(69)
     expect(templatesForWorkspace('markdown').map((template) => template.series)).toEqual([
       'column',
       'memo',
@@ -52,7 +52,7 @@ describe('template registry', () => {
     ])
     const freeform = templatesForWorkspace('freeform')
     expect(freeform.filter((template) => template.kind === 'deck')).toHaveLength(7)
-    expect(freeform.filter((template) => template.kind === 'poster')).toHaveLength(48)
+    expect(freeform.filter((template) => template.kind === 'poster')).toHaveLength(53)
     // Posters come in every size the template center filters by.
     expect(new Set(freeform.map((template) => template.format))).toEqual(new Set(['xhs', 'story', 'square', 'landscape', 'wechat-cover', 'a4', 'a4-landscape', 'moments-grid']))
   })
@@ -113,7 +113,7 @@ describe('template registry', () => {
         expect(leaves.some((node) => node.type === 'line' || (node.type === 'path' && node.strokeWidth > 0)), `${template.id}/${slide.name}`).toBe(true)
       }
     }
-    expect(new Set(seriesGeometry).size).toBe(55)
+    expect(new Set(seriesGeometry).size).toBe(60)
   })
 
   it('overscans full-bleed rectangles past artboard corners', () => {

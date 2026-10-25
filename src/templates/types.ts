@@ -80,6 +80,11 @@ export type FreeformPosterSeriesId =
   | 'annual-report'
   | 'stat-card'
   | 'countdown'
+  | 'versus-cover'
+  | 'habit-tracker'
+  | 'fun-fact'
+  | 'trip-route'
+  | 'ranking-cover'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

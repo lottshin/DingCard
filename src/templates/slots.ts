@@ -1064,6 +1064,47 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     brand: { text: '品牌' },
     generic: ['角标'],
   },
+  // The two contenders, a name and a line each, either side of the VS.
+  'versus-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(2, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+  },
+  // The grid is the tracker's own drawing; the day count is the badge.
+  'habit-tracker': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    body: { text: '正文' },
+    brand: { text: '品牌', extras: ['短线'] },
+  },
+  'fun-fact': {
+    title: '标题',
+    tag: { text: '角标', extras: ['短线'] },
+    body: { text: '正文' },
+    brand: { text: '品牌' },
+  },
+  // A stop to a row: its pin, its number and the leg of the route that leads to it go with it.
+  'trip-route': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    details: rows(4, (n) => `标签${n}`, (n) => `信息${n}`, (n) => (n === '一' ? ['标记一', '编号一'] : [`标记${n}`, `编号${n}`, `路线${n}`])),
+    brand: { text: '品牌' },
+  },
+  // An entry to a bar, its rank beside it. Fewer entries close up and the column sits in the middle, the title growing into the room.
+  'ranking-cover': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(5, () => undefined, (n) => `信息${n}`, (n) => [`条${n}`, `名次${n}`]),
+    brand: { text: '品牌' },
+    generic: ['角标'],
+    titleFit: { maxScale: 1.5, maxLines: 3, align: 'bottom' },
+    // Above the foot's rule, a little high of the page's middle, as a title-led column reads.
+    centre: { top: 40, bottom: 1300, close: { grow: '标题' } },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {

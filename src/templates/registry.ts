@@ -4045,6 +4045,171 @@ function createCountdownDocument(): FreeformDocument {
   ])
 }
 
+function createVersusCoverDocument(): FreeformDocument {
+  const paper = '#f3efe6'
+  const ink = '#161616'
+  const yellow = '#ffcf33'
+  const muted = '#5d5850'
+  // Two panels meeting on a slanted seam, the VS badge on it.
+  const [top, bottom, seamTop, seamBottom] = [480, 1250, 600, 480]
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      pathNode(`M 0 0 L ${seamTop + TEMPLATE_EDGE_BLEED} 0 L ${seamBottom + TEMPLATE_EDGE_BLEED} ${bottom - top} L 0 ${bottom - top} Z`, -TEMPLATE_EDGE_BLEED, top, seamTop + TEMPLATE_EDGE_BLEED, bottom - top, { name: '左栏', fill: solid(yellow), strokeWidth: 0 }),
+      pathNode(`M ${seamTop - seamBottom} 0 L ${1080 + TEMPLATE_EDGE_BLEED - seamBottom} 0 L ${1080 + TEMPLATE_EDGE_BLEED - seamBottom} ${bottom - top} L 0 ${bottom - top} Z`, seamBottom, top, 1080 + TEMPLATE_EDGE_BLEED - seamBottom, bottom - top, { name: '右栏', fill: solid(ink), strokeWidth: 0 }),
+      pathNode(circlePath(112, 112, 112), 428, 753, 224, 224, { name: 'VS底', fill: solid('#ffffff'), stroke: ink, strokeWidth: 6 }),
+      textNode('VS', 428, 803, 224, 124, { name: 'VS', fontSize: 100, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center', lineHeight: 1.1 }),
+      textNode('测评 · 第 21 期', 88, 88, 600, 44, { name: '角标', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('拿铁还是美式？', 84, 140, 912, 240, { name: '标题', fontSize: 104, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -2, verticalAlign: 'middle' }),
+      textNode('喝了 30 杯之后，我的结论', 88, 392, 904, 52, { name: '副标题', fontSize: 36, fontFamily: SANS, textFill: solid(muted), letterSpacing: 1 }),
+      textNode('拿铁', 88, 556, 432, 140, { name: '标签一', fontSize: 104, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.15 }),
+      textNode('奶香柔和，\n适合刚开始喝咖啡', 88, 712, 330, 120, { name: '信息一', fontSize: 34, fontFamily: SANS, textFill: solid(ink), lineHeight: 1.5 }),
+      textNode('美式', 576, 990, 416, 140, { name: '标签二', fontSize: 104, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', lineHeight: 1.15 }),
+      textNode('清爽提神，\n热量几乎为零', 576, 1134, 416, 100, { name: '信息二', fontSize: 34, fontFamily: SANS, textFill: solid('#ffffff'), lineHeight: 1.5 }),
+      lineNode(88, 1300, 904, ink, 2, { name: '页脚线', cap: 'butt' }),
+      textNode('咖啡研究所', 88, 1326, 600, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+    ]),
+  ])
+}
+
+/** A grid of `rows` × `cols` circles of diameter `size`, `gap` apart, as one path: the first `count` of them when given. */
+function circleGrid(cols: number, rows: number, size: number, gap: number, count = cols * rows): string {
+  const r = size / 2
+  return Array.from({ length: Math.min(count, cols * rows) }, (_, index) => {
+    const cx = (index % cols) * (size + gap) + r
+    const cy = Math.floor(index / cols) * (size + gap) + r
+    return `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} Z`
+  }).join(' ')
+}
+
+function createHabitTrackerDocument(): FreeformDocument {
+  const bg = '#eef1ea'
+  const ink = '#1e2a22'
+  const green = '#3c8a5d'
+  const greenInk = '#2e6e49'
+  const ring = '#c4cfc0'
+  const muted = '#566159'
+  const [cols, rows, size, gap, done] = [6, 5, 112, 36, 12]
+  const grid = { x: 114, y: 548, width: cols * size + (cols - 1) * gap, height: rows * size + (rows - 1) * gap }
+  // A tick in each done circle.
+  const ticks = Array.from({ length: done }, (_, index) => {
+    const x = (index % cols) * (size + gap)
+    const y = Math.floor(index / cols) * (size + gap)
+    return `M ${x + 32} ${y + 58} L ${x + 50} ${y + 76} L ${x + 82} ${y + 40}`
+  }).join(' ')
+  return documentFromSlides([
+    slide('封面', solid(bg), [
+      pathNode(circleGrid(cols, rows, size, gap), grid.x, grid.y, grid.width, grid.height, { name: '打卡格', stroke: ring, strokeWidth: 3 }),
+      pathNode(circleGrid(cols, rows, size, gap, done), grid.x, grid.y, grid.width, grid.height, { name: '已打卡', fill: solid(green), strokeWidth: 0 }),
+      pathNode(ticks, grid.x, grid.y, grid.width, grid.height, { name: '对勾', stroke: '#ffffff', strokeWidth: 7, cap: 'round', join: 'round' }),
+      textNode('第 12 天', 88, 96, 400, 48, { name: '角标', fontSize: 32, fontFamily: SANS, textFill: solid(greenInk), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode('30 天\n早起计划', 84, 150, 912, 300, { name: '标题', fontSize: 120, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.2, letterSpacing: 2 }),
+      textNode('每天 6:30 起床，做一件喜欢的事', 88, 462, 904, 52, { name: '副标题', fontSize: 36, fontFamily: SANS, textFill: solid(muted), letterSpacing: 1 }),
+      textNode('坚持到第 30 天，奖励自己一次短途旅行。', 88, 1300, 904, 52, { name: '正文', fontSize: 32, fontFamily: SANS, textFill: solid(ink), letterSpacing: 1 }),
+      lineNode(88, 1366, 64, greenInk, 4, { name: '短线', cap: 'butt' }),
+      textNode('叮卡打卡本', 168, 1356, 600, 40, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(muted), fontWeight: 'bold', letterSpacing: 4 }),
+    ]),
+  ])
+}
+
+function createFunFactDocument(): FreeformDocument {
+  const yellow = '#ffcd38'
+  const ink = '#1a1a1a'
+  const muted = '#3b372f'
+  // A question mark drawn as one stroke and a dot, standing over the page.
+  const hook = 'M 70 210 C 70 70, 390 40, 390 225 C 390 335, 230 365, 230 480 L 230 548'
+  return documentFromSlides([
+    slide('封面', solid(yellow), [
+      pathNode(hook, 560, 120, 460, 600, { name: '问号', stroke: '#ffffff', strokeWidth: 92, cap: 'round', join: 'round' }),
+      pathNode(circlePath(56, 56, 56), 734, 744, 112, 112, { name: '问号点', fill: solid('#ffffff'), strokeWidth: 0 }),
+      textNode('冷知识 No.36', 88, 96, 500, 44, { name: '角标', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+      lineNode(88, 156, 72, ink, 6, { name: '短线', cap: 'butt' }),
+      textNode('为什么猫咪\n喜欢钻纸箱？', 84, 880, 912, 260, { name: '标题', fontSize: 100, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.2, letterSpacing: -2 }),
+      textNode('纸箱又窄又暗，猫咪钻进去会觉得安全；纸板还能保温，冬天尤其舒服。', 88, 1156, 904, 120, { name: '正文', fontSize: 34, fontFamily: SANS, textFill: solid(muted), lineHeight: 1.6 }),
+      textNode('叮卡百科', 88, 1356, 600, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+    ]),
+  ])
+}
+
+function createTripRouteDocument(): FreeformDocument {
+  const paper = '#f5efe3'
+  const sea = '#bfdde3'
+  const ink = '#1d2b36'
+  const coral = '#e2553a'
+  const muted = '#56626b'
+  const pins = [[230, 650], [540, 770], [300, 970], [590, 1140]] as const
+  const stop = (index: number, label: string, value: string) => {
+    const [x, y] = pins[index]
+    const n = NUMBERED[index]
+    return [
+      pathNode(circlePath(30, 30, 30), x - 30, y - 30, 60, 60, { name: `标记${n}`, fill: solid(coral), strokeWidth: 0 }),
+      textNode(String(index + 1), x - 30, y - 22, 60, 44, { name: `编号${n}`, fontSize: 30, fontFamily: ARCHIVO, textFill: solid('#ffffff'), align: 'center' }),
+      textNode(label, x + 50, y - 46, 320, 40, { name: `标签${n}`, fontSize: 26, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 3 }),
+      textNode(value, x + 50, y - 4, 992 - (x + 50), 48, { name: `信息${n}`, fontSize: 34, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold' }),
+    ]
+  }
+  // One leg of the route from the stop before: a dashed curve, gone with its stop.
+  const leg = (index: number) => {
+    const [[x1, y1], [x2, y2]] = [pins[index - 1], pins[index]]
+    const left = Math.min(x1, x2) - 60
+    const top = Math.min(y1, y2)
+    const width = Math.abs(x2 - x1) + 120
+    const height = Math.abs(y2 - y1)
+    const [ax, ay, bx, by] = [x1 - left, y1 - top, x2 - left, y2 - top]
+    const bend = index % 2 ? 60 : -60
+    return pathNode(`M ${ax} ${ay} C ${ax + bend} ${ay + height * 0.45}, ${bx - bend} ${by - height * 0.45}, ${bx} ${by}`, left, top, width, height, {
+      name: `路线${NUMBERED[index]}`, stroke: coral, strokeWidth: 5, dash: 14, cap: 'round',
+    })
+  }
+  const coast = ridgePath([[1096, 560], [930, 590], [850, 720], [900, 860], [790, 1000], [850, 1150], [760, 1262]].map(([x, y]) => [x, y - 520] as const), 760)
+  return documentFromSlides([
+    slide('封面', solid(paper), [
+      pathNode(`${coast}`, 0, 520, 1096, 760, { name: '海', fill: solid(sea), strokeWidth: 0 }),
+      pathNode('M 0 70 C 120 40 240 110 380 80 M 0 150 C 140 120 260 190 420 160', 60, 1150, 440, 220, { name: '等高线', stroke: '#d9cfbd', strokeWidth: 3, cap: 'round' }),
+      leg(1), leg(2), leg(3),
+      ...stop(0, 'DAY 1', '西湖 · 断桥'),
+      ...stop(1, 'DAY 2', '灵隐寺 · 飞来峰'),
+      ...stop(2, 'DAY 3', '龙井村 · 九溪'),
+      ...stop(3, 'DAY 4', '河坊街 · 南宋御街'),
+      pathNode('M 30 0 L 44 46 L 30 38 L 16 46 Z', 920, 1270, 60, 60, { name: '指北针', fill: solid(ink), strokeWidth: 0 }),
+      textNode('N', 920, 1322, 60, 36, { name: '北', fontSize: 24, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center' }),
+      textNode('杭州\n四日慢游', 84, 84, 760, 336, { name: '标题', fontSize: 120, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.2, letterSpacing: 4, verticalAlign: 'bottom' }),
+      textNode('跟着这条线走，景点不绕路', 88, 432, 904, 52, { name: '副标题', fontSize: 34, fontFamily: SANS, textFill: solid(muted), letterSpacing: 1 }),
+      textNode('叮卡旅行', 88, 1356, 600, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
+    ]),
+  ])
+}
+
+function createRankingCoverDocument(): FreeformDocument {
+  const black = '#111111'
+  const muted = '#a9a9a9'
+  const orange = '#ff5a36'
+  const bars = ['#ff5a36', '#ff7d5e', '#ffa086', '#ffc3b1', '#ffe2d8']
+  const lengths = [800, 710, 630, 560, 500]
+  const row = (index: number, name: string) => {
+    const y = 600 + index * 140
+    const n = NUMBERED[index]
+    return [
+      shapeNode('rect', 192, y, lengths[index], 104, solid(bars[index]), { name: `条${n}`, cornerRadius: 0 }),
+      textNode(String(index + 1), 80, y + 2, 100, 104, { name: `名次${n}`, fontSize: 88, fontFamily: ARCHIVO, textFill: solid('#ffffff'), align: 'center', lineHeight: 1.15 }),
+      textNode(name, 224, y + 24, lengths[index] - 56, 56, { name: `信息${n}`, fontSize: 40, fontFamily: SANS, textFill: solid('#141414'), fontWeight: 'bold' }),
+    ]
+  }
+  return documentFromSlides([
+    slide('封面', solid(black), [
+      textNode('2026', 88, 92, 300, 52, { name: '角标', fontSize: 40, fontFamily: ARCHIVO, textFill: solid(orange) }),
+      textNode('年度好物\nTOP 5', 84, 150, 912, 320, { name: '标题', fontSize: 130, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', lineHeight: 1.18, letterSpacing: -2 }),
+      textNode('用了一整年，真心推荐这五样', 88, 492, 904, 52, { name: '副标题', fontSize: 34, fontFamily: SANS, textFill: solid(muted), letterSpacing: 1 }),
+      ...row(0, '降噪耳机'),
+      ...row(1, '电动牙刷'),
+      ...row(2, '手冲咖啡壶'),
+      ...row(3, '护眼台灯'),
+      ...row(4, '折叠收纳箱'),
+      lineNode(88, 1320, 904, '#333333', 2, { name: '页脚线', cap: 'butt' }),
+      textNode('叮卡好物志', 88, 1344, 600, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', letterSpacing: 4 }),
+    ]),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -4172,6 +4337,11 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'annual-report': poster('年度报告', 'A4 封面：超大的年份压在金色等高线上，下面是宋体标题，适合年度报告、企业画册和白皮书。', ['报告', '封面'], 'a4'),
   'stat-card': poster('数据卡', '方图：克莱因蓝底上一个巨大的数字，下面一句话说清它是什么，适合数据发布、调查结论和社交分享。', ['数据', '社交'], 'square'),
   'countdown': poster('倒计时', '方图：六十格刻度的表盘中间一个大数字，下面写活动和时间，适合发布会、开售和考试倒计时。', ['倒计时', '活动'], 'square'),
+  'versus-cover': poster('对比测评', '小红书封面：黄黑两栏斜着对开，中间一枚 VS 徽章，两边各写一个名字和一句结论，适合对比测评、二选一和选购攻略。', ["小红书", "测评"], 'xhs'),
+  'habit-tracker': poster('打卡计划', '小红书封面：三十个圆圈排成打卡格，已完成的涂绿打勾，配宋体大标题，适合打卡挑战、学习计划和习惯养成。', ["小红书", "打卡"], 'xhs'),
+  'fun-fact': poster('冷知识', '小红书封面：明黄底上一个巨大的白色问号，问题写成大标题，下面一段解答，适合冷知识、科普和问答。', ["小红书", "科普"], 'xhs'),
+  'trip-route': poster('旅行攻略', '小红书封面：海岸线边的手绘地图，虚线路线串起四个编号地点，每站一行名字，适合旅行攻略、路线规划和城市漫游。', ["小红书", "旅行"], 'xhs'),
+  'ranking-cover': poster('年度排行', '小红书封面：黑底上五条由长到短的橙色名次条，每条写一个名字，适合排行榜、年度推荐和好物清单。', ["小红书", "排行"], 'xhs'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -4230,6 +4400,11 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'annual-report': createAnnualReportDocument,
   'stat-card': createStatCardDocument,
   'countdown': createCountdownDocument,
+  'versus-cover': createVersusCoverDocument,
+  'habit-tracker': createHabitTrackerDocument,
+  'fun-fact': createFunFactDocument,
+  'trip-route': createTripRouteDocument,
+  'ranking-cover': createRankingCoverDocument,
 }
 
 /**
@@ -4288,6 +4463,11 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'photo-cover',
   'magazine-cover',
   'book-list',
+  'versus-cover',
+  'ranking-cover',
+  'fun-fact',
+  'trip-route',
+  'habit-tracker',
   'portfolio-cover',
   'menu',
   'dessert-menu',

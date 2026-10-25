@@ -481,6 +481,37 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
     templateId: 'countdown-freeform',
     content: { title: '冬季限定饮品上市', subtitle: '距离新品开售还有', tag: '7', details: ['12 月 1 日 10:00 · 全国门店同步'], brand: '山野咖啡' },
   },
+  // Twenty more: Xiaohongshu covers first.
+  {
+    id: 'poster-versus-cover',
+    kind: 'poster',
+    templateId: 'versus-cover-freeform',
+    content: { title: '机械键盘还是薄膜键盘？', subtitle: '打字三个月后的真实感受', tag: '测评 · 第 8 期', details: ['机械键盘：手感清脆，声音偏大', '薄膜键盘：安静便宜，适合办公室'], brand: '数码小站' },
+  },
+  {
+    id: 'poster-habit-tracker',
+    kind: 'poster',
+    templateId: 'habit-tracker-freeform',
+    content: { title: '21 天读书计划', subtitle: '每天睡前读 20 页', tag: '第 9 天', body: '读完一本，就在格子里多涂一个。', brand: '阿澄的读书本' },
+  },
+  {
+    id: 'poster-fun-fact',
+    kind: 'poster',
+    templateId: 'fun-fact-freeform',
+    content: { title: '为什么天空是蓝色的？', tag: '冷知识 No.12', body: '阳光穿过大气时，蓝光被空气分子散射得最厉害，所以抬头看到的是蓝色。', brand: '每天一个为什么' },
+  },
+  {
+    id: 'poster-trip-route',
+    kind: 'poster',
+    templateId: 'trip-route-freeform',
+    content: { title: '成都三日游', subtitle: '吃喝玩乐不走回头路', details: ['第一天：宽窄巷子 · 人民公园', '第二天：大熊猫基地', '第三天：都江堰 · 青城山'], brand: '阿澄去旅行' },
+  },
+  {
+    id: 'poster-ranking-cover',
+    kind: 'poster',
+    templateId: 'ranking-cover-freeform',
+    content: { title: '年度最爱 App', subtitle: '每天打开超过十次的五个', tag: '2026', details: ['记账本', '天气预报', '读书', '健身', '地图'], brand: '效率工具控' },
+  },
   // A 16:9 deck read off a screen: a quarterly review, and a course outline.
   {
     id: 'deck-spotlight-review',

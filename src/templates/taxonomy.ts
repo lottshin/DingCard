@@ -126,6 +126,11 @@ export const TEMPLATE_FACETS: Record<TemplateSeriesId, TemplateFacets> = {
   'annual-report': facets(['office'], ['business', 'elegant'], ['white', 'blue']),
   'stat-card': facets(['social', 'office'], ['minimal', 'bold'], ['blue']),
   'countdown': facets(['event', 'promo'], ['minimal'], ['beige', 'black']),
+  'versus-cover': facets(["social", "promo"], ["bold"], ["yellow", "black"]),
+  'habit-tracker': facets(["social", "office"], ["fresh", "minimal"], ["green"]),
+  'fun-fact': facets(["social"], ["bold"], ["yellow"]),
+  'trip-route': facets(["social"], ["handdrawn", "fresh"], ["blue", "beige"]),
+  'ranking-cover': facets(["social", "promo"], ["bold"], ["black", "orange"]),
 }
 
 export function templateFacets(template: Pick<TemplateDefinition, 'series'>): TemplateFacets {
