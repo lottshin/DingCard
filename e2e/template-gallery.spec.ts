@@ -285,7 +285,8 @@ test('gallery uses narrow the list to one kind of template', async ({ page }) =>
   await dialog.getByTestId('template-format-a4').click()
   await expect(dialog.locator('.template-tile')).toHaveCount(2)
   await uses.getByRole('button', { name: '全部', exact: true }).click()
-  await expect(dialog.locator('.template-tile')).toHaveCount(4)
+  // Every A4 page: 菜单, 甜品菜单, 简历, 红头通知, 年度报告 and 宣传单.
+  await expect(dialog.locator('.template-tile')).toHaveCount(6)
 })
 
 test('Freeform sidebar mounts scene nodes only near the visible thumbnails', async ({ page }) => {
