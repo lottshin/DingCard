@@ -4251,7 +4251,8 @@ function createVersusCoverDocument(): FreeformDocument {
       textNode('拿铁', 88, 556, 432, 140, { name: '标签一', fontSize: 104, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', lineHeight: 1.15 }),
       textNode('奶香柔和，\n适合刚开始喝咖啡', 88, 712, 330, 120, { name: '信息一', fontSize: 34, fontFamily: SANS, textFill: solid(ink), lineHeight: 1.5 }),
       textNode('美式', 576, 990, 416, 140, { name: '标签二', fontSize: 104, fontFamily: SANS, textFill: solid('#ffffff'), fontWeight: 'bold', lineHeight: 1.15 }),
-      textNode('清爽提神，\n热量几乎为零', 576, 1134, 416, 100, { name: '信息二', fontSize: 34, fontFamily: SANS, textFill: solid('#ffffff'), lineHeight: 1.5 }),
+      // Two 51px lines and the box's padding (118px) fit in any font, ending on the panel's foot.
+      textNode('清爽提神，\n热量几乎为零', 576, 1132, 416, 118, { name: '信息二', fontSize: 34, fontFamily: SANS, textFill: solid('#ffffff'), lineHeight: 1.5 }),
       lineNode(88, 1300, 904, ink, 2, { name: '页脚线', cap: 'butt' }),
       textNode('咖啡研究所', 88, 1326, 600, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 4 }),
     ]),
