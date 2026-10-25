@@ -75,21 +75,28 @@ test('release entry documentation matches current versions and commands', () => 
   assert.match(backendPlan, /当前源码版本：前端 `0\.57\.0`，后端 `0\.3\.0`/)
   assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/)
   assert.match(readme, /Node\.js 22\+/)
+  assert.match(readme, /https:\/\/dingcard\.pages\.dev/)
+  assert.match(readme, /LocalStore[\s\S]*RemoteStore[\s\S]*不(?:会|自动)迁移/)
+  // Commands, server-mode setup and data modes live in the development guide, which the README links.
+  assert.equal(exists('docs/development.md'), true, 'development guide must exist')
+  assert.match(readme, /docs\/development\.md/)
+  const development = read('docs/development.md')
+  assert.match(development, /Node\.js 22\+/)
   for (const scriptName of Object.keys(frontend.scripts)) {
     const command = scriptName === 'test' ? 'npm test' : `npm run ${scriptName}`
-    assert.match(readme, new RegExp(escapeRegExp(command)), `README must document ${command}`)
+    assert.match(development, new RegExp(escapeRegExp(command)), `docs/development.md must document ${command}`)
   }
   for (const command of [
     'node server/smoke-test.mjs',
     'node --test scripts/release-readiness.test.mjs',
   ]) {
-    assert.match(readme, new RegExp(escapeRegExp(command)), `README must document ${command}`)
+    assert.match(development, new RegExp(escapeRegExp(command)), `docs/development.md must document ${command}`)
   }
-  assert.match(readme, /PowerShell/)
-  assert.match(readme, /POSIX/)
-  assert.match(readme, /--strictPort/)
-  assert.match(readme, /VITE_API_BASE/)
-  assert.match(readme, /LocalStore[\s\S]*RemoteStore[\s\S]*不(?:会|自动)迁移/)
+  assert.match(development, /PowerShell/)
+  assert.match(development, /POSIX/)
+  assert.match(development, /--strictPort/)
+  assert.match(development, /VITE_API_BASE/)
+  assert.match(development, /LocalStore[\s\S]*RemoteStore[\s\S]*不(?:会|自动)迁移/)
 
   assert.match(releaseNotes, /empty-band/)
   assert.match(releaseNotes, /两栏/)
@@ -161,7 +168,7 @@ test('MCP automation package stays documented, versioned, and tested', () => {
   assert.match(readme, /MCP 自动化/, 'README must introduce the MCP surface')
   assert.match(readme, /npm --prefix mcp ci/)
   assert.match(readme, /docs\/mcp\.md/)
-  assert.match(readme, /渲染管线测试/)
+  assert.match(read('docs/development.md'), /渲染管线测试/)
 })
 
 test('CI invokes repository contracts and existing verification commands', () => {  assert.equal(exists('.github/workflows/ci.yml'), true, 'CI workflow must exist')

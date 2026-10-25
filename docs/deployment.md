@@ -1,6 +1,6 @@
 # Docker 部署与维护
 
-这份文档用于部署叮卡的完整前后端。只需要前端时，使用 README 顶部的 Vercel 按钮即可，不必准备服务器。
+这份文档用于部署叮卡的完整前后端。只需要前端时，使用 README「在线使用」一节的 Vercel 按钮即可，不必准备服务器。
 
 Docker Compose 会启动一个 `app` 容器。容器内的 Fastify 直接提供前端页面、`/uploads` 图片和 `/api` 接口。`db` 卷保存 SQLite 数据库，`uploads` 卷保存上传图片。
 
