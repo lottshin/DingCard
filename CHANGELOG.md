@@ -11,6 +11,7 @@
 ### Changed
 
 - MCP 服务器 `dingcard-mcp` 发布到 npm：MCP 客户端的配置里写上 `npx -y dingcard-mcp` 就能用，包里带着构建好的前端，不用克隆仓库。README 和 MCP 文档的接入方式随之改成这一段配置，从源码运行的方式挪到 MCP 文档的「从源码运行」。
+- npm 包带上依赖锁（`npm-shrinkwrap.json`，打包时从 `mcp/package-lock.json` 复制），npx 装到的依赖和 CI 测过的版本完全一样，不再是版本范围内的最新版。
 
 ### Fixed
 

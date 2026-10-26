@@ -130,6 +130,10 @@ test('MCP automation package stays documented, versioned, and tested', () => {
     /npm --prefix \.\. run build && npm run build:app && npm run build/,
     'packing builds the frontend into dist/app first',
   )
+  // npx installs exactly the dependencies CI tested: the lockfile ships as npm-shrinkwrap.json.
+  assert.equal(mcp.files.includes('npm-shrinkwrap.json'), true, 'the package carries its lockfile')
+  assert.match(mcp.scripts.prepack, /copyFileSync\('package-lock\.json','npm-shrinkwrap\.json'\)/)
+  assert.match(mcp.scripts.postpack, /rmSync\('npm-shrinkwrap\.json'/)
   for (const scriptName of Object.keys(mcp.scripts)) {
     assert.equal(typeof mcp.scripts[scriptName], 'string')
   }

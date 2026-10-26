@@ -8,6 +8,8 @@ node_modules
 # Build output
 dist/
 .vercel/
+# The MCP package's lockfile as it ships (prepack writes it, postpack removes it)
+mcp/npm-shrinkwrap.json
 
 # Playwright
 test-results/

@@ -24,6 +24,7 @@
     "dist/index.mjs",
     "dist/render.mjs",
     "dist/app",
+    "npm-shrinkwrap.json",
     "README.md",
     "LICENSE"
   ],
@@ -33,7 +34,8 @@
     "test": "vitest run --config vitest.config.ts",
     "test:render": "vitest run --config vitest.render.config.ts",
     "build:app": "node -e \"const fs=require('fs');fs.rmSync('dist/app',{recursive:true,force:true});fs.cpSync('../dist','dist/app',{recursive:true});fs.copyFileSync('../LICENSE','LICENSE')\"",
-    "prepack": "npm --prefix .. run build && npm run build:app && npm run build",
+    "prepack": "npm --prefix .. run build && npm run build:app && npm run build && node -e \"require('fs').copyFileSync('package-lock.json','npm-shrinkwrap.json')\"",
+    "postpack": "node -e \"require('fs').rmSync('npm-shrinkwrap.json',{force:true})\"",
     "eval": "vitest run --config vitest.render.config.ts src/eval/eval.sheet.ts"
   },
   "dependencies": {
