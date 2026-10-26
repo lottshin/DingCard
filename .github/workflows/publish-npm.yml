@@ -1,0 +1,56 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+# The tag stages dingcard-mcp on npm through trusted publishing (OIDC, no
+# token). A staged version stays private until a maintainer approves it with
+# 2FA: `npm stage approve <stage-id>` or the Staged Packages tab on npmjs.com.
+jobs:
+  stage:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      # Staged publishing needs npm 11.15.0 or later; Node 22 ships npm 10.
+      - run: npm install --global npm@11.21.1
+      - name: Check the tag against the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./mcp/package.json').version")"
+          if [[ "$TAG" != "v$VERSION" ]]; then
+            echo "Tag $TAG does not match dingcard-mcp $VERSION" >&2
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm --prefix mcp ci
+      - run: npm --prefix mcp test
+      # prepack builds the frontend into dist/app and the server bundle.
+      - name: Stage the package
+        working-directory: mcp
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$TAG" == *-* ]]; then
+            npm stage publish --tag next
+          else
+            npm stage publish
+          fi

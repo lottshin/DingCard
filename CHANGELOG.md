@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 发版标签同时把 `dingcard-mcp` 暂存到 npm（新工作流 `publish-npm.yml`，走 trusted publishing，不用 npm 令牌）：先核对标签和包版本、跑 MCP 测试，再 `npm stage publish`。暂存的版本要维护者用 2FA 批准后才公开。
+
 ## [0.59.0] - 2026-10-26
 
 ### Added

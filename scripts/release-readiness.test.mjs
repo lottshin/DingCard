@@ -314,6 +314,28 @@ test('tag releases publish and anonymously verify the multi-architecture GHCR im
   assert.match(smoke, /docker image rm "\$IMAGE:\$VERSION"/)
 })
 
+test('tag releases stage the MCP package on npm through trusted publishing', () => {
+  assert.equal(exists('.github/workflows/publish-npm.yml'), true, 'npm publishing workflow must exist')
+
+  const workflow = read('.github/workflows/publish-npm.yml')
+  assert.doesNotMatch(workflow, /ubuntu-latest/, 'the package is staged on a pinned Ubuntu')
+  assert.match(workflow, /^on:\s*\n\s{2}push:\s*\n\s{4}tags:\s*\n\s{6}- ['"]v\*['"]\s*$/m)
+  const workflowPreamble = workflow.split(/^jobs:\s*$/m)[0]
+  assert.match(workflowPreamble, /^permissions:\s*\n\s{2}contents:\s*read\s*$/m)
+  assert.doesNotMatch(workflowPreamble, /id-token:\s*write/)
+
+  const stage = workflowJob(workflow, 'stage')
+  assert.match(stage, /id-token:\s*write/, 'trusted publishing needs the OIDC token')
+  assert.match(stage, /registry-url:\s*https:\/\/registry\.npmjs\.org/)
+  assert.match(stage, /npm install --global npm@11\.21\.1/, 'staged publishing needs npm 11.15.0 or later')
+  assert.match(stage, /Tag \$TAG does not match dingcard-mcp/)
+  assert.match(stage, /npm --prefix mcp test/)
+  assert.match(stage, /working-directory:\s*mcp/)
+  assert.match(stage, /npm stage publish/)
+  assert.doesNotMatch(workflow, /NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./, 'no long-lived npm token')
+  assert.doesNotMatch(stage, /^\s*(?:- run: )?npm publish\b/m, 'a person approves each version with 2FA')
+})
+
 test('deployment documentation keeps the shortest safe Docker path', () => {
   assert.equal(exists('docs/deployment.md'), true, 'deployment guide must exist')
 
