@@ -70,6 +70,13 @@ describe('dingcard-mcp tool layer', () => {
     await client.close()
   })
 
+  test('names its package version in the handshake', async () => {
+    const client = await connect()
+    const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+    expect(client.getServerVersion()).toMatchObject({ name: 'dingcard-mcp', version: manifest.version })
+    await client.close()
+  })
+
   test('server tools explain the missing server configuration', async () => {
     const saved = process.env.DINGCARD_SERVER_URL
     delete process.env.DINGCARD_SERVER_URL

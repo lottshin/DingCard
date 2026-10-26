@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import { version as packageVersion } from '../package.json'
 import { MAX_FREEFORM_SLIDES } from '../../src/freeform/constants'
 import { FREEFORM_DOCUMENT_VERSION } from '../../src/freeform/types'
 import type { FreeformDocument, FreeformSceneNode, FreeformSlide } from '../../src/freeform/types'
@@ -266,7 +267,7 @@ function insertPages(
 export function createDingcardServer(): McpServer {
   const server = new McpServer({
     name: 'dingcard-mcp',
-    version: '0.41.0',
+    version: packageVersion,
   })
   const documents = new DocumentStore()
 
