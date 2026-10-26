@@ -4,12 +4,15 @@
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-26
+
 ### Added
 
 - MCP 渲染用到的网页字体存在本机（默认 `~/.cache/dingcard/fonts`，可以用 `DINGCARD_FONT_CACHE_DIR` 改）：以前每次检查、渲染都启动一个全新的浏览器，把字体重新下载一遍，约占 4–5 秒；现在下载过一次就直接用，断网也能用。新增 `DINGCARD_FONTS_URL`，连不上 Google Fonts 时可以换一个字体源（例如 `https://fonts.googleapis.cn`）。服务端生成卡片和分享页用的是同一个渲染器，同样受益。
 
 ### Changed
 
+- 前端与 MCP 版本升至 `0.59.0`；服务端仍为 `0.3.0`，文档版本仍为 44。`0.59.0` 镜像随 `v0.59.0` 标签发布；README、Compose 和部署文档固定已发布的 GHCR `0.58.0` 镜像。LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
 - MCP 服务器 `dingcard-mcp` 发布到 npm：MCP 客户端的配置里写上 `npx -y dingcard-mcp` 就能用，包里带着构建好的前端，不用克隆仓库。README 和 MCP 文档的接入方式随之改成这一段配置，从源码运行的方式挪到 MCP 文档的「从源码运行」。
 - npm 包带上依赖锁（`npm-shrinkwrap.json`，打包时从 `mcp/package-lock.json` 复制），npx 装到的依赖和 CI 测过的版本完全一样，不再是版本范围内的最新版。
 
