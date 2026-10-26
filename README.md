@@ -55,12 +55,17 @@
 
 ## MCP 自动化
 
-**AI 客户端，直接出整套卡片。** 仓库自带 stdio MCP 服务器 `dingcard-mcp`，提供 22 个工具。文档校验、编辑和渲染跟编辑器共用同一套代码；工具之间传 `documentId`，图片可以直接写本机路径。
+**AI 客户端，直接出整套卡片。** stdio MCP 服务器 `dingcard-mcp` 发布在 npm 上，提供 22 个工具。文档校验、编辑和渲染跟编辑器共用同一套代码；工具之间传 `documentId`，图片可以直接写本机路径。在 MCP 客户端的配置里加上：
 
-```bash
-npm --prefix mcp ci
-npm run mcp   # 以 stdio 启动 dingcard-mcp
+```json
+{
+  "mcpServers": {
+    "dingcard": { "command": "npx", "args": ["-y", "dingcard-mcp"] }
+  }
+}
 ```
+
+需要 Node.js 22 以上和本机安装的 Google Chrome（渲染和检查用）。
 
 | 工具 | 做什么 |
 |---|---|

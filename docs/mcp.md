@@ -305,19 +305,9 @@ v20 起 `text` 里的每个换行分出一段：
 AI 生成文档 → 导入叮卡精修 → 编辑器导出 PNG
 ```
 
-## 安装与启动
-
-仓库内的 `mcp/` 是独立 npm 包（不进入前端依赖树和 Docker 镜像）：
-
-```bash
-npm --prefix mcp ci
-npm --prefix mcp run build
-npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务器
-```
-
 ## 客户端接入
 
-`mcp/` 也可以打成独立 npm 包（`npm --prefix mcp pack`，打包前会构建前端并放进包里的 `dist/app`，装好后不依赖仓库）。发布到 npm 之后，客户端配置是：
+`dingcard-mcp` 发布在 npm 上，包里带着构建好的前端，装好后不依赖仓库。任何支持 stdio MCP 的客户端加上这段配置即可：
 
 ```json
 {
@@ -327,7 +317,21 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 }
 ```
 
-在仓库里直接用的话，任何支持 stdio MCP 的客户端都可以用如下命令接入（在仓库根目录执行）：
+需要 Node.js 22+ 和本机的 Google Chrome，见下文「环境与配置」。
+
+## 从源码运行
+
+仓库内的 `mcp/` 是独立 npm 包（不进入前端依赖树）：
+
+```bash
+npm --prefix mcp ci
+npm --prefix mcp run build
+npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务器
+```
+
+`npm --prefix mcp pack` 打出的就是发布到 npm 的包：打包前会构建前端，放进包里的 `dist/app`。
+
+客户端也可以直接接仓库里的服务器（在仓库根目录执行）：
 
 ```json
 {
@@ -352,12 +356,12 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 
 - **Node.js 22+**（与主项目一致）。
 - **浏览器**：渲染优先使用系统安装的 Google Chrome（与 E2E 测试同一策略，零下载）。没有 Chrome 时会尝试默认 Chromium；两者都不可用会返回明确的错误信息。也可另行执行 `npx playwright install chromium`。
-- 首次渲染前需要一次前端构建（自动触发，产物会被后续渲染复用）。
+- npm 包自带构建好的前端。从源码运行时，首次渲染前需要一次前端构建（自动触发，产物会被后续渲染复用）。
 
 ## 安全与边界
 
 - 静态文件服务器只监听 `127.0.0.1` 的随机端口，带路径穿越防护，渲染结束即关闭。`open_in_editor` 的服务器也只监听 `127.0.0.1`，交出去的文档地址带随机 id，只保留最近 16 份。
-- MCP 服务器只读写本地文件（输出目录、`documentPath`、图片路径由调用方指定）；不连接远程账号、草稿或图片存储。
+- MCP 服务器只读写本地文件（输出目录、`documentPath`、图片路径由调用方指定）；只有设了 `DINGCARD_SERVER_URL`，`share_document` 和 `server_projects` 才连接那台叮卡服务端的账号、作品和图片。
 - `create_document_from_html` 把网页放在没有脚本权限的沙箱框架里排版：网页里的脚本、事件处理器和 `<noscript>` 都去掉，只读它排出来的样子；网页引用的网络图片和字体照常加载。本机文件只读网页里写到的图片和样式表。
 - stdout 只承载 JSON-RPC 协议，构建日志与诊断一律走 stderr。
 

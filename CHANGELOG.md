@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- MCP 服务器 `dingcard-mcp` 发布到 npm：MCP 客户端的配置里写上 `npx -y dingcard-mcp` 就能用，包里带着构建好的前端，不用克隆仓库。README 和 MCP 文档的接入方式随之改成这一段配置，从源码运行的方式挪到 MCP 文档的「从源码运行」。
+
 ### Fixed
 
 - MCP 服务器握手时报的版本号从 0.41.0 起就没再变过，客户端看到的一直是 0.41.0；现在跟着包的版本走。

@@ -122,7 +122,14 @@ test('MCP automation package stays documented, versioned, and tested', () => {
   const mcp = JSON.parse(read('mcp/package.json'))
   assert.equal(mcp.name, 'dingcard-mcp')
   assert.equal(mcp.version, '0.58.0')
-  assert.equal(mcp.private, true, 'mcp package stays private (no npm publish)')
+  assert.equal(mcp.private, undefined, 'mcp package is published to npm (npx -y dingcard-mcp)')
+  assert.equal(mcp.bin['dingcard-mcp'], 'dist/index.mjs', 'npx runs the bundled server')
+  assert.equal(mcp.files.includes('dist/app'), true, 'the package carries the built frontend')
+  assert.match(
+    mcp.scripts.prepack,
+    /npm --prefix \.\. run build && npm run build:app && npm run build/,
+    'packing builds the frontend into dist/app first',
+  )
   for (const scriptName of Object.keys(mcp.scripts)) {
     assert.equal(typeof mcp.scripts[scriptName], 'string')
   }
@@ -167,7 +174,7 @@ test('MCP automation package stays documented, versioned, and tested', () => {
   }
   const readme = read('README.md')
   assert.match(readme, /MCP 自动化/, 'README must introduce the MCP surface')
-  assert.match(readme, /npm --prefix mcp ci/)
+  assert.match(readme, /"command": "npx", "args": \["-y", "dingcard-mcp"\]/, 'README connects clients through the npm package')
   assert.match(readme, /docs\/mcp\.md/)
   assert.match(read('docs/development.md'), /渲染管线测试/)
 })
