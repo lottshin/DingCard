@@ -351,17 +351,20 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 | `DINGCARD_DIST_DIR` | `<仓库>/dist` | 渲染使用的构建产物目录。在仓库里、目录里没有 `render.html` 时会自动执行一次 `npm run build`；不在仓库里时用 npm 包自带的 `dist/app`；自定义目录缺失则直接报错。 |
 | `DINGCARD_APP_URL` | （空） | `open_in_editor` 在这个叮卡编辑器里打开文档；不设时用服务端自带的编辑器。 |
 | `DINGCARD_APP_PORT` | `5390` | 服务端自带编辑器的端口（被占用时换一个空闲端口）。 |
+| `DINGCARD_FONTS_URL` | （空） | 网页字体从哪里下载：替代 `https://fonts.googleapis.com`，路径照旧。连不上 Google Fonts 时设成能访问的地址，例如 Google 字体的 .cn 地址 `https://fonts.googleapis.cn`。 |
+| `DINGCARD_FONT_CACHE_DIR` | `~/.cache/dingcard/fonts` | 下载过的网页字体存在这里（设了 `XDG_CACHE_HOME` 时放在它下面的 `dingcard/fonts`），之后渲染直接用，不再联网。 |
 
 其他要求：
 
 - **Node.js 22+**（与主项目一致）。
 - **浏览器**：渲染优先使用系统安装的 Google Chrome（与 E2E 测试同一策略，零下载）。没有 Chrome 时会尝试默认 Chromium；两者都不可用会返回明确的错误信息。也可另行执行 `npx playwright install chromium`。
+- **网页字体**：渲染页用到的网页字体（思源宋体、思源黑体、霞鹜文楷等）从 Google Fonts 下载，下载过的存在本机（见 `DINGCARD_FONT_CACHE_DIR`），之后不再联网。字体请求由浏览器自己去取，系统代理照样生效。每个请求最多等 10 秒，连不上或超时就用系统字体排版和出图，这次调用剩下的字体也不再等；`check_document`、`render_document`、`render_markdown`、`create_document_from_html` 和 `share_document` 的结果里会多一个 `fonts`，写明哪些字体换成了系统字体。
 - npm 包自带构建好的前端。从源码运行时，首次渲染前需要一次前端构建（自动触发，产物会被后续渲染复用）。
 
 ## 安全与边界
 
 - 静态文件服务器只监听 `127.0.0.1` 的随机端口，带路径穿越防护，渲染结束即关闭。`open_in_editor` 的服务器也只监听 `127.0.0.1`，交出去的文档地址带随机 id，只保留最近 16 份。
-- MCP 服务器只读写本地文件（输出目录、`documentPath`、图片路径由调用方指定）；只有设了 `DINGCARD_SERVER_URL`，`share_document` 和 `server_projects` 才连接那台叮卡服务端的账号、作品和图片。
+- MCP 服务器只读写本地文件（输出目录、`documentPath`、图片路径由调用方指定），另外把下载的网页字体存进字体缓存目录；只有设了 `DINGCARD_SERVER_URL`，`share_document` 和 `server_projects` 才连接那台叮卡服务端的账号、作品和图片。
 - `create_document_from_html` 把网页放在没有脚本权限的沙箱框架里排版：网页里的脚本、事件处理器和 `<noscript>` 都去掉，只读它排出来的样子；网页引用的网络图片和字体照常加载。本机文件只读网页里写到的图片和样式表。
 - stdout 只承载 JSON-RPC 协议，构建日志与诊断一律走 stderr。
 

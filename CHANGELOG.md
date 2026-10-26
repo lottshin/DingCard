@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- MCP 渲染用到的网页字体存在本机（默认 `~/.cache/dingcard/fonts`，可以用 `DINGCARD_FONT_CACHE_DIR` 改）：以前每次检查、渲染都启动一个全新的浏览器，把字体重新下载一遍，约占 4–5 秒；现在下载过一次就直接用，断网也能用。新增 `DINGCARD_FONTS_URL`，连不上 Google Fonts 时可以换一个字体源（例如 `https://fonts.googleapis.cn`）。服务端生成卡片和分享页用的是同一个渲染器，同样受益。
+
 ### Changed
 
 - MCP 服务器 `dingcard-mcp` 发布到 npm：MCP 客户端的配置里写上 `npx -y dingcard-mcp` 就能用，包里带着构建好的前端，不用克隆仓库。README 和 MCP 文档的接入方式随之改成这一段配置，从源码运行的方式挪到 MCP 文档的「从源码运行」。
@@ -11,6 +15,7 @@
 ### Fixed
 
 - MCP 服务器握手时报的版本号从 0.41.0 起就没再变过，客户端看到的一直是 0.41.0；现在跟着包的版本走。
+- 连不上 Google Fonts 时（比如连上后一直不响应），MCP 的每次检查和渲染要等一分钟左右才出结果，然后悄悄用系统字体出图（宋体标题变成黑体），结果里没有任何提示。现在每个字体请求最多等 10 秒，一次超时后这次调用剩下的字体不再等；换成系统字体时，`check_document`、`render_document`、`render_markdown`、`create_document_from_html` 和 `share_document` 的结果里多一个 `fonts`，写明是哪些字体。
 
 ## [0.58.0] - 2026-10-25
 

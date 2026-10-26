@@ -168,6 +168,8 @@ test('MCP automation package stays documented, versioned, and tested', () => {
     'DINGCARD_SERVER_TOKEN',
     'dingcard://schema/freeform',
     'DINGCARD_DIST_DIR',
+    'DINGCARD_FONTS_URL',
+    'DINGCARD_FONT_CACHE_DIR',
     '127.0.0.1',
   ]) {
     assert.match(mcpReadme, new RegExp(escapeRegExp(entry)), `docs/mcp.md must document ${entry}`)

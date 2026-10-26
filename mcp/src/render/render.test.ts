@@ -261,6 +261,35 @@ describe('renderDocument', () => {
   )
 
   test(
+    'renders in system fonts within the time limit when the web fonts never answer, and says which',
+    async () => {
+      const instantiation = instantiateTemplate('editorial-freeform')
+      if (instantiation.workspace !== 'freeform') throw new Error('expected a freeform document')
+      const saved = { source: process.env.DINGCARD_FONTS_URL, cache: process.env.DINGCARD_FONT_CACHE_DIR }
+      // A documentation address (TEST-NET-1) never answers, and an empty cache holds nothing to fall back on.
+      process.env.DINGCARD_FONTS_URL = 'http://192.0.2.1'
+      process.env.DINGCARD_FONT_CACHE_DIR = mkdtempSync(path.join(tmpdir(), 'dingcard-fonts-'))
+      try {
+        const started = Date.now()
+        const result = await renderDocument(instantiation.document, { outputDir: mkdtempSync(path.join(tmpdir(), 'dingcard-render-')) })
+        expect(result.ok).toBe(true)
+        if (!result.ok) throw new Error(result.error)
+        expect(result.files).toHaveLength(3)
+        expect(result.fonts?.families).toContain('Noto Serif SC')
+        expect(result.fonts?.note).toMatch(/DINGCARD_FONTS_URL/)
+        // One time limit (10 s), not a stalled request per font.
+        expect(Date.now() - started).toBeLessThan(45_000)
+      } finally {
+        for (const [name, value] of [['DINGCARD_FONTS_URL', saved.source], ['DINGCARD_FONT_CACHE_DIR', saved.cache]] as const) {
+          if (value === undefined) delete process.env[name]
+          else process.env[name] = value
+        }
+      }
+    },
+    420_000,
+  )
+
+  test(
     'renders rich text spans as visible pixel changes',
     async () => {
       const instantiation = instantiateTemplate('editorial-freeform')

@@ -7,6 +7,7 @@ import { normalizeFreeformDocument } from '../../../src/freeform/sceneDocument'
 import type { FreeformDocument } from '../../../src/freeform/types'
 import { layoutIssues, type LayoutIssue, type LayoutIssueKind } from '../core/layoutIssues'
 import { inspectLayout } from './renderer'
+import type { FontFallback } from './webFonts'
 
 export interface CheckSuccess {
   ok: true
@@ -21,6 +22,8 @@ export interface CheckSuccess {
   fixed?: Array<{ page: number; slideId: string; node: string | null; fontSize: number }>
   /** Present with fix: the edges that were snapped onto their neighbours. */
   snapped?: Array<{ page: number; slideId: string; node: string | null; axis: 'x' | 'y'; from: number; to: number }>
+  /** Present when web fonts couldn't be loaded: the words were measured in a system font. */
+  fonts?: FontFallback
 }
 
 export type CheckResult = CheckSuccess | { ok: false; error: string }
@@ -35,8 +38,10 @@ export async function checkDocument(value: unknown, options: { fix?: boolean } =
   const document = normalizeFreeformDocument(value)
   if (!document) return { ok: false, error: '文档未通过自由画布文档校验，先用 validate_document 看原因。' }
   try {
-    const issues = layoutIssues(document, await inspectLayout(document))
-    if (!options.fix) return { ok: true, issues, summary: summarize(document, issues) }
+    const inspected = await inspectLayout(document)
+    const issues = layoutIssues(document, inspected.slides)
+    const fonts = inspected.fonts ? { fonts: inspected.fonts } : {}
+    if (!options.fix) return { ok: true, issues, summary: summarize(document, issues), ...fonts }
 
     let fixedDocument = document
     const fixed: NonNullable<CheckSuccess['fixed']> = []
@@ -76,9 +81,10 @@ export async function checkDocument(value: unknown, options: { fix?: boolean } =
       }
     }
     if (fixed.length === 0 && snapped.length === 0) {
-      return { ok: true, issues, summary: summarize(document, issues), document, fixed, snapped }
+      return { ok: true, issues, summary: summarize(document, issues), document, fixed, snapped, ...fonts }
     }
-    const remaining = layoutIssues(fixedDocument, await inspectLayout(fixedDocument))
+    const again = await inspectLayout(fixedDocument)
+    const remaining = layoutIssues(fixedDocument, again.slides)
     return {
       ok: true,
       issues: remaining,
@@ -86,6 +92,7 @@ export async function checkDocument(value: unknown, options: { fix?: boolean } =
       document: fixedDocument,
       fixed,
       ...(snapped.length > 0 ? { snapped } : {}),
+      ...(again.fonts ? { fonts: again.fonts } : {}),
     }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }

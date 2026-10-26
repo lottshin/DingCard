@@ -219,7 +219,7 @@ const GUIDE_SECTIONS = {
   },
   'render-export': {
     title: '渲染与导出：render_document 的输出方式',
-    text: `渲染与导出：默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。`,
+    text: `渲染与导出：默认输出 <baseName>-01.png、<baseName>-02.png… 到 outputDir；format: 'jpeg' 输出 .jpg（白底）；format: 'pdf' 输出一个 <baseName>.pdf，每页一张、页面和卡片一样大；long: true（png / jpeg）把所有页从上到下拼成一张长图 <baseName>-long.png（太长时自动降低倍率，返回实际 scale）；grid: true（png / jpeg，只用于正方形页面）把每页切成九宫格 <baseName>-01-1.png … -01-9.png，从左到右、从上到下，按这个顺序发朋友圈就拼回一整张（朋友圈九宫格模板 3240×3240 切出九张 1080×1080）；scale: 2 输出两倍像素。默认附上每页的小缩略图（JPEG，最多 ${MAX_PREVIEWS} 张）供你直接查看效果。仅支持自由画布文档；文档中的图片 src 必须是浏览器可加载的 URL 或 data URL。网页字体（思源宋体、霞鹜文楷等）下载过一次就存在本机；连不上字体源时用系统字体出图，结果里多一个 fonts，写明换掉了哪些字体，把它的 note 告诉用户。`,
   },
 } satisfies Record<string, { title: string; text: string }>
 
@@ -447,6 +447,7 @@ export function createDingcardServer(): McpServer {
             ...embedded.missing.map((missing) => ({ page: 0, target: missing, message: '这张本机图片读不了，没有放进来' })),
             ...imported.notes,
           ],
+          ...(imported.fonts ? { fonts: imported.fonts } : {}),
         }
         if (previews === false) return jsonResult(answer)
         return withPreviews(answer, await renderPreviews(stored.document).catch(() => []))
@@ -816,6 +817,7 @@ export function createDingcardServer(): McpServer {
           share: { id: share.id, url: share.url, expiresAt: share.expiresAt, imageCount: share.imageCount },
           note: '链接不用登录就能打开；给用户扫下面的二维码，或在任何浏览器点开。随时可用本工具的 revoke 撤销。',
           ...(resolved.documentId ? { documentId: resolved.documentId } : {}),
+          ...(rendered.fonts ? { fonts: rendered.fonts } : {}),
         }
         if (qr === false) return jsonResult(value)
         const QRCode = await import('qrcode')

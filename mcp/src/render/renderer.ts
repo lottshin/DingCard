@@ -26,6 +26,7 @@ import type { HtmlImportNote } from '../../../src/freeform/htmlImport'
 import { isMarkdownDocument } from '../../../src/drafts'
 import { gridCells, isGridPage } from '../../../src/exportGrid'
 import { createStaticServer } from './staticServer'
+import { browserFetcher, FontCache, fontCacheDir, fontsSource, payloadFontStacks, WebFontRoutes, type FontFallback } from './webFonts'
 
 const RENDER_TIMEOUT_MS = 120_000
 const BUILD_TIMEOUT_MS = 5 * 60_000
@@ -59,6 +60,8 @@ export interface RenderSuccess {
   files: RenderFile[]
   distDir: string
   previews: RenderPreview[]
+  /** Present when some web fonts couldn't be loaded and a system font stood in. */
+  fonts?: FontFallback
 }
 
 export type RenderResult =
@@ -272,14 +275,20 @@ type PageResult = {
   long?: RenderPageLong
   inspected?: InspectedSlide[]
   imported?: { document: unknown; notes: HtmlImportNote[] }
+  /** Set here, not by the page: the web fonts the page went without. */
+  fonts?: FontFallback
 }
 
 async function runInBrowser(payload: RenderPayload, port: number): Promise<PageResult> {
+  const source = fontsSource()
   const browser = await launchBrowser()
+  const fetcher = browserFetcher(browser)
+  const fonts = new WebFontRoutes(new FontCache(fontCacheDir()), fetcher.fetch, source)
   const page = await browser.newPage()
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(String(error)))
   try {
+    await fonts.install(page)
     // The callback and evaluate bodies below run inside the browser page; use
     // globalThis so this Node module needs no DOM type library.
     await page.addInitScript(
@@ -288,8 +297,8 @@ async function runInBrowser(payload: RenderPayload, port: number): Promise<PageR
       },
       payload,
     )
-    // The page loads the web fonts from Google Fonts before it fires load: a
-    // slow fetch is not a failed render, so it gets the render's time, not 30 seconds.
+    // The page loads the web font stylesheet before it fires load; the font
+    // routes answer it from the cache or give up within their time limit.
     await page.goto(`http://127.0.0.1:${port}/render.html`, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS })
     await page.waitForFunction(
       () =>
@@ -302,21 +311,23 @@ async function runInBrowser(payload: RenderPayload, port: number): Promise<PageR
       () => (globalThis as unknown as Record<string, unknown>).__DINGCARD_RENDER_RESULT__,
     )) as PageResult
     if (!raw || raw.ok !== true) throw new Error(raw?.error ?? '渲染页未返回结果')
-    return raw
+    const fallback = fonts.fallback(payloadFontStacks(payload))
+    return fallback ? { ...raw, fonts: fallback } : raw
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     const context = pageErrors.length > 0 ? `；页面错误：${pageErrors.slice(0, 3).join(' | ')}` : ''
     throw new Error(`${detail}${context}`)
   } finally {
     await page.close().catch(() => undefined)
+    await fetcher.close()
     await browser.close().catch(() => undefined)
   }
 }
 
-async function renderInBrowser(payload: RenderPayload, port: number): Promise<{ slides: RenderPageSlide[]; long?: RenderPageLong }> {
+async function renderInBrowser(payload: RenderPayload, port: number): Promise<{ slides: RenderPageSlide[]; long?: RenderPageLong; fonts?: FontFallback }> {
   const result = await runInBrowser(payload, port)
   if (!result.slides) throw new Error('渲染页未返回页面')
-  return { slides: result.slides, long: result.long }
+  return { slides: result.slides, long: result.long, fonts: result.fonts }
 }
 
 const EXTENSIONS = { png: 'png', jpeg: 'jpg', pdf: 'pdf' } as const
@@ -445,17 +456,23 @@ async function withRenderPage<T>(work: (port: number) => Promise<T>): Promise<T>
   }
 }
 
+/** Every slide as the render page measured it, and the web fonts it went without. */
+export interface InspectedLayout {
+  slides: InspectedSlide[]
+  fonts?: FontFallback
+}
+
 /** Lay a freeform document out in the render page and measure every slide (nothing is exported). */
-export async function inspectLayout(document: FreeformDocument): Promise<InspectedSlide[]> {
+export async function inspectLayout(document: FreeformDocument): Promise<InspectedLayout> {
   return withRenderPage(async (port) => {
     const result = await runInBrowser({ document, inspect: true }, port)
     if (!result.inspected) throw new Error('渲染页未返回测量结果')
-    return result.inspected
+    return result.fonts ? { slides: result.inspected, fonts: result.fonts } : { slides: result.inspected }
   })
 }
 
 export type HtmlImportResult =
-  | { ok: true; document: FreeformDocument; notes: HtmlImportNote[] }
+  | { ok: true; document: FreeformDocument; notes: HtmlImportNote[]; fonts?: FontFallback }
   | { ok: false; error: string }
 
 /** HTML laid out in the render page and read back as an editable freeform document (src/freeform/htmlImport.ts). */
@@ -467,7 +484,7 @@ export async function importHtml(source: string, size: { width?: number; height?
       if (!result.imported) throw new Error('渲染页未返回转换结果')
       const document = normalizeFreeformDocument(result.imported.document)
       if (!document) throw new Error('转换结果没有通过自由画布文档校验')
-      return { ok: true as const, document, notes: result.imported.notes }
+      return { ok: true as const, document, notes: result.imported.notes, ...(result.fonts ? { fonts: result.fonts } : {}) }
     })
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -505,7 +522,7 @@ async function runRender(
 
   const server = await createStaticServer(distDir)
   try {
-    const { slides: rendered, long } = await renderInBrowser(payload, server.port)
+    const { slides: rendered, long, fonts } = await renderInBrowser(payload, server.port)
     if (rendered.length === 0) {
       return { ok: false, error: '没有可渲染的页面' }
     }
@@ -523,7 +540,7 @@ async function runRender(
       name: slide.name,
       dataUrl: slide.previewDataUrl,
     }))
-    return { ok: true, files, distDir, previews }
+    return { ok: true, files, distDir, previews, ...(fonts ? { fonts } : {}) }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   } finally {
