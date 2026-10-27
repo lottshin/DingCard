@@ -467,6 +467,16 @@ export const app: Record<string, Translation> = {
   'drafts': 'drafts',
   'assets': 'assets',
   'images': 'images',
+
+  // Connect AI
+  '接入 AI': 'Connect AI',
+  'AI 客户端': 'AI clients',
+  '在终端里运行': 'Run in a terminal',
+  '加进 {file}': 'Add to {file}',
+  '加进 {file}（{menu}）': 'Add to {file} ({menu})',
+  '需要 Node.js 22 以上和本机的 Google Chrome。': 'Needs Node.js 22 or later and Google Chrome on this computer.',
+  'MCP 文档': 'MCP guide',
+
   '在线图库': 'Stock photos',
   '轴刻度': 'Axis ticks',
   '表格': 'Table',

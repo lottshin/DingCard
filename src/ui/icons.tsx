@@ -591,3 +591,12 @@ export function DeviceCheckIcon(props: IconProps) {
     </Icon>
   )
 }
+
+export function PlugIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 1.75v2.5M10 1.75v2.5M8 10.75v3.5" />
+      <path d="M4.25 4.25h7.5V7a3.75 3.75 0 0 1-7.5 0Z" />
+    </Icon>
+  )
+}

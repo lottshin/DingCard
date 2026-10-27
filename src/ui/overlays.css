@@ -628,3 +628,122 @@
   font: 400 12px/1.4 var(--ui-font);
   color: var(--ink-2);
 }
+
+/* ---------- Connect AI ---------- */
+/* Held near the top like the command palette: a tab's snippet changes the
+   dialog's height, and a centred dialog would move its title each time. */
+.connect-backdrop {
+  align-items: flex-start;
+  padding: 12vh 16px 16px;
+}
+
+.connect-modal {
+  width: 480px;
+  max-height: calc(100% - 4px);
+  overflow-y: auto;
+}
+
+.connect-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--track);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.connect-tab {
+  flex: 1 0 auto;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 13px/1 var(--ui-font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.connect-tab:hover {
+  color: var(--text);
+}
+
+.connect-tab[aria-selected='true'] {
+  background: var(--thumb-on);
+  color: var(--text);
+  box-shadow: var(--thumb-on-shadow);
+}
+
+.connect-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (max-width: 520px) {
+  .connect-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.connect-panel {
+  margin-top: 16px;
+}
+
+.connect-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--text-2);
+  font: 400 12.5px/1.5 var(--ui-font);
+}
+
+.connect-panel-head span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.connect-copy {
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.connect-copy svg {
+  width: 14px;
+  height: 14px;
+}
+
+.connect-code {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface-3);
+  color: var(--text);
+  font: 400 12px/1.6 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.connect-needs {
+  margin: 12px 0 0;
+  color: var(--text-3);
+  font: 400 12px/1.5 var(--ui-font);
+}
+
+.connect-foot {
+  align-items: center;
+}
+
+.connect-guide {
+  margin-right: auto;
+  text-decoration: none;
+}

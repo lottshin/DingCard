@@ -18,6 +18,7 @@ import {
   MarkdownMarkIcon,
   MoonIcon,
   MoreIcon,
+  PlugIcon,
   PlusIcon,
   ProjectsIcon,
   SearchIcon,
@@ -31,6 +32,7 @@ import { AssetsPage } from './AssetsPage'
 import { assetUsage } from './assetUsage'
 import { CommandPalette, type PaletteAction } from './CommandPalette'
 import { ConfirmDialog } from './ConfirmDialog'
+import { ConnectAiDialog } from './ConnectAiDialog'
 import { ProjectTrashDialog } from './ProjectTrashDialog'
 import { errorText } from './errors'
 import { HomePage } from './HomePage'
@@ -127,6 +129,7 @@ export function Workbench({
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [meMenuOpen, setMeMenuOpen] = useState(false)
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false)
+  const [connectOpen, setConnectOpen] = useState(false)
   const [sideOpen, setSideOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const newMenuRef = useRef<HTMLDivElement>(null)
@@ -334,6 +337,7 @@ export function Workbench({
     { id: 'projects', label: t('打开我的项目'), icon: 'projects', run: () => navigate(routes.projects()) },
     { id: 'templates', label: t('打开模板中心'), icon: 'templates', run: () => navigate(routes.templates()) },
     { id: 'assets', label: t('打开素材库'), icon: 'assets', run: () => navigate(routes.assets) },
+    { id: 'connect-ai', label: t('接入 AI'), icon: 'connect', run: () => setConnectOpen(true) },
     { id: 'theme', label: theme === 'dark' ? t('切换到浅色模式') : t('切换到深色模式'), icon: 'theme', run: onToggleTheme },
     { id: 'language', label: lang === 'zh' ? 'Switch to English' : t('切换到中文'), icon: 'language', run: () => setLang(lang === 'zh' ? 'en' : 'zh') },
   ]
@@ -477,6 +481,16 @@ export function Workbench({
             <SearchIcon /><span>{t('搜索项目、模板和操作')}</span><kbd>⌘K</kbd>
           </button>
           <span className="grow" />
+          <button
+            className="wb-connect"
+            type="button"
+            aria-label={t('接入 AI')}
+            onClick={() => setConnectOpen(true)}
+            data-testid="connect-ai"
+          >
+            <PlugIcon />
+            <span className="wb-connect-label">{t('接入 AI')}</span>
+          </button>
           <LanguageMenu />
           <button
             className="icon-btn wb-theme"
@@ -598,6 +612,8 @@ export function Workbench({
       {tokenDialogOpen && ownerId && (
         <TokenDialog ownerId={ownerId} onClose={() => setTokenDialogOpen(false)} />
       )}
+
+      {connectOpen && <ConnectAiDialog onClose={() => setConnectOpen(false)} />}
     </div>
   )
 }

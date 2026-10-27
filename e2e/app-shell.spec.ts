@@ -513,6 +513,38 @@ test('the command palette finds projects and runs actions', async ({ page }) => 
   await expect(page.getByTestId('freeform-toolbar')).toBeVisible()
 })
 
+test('接入 AI in the top bar hands each AI client its MCP config to copy', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/')
+  await page.getByTestId('login-guest').click()
+  await page.getByTestId('workbench-topbar').getByTestId('connect-ai').click()
+  const dialog = page.getByRole('dialog', { name: '接入 AI' })
+  const snippet = dialog.getByTestId('connect-ai-snippet')
+  await expect(dialog.getByRole('tab', { name: 'Claude Code' })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('tab', { name: 'Claude Code' })).toBeFocused()
+  await expect(snippet).toHaveText('claude mcp add dingcard -- npx -y dingcard-mcp')
+
+  await page.keyboard.press('ArrowRight')
+  await expect(dialog.getByRole('tab', { name: 'Codex' })).toBeFocused()
+  await expect(snippet).toHaveText('codex mcp add dingcard -- npx -y dingcard-mcp')
+
+  await dialog.getByRole('tab', { name: 'Cursor' }).click()
+  await expect(dialog.getByRole('tabpanel')).toContainText('~/.cursor/mcp.json')
+  await dialog.getByTestId('connect-ai-copy').click()
+  await expect(dialog.getByTestId('connect-ai-copy')).toHaveText('已复制')
+  const copied = await page.evaluate(() => navigator.clipboard.readText())
+  expect(JSON.parse(copied)).toEqual({ mcpServers: { dingcard: { command: 'npx', args: ['-y', 'dingcard-mcp'] } } })
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('connect-ai')).toBeFocused()
+  // The client picked last opens next time, also from the command palette.
+  await page.keyboard.press('ControlOrMeta+K')
+  await page.getByRole('dialog', { name: '搜索与命令' }).getByRole('combobox').fill('接入')
+  await page.keyboard.press('Enter')
+  await expect(dialog.getByRole('tab', { name: 'Cursor' })).toHaveAttribute('aria-selected', 'true')
+})
+
 test('logging out of the workbench returns to the login page', async ({ page }) => {
   const username = await registerOnLoginPage(page)
   await page.getByRole('button', { name: `账号菜单（${username}）` }).click()

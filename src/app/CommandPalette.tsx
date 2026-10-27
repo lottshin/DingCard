@@ -3,7 +3,7 @@ import type { Draft } from '../drafts'
 import { findTemplates } from '../templates/finder'
 import type { TemplateDefinition } from '../templates/types'
 import { useT } from '../i18n'
-import { AssetsIcon, FreeformMarkIcon, LanguageIcon, MarkdownMarkIcon, MoonIcon, ProjectsIcon, SearchIcon, TemplatesIcon } from '../ui/icons'
+import { AssetsIcon, FreeformMarkIcon, LanguageIcon, MarkdownMarkIcon, MoonIcon, PlugIcon, ProjectsIcon, SearchIcon, TemplatesIcon } from '../ui/icons'
 import { DocumentPreview } from './DocumentPreview'
 import { templatePreviewSource } from './LoginPage'
 import { projectSource, relativeTime } from './ProjectCard'
@@ -12,7 +12,7 @@ export interface PaletteAction {
   id: string
   label: string
   hint?: string
-  icon: 'markdown' | 'freeform' | 'projects' | 'templates' | 'assets' | 'theme' | 'language'
+  icon: 'markdown' | 'freeform' | 'projects' | 'templates' | 'assets' | 'connect' | 'theme' | 'language'
   run: () => void
 }
 
@@ -36,6 +36,7 @@ const ACTION_ICONS = {
   projects: <ProjectsIcon />,
   templates: <TemplatesIcon />,
   assets: <AssetsIcon />,
+  connect: <PlugIcon />,
   theme: <MoonIcon />,
   language: <LanguageIcon />,
 }

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 工作台顶栏加了「接入 AI」：按客户端（Claude Code、Codex、Cursor、Claude Desktop）给出接入 `dingcard-mcp` 的命令或配置，写明放在哪里，一键复制；下次打开停在上次选的客户端，命令面板搜「接入」也能打开。
+
 ### Changed
 
 - CI 跑渲染测试时顺带跑完的评测（84 题）不再丢掉：总表 `sheet.html` 和 `report.json` 存成这次运行的产物 `eval-sheet`（保留 14 天），job 摘要里写出题目数、问题数、丢掉的内容，并列出有问题的题目。
