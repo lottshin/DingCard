@@ -205,6 +205,8 @@ test('CI invokes repository contracts and existing verification commands', () =>
   assert.match(workflow, /contents:\s*read/)
   assert.match(workflow, /package-lock\.json[\s\S]*server\/package-lock\.json[\s\S]*mcp\/package-lock\.json/)
   assert.match(workflow, /hashFiles\('test-results\/\*\*\/\*'\)/)
+  assert.match(workflow, /name: eval-sheet\n\s*path: mcp\/eval-out\//, 'CI keeps the eval contact sheet as an artefact')
+  assert.match(read('mcp/src/eval/eval.sheet.ts'), /GITHUB_STEP_SUMMARY/, 'the eval lists its totals in the CI job summary')
   for (const action of [
     'actions/checkout@v7',
     'actions/setup-node@v7',

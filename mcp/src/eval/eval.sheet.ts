@@ -4,9 +4,11 @@
 // on one row of a contact sheet — a deck's charts and tables live on its
 // inner pages, not its cover. Run it with
 // `npm run eval` inside mcp/ (a built dist/ and system Chrome are needed);
-// it writes report.json and sheet.html into mcp/eval-out/.
+// it writes report.json and sheet.html into mcp/eval-out/. CI runs it with
+// the render tests, keeps eval-out/ as the run's eval-sheet artefact and
+// lists the totals in the job summary.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, test } from 'vitest'
 import { checkDocument } from '../render/check'
@@ -28,22 +30,45 @@ function composeOf(prompt: EvalPrompt): { ok: true; document: FreeformDocument; 
   return { ok: true, document: composed.document, dropped: droppedFrom(composed.summary) }
 }
 
+interface SheetRow {
+  id: string
+  kind: EvalPrompt['kind']
+  templateId: string
+  pages: number
+  issueCount: number
+  byKind: Record<string, number>
+  /** What the generator left off the page (see droppedFrom). */
+  dropped: string[]
+  thumbs: string[]
+}
+
+/** The totals, then a table of every brief with an issue or dropped copy, as GitHub job-summary Markdown. */
+function jobSummary(rows: SheetRow[], totalIssues: number, totalDropped: number): string {
+  const cell = (text: string) => text.replace(/\|/g, '\\|')
+  const flagged = rows.filter((row) => row.issueCount > 0 || row.dropped.length > 0)
+  const lines = [
+    '### 评测总表',
+    '',
+    `${rows.length} 个题目 · 共 ${totalIssues} 个问题（check_document）· 丢了 ${totalDropped} 处内容。缩略图见这次运行的 eval-sheet 产物（sheet.html）。`,
+    '',
+  ]
+  if (flagged.length > 0) {
+    lines.push('| 题目 | 页数 | 问题 | 丢掉的内容 |', '| --- | --- | --- | --- |')
+    for (const row of flagged) {
+      const kinds = Object.entries(row.byKind).map(([kind, count]) => `${kind} ${count}`).join('、')
+      lines.push(`| ${row.id} | ${row.pages} | ${kinds || '—'} | ${cell(row.dropped.join('、')) || '—'} |`)
+    }
+    lines.push('')
+  }
+  return `${lines.join('\n')}\n`
+}
+
 test(
   'eval: check every brief and draw the contact sheet',
   async () => {
     const outDir = path.resolve(__dirname, '../../eval-out')
     mkdirSync(outDir, { recursive: true })
-    const rows: Array<{
-      id: string
-      kind: EvalPrompt['kind']
-      templateId: string
-      pages: number
-      issueCount: number
-      byKind: Record<string, number>
-      /** What the generator left off the page (see droppedFrom). */
-      dropped: string[]
-      thumbs: string[]
-    }> = []
+    const rows: SheetRow[] = []
     for (const prompt of EVAL_PROMPTS) {
       const { document, dropped } = composeOf(prompt)
       const checked = await checkDocument(document)
@@ -84,6 +109,8 @@ test(
       <p class="meta">${rows.length} 个题目 · 共 ${totalIssues} 个问题（check_document）· 丢了 ${totalDropped} 处内容</p>
       <div class="grid">${tiles}</div>
     </body></html>\n`)
+    const summaryFile = process.env.GITHUB_STEP_SUMMARY
+    if (summaryFile) appendFileSync(summaryFile, jobSummary(rows, totalIssues, totalDropped))
     // The point of the run is the artefacts; the assertion keeps the count honest.
     expect(rows).toHaveLength(EVAL_PROMPTS.length)
   },

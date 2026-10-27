@@ -73,6 +73,15 @@ jobs:
       # Render as the image does: PingFang SC (Apple only) set in Noto Sans CJK SC.
       - run: sudo cp deploy/fontconfig.conf /etc/fonts/local.conf
       - run: npm --prefix mcp run test:render
+      # test:render also runs the eval (mcp/src/eval/eval.sheet.ts): keep its
+      # contact sheet and report even when a render test failed.
+      - name: Upload the eval sheet
+        if: ${{ !cancelled() && hashFiles('mcp/eval-out/report.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-sheet
+          path: mcp/eval-out/
+          retention-days: 14
       - name: Upload Playwright results
         if: ${{ failure() && hashFiles('test-results/**/*') != '' }}
         uses: actions/upload-artifact@v4
