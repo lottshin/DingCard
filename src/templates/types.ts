@@ -100,6 +100,10 @@ export type FreeformPosterSeriesId =
   | 'notice'
   | 'food-review'
   | 'course-cover'
+  | 'book-note'
+  | 'event-banner'
+  | 'mood-square'
+  | 'article-hero'
 
 export type FreeformTemplateSeriesId = FreeformDeckSeriesId | FreeformPosterSeriesId
 export type TemplateSeriesId = MarkdownTemplateSeriesId | FreeformTemplateSeriesId

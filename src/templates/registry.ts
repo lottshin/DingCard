@@ -5044,6 +5044,133 @@ function createCourseCoverDocument(): FreeformDocument {
   ])
 }
 
+function createBookNoteDocument(): FreeformDocument {
+  const desk = '#e9dfcc'
+  const page = '#fbf7ee'
+  const red = '#c4473a'
+  const ink = '#2a2520'
+  const muted = '#7a6f62'
+  return documentFromSlides([
+    slide('笔记', solid(desk), [
+      shapeNode('rect', 96, 320, 888, 840, solid(page), { name: '书页', cornerRadius: 10, shadow: { color: '#cdbfa6', blur: 40, offsetX: 0, offsetY: 16 } }),
+      // A ribbon bookmark hanging over the page's top edge, its tail cut in a V.
+      pathNode('M 0 0 L 64 0 L 64 240 L 32 212 L 0 240 Z', 812, 300, 64, 240, { name: '书签', fill: solid(red), strokeWidth: 0 }),
+      verticalLineNode(196, 360, 1120, '#e7b2aa', 3, { name: '页边线', cap: 'butt' }),
+      lineNode(240, 400, 80, red, 4, { name: '短线', cap: 'butt' }),
+      textNode('“', 228, 410, 160, 180, { name: '引号', fontSize: 200, fontFamily: PLAYFAIR, textFill: solid(red), fontWeight: 'bold', opacity: 0.85, lineHeight: 1 }),
+      textNode('真正重要的东西，\n用眼睛是看不见的，\n要用心去看。\n—— 狐狸对小王子说', 240, 600, 680, 420, { name: '正文', fontSize: 50, fontFamily: SERIF, textFill: solid(ink), lineHeight: 1.8, verticalAlign: 'middle' }),
+      textNode('《小王子》读书笔记', 96, 96, 888, 120, { name: '标题', fontSize: 84, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', effect: { type: 'marker', color: '#f2c84b', amount: 40 } }),
+      textNode('圣埃克苏佩里 · 第三次重读', 96, 228, 888, 50, { name: '副标题', fontSize: 32, fontFamily: SANS, textFill: solid(muted), letterSpacing: 2 }),
+      textNode('P.86', 600, 1060, 320, 44, { name: '角标', fontSize: 28, fontFamily: SANS, textFill: solid(muted), align: 'right', letterSpacing: 4 }),
+      textNode('@阿澄的读书角', 96, 1290, 560, 44, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(muted), letterSpacing: 4 }),
+      textNode('Reading notes', 656, 1286, 328, 48, { name: '英文', fontSize: 30, fontFamily: PLAYFAIR, textFill: solid(red), italic: true, align: 'right' }),
+    ]),
+  ])
+}
+
+function createEventBannerDocument(): FreeformDocument {
+  const night = '#1f2a44'
+  const paper = '#f5ecd9'
+  const red = '#d0503a'
+  const ink = '#1d1f26'
+  const muted = '#6c6457'
+  // The barcode on the stub: bar widths, gaps between them the same.
+  const bars = [3, 1, 2, 1, 3, 2, 1, 1, 3, 1, 2, 2, 1, 3, 1, 2, 1, 1, 3, 2, 1, 2]
+  let at = 0
+  const barcode = bars.map((width) => {
+    const x = at
+    at += width * 5 + 4
+    return `M ${x} 0 L ${x + width * 5} 0 L ${x + width * 5} 110 L ${x} 110 Z`
+  }).join(' ')
+  at -= 4
+  const row = (index: number, label: string, value: string) => {
+    const y = 610 + index * 66
+    const n = NUMBERED[index]
+    return [
+      textNode(label, 240, y, 120, 46, { name: `标签${n}`, fontSize: 30, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', letterSpacing: 4 }),
+      textNode(value, 380, y, 880, 46, { name: `信息${n}`, fontSize: 30, fontFamily: SANS, textFill: solid(ink) }),
+    ]
+  }
+  return documentFromSlides([
+    slide('横幅', solid(night), [
+      shapeNode('ellipse', -300, 500, 900, 900, solid('#2a3858'), { name: '光圈', opacity: 0.8 }),
+      shapeNode('rect', 160, 200, 1600, 680, solid(paper), { name: '票面', cornerRadius: 28, shadow: { color: '#0d1322', blur: 60, offsetX: 0, offsetY: 24 } }),
+      shapeNode('rect', 160, 200, 36, 680, solid(red), { name: '票边', cornerRadius: 0 }),
+      // The tear line between ticket and stub, a notch bitten out at each end.
+      shapeNode('ellipse', 1300, 160, 80, 80, solid(night), { name: '缺口上' }),
+      shapeNode('ellipse', 1300, 840, 80, 80, solid(night), { name: '缺口下' }),
+      verticalLineNode(1340, 260, 820, '#b8ab90', 4, { name: '撕线', dash: 14, cap: 'butt' }),
+      textNode('第 7 届 · 2026', 240, 262, 900, 44, { name: '角标', fontSize: 30, fontFamily: SANS, textFill: solid(red), fontWeight: 'bold', letterSpacing: 6 }),
+      textNode('城市读书节', 240, 320, 1040, 160, { name: '标题', fontSize: 132, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', letterSpacing: 8 }),
+      textNode('一整个周末，和三万本书待在一起', 240, 492, 1040, 56, { name: '副标题', fontSize: 38, fontFamily: SANS, textFill: solid(muted), letterSpacing: 2 }),
+      lineNode(240, 572, 1020, '#d9cdb4', 2, { name: '分隔线', cap: 'butt' }),
+      ...row(0, '时间', '11 月 8 日 — 9 日 · 10:00 — 21:00'),
+      ...row(1, '地点', '滨江美术馆 · 一号展厅'),
+      ...row(2, '门票', '凭票入场，含一杯咖啡'),
+      textNode('ADMIT ONE', 1380, 300, 340, 52, { name: '入场', fontSize: 40, fontFamily: PLAYFAIR, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 6 }),
+      textNode('No.', 1380, 386, 340, 40, { name: '票号前', fontSize: 28, fontFamily: PLAYFAIR, textFill: solid(muted), italic: true, align: 'center' }),
+      textNode('0826', 1380, 424, 340, 130, { name: '票号', fontSize: 112, fontFamily: ARCHIVO, textFill: solid(red), align: 'center', letterSpacing: 2, lineHeight: 1.1 }),
+      pathNode(barcode, 1550 - at / 2, 590, at, 110, { name: '条码', fill: solid(ink), strokeWidth: 0 }),
+      textNode('叮卡书店 主办', 1380, 744, 340, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 4 }),
+    ], LANDSCAPE),
+  ])
+}
+
+function createMoodSquareDocument(): FreeformDocument {
+  const paper = '#f6efe3'
+  const red = '#e5483a'
+  const ink = '#1f1d1b'
+  const muted = '#6f675d'
+  // The battery's outline, inset by half its stroke so none of it is cut off.
+  const shell = 'M 44 8 L 556 8 Q 592 8 592 44 L 592 236 Q 592 272 556 272 L 44 272 Q 8 272 8 236 L 8 44 Q 8 8 44 8 Z'
+  return documentFromSlides([
+    slide('方图', solid(paper), [
+      textNode('LOW BATTERY', 120, 120, 840, 50, { name: '提示', fontSize: 36, fontFamily: ARCHIVO, textFill: solid(red), align: 'center', letterSpacing: 10 }),
+      pathNode(shell, 220, 250, 600, 280, { name: '电池', stroke: ink, strokeWidth: 16, join: 'round' }),
+      shapeNode('rect', 836, 340, 40, 100, solid(ink), { name: '正极', cornerRadius: 10 }),
+      shapeNode('rect', 252, 282, 120, 216, solid(red), { name: '电量', cornerRadius: 16 }),
+      textNode('20%', 400, 312, 400, 150, { name: '角标', fontSize: 130, fontFamily: ARCHIVO, textFill: solid(ink), align: 'center', lineHeight: 1.1 }),
+      textNode('今日电量不足', 80, 604, 920, 150, { name: '标题', fontSize: 104, fontFamily: SERIF, textFill: solid(ink), fontWeight: 'bold', align: 'center', letterSpacing: 6, lineHeight: 1.2 }),
+      textNode('需要一杯热可可，\n和一个不用回消息的晚上', 120, 764, 840, 120, { name: '副标题', fontSize: 36, fontFamily: SANS, textFill: solid(muted), align: 'center', lineHeight: 1.6 }),
+      textNode('@小鹿的日常', 120, 956, 840, 44, { name: '品牌', fontSize: 26, fontFamily: SANS, textFill: solid(muted), align: 'center', letterSpacing: 4 }),
+    ], SQUARE),
+  ])
+}
+
+function createArticleHeroDocument(): FreeformDocument {
+  const desk = '#2f4a3f'
+  const sheet = '#fbf8f0'
+  const rule = '#d98d7f'
+  const ink = '#26231f'
+  const gold = '#e6b54a'
+  const light = '#ece6d6'
+  const muted = '#a9b8aa'
+  // Manuscript paper: 11 × 6 cells of 96 px, a 24 px band between the rows.
+  const cell = 96
+  const pitch = 120
+  const left = 192
+  const top = 192
+  const grid = Array.from({ length: 6 }, (_, rowIndex) => {
+    const y = top + rowIndex * pitch
+    const box = `M ${left} ${y} L ${left + cell * 11} ${y} L ${left + cell * 11} ${y + cell} L ${left} ${y + cell} Z`
+    const columns = Array.from({ length: 10 }, (_, index) => `M ${left + (index + 1) * cell} ${y} L ${left + (index + 1) * cell} ${y + cell}`).join(' ')
+    return `${box} ${columns}`
+  }).join(' ')
+  return documentFromSlides([
+    slide('封面', solid(desk), [
+      shapeNode('rect', 120, 120, 1200, 840, solid(sheet), { name: '稿纸', cornerRadius: 6, shadow: { color: '#1b2c25', blur: 48, offsetX: 0, offsetY: 20 } }),
+      pathNode(grid, 0, 0, 1920, 1080, { name: '格子', stroke: rule, strokeWidth: 2 }),
+      textNode('11 × 6 = 66', 192, 906, 600, 32, { name: '页脚', fontSize: 20, fontFamily: UI, textFill: solid(rule), letterSpacing: 2 }),
+      // One character to a cell: 72 px words advancing 96 px, set 12 px into each cell, 120 px a line.
+      textNode('下班后的\n第二种人生', left + 12, top - 12, cell * 11 + 24, pitch * 2, { name: '标题', fontSize: 72, fontFamily: KAI, textFill: solid(ink), letterSpacing: cell - 72, lineHeight: pitch / 72 }),
+      textNode('周末专栏 · 第 12 期', 1400, 400, 440, 44, { name: '角标', fontSize: 28, fontFamily: SANS, textFill: solid(gold), fontWeight: 'bold', letterSpacing: 4 }),
+      lineNode(1400, 466, 80, gold, 4, { name: '短线', cap: 'butt' }),
+      textNode('白天写代码，晚上做陶艺，\n一个程序员的两种手艺', 1400, 506, 440, 140, { name: '副标题', fontSize: 34, fontFamily: SANS, textFill: solid(light), lineHeight: 1.6 }),
+      textNode('文 / 林澄', 1400, 860, 440, 44, { name: '品牌', fontSize: 28, fontFamily: SANS, textFill: solid(muted), letterSpacing: 4 }),
+    ], LANDSCAPE),
+  ])
+}
+
 type TemplateMeta = Pick<TemplateDefinition, 'title' | 'description' | 'pageCount' | 'tags' | 'format'>
 
 const markdownSeriesMeta: Record<MarkdownTemplateSeriesId, TemplateMeta> = {
@@ -5191,6 +5318,10 @@ const freeformSeriesMeta: Record<FreeformTemplateSeriesId, TemplateMeta> = {
   'notice': poster('红头通知', 'A4：红色的单位名称和文号，红线中间一颗星，下面是通知标题、称呼、正文和五条事项，落款上盖着红章，适合放假通知、公司公告和社团通知。', ["通知", "公告"], 'a4'),
   'food-review': poster('探店点评', '小红书封面：俯视的一碗牛肉面，筷子架在碗边，右上角一枚红色评分章，下面三行人均、推荐和地址，适合探店、美食点评和餐厅推荐。', ["小红书", "探店"], 'xhs'),
   'course-cover': poster('课程封面', '16:9 横版封面：方格纸上一个明黄大圆写着课号，一支铅笔斜靠在圆边，左边是课程标题、一句介绍和讲师、时长、难度，适合网课封面、培训和分享会。', ["课程", "封面"], 'landscape'),
+  'book-note': poster('读书笔记', '小红书封面：一页摊开的书页上夹着红色丝带书签，荧光笔划过书名，宋体抄下一句书摘，适合读书笔记、书摘和读后感。', ["小红书", "读书"], 'xhs'),
+  'event-banner': poster('活动门票', '横版横幅：深蓝底上一张米色门票，左边是活动名、时间和地点，虚线撕口右边是票号和条码，适合读书节、展览、演出和市集。', ["活动", "门票"], 'landscape'),
+  'mood-square': poster('情绪电量', '方图：一节只剩一格红色电量的电池，配宋体大字的心情和一句话，适合心情分享、打工日常和朋友圈。', ["朋友圈", "心情"], 'square'),
+  'article-hero': poster('专栏封面', '横版封面：墨绿桌面上一张红格稿纸，标题一字一格写在格子里，右边是期数和导语，适合专栏、随笔和公众号长文的横版封面。', ["专栏", "随笔"], 'landscape'),
 }
 
 const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument> = {
@@ -5269,6 +5400,10 @@ const freeformFactories: Record<FreeformTemplateSeriesId, () => FreeformDocument
   'notice': createNoticeDocument,
   'food-review': createFoodReviewDocument,
   'course-cover': createCourseCoverDocument,
+  'book-note': createBookNoteDocument,
+  'event-banner': createEventBannerDocument,
+  'mood-square': createMoodSquareDocument,
+  'article-hero': createArticleHeroDocument,
 }
 
 /**
@@ -5329,9 +5464,11 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'photo-cover',
   'magazine-cover',
   'book-list',
+  'book-note',
   'versus-cover',
   'ranking-cover',
   'fun-fact',
+  'mood-square',
   'trip-route',
   'food-review',
   'habit-tracker',
@@ -5349,6 +5486,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'design-week',
   'music-festival',
   'race-bib',
+  'event-banner',
   'talk-poster',
   'launch-poster',
   'countdown',
@@ -5385,6 +5523,7 @@ const freeformSeriesIds: FreeformTemplateSeriesId[] = [
   'article-cover',
   'listicle-cover',
   'ridge-cover',
+  'article-hero',
   'masthead-cover',
   'interview-cover',
   'flyer',

@@ -652,6 +652,31 @@ export const EVAL_PROMPTS: EvalPrompt[] = [
       ending: { title: '恳请各位老师批评指正', body: '谢谢！后续研究打算：', points: ['扩大到三个城市', '跟踪两年的经营数据', '研究自提点的长期效果'] },
     },
   },
+  // A book note, an event ticket, a mood post and a column cover.
+  {
+    id: 'poster-book-note',
+    kind: 'poster',
+    templateId: 'book-note-freeform',
+    content: { title: '《平凡的世界》读书笔记', subtitle: '路遥 · 读了整整一个冬天', body: '生活不能等待别人来安排，要自己去争取和奋斗。', tag: 'P.213', brand: '@周末读书会' },
+  },
+  {
+    id: 'poster-event-banner',
+    kind: 'poster',
+    templateId: 'event-banner-freeform',
+    content: { title: '秋日旧物市集', subtitle: '带上家里用不着的好东西，换一个下午', tag: '第 3 期 · 2026', details: ['时间：11 月 15 日 13:00 — 18:00', '地点：老厂房创意园 B 栋'], brand: '叮卡市集 主办' },
+  },
+  {
+    id: 'poster-mood-square',
+    kind: 'poster',
+    templateId: 'mood-square-freeform',
+    content: { title: '周一，已关机', subtitle: '今天谁也别找我', tag: '5%', brand: '@打工人日记' },
+  },
+  {
+    id: 'poster-article-hero',
+    kind: 'poster',
+    templateId: 'article-hero-freeform',
+    content: { title: '在小城开一家书店', subtitle: '回到老家的第三年，我把一间旧粮仓改成了书店', tag: '城市来信 · 第 5 期', brand: '文 / 阿澄' },
+  },
   {
     id: 'outline-thesis-proposal',
     kind: 'outline',

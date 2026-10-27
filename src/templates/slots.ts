@@ -1280,6 +1280,36 @@ export const FREEFORM_POSTER_SLOTS: Record<FreeformPosterSeriesId, PosterSlots> 
     details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`, (n) => [`标记${n}`]),
     brand: { text: '品牌' },
   },
+  // The excerpt is the body, its quote mark goes with it; the page number is the badge.
+  'book-note': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    body: { text: '正文', extras: ['引号'] },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+  },
+  // The edition is the badge; the ticket number and barcode stay on the stub.
+  'event-banner': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    details: rows(3, (n) => `标签${n}`, (n) => `信息${n}`),
+    brand: { text: '品牌' },
+  },
+  // The charge left is the badge in the battery.
+  'mood-square': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标' },
+    brand: { text: '品牌' },
+  },
+  // The title is written into the grid; the issue is the badge, the author the brand.
+  'article-hero': {
+    title: '标题',
+    subtitle: { text: '副标题' },
+    tag: { text: '角标', extras: ['短线'] },
+    brand: { text: '品牌' },
+  },
 }
 
 function posterItems(slots: PosterSlots): SlotItem[] {
