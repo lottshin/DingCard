@@ -1,0 +1,52 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.lottshin/dingcard",
+  "title": "DingCard",
+  "description": "Make posters, social cards and slide decks from templates, check the layout, render PNG, JPG or PDF",
+  "repository": {
+    "url": "https://github.com/lottshin/DingCard",
+    "source": "github",
+    "subfolder": "mcp"
+  },
+  "websiteUrl": "https://dingcard.pages.dev",
+  "version": "0.60.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "dingcard-mcp",
+      "version": "0.60.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DINGCARD_FONTS_URL",
+          "description": "Where to download web fonts instead of https://fonts.googleapis.com, e.g. https://fonts.googleapis.cn",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "DINGCARD_CHROME_PATH",
+          "description": "Path to Chrome when it is not installed in the usual place (used for checks and renders)",
+          "isRequired": false,
+          "format": "filepath"
+        },
+        {
+          "name": "DINGCARD_SERVER_URL",
+          "description": "A deployed DingCard server, for share links and saved projects",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "DINGCARD_SERVER_TOKEN",
+          "description": "API token for DINGCARD_SERVER_URL (scopes: images and shares; drafts for projects)",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

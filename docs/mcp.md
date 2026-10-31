@@ -353,6 +353,7 @@ npm run mcp          # 等价于 npm --prefix mcp start，以 stdio 启动服务
 | `DINGCARD_DIST_DIR` | `<仓库>/dist` | 渲染使用的构建产物目录。在仓库里、目录里没有 `render.html` 时会自动执行一次 `npm run build`；不在仓库里时用 npm 包自带的 `dist/app`；自定义目录缺失则直接报错。 |
 | `DINGCARD_APP_URL` | （空） | `open_in_editor` 在这个叮卡编辑器里打开文档；不设时用服务端自带的编辑器。 |
 | `DINGCARD_APP_PORT` | `5390` | 服务端自带编辑器的端口（被占用时换一个空闲端口）。 |
+| `DINGCARD_CHROME_PATH` | （空） | 渲染和检查用这个浏览器，例如 Linux 上的 `/usr/bin/chromium`；不设时找系统安装的 Google Chrome。启动失败时回退到系统 Chrome。 |
 | `DINGCARD_FONTS_URL` | （空） | 网页字体从哪里下载：替代 `https://fonts.googleapis.com`，路径照旧。连不上 Google Fonts 时设成能访问的地址，例如 Google 字体的 .cn 地址 `https://fonts.googleapis.cn`。 |
 | `DINGCARD_FONT_CACHE_DIR` | `~/.cache/dingcard/fonts` | 下载过的网页字体存在这里（设了 `XDG_CACHE_HOME` 时放在它下面的 `dingcard/fonts`），之后渲染直接用，不再联网。 |
 

@@ -1,8 +1,9 @@
 {
   "name": "dingcard-mcp",
   "version": "0.60.0",
+  "mcpName": "io.github.lottshin/dingcard",
   "type": "module",
-  "description": "叮卡 MCP 服务器 — AI 客户端自动化操作自由画布文档与无头渲染",
+  "description": "MCP server for DingCard: AI clients make posters, social cards and slide decks, check the layout and render PNG, JPG or PDF. 叮卡 MCP 服务器",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -12,8 +13,13 @@
   "homepage": "https://github.com/lottshin/DingCard/blob/master/docs/mcp.md",
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "design",
+    "poster",
+    "slides",
+    "social-media",
+    "xiaohongshu",
     "cards",
     "dingcard"
   ],

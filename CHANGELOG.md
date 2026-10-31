@@ -7,6 +7,7 @@
 ### Added
 
 - 工作台顶栏加了「接入 AI」：按客户端（Claude Code、Codex、Cursor、Claude Desktop）给出接入 `dingcard-mcp` 的命令或配置，写明放在哪里，一键复制；下次打开停在上次选的客户端，命令面板搜「接入」也能打开。
+- `dingcard-mcp` 准备登记到 MCP 官方注册表，名字是 `io.github.lottshin/dingcard`：包里写上 `mcpName`，新增 `mcp/server.json`（英文简介、npm 包、四个可选环境变量）和手动运行的工作流 `publish-registry.yml`。注册表只认 npm 上已经公开、带 `mcpName` 的版本，所以每次发版在批准 npm 暂存之后再运行它；它用 GitHub OIDC 登录，不存令牌，下载的 `mcp-publisher` 先用 Sigstore 验签。npm 包的简介和 README 加了英文，关键词加上 poster、slides、xiaohongshu 等；MCP 文档补上了 `DINGCARD_CHROME_PATH`。
 
 ### Changed
 

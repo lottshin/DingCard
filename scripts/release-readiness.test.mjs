@@ -337,6 +337,38 @@ test('tag releases stage the MCP package on npm through trusted publishing', () 
   assert.doesNotMatch(stage, /^\s*(?:- run: )?npm publish\b/m, 'a person approves each version with 2FA')
 })
 
+test('the MCP Registry lists the npm package, published by hand after npm serves it', () => {
+  assert.equal(exists('mcp/server.json'), true, 'registry metadata must exist')
+  const mcp = JSON.parse(read('mcp/package.json'))
+  const registry = JSON.parse(read('mcp/server.json'))
+  assert.equal(mcp.mcpName, 'io.github.lottshin/dingcard', 'the registry finds its name in the published package')
+  assert.equal(registry.name, mcp.mcpName)
+  assert.equal(registry.version, mcp.version, 'mcp/server.json moves with every release')
+  assert.equal(registry.description.length <= 100, true, 'the registry rejects longer descriptions')
+  assert.equal(registry.packages.length, 1)
+  assert.equal(registry.packages[0].registryType, 'npm')
+  assert.equal(registry.packages[0].identifier, mcp.name)
+  assert.equal(registry.packages[0].version, mcp.version)
+  assert.deepEqual(registry.packages[0].transport, { type: 'stdio' })
+
+  assert.equal(exists('.github/workflows/publish-registry.yml'), true, 'registry publishing workflow must exist')
+  const workflow = read('.github/workflows/publish-registry.yml')
+  assert.match(workflow, /^on:\s*\n\s{2}workflow_dispatch:\s*$/m, 'run by hand once npm serves the version')
+  assert.doesNotMatch(workflow, /ubuntu-latest/)
+  const workflowPreamble = workflow.split(/^jobs:\s*$/m)[0]
+  assert.match(workflowPreamble, /^permissions:\s*\n\s{2}contents:\s*read\s*$/m)
+  assert.doesNotMatch(workflowPreamble, /id-token:\s*write/)
+
+  const publish = workflowJob(workflow, 'publish')
+  assert.match(publish, /id-token:\s*write/, 'GitHub OIDC proves the io.github.lottshin namespace')
+  assert.match(publish, /MCP_PUBLISHER_VERSION:\s*v\d+\.\d+\.\d+\s*$/m, 'a pinned mcp-publisher release')
+  assert.match(publish, /cosign verify-blob/, 'the downloaded publisher is verified')
+  assert.match(publish, /npm view "dingcard-mcp@\$VERSION" mcpName/)
+  assert.match(publish, /mcp-publisher login github-oidc/)
+  assert.match(publish, /mcp-publisher publish/)
+  assert.doesNotMatch(workflow, /secrets\./, 'no stored token')
+})
+
 test('deployment documentation keeps the shortest safe Docker path', () => {
   assert.equal(exists('docs/deployment.md'), true, 'deployment guide must exist')
 

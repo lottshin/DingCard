@@ -22,3 +22,7 @@
 ```
 
 需要 Node.js 22 以上和本机安装的 Chrome（渲染、检查用）。渲染用到的网页字体从 Google Fonts 下载，下载过的存在本机；连不上时设 `DINGCARD_FONTS_URL`（例如 `https://fonts.googleapis.cn`）换一个字体源。要 `share_document` 把作品变成分享链接，再设 `DINGCARD_SERVER_URL`（部署的叮卡地址）和 `DINGCARD_SERVER_TOKEN`（一个 API 令牌，需要 images、shares 权限），或 `DINGCARD_SERVER_USERNAME` / `DINGCARD_SERVER_PASSWORD`（一个叮卡账号）。完整说明见 [docs/mcp.md](https://github.com/lottshin/DingCard/blob/master/docs/mcp.md)。
+
+## English
+
+The MCP server of [DingCard](https://github.com/lottshin/DingCard), an open-source editor for social cards, posters and slide decks. AI clients fill templates or turn their own HTML into editable pages, check the result the way it will be exported (clipped or overlapping text, low contrast, leftover sample copy, large empty bands), render PNG, JPG, a PDF, a long image or a 3×3 grid, and hand the design to the browser editor for a person to finish. It needs Node.js 22+ and Google Chrome; add the configuration above to your MCP client. Tool descriptions are written in Chinese.
