@@ -161,7 +161,7 @@ test('normalizes encoded and repeated-leading-slash protected paths before SPA f
   t.after(() => rm(webRoot, { recursive: true, force: true }))
   const app = await createStaticApp(t, webRoot)
 
-  for (const url of ['/api%2Fx', '/uploads%2Fx', '//api/x']) {
+  for (const url of ['/api%2Fx', '/uploads%2Fx']) {
     const response = await app.inject({
       method: 'GET',
       url,
@@ -169,6 +169,16 @@ test('normalizes encoded and repeated-leading-slash protected paths before SPA f
     })
     assert.equal(response.statusCode, 404, url)
   }
+
+  // @fastify/static 10.1 refuses non-canonical paths ("//", "/./") itself,
+  // before the SPA fallback is asked.
+  const doubled = await app.inject({
+    method: 'GET',
+    url: '//api/x',
+    headers: { accept: 'text/html' },
+  })
+  assert.equal(doubled.statusCode, 403)
+  assert.notEqual(doubled.body, INDEX_HTML)
 })
 
 test('leaves malformed encoded paths to Fastify bad-URL handling', async (t) => {

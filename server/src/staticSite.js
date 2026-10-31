@@ -127,8 +127,8 @@ export async function registerStaticSite(app, {
         && !isPathAtOrBelow(normalizedPath, '/api')
         && !isPathAtOrBelow(normalizedPath, normalizedUploadsPath)
     },
-    setHeaders(response, filePath) {
-      response.setHeader(
+    setHeaders(reply, filePath) {
+      reply.header(
         'Cache-Control',
         isAssetsFile(filePath, assetsRoot) ? IMMUTABLE_CACHE_CONTROL : 'no-cache',
       )

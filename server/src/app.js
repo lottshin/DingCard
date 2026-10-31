@@ -67,7 +67,13 @@ export async function buildApp({
     )
 
     if (appConfig.corsOrigins.length > 0) {
-      await app.register(cors, { origin: appConfig.corsOrigins, credentials: true })
+      // @fastify/cors 11 lets only GET, HEAD and POST through unless told
+      // otherwise; the API also takes PATCH and DELETE.
+      await app.register(cors, {
+        origin: appConfig.corsOrigins,
+        credentials: true,
+        methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
+      })
     }
 
     await app.register(multipart, {

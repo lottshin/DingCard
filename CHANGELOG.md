@@ -15,6 +15,7 @@
 ### Security
 
 - `dingcard-mcp` 的依赖升到修过已知漏洞的版本：`@modelcontextprotocol/sdk` 1.30.1 → 1.32.2、`zod` 3 → 4，连同 `body-parser`、`hono`、`fast-uri`、`qs` 等间接依赖，`npm audit` 查生产依赖为 0。npm 包带着依赖锁，这些版本随新版发布才会装到用户那里。工具列表的参数说明改由 zod 4 生成：内页和结尾页共用一份页面写法（`#/definitions/deckPage`），`render_markdown` 的 `document` 标为必填（本来就必须给），整个工具列表从 26,178 字降到 25,348 字。
+- 自部署服务端（Docker 镜像里的那个）从 Fastify 4 升到 5（Fastify 4 已于 2025 年 6 月停止维护），插件随之升级：`@fastify/jwt` 10、`@fastify/static` 10、`@fastify/cors` 11、`@fastify/multipart` 10、`@fastify/rate-limit` 11。原来 `npm audit` 查生产依赖有 11 个问题，其中 2 个严重（`fast-jwt` 的令牌校验、`proxy-addr` 的 IP 伪造）、7 个高危；现在没有严重和高危，剩下 3 个中危都在 `@fastify/static` 用的 `glob` 里，只在关掉 `wildcard` 时才会用到，叮卡没有关。行为上有两处变化：`//api/x` 这类不规范的路径由静态文件插件直接答 403（原来是 404），同样不会落到首页；配了 `CORS_ORIGINS` 的跨域前端照旧能发 PATCH 和 DELETE（新版 `@fastify/cors` 默认只放行 GET、HEAD、POST，这里写明了要放行的方法）。
 
 ## [0.60.0] - 2026-10-27
 
