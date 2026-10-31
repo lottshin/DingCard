@@ -39,17 +39,17 @@
     "eval": "vitest run --config vitest.render.config.ts src/eval/eval.sheet.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "playwright-core": "^1.61.1",
-    "zod": "^3.25.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/qrcode": "^1.5.5",
     "esbuild": "^0.21.5",
     "typescript": "^5.5.3",
-    "vitest": "^2.1.9",
-    "@types/qrcode": "^1.5.5"
+    "vitest": "^2.1.9"
   },
   "engines": {
     "node": ">=22"

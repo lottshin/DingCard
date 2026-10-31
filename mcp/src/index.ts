@@ -263,6 +263,40 @@ function insertPages(
   }
 }
 
+// The page shape of create_document_from_content, used for every page and the ending.
+// zod 4 writes a schema used twice out in full in tools/list unless it has an id; with
+// one, both places point at #/definitions/deckPage. It lives out here so that every
+// server shares the one registered schema.
+const pageSchema = z.object({
+  title: z.string().describe('这一页的标题'),
+  body: z.string().optional().describe('正文段落'),
+  points: z.array(z.string()).optional().describe('要点，一条一项；"要点：说明" 冒号后面是第二行'),
+  quote: z.string().optional().describe('引文；"引文 —— 出处" 会把出处放在下面'),
+  templateId: z.string().optional().describe('这一页换用另一个套图模板（kind 为 deck）的版式；不给就用整套的 templateId'),
+  layout: z.enum(['section', 'statement', 'list', 'data']).optional().describe('版式：section 内页、statement 观点页、list 清单页、data 数据页；不给按内容挑，模板没有这种版式时用内页'),
+  chart: z.object({
+    kind: z.enum(['bar', 'ring', 'line', 'radar']).describe('图表类型：柱状 / 环形 / 折线 / 雷达'),
+    labels: z.array(z.string()).min(1).describe('类目名，1–12 个，每个 1–24 字'),
+    series: z.array(z.object({
+      name: z.string().optional().describe('系列名，≤12 字；两个以上带名系列自动画图例'),
+      values: z.array(z.number()).describe('数值，长度和 labels 一致'),
+      color: z.string().optional().describe('#RRGGBB；缺省用模板蓝 #1d4ed8'),
+    })).min(1).describe('1–3 个系列'),
+  }).optional().describe('这一页配一张图表，放在文字留出的空位'),
+  table: z.object({
+    header: z.array(z.string()).optional().describe('表头行；不给就整表无表头'),
+    rows: z.array(z.array(z.string())).min(1).describe('数据行；每格 1–24 字，行按最宽的补齐，含表头最多 12 行 6 列'),
+  }).optional().describe('这一页配一张表格，放在文字留出的空位'),
+  timeline: z.array(z.object({
+    label: z.string().optional().describe('时间或步骤，1–12 字，可省略'),
+    text: z.string().describe('内容，1–48 字'),
+  })).min(2).optional().describe('这一页配一条时间线（2–8 步），放在文字留出的空位'),
+  progress: z.object({
+    value: z.number().describe('进度 0–100，最多一位小数'),
+    label: z.string().optional().describe('目标名，1–12 字'),
+  }).optional().describe('这一页配一条进度条，放在文字留出的空位'),
+}).meta({ id: 'deckPage' })
+
 /** Build a dingcard MCP server with all tools registered. */
 export function createDingcardServer(): McpServer {
   const server = new McpServer({
@@ -383,36 +417,6 @@ export function createDingcardServer(): McpServer {
       }
     },
   )
-
-  const pageSchema = z.object({
-    title: z.string().describe('这一页的标题'),
-    body: z.string().optional().describe('正文段落'),
-    points: z.array(z.string()).optional().describe('要点，一条一项；"要点：说明" 冒号后面是第二行'),
-    quote: z.string().optional().describe('引文；"引文 —— 出处" 会把出处放在下面'),
-    templateId: z.string().optional().describe('这一页换用另一个套图模板（kind 为 deck）的版式；不给就用整套的 templateId'),
-    layout: z.enum(['section', 'statement', 'list', 'data']).optional().describe('版式：section 内页、statement 观点页、list 清单页、data 数据页；不给按内容挑，模板没有这种版式时用内页'),
-    chart: z.object({
-      kind: z.enum(['bar', 'ring', 'line', 'radar']).describe('图表类型：柱状 / 环形 / 折线 / 雷达'),
-      labels: z.array(z.string()).min(1).describe('类目名，1–12 个，每个 1–24 字'),
-      series: z.array(z.object({
-        name: z.string().optional().describe('系列名，≤12 字；两个以上带名系列自动画图例'),
-        values: z.array(z.number()).describe('数值，长度和 labels 一致'),
-        color: z.string().optional().describe('#RRGGBB；缺省用模板蓝 #1d4ed8'),
-      })).min(1).describe('1–3 个系列'),
-    }).optional().describe('这一页配一张图表，放在文字留出的空位'),
-    table: z.object({
-      header: z.array(z.string()).optional().describe('表头行；不给就整表无表头'),
-      rows: z.array(z.array(z.string())).min(1).describe('数据行；每格 1–24 字，行按最宽的补齐，含表头最多 12 行 6 列'),
-    }).optional().describe('这一页配一张表格，放在文字留出的空位'),
-    timeline: z.array(z.object({
-      label: z.string().optional().describe('时间或步骤，1–12 字，可省略'),
-      text: z.string().describe('内容，1–48 字'),
-    })).min(2).optional().describe('这一页配一条时间线（2–8 步），放在文字留出的空位'),
-    progress: z.object({
-      value: z.number().describe('进度 0–100，最多一位小数'),
-      label: z.string().optional().describe('目标名，1–12 字'),
-    }).optional().describe('这一页配一条进度条，放在文字留出的空位'),
-  })
 
   server.tool(
     'create_document_from_html',

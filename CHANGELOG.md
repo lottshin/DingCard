@@ -12,6 +12,10 @@
 
 - CI 跑渲染测试时顺带跑完的评测（84 题）不再丢掉：总表 `sheet.html` 和 `report.json` 存成这次运行的产物 `eval-sheet`（保留 14 天），job 摘要里写出题目数、问题数、丢掉的内容，并列出有问题的题目。
 
+### Security
+
+- `dingcard-mcp` 的依赖升到修过已知漏洞的版本：`@modelcontextprotocol/sdk` 1.30.1 → 1.32.2、`zod` 3 → 4，连同 `body-parser`、`hono`、`fast-uri`、`qs` 等间接依赖，`npm audit` 查生产依赖为 0。npm 包带着依赖锁，这些版本随新版发布才会装到用户那里。工具列表的参数说明改由 zod 4 生成：内页和结尾页共用一份页面写法（`#/definitions/deckPage`），`render_markdown` 的 `document` 标为必填（本来就必须给），整个工具列表从 26,178 字降到 25,348 字。
+
 ## [0.60.0] - 2026-10-27
 
 ### Added
