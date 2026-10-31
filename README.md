@@ -20,7 +20,7 @@
 
 ![叮卡自由画布：音乐节海报的标题被选中，上方工具栏是字体、字号、对齐、不透明度、位置和层级](docs/assets/freeform-canvas.webp)
 
-<p align="center"><strong>84</strong> 套模板 · <strong>22</strong> 个 MCP 工具 · <strong>8</strong> 种预设尺寸 · <strong>MIT</strong> 开源</p>
+<p align="center"><strong>88</strong> 套模板 · <strong>22</strong> 个 MCP 工具 · <strong>8</strong> 种预设尺寸 · <strong>MIT</strong> 开源</p>
 
 ## 自由画布
 
