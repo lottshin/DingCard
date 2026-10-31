@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-10-31
+
 ### Added
 
 - 工作台顶栏加了「接入 AI」：按客户端（Claude Code、Codex、Cursor、Claude Desktop）给出接入 `dingcard-mcp` 的命令或配置，写明放在哪里，一键复制；下次打开停在上次选的客户端，命令面板搜「接入」也能打开。
@@ -11,6 +13,7 @@
 
 ### Changed
 
+- 前端与 MCP 版本升至 `0.61.0`；服务端仍为 `0.3.0`，文档版本仍为 44。`0.61.0` 镜像随 `v0.61.0` 标签发布；README、Compose 和部署文档固定已发布的 GHCR `0.60.0` 镜像。LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
 - CI 跑渲染测试时顺带跑完的评测（84 题）不再丢掉：总表 `sheet.html` 和 `report.json` 存成这次运行的产物 `eval-sheet`（保留 14 天），job 摘要里写出题目数、问题数、丢掉的内容，并列出有问题的题目。
 
 ### Fixed

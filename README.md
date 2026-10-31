@@ -10,10 +10,10 @@
     <a href="CHANGELOG.md">更新日志</a>
   </p>
   <p>
-    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.60.0-e2570f" alt="叮卡版本 0.60.0"></a>
+    <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.61.0-e2570f" alt="叮卡版本 0.61.0"></a>
     <a href="https://github.com/lottshin/DingCard/actions/workflows/ci.yml"><img src="https://github.com/lottshin/DingCard/actions/workflows/ci.yml/badge.svg" alt="GitHub CI"></a>
     <a href="https://dingcard.vercel.app"><img src="https://img.shields.io/badge/demo-online-2f855a" alt="在线 Demo"></a>
-    <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.59.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.59.0"></a>
+    <a href="https://github.com/lottshin/DingCard/pkgs/container/dingcard"><img src="https://img.shields.io/badge/GHCR-0.60.0-2496ED?logo=docker&amp;logoColor=white" alt="GHCR 镜像 0.60.0"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-555555" alt="MIT 许可"></a>
   </p>
 </div>
@@ -101,10 +101,10 @@
 需要真实账号、跨设备同步、服务端图片和分享链接时，用 Fastify + SQLite 后端部署完整应用。预构建镜像支持 `linux/amd64` 和 `linux/arm64`：
 
 ```bash
-docker pull ghcr.io/lottshin/dingcard:0.59.0
+docker pull ghcr.io/lottshin/dingcard:0.60.0
 ```
 
-`.env.example` 中的 `DINGCARD_VERSION=0.59.0` 会固定使用上面的镜像。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
+`.env.example` 中的 `DINGCARD_VERSION=0.60.0` 会固定使用上面的镜像。下面的流程适用于已经安装 Git、Docker Engine、Docker Compose 和 OpenSSL 的 Linux 服务器：
 
 ```bash
 git clone https://github.com/lottshin/DingCard.git
