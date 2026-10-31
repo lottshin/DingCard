@@ -8,6 +8,11 @@
 
 - 英文 README（`README.en.md`），内容和中文版一致；版本和 npm 徽章自动跟着最新发布走，不进发版级联。中文 README 的导航加了 English，README 和 MCP 文档写上 MCP 官方注册表里的名字 `io.github.lottshin/dingcard`。核对 README 数字的测试也查英文版。
 
+### Fixed
+
+- 第一次用 `npx -y dingcard-mcp` 要下载约 350 MB，其中约 325 MB 是用不上的开发工具：23 个平台的 esbuild（216 MB）、25 个平台的 Rollup（49 MB）、TypeScript、Vitest 等。原因是从 0.59.0 起，npm 包附带的依赖锁 `npm-shrinkwrap.json` 是 `package-lock.json` 原样复制的，npm 会把锁文件里的开发依赖也一起装上。现在打包时去掉开发依赖，只装运行要用的约 32 MB，版本照样锁定；发版检查会核对留下的每个包都找得到自己的依赖。
+- npm 包装在一个叮卡仓库的克隆里面时（Glama 就是这样构建的），渲染、检查和打开编辑器会把外层仓库当成自己的仓库，先去那里跑 `npm run build`，而不是用包里自带的前端。现在装好的包往上找仓库时，遇到 `node_modules` 就停。
+
 ## [0.61.0] - 2026-10-31
 
 ### Added

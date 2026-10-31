@@ -4,6 +4,8 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { productionShrinkwrap } from '../mcp/scripts/shrinkwrap.mjs'
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 const exists = (relative) => fs.existsSync(path.join(root, relative))
@@ -130,7 +132,7 @@ test('MCP automation package stays documented, versioned, and tested', () => {
   )
   // npx installs exactly the dependencies CI tested: the lockfile ships as npm-shrinkwrap.json.
   assert.equal(mcp.files.includes('npm-shrinkwrap.json'), true, 'the package carries its lockfile')
-  assert.match(mcp.scripts.prepack, /copyFileSync\('package-lock\.json','npm-shrinkwrap\.json'\)/)
+  assert.match(mcp.scripts.prepack, /&& node scripts\/shrinkwrap\.mjs$/, 'the shrinkwrap leaves out dev-only packages')
   assert.match(mcp.scripts.postpack, /rmSync\('npm-shrinkwrap\.json'/)
   for (const scriptName of Object.keys(mcp.scripts)) {
     assert.equal(typeof mcp.scripts[scriptName], 'string')
@@ -181,6 +183,46 @@ test('MCP automation package stays documented, versioned, and tested', () => {
   assert.match(readme, /"command": "npx", "args": \["-y", "dingcard-mcp"\]/, 'README connects clients through the npm package')
   assert.match(readme, /docs\/mcp\.md/)
   assert.match(read('docs/development.md'), /渲染管线测试/)
+})
+
+test('the MCP package locks only what the server runs on', () => {
+  // npm installs every package a dependency's shrinkwrap lists, dev ones
+  // included: 0.59.0–0.61.0 shipped the whole lockfile, ~325 MB of build
+  // and test tools on top of ~32 MB.
+  const lock = JSON.parse(read('mcp/package-lock.json'))
+  const mcp = JSON.parse(read('mcp/package.json'))
+  const shrinkwrap = productionShrinkwrap(lock)
+  const packages = shrinkwrap.packages
+
+  for (const devOnly of ['node_modules/typescript', 'node_modules/vitest', 'node_modules/esbuild']) {
+    assert.equal(lock.packages[devOnly]?.dev, true, `${devOnly} is a dev package in the lockfile`)
+    assert.equal(devOnly in packages, false, `${devOnly} stays out of the shrinkwrap`)
+  }
+  assert.deepEqual(Object.entries(packages).filter(([, entry]) => entry.dev), [])
+  assert.equal(packages[''].devDependencies, undefined)
+  assert.deepEqual(packages[''].dependencies, mcp.dependencies)
+  assert.equal(
+    Object.keys(packages).length,
+    Object.values(lock.packages).filter((entry) => !entry.dev).length,
+    'every production package is kept',
+  )
+
+  // Each kept package still finds its dependencies the way Node resolves them.
+  const resolve = (from, name) => {
+    let base = from
+    for (;;) {
+      const candidate = base ? `${base}/node_modules/${name}` : `node_modules/${name}`
+      if (candidate in packages) return candidate
+      if (!base) return null
+      const nested = base.lastIndexOf('/node_modules/')
+      base = nested === -1 ? '' : base.slice(0, nested)
+    }
+  }
+  for (const [location, entry] of Object.entries(packages)) {
+    for (const name of Object.keys(entry.dependencies ?? {})) {
+      assert.notEqual(resolve(location, name), null, `${location || 'dingcard-mcp'} needs ${name}`)
+    }
+  }
 })
 
 test('CI invokes repository contracts and existing verification commands', () => {  assert.equal(exists('.github/workflows/ci.yml'), true, 'CI workflow must exist')

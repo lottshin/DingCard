@@ -84,10 +84,16 @@ export interface RenderOptions {
   grid?: boolean
 }
 
-/** Walk up from this module (bundled or source) to the repo root. */
-export function resolveRepoRoot(): string {
-  let dir = path.dirname(fileURLToPath(import.meta.url))
+/**
+ * Walk up from `start` to the repository root: the first directory holding
+ * package.json and mcp/package.json. An installed package never belongs to a
+ * checkout above its node_modules (Glama installs the npm package inside a
+ * clone of this repository), so the walk stops there.
+ */
+export function repoRootFrom(start: string): string | null {
+  let dir = start
   for (;;) {
+    if (path.basename(dir) === 'node_modules') return null
     if (
       existsSync(path.join(dir, 'package.json')) &&
       existsSync(path.join(dir, 'mcp', 'package.json'))
@@ -95,9 +101,16 @@ export function resolveRepoRoot(): string {
       return dir
     }
     const parent = path.dirname(dir)
-    if (parent === dir) throw new Error('无法定位仓库根目录（未找到包含 mcp/ 的项目根）')
+    if (parent === dir) return null
     dir = parent
   }
+}
+
+/** Walk up from this module (bundled or source) to the repo root. */
+export function resolveRepoRoot(): string {
+  const root = repoRootFrom(path.dirname(fileURLToPath(import.meta.url)))
+  if (root === null) throw new Error('无法定位仓库根目录（未找到包含 mcp/ 的项目根）')
+  return root
 }
 
 /** The frontend an installed package carries next to its server bundle (dist/app, copied in by build:app). */
