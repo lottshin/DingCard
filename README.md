@@ -7,7 +7,8 @@
     <a href="https://dingcard.vercel.app"><strong>在线使用</strong></a> ·
     <a href="docs/mcp.md">MCP 文档</a> ·
     <a href="docs/deployment.md">部署指南</a> ·
-    <a href="CHANGELOG.md">更新日志</a>
+    <a href="CHANGELOG.md">更新日志</a> ·
+    <a href="README.en.md">English</a>
   </p>
   <p>
     <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.61.0-e2570f" alt="叮卡版本 0.61.0"></a>
@@ -55,7 +56,7 @@
 
 ## MCP 自动化
 
-**AI 客户端，直接出整套卡片。** stdio MCP 服务器 `dingcard-mcp` 发布在 npm 上，提供 22 个工具。文档校验、编辑和渲染跟编辑器共用同一套代码；工具之间传 `documentId`，图片可以直接写本机路径。在 MCP 客户端的配置里加上：
+**AI 客户端，直接出整套卡片。** stdio MCP 服务器 `dingcard-mcp` 发布在 npm 上，提供 22 个工具，也登记在 MCP 官方注册表，名字是 `io.github.lottshin/dingcard`。文档校验、编辑和渲染跟编辑器共用同一套代码；工具之间传 `documentId`，图片可以直接写本机路径。在 MCP 客户端的配置里加上：
 
 ```json
 {

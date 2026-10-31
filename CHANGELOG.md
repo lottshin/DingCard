@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 英文 README（`README.en.md`），内容和中文版一致；版本和 npm 徽章自动跟着最新发布走，不进发版级联。中文 README 的导航加了 English，README 和 MCP 文档写上 MCP 官方注册表里的名字 `io.github.lottshin/dingcard`。核对 README 数字的测试也查英文版。
+
 ## [0.61.0] - 2026-10-31
 
 ### Added

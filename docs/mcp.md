@@ -319,6 +319,8 @@ AI 生成文档 → 导入叮卡精修 → 编辑器导出 PNG
 
 需要 Node.js 22+ 和本机的 Google Chrome，见下文「环境与配置」。
 
+`dingcard-mcp` 也登记在 MCP 官方注册表，名字是 `io.github.lottshin/dingcard`，以这个注册表为来源的客户端和目录都能搜到。
+
 Claude Code 和 Codex 用一行命令接入：`claude mcp add dingcard -- npx -y dingcard-mcp`（Codex 把 `claude` 换成 `codex`）。叮卡工作台顶栏的「接入 AI」按客户端列出这些写法，可以一键复制。
 
 ## 从源码运行
