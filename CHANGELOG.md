@@ -4,9 +4,15 @@
 
 ## [Unreleased]
 
+## [0.61.1] - 2026-11-01
+
 ### Added
 
 - 英文 README（`README.en.md`），内容和中文版一致；版本和 npm 徽章自动跟着最新发布走，不进发版级联。中文 README 的导航加了 English，README 和 MCP 文档写上 MCP 官方注册表里的名字 `io.github.lottshin/dingcard`。核对 README 数字的测试也查英文版。
+
+### Changed
+
+- 前端与 MCP 版本升至 `0.61.1`；服务端仍为 `0.3.0`，文档版本仍为 44。`0.61.1` 镜像随 `v0.61.1` 标签发布；README、Compose 和部署文档固定已发布的 GHCR `0.61.0` 镜像。LocalStore 与 RemoteStore 仍是独立数据源，切换模式时不自动迁移账号、草稿或图片。
 
 ### Fixed
 

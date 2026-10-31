@@ -1,6 +1,6 @@
 {
   "name": "dingcard-mcp",
-  "version": "0.61.0",
+  "version": "0.61.1",
   "mcpName": "io.github.lottshin/dingcard",
   "type": "module",
   "description": "MCP server for DingCard: AI clients make posters, social cards and slide decks, check the layout and render PNG, JPG or PDF. 叮卡 MCP 服务器",
