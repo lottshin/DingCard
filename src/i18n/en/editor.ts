@@ -110,6 +110,9 @@ export const editor: Record<string, Translation> = {
   '暂时无法保护已上传图片，请稍后重试': 'Uploaded pictures could not be protected right now. Please try again later.',
   'Markdown 图片上传失败': 'Could not upload the picture',
   '图片处理失败，请稍后重试': 'Could not process the picture. Please try again later.',
+  '这一页排不下': 'This page cannot hold its content',
+  '有一个内容块超过一页高度且无法安全拆分，请缩短内容、缩小图片或拆分表格':
+    'One block is taller than a page and cannot be split safely. Shorten the text, shrink the picture or split the table',
   '图片插入失败': 'Could not insert the picture',
   '暂时无法插入这张图片，请稍后重试': 'Could not insert this picture right now. Please try again later.',
   '没有找到这个项目': 'Project not found',

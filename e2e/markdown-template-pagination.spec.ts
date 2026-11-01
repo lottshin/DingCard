@@ -415,3 +415,188 @@ test('local mode keeps the share entry away', async ({ page }) => {
   // PDF export is all client-side, so local mode offers it too.
   await expect(page.getByTestId('markdown-export-pdf')).toBeVisible()
 })
+
+/** Every page's card-content text, in page order (click through the dots). */
+async function collectCardText(page: import('@playwright/test').Page): Promise<string[]> {
+  const count = await page.locator('.page-dot').count()
+  const texts: string[] = []
+  for (let index = 0; index < count; index += 1) {
+    await page.locator('.page-dot').nth(index).click()
+    texts.push(await page.locator('.stage .card-content').evaluate((element) => element.textContent ?? ''))
+  }
+  return texts
+}
+
+/** The <strong> runs of every page, in page order (click through the dots). */
+async function collectStrongText(page: import('@playwright/test').Page): Promise<string> {
+  const count = await page.locator('.page-dot').count()
+  const texts: string[] = []
+  for (let index = 0; index < count; index += 1) {
+    await page.locator('.page-dot').nth(index).click()
+    texts.push(...(await page.locator('.stage .card-content strong').allInnerTexts()))
+  }
+  return texts.join('')
+}
+
+/** Text with whitespace and the word-break marks removed: characters only. */
+const normalizeText = (text: string) => text.replace(/[\s\u200B]/g, '')
+
+test('a blockquote taller than a page is split across cards without losing text', async ({ page }) => {
+  await chooseTheme(page, '专栏')
+  // One quote, far taller than a page, with a bold phrase inside — nothing
+  // here can become its own oversized page, so it must be cut and flowed.
+  const lines = Array.from({ length: 30 }, (_, index) => {
+    const marker = `第${String(index).padStart(2, '0')}句`
+    return index === 20 ? `撑高度的引用文字${marker}。**这句是加粗的**` : `撑高度的引用文字${marker}。`
+  })
+  await setDoc(page, `> ${lines.join('\n> ')}`)
+
+  await expect.poll(() => page.locator('.page-dot').count()).toBeGreaterThanOrEqual(2)
+  await expectPagesInside(page, 2)
+
+  // Every sentence survived the split, exactly once, in order.
+  const joined = normalizeText((await collectCardText(page)).join(''))
+  const expected = normalizeText(lines.join('').replace(/\*\*/g, ''))
+  expect(joined).toBe(expected)
+
+  // The bold phrase kept its formatting across the cut: the pages that hold
+  // any part of it render that part inside a <strong>.
+  const strongText = normalizeText(await collectStrongText(page))
+  expect(strongText).toContain('这句是加粗的')
+
+  // The pages after the cut still resolve their roles: this article opens on
+  // a cover and its last page is the closing one.
+  const count = await page.locator('.page-dot').count()
+  await page.locator('.page-dot').nth(0).click()
+  await expect(page.locator('.stage .card')).toHaveAttribute('data-page-role', 'cover')
+  await page.locator('.page-dot').nth(count - 1).click()
+  await expect(page.locator('.stage .card')).toHaveAttribute('data-page-role', 'close')
+})
+
+test('a long code block paginates at line ends', async ({ page }) => {
+  await chooseTheme(page, '专栏')
+  const codeLines = Array.from({ length: 60 }, (_, index) => {
+    const marker = String(index).padStart(2, '0')
+    return `const value${marker} = ${index} + 1; //行${marker}注释`
+  })
+  await setDoc(page, ['```js', ...codeLines, '```'].join('\n'))
+
+  await expect.poll(() => page.locator('.page-dot').count()).toBeGreaterThanOrEqual(2)
+  await expectPagesInside(page, 2)
+
+  // Every line is on exactly one page, and no line was cut mid-way: what
+  // each page renders is whole source lines.
+  const renderedLines = (await collectCardText(page))
+    .flatMap((text) => text.split('\n'))
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const sourceLines = new Set(codeLines)
+  for (const line of renderedLines) {
+    expect(sourceLines.has(line), `rendered line "${line}"`).toBe(true)
+  }
+  const joined = normalizeText(renderedLines.join(''))
+  for (const codeLine of codeLines) {
+    const marker = normalizeText(codeLine.slice(codeLine.indexOf('//行')))
+    expect(joined.split(marker).length - 1, codeLine).toBe(1)
+  }
+})
+
+test('a table taller than a page is split between rows with its header repeated', async ({ page }) => {
+  await chooseTheme(page, '专栏')
+  const rows = Array.from({ length: 26 }, (_, index) => {
+    const marker = String(index).padStart(2, '0')
+    return `| 第${marker}城 | 住着${marker}号的人 |`
+  })
+  await setDoc(page, ['| 城市 | 常住的人 |', '| --- | --- |', ...rows].join('\n'))
+
+  await expect.poll(() => page.locator('.page-dot').count()).toBeGreaterThanOrEqual(2)
+  await expectPagesInside(page, 2)
+
+  const joined = normalizeText((await collectCardText(page)).join(''))
+  for (const row of rows) {
+    const marker = normalizeText(row.replace(/[|]/g, ''))
+    expect(joined.split(marker).length - 1, row).toBe(1)
+  }
+
+  // Every page carrying rows also carries the repeated header row.
+  const count = await page.locator('.page-dot').count()
+  for (let index = 0; index < count; index += 1) {
+    await page.locator('.page-dot').nth(index).click()
+    const table = page.locator('.stage .card-content table')
+    await expect(table).toHaveCount(1)
+    await expect(table.locator('thead')).toHaveCount(1)
+    await expect(table.locator('thead')).toContainText('城市')
+  }
+})
+
+test('a picture taller than a page is scaled down to fit instead of clipped', async ({ page }) => {
+  await chooseTheme(page, '简约白')
+  // 400×1200: at the card's 316px content width it would render 948px tall —
+  // taller than the 426px of usable height — so it must be shrunk to fit.
+  // One raster picture (what pasting gives) and one SVG (decoded
+  // asynchronously, so the pages must wait for it before measuring).
+  const svgPicture =
+    "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='400'%20height='1200'%3E%3Crect%20width='100%25'%20height='100%25'%20fill='%23c0402a'/%3E%3C/svg%3E"
+  const rasterPicture = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 400
+    canvas.height = 1200
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#c0402a'
+    context.fillRect(0, 0, 400, 1200)
+    return canvas.toDataURL('image/png')
+  })
+
+  for (const picture of [rasterPicture, svgPicture]) {
+    await setDoc(page, `![很高的图](${picture})`)
+
+    // The pages are laid out once the picture has arrived: wait until the
+    // card shows THIS picture and the paginator has scaled it.
+    await expect
+      .poll(async () => {
+        const state = await page
+          .locator('.stage .card-content .img-wrap')
+          .evaluate((element) => ({
+            src: element.querySelector('img')?.getAttribute('src') ?? '',
+            width: element.style.width,
+          }))
+          .catch(() => ({ src: '', width: '' }))
+        return state.src === picture ? state.width : ''
+      })
+      .toMatch(/^\d+px$/)
+    await expect(page.locator('.stage .img-wrap.image-load-error')).toHaveCount(0)
+    await expect(page.locator('.page-dot')).toHaveCount(1)
+    await expectPagesInside(page, 1)
+
+    const geometry = await page.locator('.stage .card-content .img-wrap').evaluate((element) => ({
+      inlineWidth: element.style.width,
+      renderedHeight: element.getBoundingClientRect().height,
+      renderedWidth: element.getBoundingClientRect().width,
+    }))
+    expect(geometry.inlineWidth, 'the wrapper carries a scaled width').toMatch(/^\d+px$/)
+    expect(geometry.renderedHeight).toBeLessThanOrEqual(426)
+    expect(geometry.renderedHeight).toBeGreaterThanOrEqual(150)
+    expect(geometry.renderedWidth).toBeLessThan(316)
+    // No pagination error: scaling is a fix, not a failure.
+    await expect(page.locator('.operation-notice--error')).toHaveCount(0)
+  }
+})
+
+test('content that can be neither split nor scaled reports an explicit error', async ({ page }) => {
+  await chooseTheme(page, '简约白')
+  // A raw SVG 900px tall inside one HTML block: no text to cut, no table rows,
+  // no picture wrapper to shrink — the paginator must say so instead of
+  // clipping it behind the card's overflow.
+  await setDoc(page, [
+    '<svg width="300" height="900" xmlns="http://www.w3.org/2000/svg">',
+    '<rect width="300" height="900" fill="#4080c0" />',
+    '</svg>',
+    '',
+    '后面的正文。',
+  ].join('\n'))
+
+  const notice = page.locator('.operation-notice--error')
+  await expect(notice).toBeVisible()
+  await expect(notice).toContainText('这一页排不下')
+  await expect(notice).toContainText('超过了一页的高度')
+})
