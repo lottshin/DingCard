@@ -270,7 +270,7 @@
   opacity: 1;
 }
 
-/* A picture spans the column unless it was given a width; tall ones are cropped. */
+/* A picture spans the column unless it was given a width. */
 .card-content[data-look] .img-wrap[style=""] {
   display: block;
 }
@@ -282,13 +282,7 @@
 }
 
 .card-content[data-look] img {
-  max-height: 240px;
   border-radius: var(--look-img-radius, 4px);
-  object-fit: cover;
-}
-
-.card-content[data-look][data-page-role="cover"] img {
-  max-height: var(--look-cover-img, 176px);
 }
 
 .card-content[data-look] code {

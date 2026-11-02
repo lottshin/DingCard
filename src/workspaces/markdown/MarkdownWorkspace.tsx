@@ -6,7 +6,7 @@ import { navigate, routes } from '../../app/router'
 import { buildFontEmbedPlanCSS } from '../../fontEmbed'
 import { markdownFontPlan, markdownRunningTitle } from '../../markdownLooks'
 import { collectMarkdownImageSources, parseBlocks, setImageWidth } from '../../markdown'
-import { paginate, type Page } from '../../paginate'
+import { paginateWhenImagesSettled, type Page } from '../../paginate'
 import {
   PLATFORMS,
   THEMES,
@@ -238,11 +238,27 @@ export function MarkdownWorkspace({
   // render) via rAF. @uiw/react-codemirror handles the editor's own IME sync, so
   // this no longer interferes with typing.
   useEffect(() => {
+    let cancelled = false
     const frame = requestAnimationFrame(() => {
-      setPages(paginate(blocks, config, profile.headerFirstPageOnly))
+      // paginate() throws — deliberately, never silently — when a block is
+      // taller than a page and can be neither split nor shrunk: say so and
+      // keep the pages that were already laid out. The pictures are awaited
+      // first, so a page is measured around the space they really take.
+      void paginateWhenImagesSettled(blocks, config, profile.headerFirstPageOnly).then(
+        (next) => {
+          if (!cancelled) setPages(next)
+        },
+        (error: unknown) => {
+          if (cancelled) return
+          showOperationError(t('这一页排不下'), error, t('有一个内容块超过一页高度且无法安全拆分，请缩短内容、缩小图片或拆分表格'))
+        },
+      )
     })
-    return () => cancelAnimationFrame(frame)
-  }, [blocks, config, profile.headerFirstPageOnly])
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frame)
+    }
+  }, [blocks, config, profile.headerFirstPageOnly, showOperationError])
 
   const editorViewRef = useRef<EditorView | null>(null)
 

@@ -54,7 +54,7 @@ import { slideBackgroundToCss } from '../freeform/paint'
 import type { FreeformDocument } from '../freeform/types'
 import { isMarkdownDocument, type MarkdownCardDocument } from '../drafts'
 import { parseBlocks } from '../markdown'
-import { paginate, type Page } from '../paginate'
+import { paginateWhenImagesSettled, type Page } from '../paginate'
 import { Card } from '../Card'
 import { buildFontEmbedPlanCSS } from '../fontEmbed'
 import { markdownFontPlan, markdownRunningTitle } from '../markdownLooks'
@@ -662,8 +662,28 @@ function MarkdownRenderApp({ markdown }: { markdown: MarkdownCardDocument }) {
         store.images.register(ref, url)
       }
     }
+    // paginate() throws — deliberately, never silently — when a block is
+    // taller than a page and can be neither split nor shrunk. Report it as
+    // the render result instead of leaving the client waiting on pages that
+    // will never come. The pictures are awaited first, so the pages are
+    // measured around the space they really take.
+    let cancelled = false
     const blocks = parseBlocks(markdown.source)
-    setPages(paginate(blocks, config, markdown.profile.headerFirstPageOnly))
+    void paginateWhenImagesSettled(blocks, config, markdown.profile.headerFirstPageOnly).then(
+      (next) => {
+        if (!cancelled) setPages(next)
+      },
+      (error: unknown) => {
+        if (cancelled) return
+        writeResult({
+          ok: false,
+          error: error instanceof Error && error.message.trim() ? error.message : '分页失败',
+        })
+      },
+    )
+    return () => {
+      cancelled = true
+    }
   }, [markdown, config])
 
   const page = pages ? pages[Math.min(index, pages.length - 1)] : null

@@ -187,25 +187,85 @@ function tokenKind(tokenType: string): MarkdownBlockKind {
   return 'other'
 }
 
+/** The marks a long line may be cut after; each one stays with the text it ends. */
+const SENTENCE_END = '。！？!?；;'
+
+/**
+ * The stretches of a line that must not be cut: code spans and the
+ * destinations of links and pictures. A picture's address can hold a ";" or
+ * an "!" of its own, and cutting there would tear the picture apart.
+ */
+function protectedRanges(line: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = []
+  let index = 0
+  while (index < line.length) {
+    const character = line[index]
+    if (character === '`') {
+      const end = line.indexOf('`', index + 1)
+      if (end === -1) break
+      ranges.push([index, end + 1])
+      index = end + 1
+      continue
+    }
+    if (character === ']' && line[index + 1] === '(') {
+      // The destination ends at the ")" that closes it, nested ones count.
+      let depth = 1
+      let cursor = index + 2
+      while (cursor < line.length && depth > 0) {
+        if (line[cursor] === '(') depth += 1
+        else if (line[cursor] === ')') depth -= 1
+        cursor += 1
+      }
+      ranges.push([index, cursor])
+      index = cursor
+      continue
+    }
+    index += 1
+  }
+  return ranges
+}
+
 function splitLongLine(line: string): string[] {
   const text = line.trim()
   if (text.length <= 90) return text ? [text] : []
 
-  const pieces = text.match(/[^。！？!?；;]+[。！？!?；;]?/g) ?? [text]
-  const chunks: string[] = []
+  // Cut after every sentence-ending mark, keeping the mark with the sentence
+  // it closes. The pieces have to keep every character: a long line that
+  // opens with "!" is a picture, and dropping that mark would turn the
+  // picture into a plain link. A "!" that opens a picture ("![alt](…)") is
+  // part of the picture's syntax, not the end of a sentence, and a mark
+  // inside a code span or a link's address is part of that syntax too.
+  const protectedSpans = protectedRanges(text)
+  const isProtected = (index: number) =>
+    protectedSpans.some(([start, end]) => index >= start && index < end)
+
+  const pieces: string[] = []
   let current = ''
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    current += character
+    const opensPicture = character === '!' && text[index + 1] === '['
+    if (SENTENCE_END.includes(character) && !opensPicture && !isProtected(index)) {
+      pieces.push(current)
+      current = ''
+    }
+  }
+  if (current) pieces.push(current)
+
+  const chunks: string[] = []
+  let buffer = ''
 
   for (const piece of pieces) {
-    const next = current ? current + piece : piece
-    if (current && next.length > 90) {
-      chunks.push(current.trim())
-      current = piece
+    const next = buffer ? buffer + piece : piece
+    if (buffer && next.length > 90) {
+      chunks.push(buffer.trim())
+      buffer = piece
     } else {
-      current = next
+      buffer = next
     }
   }
 
-  if (current.trim()) chunks.push(current.trim())
+  if (buffer.trim()) chunks.push(buffer.trim())
   return chunks.length ? chunks : [text]
 }
 

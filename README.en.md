@@ -38,7 +38,7 @@ The interface comes in Chinese and English (switch at the top right). The docume
 
 ## Markdown long reads
 
-**One article, paginated to the card size as you type.** Paste Markdown on the left; the right side lays it out live at RedNote, Weibo or Twitter sizes. `---` forces a page break, and a heading is never left alone at the foot of a page. Pasted pictures can be resized right in the preview.
+**One article, paginated to the card size as you type.** Paste Markdown on the left; the right side lays it out live at RedNote, Weibo or Twitter sizes. `---` forces a page break, and a heading is never left alone at the foot of a page. A quote, code block or table taller than a page is split at a measured boundary onto the next cards (a table's continuation repeats its header row), and a too-tall picture is scaled down until it fits. Pasted pictures can be resized right in the preview.
 
 Nine looks for long reads: Column, Notes, Letter, Midnight, Aurora, Doc, Rice paper, Swiss and Journal. Each has its own running head, folios, heading levels, quotes, lists, to-dos, code and tables, and switching looks never touches the text.
 
